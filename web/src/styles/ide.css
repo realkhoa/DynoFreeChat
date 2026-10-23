@@ -2181,3 +2181,220 @@ button:disabled {
     font-size: clamp(16px, 6vh, 24px);
   }
 }
+
+/* ------------------------------------------------ Visual Studio Native Disguise & Stealth */
+
+:root {
+  --stealth-opacity: 0.35;
+  --stealth-blur: 2px;
+}
+
+.is-stealth {
+  opacity: var(--stealth-opacity);
+  filter: blur(var(--stealth-blur));
+  transition: opacity 0.18s ease, filter 0.18s ease;
+}
+
+.is-stealth:hover,
+.is-stealth:focus-within {
+  opacity: 0.98;
+  filter: blur(0);
+}
+
+.tab--game .tab-icon {
+  color: #388a34;
+}
+
+.game-editor-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--editor);
+  color: var(--fg);
+  font: 12.5px/1.4 var(--font-mono);
+  overflow: hidden;
+  user-select: text;
+}
+
+.game-code-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.game-code-file {
+  font-weight: 600;
+  color: var(--fg);
+  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.game-code-chip {
+  color: #6a9955;
+  font-size: 11px;
+}
+
+.game-code-spacer {
+  flex: 1;
+}
+
+.game-code-tool-btn {
+  height: 20px;
+  padding: 0 7px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font: 11px/1 var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.game-code-tool-btn:hover {
+  background: var(--hover-chrome);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.game-code-tool-btn.is-active {
+  background: var(--sel);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.game-code-body {
+  display: flex;
+  flex: 1;
+  overflow: auto;
+}
+
+.game-code-gutter {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px 8px 6px;
+  background: var(--editor);
+  border-right: 1px solid var(--border-subtle);
+  color: #858585;
+  font: 12px/1.55 var(--font-mono);
+  text-align: right;
+  user-select: none;
+  flex: none;
+}
+
+.game-code-content {
+  flex: 1;
+  padding: 8px 12px;
+  overflow-x: auto;
+  font: 12.5px/1.55 var(--font-mono);
+}
+
+.code-line {
+  white-space: pre;
+}
+
+.code-line.empty {
+  height: 8px;
+}
+
+.code-line.indent1 {
+  padding-left: 18px;
+}
+
+.code-line.indent2 {
+  padding-left: 36px;
+}
+
+.code-line.indent3 {
+  padding-left: 54px;
+}
+
+.code-line .comment {
+  color: #6a9955;
+}
+
+.code-line .kw {
+  color: #569cd6;
+}
+
+.code-line .type {
+  color: #4ec9b0;
+}
+
+.code-line .ident {
+  color: #9cdcfe;
+}
+
+.code-line .num {
+  color: #b5cea8;
+}
+
+.matrix-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0;
+}
+
+.code-inline-btn {
+  padding: 1px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--fg-dim);
+  font: 11px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.code-inline-btn:hover {
+  background: var(--hover-chrome);
+  border-color: var(--border-subtle);
+  color: var(--fg);
+}
+
+/* Code Mode Cell Disguise */
+
+.game-code-mode .game-cell {
+  width: 32px;
+  height: 24px;
+  min-width: 32px;
+  min-height: 24px;
+  border-radius: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  background: var(--chrome);
+  border: 1px solid var(--border-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: none;
+}
+
+.game-code-mode .game-cell.cell-x {
+  color: #569cd6;
+  background: rgba(86, 156, 214, 0.12);
+}
+
+.game-code-mode .game-cell.cell-o {
+  color: #ce9178;
+  background: rgba(206, 145, 120, 0.12);
+}
+
+.game-code-mode .game-cell.cell-empty {
+  color: #6a9955;
+}
+
+.game-code-mode .game-cell.cell-win {
+  border-color: #569cd6;
+  background: rgba(86, 156, 214, 0.28);
+  box-shadow: none;
+  animation: none;
+}

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { GameBoardView } from "../src/ui/game-board-view";
-import { createEmptyBoard, type BoardState } from "../src/game/tictactoe";
+import type { BoardState } from "../src/game/tictactoe";
 
 describe("GameBoardView", () => {
   let root: HTMLElement;
@@ -13,13 +13,16 @@ describe("GameBoardView", () => {
     root = document.createElement("div");
     root.innerHTML = `
       <div id="game-room-code-badge"></div>
+      <div id="game-code-room-badge"></div>
       <div id="game-status-banner"></div>
+      <div id="game-code-status-line"></div>
       <div id="game-score-x">0</div>
       <div id="game-score-o">0</div>
       <div id="game-score-draws">0</div>
+      <div id="game-code-score-line"></div>
       <div id="game-turn-indicator"></div>
       <div id="game-grid">
-        ${Array.from({ length: 9 }, (_, i) => `<button id="game-cell-${i}" class="game-cell" data-index="${i}"></button>`).join("")}
+        ${Array.from({ length: 9 }, (_, i) => `<button id="game-cell-${i}" class="game-cell" data-cell="${i}"></button>`).join("")}
       </div>
     `;
     view = new GameBoardView(root, (idx) => {
@@ -27,7 +30,14 @@ describe("GameBoardView", () => {
     });
   });
 
-  it("updates badge and status correctly", () => {
+  it("updates badge and status with C# code formatting", () => {
+    view.setRoomBadge("Room 1234");
+    view.setStatus("Ready to play");
+
+    expect(root.querySelector("#game-room-code-badge")?.textContent).toBe("// Session: Room 1234");
+    expect(root.querySelector("#game-status-banner")?.textContent).toBe("// [MatrixEngine] Ready to play");
+
+    view.setCodeMode(false);
     view.setRoomBadge("Room 1234");
     view.setStatus("Ready to play");
 
@@ -57,11 +67,16 @@ describe("GameBoardView", () => {
     expect(cells[0]?.classList.contains("cell-win")).toBe(true);
     expect(cells[1]?.textContent).toBe("O");
     expect(cells[1]?.classList.contains("cell-o")).toBe(true);
-    expect(cells[3]?.textContent).toBe("");
+    expect(cells[3]?.textContent).toBe("·"); // Code mode empty cell dot
     expect(cells[0]?.disabled).toBe(true);
     expect(cells[3]?.disabled).toBe(true); // Game over disables all
 
     expect(root.querySelector("#game-score-x")?.textContent).toBe("3");
     expect(root.querySelector("#game-score-o")?.textContent).toBe("1");
+    expect(root.querySelector("#game-code-score-line")?.textContent).toContain("Assert.True(X): 3");
+
+    // Standard mode empty cell
+    view.setCodeMode(false);
+    expect(cells[3]?.textContent).toBe("");
   });
 });

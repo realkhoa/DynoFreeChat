@@ -9,34 +9,55 @@ import type { BoardState, GameMode, GameOutcome, GameScore, PlayerMark } from ".
  * @brief Renders and updates the interactive 3x3 Tic-Tac-Toe board and score cards.
  */
 export class GameBoardView {
-  private readonly statusBanner: HTMLElement;
-  private readonly roomCodeBadge: HTMLElement;
-  private readonly turnIndicator: HTMLElement;
-  private readonly scoreX: HTMLElement;
-  private readonly scoreO: HTMLElement;
-  private readonly scoreDraws: HTMLElement;
-  private readonly cells: HTMLButtonElement[] = [];
+  private readonly statusElements: HTMLElement[] = [];
+  private readonly badgeElements: HTMLElement[] = [];
+  private readonly turnElements: HTMLElement[] = [];
+  private readonly scoreXElements: HTMLElement[] = [];
+  private readonly scoreOElements: HTMLElement[] = [];
+  private readonly scoreDrawElements: HTMLElement[] = [];
+  private readonly codeScoreLines: HTMLElement[] = [];
+  private readonly cellGroups: HTMLButtonElement[][] = Array.from({ length: 9 }, () => []);
+
+  private codeMode = true;
+  private currentBoard: BoardState = [null, null, null, null, null, null, null, null, null];
+  private currentTurn: PlayerMark = "X";
+  private currentRole: PlayerMark | null = null;
+  private currentOutcome: GameOutcome = { winner: null };
+  private currentScores: GameScore = { x: 0, o: 0, draws: 0 };
+  private currentMode: GameMode = "local";
 
   /**
    * @brief Queries and initializes DOM references within the root container.
-   * @param root The parent board view container element.
+   * @param root The parent container element.
    * @param onCellClick Callback invoked when a cell is clicked.
    */
   constructor(root: HTMLElement, onCellClick: (index: number) => void) {
-    this.statusBanner = root.querySelector<HTMLElement>("#game-status-banner")!;
-    this.roomCodeBadge = root.querySelector<HTMLElement>("#game-room-code-badge")!;
-    this.turnIndicator = root.querySelector<HTMLElement>("#game-turn-indicator")!;
-    this.scoreX = root.querySelector<HTMLElement>("#game-score-x")!;
-    this.scoreO = root.querySelector<HTMLElement>("#game-score-o")!;
-    this.scoreDraws = root.querySelector<HTMLElement>("#game-score-draws")!;
+    const qAll = <T extends HTMLElement>(sel: string): T[] => Array.from(root.querySelectorAll<T>(sel));
+
+    this.statusElements = qAll("#game-status-banner, #game-code-status-line");
+    this.badgeElements = qAll("#game-room-code-badge, #game-code-room-badge");
+    this.turnElements = qAll("#game-turn-indicator");
+    this.scoreXElements = qAll("#game-score-x");
+    this.scoreOElements = qAll("#game-score-o");
+    this.scoreDrawElements = qAll("#game-score-draws");
+    this.codeScoreLines = qAll("#game-code-score-line");
 
     for (let i = 0; i < 9; i++) {
-      const cell = root.querySelector<HTMLButtonElement>(`#game-cell-${i}`);
-      if (cell !== null) {
-        cell.addEventListener("click", () => onCellClick(i));
-        this.cells.push(cell);
+      const matched = qAll<HTMLButtonElement>(`#game-cell-${i}, #editor-cell-${i}, [data-cell="${i}"]`);
+      for (const btn of matched) {
+        btn.addEventListener("click", () => onCellClick(i));
+        this.cellGroups[i]?.push(btn);
       }
     }
+  }
+
+  /**
+   * @brief Sets whether C# syntax code disguise format is applied to text and cells.
+   * @param enabled True for code disguise, false for standard.
+   */
+  setCodeMode(enabled: boolean): void {
+    this.codeMode = enabled;
+    this.render();
   }
 
   /**
@@ -44,7 +65,8 @@ export class GameBoardView {
    * @param text Message to display.
    */
   setStatus(text: string): void {
-    this.statusBanner.textContent = text;
+    const formatted = this.codeMode && !text.startsWith("//") ? `// [MatrixEngine] ${text}` : text;
+    for (const el of this.statusElements) el.textContent = formatted;
   }
 
   /**
@@ -52,7 +74,8 @@ export class GameBoardView {
    * @param text Badge label.
    */
   setRoomBadge(text: string): void {
-    this.roomCodeBadge.textContent = text;
+    const formatted = this.codeMode && !text.startsWith("//") ? `// Session: ${text}` : text;
+    for (const el of this.badgeElements) el.textContent = formatted;
   }
 
   /**
@@ -72,20 +95,39 @@ export class GameBoardView {
     scores: GameScore,
     mode: GameMode,
   ): void {
-    this.scoreX.textContent = String(scores.x);
-    this.scoreO.textContent = String(scores.o);
-    this.scoreDraws.textContent = String(scores.draws);
-    this.turnIndicator.textContent = `Lượt: ${turn}`;
+    this.currentBoard = board;
+    this.currentTurn = turn;
+    this.currentRole = myRole;
+    this.currentOutcome = outcome;
+    this.currentScores = scores;
+    this.currentMode = mode;
+    this.render();
+  }
 
-    const isMyTurn = mode !== "online" || turn === myRole;
-    const isGameOver = outcome.winner !== null;
+  /**
+   * @brief Renders the visual board and scoreboard state.
+   */
+  private render(): void {
+    for (const el of this.scoreXElements) el.textContent = String(this.currentScores.x);
+    for (const el of this.scoreOElements) el.textContent = String(this.currentScores.o);
+    for (const el of this.scoreDrawElements) el.textContent = String(this.currentScores.draws);
+    for (const el of this.turnElements) el.textContent = `Lượt: ${this.currentTurn}`;
+
+    const scoreCodeText = `// Assert.True(X): ${this.currentScores.x}  |  Draw: ${this.currentScores.draws}  |  Assert.True(O): ${this.currentScores.o}`;
+    for (const el of this.codeScoreLines) el.textContent = scoreCodeText;
+
+    const isMyTurn = this.currentMode !== "online" || this.currentTurn === this.currentRole;
+    const isGameOver = this.currentOutcome.winner !== null;
 
     for (let i = 0; i < 9; i++) {
-      const cell = this.cells[i];
-      if (!cell) continue;
-      const val: PlayerMark | null = board[i] ?? null;
+      const val: PlayerMark | null = this.currentBoard[i] ?? null;
       const disabled = val !== null || isGameOver || !isMyTurn;
-      this.updateCell(cell, i, val, outcome.line, disabled);
+      const group = this.cellGroups[i];
+      if (group !== undefined) {
+        for (const cell of group) {
+          this.updateCell(cell, i, val, this.currentOutcome.line, disabled);
+        }
+      }
     }
   }
 
@@ -104,10 +146,12 @@ export class GameBoardView {
     line: number[] | undefined,
     disabled: boolean,
   ): void {
-    cell.textContent = val ?? "";
-    cell.classList.remove("cell-x", "cell-o", "cell-win");
+    cell.textContent = val !== null ? val : (this.codeMode ? "·" : "");
+    cell.classList.remove("cell-x", "cell-o", "cell-win", "cell-empty");
     if (val === "X") cell.classList.add("cell-x");
-    if (val === "O") cell.classList.add("cell-o");
+    else if (val === "O") cell.classList.add("cell-o");
+    else cell.classList.add("cell-empty");
+
     if (line?.includes(index)) cell.classList.add("cell-win");
     cell.disabled = disabled;
   }

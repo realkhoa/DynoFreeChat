@@ -119,6 +119,11 @@
           <span class="tab-label" id="tab-label">Start</span>
           <button type="button" class="tab-close" id="tab-close" aria-label="Đóng room" title="Đóng room" hidden></button>
         </div>
+        <div class="tab tab--game" role="tab" id="tab-game" aria-selected="false" tabindex="0" hidden>
+          <span class="tab-icon" id="tab-game-icon" aria-hidden="true"></span>
+          <span class="tab-label" id="tab-game-label">DiagnosticMatrix.cs</span>
+          <button type="button" class="tab-close" id="tab-game-close" aria-label="Đóng tab" title="Đóng tab"></button>
+        </div>
         <button type="button" class="tab-new" id="tab-new" aria-label="Mở chat mới" title="Mở chat mới (Ctrl+N)"></button>
       </div>
 
@@ -163,6 +168,70 @@
           <div class="logwrap">
             <div class="log" id="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
             <button type="button" class="new-chip" id="new-chip" hidden>tin mới</button>
+          </div>
+
+          <!-- Embedded Visual Studio Code Editor View for DiagnosticMatrix.cs -->
+          <div class="game-editor-panel is-stealth game-code-mode" id="game-editor-panel" hidden>
+            <div class="game-code-toolbar">
+              <span class="game-code-file"><span class="game-code-icon" id="game-code-icon" aria-hidden="true"></span>DiagnosticMatrix.cs</span>
+              <span class="game-code-chip" id="game-code-room-badge">// Session: 9B2X (Thread.X)</span>
+              <span class="game-code-spacer"></span>
+              <button type="button" class="game-code-tool-btn is-active" id="game-code-stealth-btn" title="Làm mờ khi không rê chuột (Ctrl+B)">🕶️ Mờ</button>
+              <button type="button" class="game-code-tool-btn is-active" id="game-code-mode-btn" title="Chuyển đổi kiểu C# Code / Giao diện thường">⚡ Code C#</button>
+              <button type="button" class="game-code-tool-btn" id="game-code-float-btn" title="Tách thành cửa sổ rời">⧉ Cửa sổ rời</button>
+              <button type="button" class="game-code-tool-btn" id="game-code-exit-btn" title="Đóng tab (Esc)">✕ Đóng</button>
+            </div>
+
+            <div class="game-code-body">
+              <div class="game-code-gutter" aria-hidden="true">
+                <span>01</span><span>02</span><span>03</span><span>04</span><span>05</span>
+                <span>06</span><span>07</span><span>08</span><span>09</span><span>10</span>
+                <span>11</span><span>12</span><span>13</span><span>14</span><span>15</span>
+                <span>16</span><span>17</span><span>18</span><span>19</span><span>20</span>
+              </div>
+              <div class="game-code-content">
+                <div class="code-line comment">// &lt;auto-generated&gt; Visual Studio Diagnostic Tools - 3x3 Pointer Buffer &lt;/auto-generated&gt;</div>
+                <div class="code-line comment" id="game-code-status-line">// [MatrixEngine] Thread X active › awaiting pointer select...</div>
+                <div class="code-line empty"></div>
+                <div class="code-line"><span class="kw">namespace</span> <span class="ident">DynoFreeChat.Collab.Diagnostics</span></div>
+                <div class="code-line">{</div>
+                <div class="code-line indent1"><span class="kw">public static class</span> <span class="type">MatrixInspector</span></div>
+                <div class="code-line indent1">{</div>
+                <div class="code-line indent2 comment" id="game-code-score-line">// Assert.True(X): 0  |  Draw: 0  |  Assert.True(O): 0</div>
+                <div class="code-line indent2 comment">// Click cell pointer to dispatch move:</div>
+                <div class="code-line indent2"><span class="kw">private static readonly char</span>[,] <span class="ident">MatrixBuffer</span> = <span class="kw">new char</span>[<span class="num">3</span>, <span class="num">3</span>]</div>
+                <div class="code-line indent2">{</div>
+                <div class="code-line indent3 matrix-row">
+                  <span class="comment">/* Row 0 */</span> {
+                  <button type="button" class="game-cell" id="editor-cell-0" data-cell="0" aria-label="Ô 0">·</button> ,
+                  <button type="button" class="game-cell" id="editor-cell-1" data-cell="1" aria-label="Ô 1">·</button> ,
+                  <button type="button" class="game-cell" id="editor-cell-2" data-cell="2" aria-label="Ô 2">·</button> },
+                </div>
+                <div class="code-line indent3 matrix-row">
+                  <span class="comment">/* Row 1 */</span> {
+                  <button type="button" class="game-cell" id="editor-cell-3" data-cell="3" aria-label="Ô 3">·</button> ,
+                  <button type="button" class="game-cell" id="editor-cell-4" data-cell="4" aria-label="Ô 4">·</button> ,
+                  <button type="button" class="game-cell" id="editor-cell-5" data-cell="5" aria-label="Ô 5">·</button> },
+                </div>
+                <div class="code-line indent3 matrix-row">
+                  <span class="comment">/* Row 2 */</span> {
+                  <button type="button" class="game-cell" id="editor-cell-6" data-cell="6" aria-label="Ô 6">·</button> ,
+                  <button type="button" class="game-cell" id="editor-cell-7" data-cell="7" aria-label="Ô 7">·</button> ,
+                  <button type="button" class="game-cell" id="editor-cell-8" data-cell="8" aria-label="Ô 8">·</button> }
+                </div>
+                <div class="code-line indent2">};</div>
+                <div class="code-line indent1">}</div>
+                <div class="code-line">}</div>
+                <div class="code-line empty"></div>
+                <div class="code-line code-actions-row">
+                  <span class="comment">// Controls: </span>
+                  <button type="button" class="code-inline-btn" id="game-code-rematch-btn">[ F5 Reset Buffer ]</button>
+                  <button type="button" class="code-inline-btn" id="game-code-ai-btn">[ Run AI Simulation ]</button>
+                  <button type="button" class="code-inline-btn" id="game-code-local-btn">[ Local Dual-Thread ]</button>
+                  <button type="button" class="code-inline-btn" id="game-code-lobby-btn">[ Attach Other Session ]</button>
+                </div>
+              </div>
+            </div>
           </div>
         </main>
 
@@ -274,10 +343,13 @@
       </div>
     </dialog>
 
-    <dialog class="dialog game-dialog" id="game-dialog">
+    <dialog class="dialog game-dialog is-stealth game-code-mode" id="game-dialog">
       <div class="dialog-head">
         <span class="game-dialog-mark" aria-hidden="true">#</span>
-        <span class="game-dialog-title">Tic-Tac-Toe - Visual Studio Collab Game</span>
+        <span class="game-dialog-title" id="game-dialog-title">DiagnosticMatrix.cs [Collab]</span>
+        <button type="button" class="game-tool-btn is-active" id="game-dialog-stealth-btn" title="Làm mờ khi không rê chuột (Ctrl+B)">🕶️</button>
+        <button type="button" class="game-tool-btn is-active" id="game-dialog-mode-btn" title="Chuyển đổi kiểu C# Code / Giao diện thường">⚡ Code</button>
+        <button type="button" class="game-tool-btn" id="game-dialog-dock-btn" title="Gắn vào Tab Editor (VS Document)">⤓ Tab</button>
         <button type="button" class="picker-close" id="game-dialog-close" aria-label="Đóng">✕</button>
       </div>
 

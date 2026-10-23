@@ -1,21 +1,12 @@
 /**
  * @file game-dialog.ts
- * @brief Visual Studio styled modal dialog component for Tic-Tac-Toe multiplayer and AI games.
+ * @brief Visual Studio styled modal dialog and editor tab component for Tic-Tac-Toe games.
  */
 
-import {
-  computeBestMove,
-  createEmptyBoard,
-  evaluateBoard,
-  generateRoomCode,
-  type BoardState,
-  type GameMode,
-  type GameOutcome,
-  type GameScore,
-  type PlayerMark,
-} from "../game/tictactoe";
-import { OnlineGameSession } from "../game/session";
+import { generateRoomCode, type GameMode } from "../game/tictactoe";
+import { GameCoordinator } from "../game/coordinator";
 import { GameBoardView } from "./game-board-view";
+import { loadStealthPref, saveStealthPref, type StealthPref } from "../game/stealth-pref";
 import type { Identity } from "../lib/identity";
 
 /**
@@ -32,27 +23,28 @@ export interface GameDialogOptions {
   getIdentity: () => Identity;
   /** Optional function to create/register room */
   createRoomImpl?: (apiBase: string, body: { slug: string; pass?: string }) => Promise<{ ok: boolean; code?: string }>;
+  /** Optional persistence storage */
+  storage?: Storage | null;
+  /** Optional embedded editor panel */
+  editorPanel?: HTMLElement | null;
+  /** Callback to open game as document tab in tabstrip */
+  onTabOpen?: () => void;
+  /** Callback to close game document tab */
+  onTabClose?: () => void;
 }
 
 /**
- * @brief Manages the Visual Studio IDE styled Tic-Tac-Toe modal dialog.
+ * @brief Manages the Visual Studio IDE styled Tic-Tac-Toe modal dialog and editor tab.
  */
 export class GameDialog {
   private readonly dialog: HTMLDialogElement;
-  private readonly wsUrl: string;
-  private readonly apiBase: string;
-  private readonly getIdentity: () => Identity;
-  private readonly createRoomImpl?: (apiBase: string, body: { slug: string; pass?: string }) => Promise<{ ok: boolean; code?: string }>;
+  private readonly storage: Storage | null;
+  private readonly editorPanel: HTMLElement | null;
+  private readonly onTabOpen?: () => void;
+  private readonly onTabClose?: () => void;
 
-  private mode: GameMode = "local";
-  private board: BoardState = createEmptyBoard();
-  private turn: PlayerMark = "X";
-  private myRole: PlayerMark | null = null;
-  private scores: GameScore = { x: 0, o: 0, draws: 0 };
-  private roomCode = "";
-  private session: OnlineGameSession | null = null;
-  private isConnected = false;
-  private outcome: GameOutcome = { winner: null };
+  private readonly coordinator: GameCoordinator;
+  private stealthPref: StealthPref;
 
   private lobbyView!: HTMLElement;
   private boardViewEl!: HTMLElement;
@@ -65,11 +57,28 @@ export class GameDialog {
    */
   constructor(options: GameDialogOptions) {
     this.dialog = options.dialog;
-    this.wsUrl = options.wsUrl;
-    this.apiBase = options.apiBase;
-    this.getIdentity = options.getIdentity;
-    this.createRoomImpl = options.createRoomImpl;
+    this.storage = options.storage ?? null;
+    this.editorPanel = options.editorPanel ?? null;
+    this.onTabOpen = options.onTabOpen;
+    this.onTabClose = options.onTabClose;
+    this.stealthPref = loadStealthPref(this.storage);
+
     this.bindDom();
+    this.coordinator = new GameCoordinator({
+      wsUrl: options.wsUrl,
+      apiBase: options.apiBase,
+      getIdentity: options.getIdentity,
+      createRoomImpl: options.createRoomImpl,
+      callbacks: {
+        onUpdate: (board, turn, role, outcome, scores, mode) => {
+          this.boardView.update(board, turn, role, outcome, scores, mode);
+        },
+        onStatus: (text) => this.boardView.setStatus(text),
+        onRoomBadge: (badge) => this.boardView.setRoomBadge(badge),
+      },
+    });
+
+    this.applyStealthDom();
   }
 
   /**
@@ -79,36 +88,104 @@ export class GameDialog {
     this.lobbyView = this.dialog.querySelector<HTMLElement>("#game-lobby-view")!;
     this.boardViewEl = this.dialog.querySelector<HTMLElement>("#game-board-view")!;
     this.codeInput = this.dialog.querySelector<HTMLInputElement>("#game-code-input")!;
-    this.boardView = new GameBoardView(this.boardViewEl, (i) => this.handleCellClick(i));
 
-    const on = (id: string, cb: () => void) => this.dialog.querySelector(id)?.addEventListener("click", cb);
-    const joinEnteredCode = () => {
+    const rootScope = document.body ?? this.dialog;
+    this.boardView = new GameBoardView(rootScope, (i) => this.coordinator.handleCellClick(i));
+
+    const on = (sel: string, cb: () => void) => {
+      document.querySelectorAll(sel).forEach((el) => el.addEventListener("click", cb));
+    };
+
+    const joinCode = () => {
       const code = this.codeInput.value.trim().toUpperCase();
       if (code.length > 0) void this.startOnlineGame(code, false);
     };
-    on("#game-dialog-close", () => this.close());
-    on("#game-exit-btn", () => this.showLobby());
+
+    on("#game-dialog-close, #game-code-exit-btn", () => this.close());
+    on("#game-exit-btn, #game-code-lobby-btn", () => this.showLobby());
     on("#game-create-btn", () => void this.startOnlineGame(generateRoomCode(), true));
-    on("#game-ai-btn", () => this.startAiGame());
-    on("#game-local-btn", () => this.startLocalGame());
-    on("#game-rematch-btn", () => this.rematch());
-    on("#game-copy-code-btn", () => void this.copyInviteInfo());
-    on("#game-join-btn", joinEnteredCode);
+    on("#game-ai-btn, #game-code-ai-btn", () => this.startAiGame());
+    on("#game-local-btn, #game-code-local-btn", () => this.startLocalGame());
+    on("#game-rematch-btn, #game-code-rematch-btn", () => this.coordinator.rematch());
+    on("#game-copy-code-btn, #game-code-copy-btn", () => void this.coordinator.copyInviteInfo());
+    on("#game-join-btn", joinCode);
+
+    on("#game-dialog-stealth-btn, #game-code-stealth-btn", () => this.toggleStealth());
+    on("#game-dialog-mode-btn, #game-code-mode-btn", () => this.toggleCodeMode());
+    on("#game-dialog-dock-btn", () => this.dockToTab());
+    on("#game-code-float-btn", () => this.openFloating());
+
     this.codeInput?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        joinEnteredCode();
+        joinCode();
       }
     });
   }
 
   /**
-   * @brief Opens the Game dialog in lobby or targeted mode.
+   * @brief Toggles stealth mode (idle blur and dimming).
+   */
+  toggleStealth(): void {
+    this.stealthPref.stealth = !this.stealthPref.stealth;
+    saveStealthPref(this.storage, this.stealthPref);
+    this.applyStealthDom();
+  }
+
+  /**
+   * @brief Toggles C# code syntax disguise mode.
+   */
+  toggleCodeMode(): void {
+    this.stealthPref.codeMode = !this.stealthPref.codeMode;
+    saveStealthPref(this.storage, this.stealthPref);
+    this.applyStealthDom();
+  }
+
+  /**
+   * @brief Applies active stealth and code styling classes to DOM elements.
+   */
+  private applyStealthDom(): void {
+    const targets = [this.dialog, this.editorPanel].filter((el): el is HTMLElement => el !== null);
+    for (const el of targets) {
+      el.classList.toggle("is-stealth", this.stealthPref.stealth);
+      el.classList.toggle("game-code-mode", this.stealthPref.codeMode);
+      el.style.setProperty("--stealth-opacity", String(this.stealthPref.opacity));
+    }
+    this.boardView.setCodeMode(this.stealthPref.codeMode);
+
+    const stealthBtns = document.querySelectorAll("#game-dialog-stealth-btn, #game-code-stealth-btn");
+    stealthBtns.forEach((b) => b.classList.toggle("is-active", this.stealthPref.stealth));
+
+    const modeBtns = document.querySelectorAll("#game-dialog-mode-btn, #game-code-mode-btn");
+    modeBtns.forEach((b) => b.classList.toggle("is-active", this.stealthPref.codeMode));
+  }
+
+  /**
+   * @brief Docks the game view into the editor document tab.
+   */
+  dockToTab(): void {
+    this.dialog.close();
+    this.onTabOpen?.();
+  }
+
+  /**
+   * @brief Opens the game view as a floating dialog modal.
+   */
+  openFloating(): void {
+    this.onTabClose?.();
+    this.dialog.showModal();
+    this.showLobby();
+  }
+
+  /**
+   * @brief Opens the Game dialog or tab in lobby or targeted mode.
    * @param mode Optional initial mode.
    * @param code Optional room code for direct join.
    */
   open(mode?: GameMode, code?: string): void {
-    this.dialog.showModal();
+    if (this.onTabOpen !== undefined) this.onTabOpen();
+    else this.dialog.showModal();
+
     if (code !== undefined && code.length > 0) return void this.startOnlineGame(code.toUpperCase(), false);
     if (mode === "ai") return this.startAiGame();
     if (mode === "online") return void this.startOnlineGame(generateRoomCode(), true);
@@ -117,55 +194,38 @@ export class GameDialog {
   }
 
   /**
-   * @brief Closes the dialog and cleans up network connections.
+   * @brief Closes the dialog or document tab and cleans up network connections.
    */
   close(): void {
-    this.cleanupSession();
+    this.coordinator.cleanup();
     this.dialog.close();
+    this.onTabClose?.();
   }
 
   /**
    * @brief Displays the lobby view and resets any active game session.
    */
   private showLobby(): void {
-    this.cleanupSession();
+    this.coordinator.cleanup();
     this.lobbyView.hidden = false;
     this.boardViewEl.hidden = true;
     this.codeInput.value = "";
   }
 
   /**
-   * @brief Prepares state and activates the board UI for an active game session.
-   * @param mode Target game mode.
-   * @param role Player mark role if any.
-   * @param badge Badge text for header.
-   * @param status Initial status message.
-   */
-  private activateGameView(mode: GameMode, role: PlayerMark | null, badge: string, status: string): void {
-    this.cleanupSession();
-    this.mode = mode;
-    this.myRole = role;
-    this.scores = { x: 0, o: 0, draws: 0 };
-    this.resetBoard();
-    this.lobbyView.hidden = true;
-    this.boardViewEl.hidden = false;
-    this.boardView.setRoomBadge(badge);
-    this.boardView.setStatus(status);
-    this.syncBoardUi();
-  }
-
-  /**
    * @brief Starts an offline single-player game against the AI.
    */
   startAiGame(): void {
-    this.activateGameView("ai", "X", "Chế độ: Đấu với máy (AI)", "Lượt của bạn (X) - Hãy chọn một ô!");
+    this.showBoardView();
+    this.coordinator.startAiGame();
   }
 
   /**
    * @brief Starts a 2-player local pass-and-play game on the same device.
    */
   startLocalGame(): void {
-    this.activateGameView("local", null, "Chế độ: 2 người (Cục bộ)", "Lượt người chơi X");
+    this.showBoardView();
+    this.coordinator.startLocalGame();
   }
 
   /**
@@ -174,175 +234,12 @@ export class GameDialog {
    * @param asHost True if creating the room, false if joining existing.
    */
   async startOnlineGame(code: string, asHost: boolean): Promise<void> {
-    this.roomCode = code.toUpperCase();
-    const role: PlayerMark = asHost ? "X" : "O";
-    const status = asHost ? `Mã [${this.roomCode}]. Đang chờ đối thủ...` : `Đang kết nối [${this.roomCode}]...`;
-    this.activateGameView("online", role, `Phòng: ${this.roomCode} (${role})`, status);
-
-    this.session = new OnlineGameSession({
-      roomCode: this.roomCode,
-      asHost,
-      wsUrl: this.wsUrl,
-      apiBase: this.apiBase,
-      identity: this.getIdentity(),
-      createRoomImpl: this.createRoomImpl,
-      onConnectedChange: (c) => (this.isConnected = c),
-      onStatusText: (t) => this.boardView.setStatus(t),
-      onPeerJoin: (nick, r) => this.handlePeerJoin(nick, r),
-      onRemoteMove: (cell, player) => this.handleRemoteMove(cell, player),
-      onRemoteReset: (starter) => this.handleRemoteReset(starter),
-      onRemoteSync: (board, turn, scores) => this.handleRemoteSync(board, turn, scores),
-    });
-
-    await this.session.connect();
+    this.showBoardView();
+    await this.coordinator.startOnlineGame(code, asHost);
   }
 
-  /**
-   * @brief Handles a peer player joining the room.
-   */
-  private handlePeerJoin(nick: string, role: PlayerMark): void {
-    this.boardView.setStatus(`Người chơi ${nick} (${role}) đã vào phòng!`);
-    if (this.myRole === "X") this.session?.sendSync(this.board, this.turn, this.scores);
-  }
-
-  /**
-   * @brief Applies a move to the board, updates turn and checks outcomes.
-   * @param index Cell index from 0 to 8.
-   * @param mark Player mark placing the move.
-   */
-  private applyMove(index: number, mark: PlayerMark): void {
-    this.board[index] = mark;
-    this.outcome = evaluateBoard(this.board);
-    this.turn = mark === "X" ? "O" : "X";
-    this.checkGameOutcome();
-    this.syncBoardUi();
-  }
-
-  /**
-   * @brief Handles a remote player move.
-   * @param cell Cell index 0 to 8.
-   * @param player Remote player mark.
-   */
-  private handleRemoteMove(cell: number, player: PlayerMark): void {
-    if (this.board[cell] === null) this.applyMove(cell, player);
-  }
-
-  /**
-   * @brief Handles a remote game reset.
-   */
-  private handleRemoteReset(starter: PlayerMark): void {
-    this.resetBoard(starter);
-    this.syncBoardUi();
-    this.boardView.setStatus(`Ván mới bắt đầu! Lượt của ${this.turn}`);
-  }
-
-  /**
-   * @brief Handles a remote game state sync.
-   */
-  private handleRemoteSync(board: BoardState, turn: PlayerMark, scores: GameScore): void {
-    this.board = board;
-    this.turn = turn;
-    this.scores = scores;
-    this.outcome = evaluateBoard(this.board);
-    this.syncBoardUi();
-  }
-
-  /**
-   * @brief Resets the board and sets the starting player.
-   * @param starter Starting player.
-   */
-  private resetBoard(starter: PlayerMark = "X"): void {
-    this.board = createEmptyBoard();
-    this.turn = starter;
-    this.outcome = { winner: null };
-  }
-
-  /**
-   * @brief Handles a cell click by the user.
-   * @param index Cell index 0 to 8.
-   */
-  private handleCellClick(index: number): void {
-    if (this.outcome.winner !== null || this.board[index] !== null) return;
-    if (this.mode === "online") {
-      if (!this.isConnected || this.turn !== this.myRole) return;
-      this.applyMove(index, this.myRole);
-      this.session?.sendMove(index, this.myRole);
-      return;
-    }
-    if (this.mode === "ai") {
-      this.applyMove(index, "X");
-      if (this.outcome.winner === null) setTimeout(() => this.triggerAiMove(), 220);
-      return;
-    }
-    this.applyMove(index, this.turn);
-  }
-
-  /**
-   * @brief Executes the AI move if the game is still active.
-   */
-  private triggerAiMove(): void {
-    if (this.outcome.winner !== null) return;
-    const aiMove = computeBestMove(this.board, "O");
-    if (aiMove >= 0) this.applyMove(aiMove, "O");
-  }
-
-  /**
-   * @brief Checks and scores game outcomes (win or draw).
-   */
-  private checkGameOutcome(): void {
-    if (this.outcome.winner === "X" || this.outcome.winner === "O") {
-      const winner = this.outcome.winner;
-      winner === "X" ? this.scores.x++ : this.scores.o++;
-      this.boardView.setStatus(`🎉 Người chơi ${winner} chiến thắng!`);
-    } else if (this.outcome.winner === "draw") {
-      this.scores.draws++;
-      this.boardView.setStatus("Trận đấu Hoà!");
-    } else {
-      const msg = this.mode === "online"
-        ? (this.turn === this.myRole ? `Lượt của bạn (${this.myRole})!` : `Đang chờ đối phương (${this.turn})...`)
-        : `Lượt người chơi ${this.turn}`;
-      this.boardView.setStatus(msg);
-    }
-  }
-
-  /**
-   * @brief Initiates a rematch for the current mode.
-   */
-  private rematch(): void {
-    const nextStarter: PlayerMark = this.turn === "X" ? "O" : "X";
-    this.resetBoard(nextStarter);
-    this.syncBoardUi();
-    if (this.mode === "online") this.session?.sendReset(nextStarter);
-    this.boardView.setStatus(`Ván mới bắt đầu! Lượt của ${this.turn}`);
-  }
-
-  /**
-   * @brief Copies the invite link and room code to the clipboard.
-   */
-  private async copyInviteInfo(): Promise<void> {
-    const inviteUrl = `${window.location.origin}${window.location.pathname}#ttt=${this.roomCode}`;
-    const textToCopy = `Chơi TicTacToe cùng tôi trên DynoFreeChat! Mã phòng: ${this.roomCode}\nLink tham gia: ${inviteUrl}`;
-    try {
-      await navigator.clipboard.writeText(textToCopy);
-      this.boardView.setStatus(`Đã copy mã [${this.roomCode}] và link vào clipboard!`);
-    } catch {
-      this.boardView.setStatus(`Mã phòng: ${this.roomCode}`);
-    }
-  }
-
-  /**
-   * @brief Synchronizes board UI view.
-   */
-  private syncBoardUi(): void {
-    this.boardView.update(this.board, this.turn, this.myRole, this.outcome, this.scores, this.mode);
-  }
-
-  /**
-   * @brief Closes active WebSocket session.
-   */
-  private cleanupSession(): void {
-    this.session?.close();
-    this.session = null;
-    this.isConnected = false;
+  private showBoardView(): void {
+    this.lobbyView.hidden = true;
+    this.boardViewEl.hidden = false;
   }
 }

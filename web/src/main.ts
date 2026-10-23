@@ -92,9 +92,13 @@ const treeEl = byId<HTMLElement>("room-tree");
 const sidebarEl = byId<HTMLElement>("sidebar");
 const sidebarFoot = byId<HTMLElement>("sidebar-foot");
 const menubarEl = byId<HTMLElement>("menubar");
+const tabRoom = byId<HTMLElement>("tab-room");
 const tabLabel = byId<HTMLElement>("tab-label");
 const tabClose = byId<HTMLButtonElement>("tab-close");
+const tabGame = byId<HTMLElement>("tab-game");
+const tabGameClose = byId<HTMLButtonElement>("tab-game-close");
 const tabNew = byId<HTMLButtonElement>("tab-new");
+const gameEditorPanel = byId<HTMLElement>("game-editor-panel");
 const titlebarRoom = byId<HTMLElement>("titlebar-room");
 const crumbRoom = byId<HTMLElement>("crumb-room");
 const nickButton = document.getElementById("nick") as HTMLButtonElement | null;
@@ -185,12 +189,42 @@ const chatPicker = new ChatPicker(
   },
 );
 
+function selectRoomTab(): void {
+  tabRoom.setAttribute("aria-selected", "true");
+  tabGame.setAttribute("aria-selected", "false");
+  gameEditorPanel.hidden = true;
+  updateChrome();
+  render();
+}
+
+function selectGameTab(): void {
+  tabGame.hidden = false;
+  tabGame.setAttribute("aria-selected", "true");
+  tabRoom.setAttribute("aria-selected", "false");
+  gameEditorPanel.hidden = false;
+  byId<HTMLElement>("startview").hidden = true;
+  byId<HTMLElement>("logwrap").hidden = true;
+  byId<HTMLElement>("crumb-solution").textContent = "DynoFreeChat";
+  byId<HTMLElement>("crumb-group").textContent = "Collab";
+  crumbRoom.textContent = "DiagnosticMatrix.cs";
+}
+
+function closeGameTab(): void {
+  tabGame.hidden = true;
+  selectRoomTab();
+  gameDialog.close();
+}
+
 const gameDialog = new GameDialog({
   dialog: byId<HTMLDialogElement>("game-dialog"),
   wsUrl,
   apiBase,
   getIdentity: () => identity,
   createRoomImpl: createRoom,
+  storage,
+  editorPanel: gameEditorPanel,
+  onTabOpen: () => selectGameTab(),
+  onTabClose: () => closeGameTab(),
 });
 
 const composer = new Composer({
@@ -928,10 +962,13 @@ function handleMenuAction(action: MenuAction): void {
 function decorateChrome(): void {
   byId<HTMLElement>("titlebar-mark").append(icon("solution", 15));
   byId<HTMLElement>("tab-icon").append(icon("folder", 14));
+  byId<HTMLElement>("tab-game-icon").append(icon("file", 14));
+  byId<HTMLElement>("game-code-icon").append(icon("file", 12));
   byId<HTMLElement>("filter-icon").append(icon("search", 12));
   byId<HTMLElement>("menu-search-icon").append(icon("search", 12));
   byId<HTMLElement>("tree-search-icon").append(icon("search", 12));
   setIconButton(byId<HTMLElement>("tab-close"), "close", "Đóng room");
+  setIconButton(tabGameClose, "close", "Đóng tab");
   setIconButton(tabNew, "plus", "Mở chat mới (Ctrl+N)");
   setIconButton(byId<HTMLElement>("new-room"), "plus", "Tạo room mới (Ctrl+N)");
   setIconButton(byId<HTMLElement>("refresh-rooms"), "refresh", "Nạp lại danh sách room");
@@ -950,6 +987,23 @@ function wire(): void {
   newChip.addEventListener("click", () => {
     setFollow(true);
     logView.scrollToBottom();
+  });
+
+  tabRoom.addEventListener("click", () => selectRoomTab());
+  tabGame.addEventListener("click", () => selectGameTab());
+  tabGameClose.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeGameTab();
+  });
+
+  window.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.ctrlKey && e.key.toLowerCase() === "b") {
+      e.preventDefault();
+      if (tabGame.getAttribute("aria-selected") === "true") selectRoomTab();
+      else selectGameTab();
+    } else if (e.key === "Escape" && tabGame.getAttribute("aria-selected") === "true") {
+      selectRoomTab();
+    }
   });
 
   tabNew.addEventListener("click", () => openChatPicker());

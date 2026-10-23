@@ -77,8 +77,16 @@ await session.connect();
 ## 5. Output Structure & Schema
 - `web/src/game/tictactoe.ts`: Core game state definitions, win detection, board evaluation, Minimax AI, room code generators (`generateRoomCode`, `roomSlugFromCode`).
 - `web/src/game/session.ts`: `OnlineGameSession` class managing WebSocket connection, reconnect logic, message serialization/deserialization, and dispatching events to UI.
+- `web/src/game/coordinator.ts`: `GameCoordinator` decoupling game loop, AI moves, and network handlers from DOM views.
+- `web/src/game/stealth-pref.ts`: Persistence helper for stealth blur, C# code disguise mode, and opacity levels.
 
-## 6. Troubleshooting & Edge Cases
+## 6. Stealth Mode, C# Code Camouflage & Tab Integration
+- **Document Tab Integration (`DiagnosticMatrix.cs`)**: Opens right inside the IDE tabstrip as a C# file with syntax highlighting and line numbers.
+- **Stealth Blur on Idle**: Automatically blurs (`filter: blur(2px); opacity: 0.35`) when the mouse is outside the board, rendering it unreadable to observers. Unblurs smoothly upon hovering.
+- **C# Matrix Disguise (`game-code-mode`)**: Formats 3x3 board as a C# pointer array (`[ · ]`, `[ X ]`, `[ O ]`) with code comments and test assertions.
+- **Boss Key**: `Ctrl+B` or `Esc` immediately toggles back to the active chat room.
+
+## 7. Troubleshooting & Edge Cases
 - **Duplicate Connections**: The session coordinator ignores echo events originated by the local client.
 - **Out-of-order Moves**: Moves targeting occupied cells or submitted out of turn are rejected client-side.
 - **Network Latency / Disconnections**: When host disconnects or reconnects, `sync` messages restore the authoritative board state and score counter.
