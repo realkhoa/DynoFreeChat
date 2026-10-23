@@ -98,7 +98,6 @@ export class ChatRoom extends DurableObject<Env> {
     } catch {
       this.markDegraded();
     }
-
     return new Response(null, { status: 101, webSocket: client });
   }
 

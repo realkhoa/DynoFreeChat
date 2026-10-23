@@ -92,11 +92,11 @@ export default {
       const slug = sanitizeSlug(url.searchParams.get("r"));
       if (!slug.ok) return withCors(json({ code: "BAD_SLUG" }, 400), origin);
 
-      const target = new URL("https://room/ws");
-      target.searchParams.set("r", slug.slug);
-
+      // Forward the original upgrade request untouched. Rebuilding it with
+      // `new Request(...)` drops the upgrade semantics in production and the
+      // handshake then hangs forever, even though miniflare tolerates it.
       const stub = env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(slug.slug));
-      return stub.fetch(new Request(target.toString(), request));
+      return stub.fetch(request);
     }
 
     return withCors(json({ code: "NOT_FOUND" }, 404), origin);

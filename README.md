@@ -4,6 +4,15 @@ Chat room nhiều phòng, giao diện giả lập **Visual Studio 2022 dark** �
 
 ![Giao diện](docs/screenshot.png)
 
+**Đang chạy:**
+
+| | URL |
+|---|---|
+| Web (GitHub Pages) | https://realkhoa.github.io/DynoFreeChat/ |
+| API (Cloudflare Worker) | https://dynofreechat-api.nbk2124-z.workers.dev |
+| Room mẫu | [#chung](https://realkhoa.github.io/DynoFreeChat/?r=chung) · [#demo](https://realkhoa.github.io/DynoFreeChat/?r=demo) · [#team](https://realkhoa.github.io/DynoFreeChat/?r=team) (pass `matkhau123`) |
+
+
 ## Tính năng
 
 - **Nhiều phòng**, tạo bằng tên (slug), vào bằng link `?r=<slug>`.
@@ -61,6 +70,14 @@ Kiểm tra:
 npm run typecheck   # tsc trên cả 3 workspace
 npm test            # 27 shared + 20 worker + 42 web
 npm run build       # bundle production vào web/dist
+```
+
+Tiện ích trong `scripts/`:
+
+```bash
+node scripts/seed-demo.mjs chung [pass]      # tạo room + bơm 6 tin mẫu (API/WS qua env để trỏ production)
+node scripts/ws-probe.mjs [wss-url]          # smoke test 1 kết nối WebSocket, in frame đầu tiên
+node scripts/cdp-check.mjs <url> --shot=out.png   # lái Chromium thật qua CDP, đọc DOM, chụp ảnh
 ```
 
 ## Deploy
