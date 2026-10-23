@@ -5,7 +5,7 @@
 
 ## 1. Mục tiêu
 
-Một chat room công khai duy nhất, giao diện giả lập **Visual Studio 2022 dark**, mỗi tin nhắn hiển thị như một dòng log. Frontend tĩnh deploy trên **GitHub Pages**, realtime trên **Cloudflare Worker + Durable Object**. Không tài khoản, không database ngoài, **không phát sinh hoá đơn**.
+Nhiều chat room do người dùng tạo, mỗi room có thể đặt mật khẩu (xem §13), giao diện giả lập **Visual Studio 2022 dark**, mỗi tin nhắn hiển thị như một dòng log. Frontend tĩnh deploy trên **GitHub Pages**, realtime trên **Cloudflare Worker + Durable Object**. Không tài khoản, không database ngoài, **không phát sinh hoá đơn**.
 
 ### Không làm (YAGNI)
 
@@ -270,3 +270,69 @@ Backoff `min(30000, 1000 * 2^attempt)` + jitter ±20%. Attempt reset về 0 khi 
 | Token OAuth wrangler hết hạn | `npx wrangler login` trước khi deploy |
 | `gh` thiếu scope `workflow` | `gh auth refresh -s workflow` trước khi push CI |
 | Hibernation API bị bỏ sót khi refactor | test M2 khẳng định dùng `ctx.acceptWebSocket`, comment `C2` ngay tại chỗ gọi |
+
+## 13. v2 — Room do người dùng tạo, có mật khẩu
+
+Mục §1 và §3 (một phòng duy nhất) bị thay bằng mục này.
+
+### 13.1 Mô hình
+
+- **Lobby công khai** (`GET /api/rooms`) liệt kê mọi room: `slug`, `locked`, `createdAt`, `lastSeen`. Không liệt kê số người online trong lobby (tránh 1 row write mỗi tin nhắn); số online chỉ hiện khi đã vào room.
+- **Tạo room** (`POST /api/rooms {slug, pass?}`) — slug khớp `^[a-z0-9][a-z0-9-]{1,23}$`, `pass` tuỳ chọn (rỗng = room mở, tối đa 64 ký tự).
+- **Vào room**: `wss://…/ws?r=<slug>`, frame đầu tiên `join {nick, color, pass?}`.
+- Mỗi room = 1 `Room` Durable Object (`idFromName(slug)`). Toàn bộ danh mục + hash mật khẩu = 1 `Registry` Durable Object (`idFromName("registry")`).
+
+### 13.2 Mật khẩu
+
+- Sinh `salt` 16 byte ngẫu nhiên (`crypto.getRandomValues`) khi tạo room.
+- Lưu `hash = SHA-256(salt ‖ slug ‖ pass)` dạng hex. **Không** lưu plaintext, không log pass, pass không bao giờ đi trong URL.
+- So sánh constant-time (XOR tích luỹ trên toàn chuỗi hex).
+- Không dùng PBKDF2/scrypt: Workers Free giới hạn 10 ms CPU/request, KDF đắt sẽ làm request fail. Đây là khoá cửa phòng chat, không phải bảo vệ bí mật thật — ghi rõ trong README.
+- Sai 5 lần trên một connection → `error BAD_PASS` rồi đóng socket (`4403`).
+- Pass đi trong frame `join` (JSON trong WebSocket), **không** trong query string.
+
+### 13.3 Registry DO
+
+Bảng `rooms (slug TEXT PRIMARY KEY, salt TEXT, hash TEXT, locked INTEGER, createdAt INTEGER, lastSeen INTEGER)`.
+Bảng `creates (ip TEXT PRIMARY KEY, windowStart INTEGER, count INTEGER)` — chống spam tạo room: 3 room / giờ / IP (`CF-Connecting-IP`).
+
+| Endpoint | Việc |
+|---|---|
+| `POST /create` | validate slug (§13.1) → `SELECT` trùng → đếm room (`count < 50`) → rate limit IP → `INSERT` |
+| `POST /verify` | `SELECT` row → không có: `ROOM_NOT_FOUND`; sai pass: `BAD_PASS`; đúng/mở: cập nhật `lastSeen` → `{locked, ok}` |
+| `GET /list` | dọn row có `lastSeen` cũ hơn 30 ngày (1 lần/load) → trả tối đa 50 row, mới nhất trước |
+
+### 13.4 Room DO
+
+Không biết gì về mật khẩu. Khi nhận frame `join`, gọi `Registry /verify` đúng một lần (1 row read + 1 row write `lastSeen`), cache kết quả vào `ws.serializeAttachment()`. Fail thì gửi `BAD_PASS`/`ROOM_NOT_FOUND` và đóng.
+
+Luồng chi phí mỗi lần join: 1 Worker request + 1 Registry request + 1 Room request + 1 row read + 1 row write. Mỗi tin nhắn vẫn chỉ 1 row write như §6.
+
+### 13.5 API
+
+```ts
+GET  /health                     → { ok: true, ts }
+GET  /api/rooms                  → { rooms: RoomInfo[] }
+POST /api/rooms {slug, pass?}    → 201 { slug } | 400 BAD_SLUG | 409 ROOM_EXISTS | 429 TRY_LATER | 507 TOO_MANY_ROOMS
+GET  /ws?r=<slug>                → 101 (nâng cấp WebSocket), 404 nếu thiếu `r`
+```
+
+`RoomInfo = { slug, locked, createdAt, lastSeen }`.
+
+### 13.6 UI
+
+Hai màn, cùng một khung IDE:
+
+- **Lobby** — tab `Start` thay cho tab room: danh sách row kiểu "Recent projects" (`slug · 🔒 · 2 ngày trước`), nút `+ New Room…` mở dialog (slug + pass + "Create"), double-click row hoặc Enter để vào; nếu locked thì hỏi pass trong dialog nhỏ.
+- **Room** — khung log như §8, tab đổi thành `#<slug>`, status bar thêm `🔒` nếu locked. `Ctrl+Shift+O` về lobby. URL đổi thành `?r=<slug>` để share link (dùng `history.replaceState`, không reload).
+
+### 13.7 Chi phí thêm
+
+| Hạng mục | Ảnh hưởng |
+|---|---|
+| Registry DO | 1 object, hibernating, chỉ thức khi lobby load / join / create |
+| Row writes | +1 mỗi lần join (`lastSeen`) |
+| Row reads | +1 mỗi lần join (verify), +≤50 mỗi lần lobby load |
+| Storage | ≤50 row room ≈ vài chục KB |
+
+Vẫn dưới 1% hạn mức free ở tải dự kiến. Cap 50 room là chốt chặn storage + chống bot tạo room hàng loạt.

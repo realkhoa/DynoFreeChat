@@ -1,9 +1,13 @@
 /**
- * Wire protocol shared by the web client and the Cloudflare Worker/Durable Object.
+ * Wire protocol shared by the web client and the Cloudflare Worker/Durable Objects.
  *
  * Rule: `id` and `ts` of a {@link ChatMessage} are minted on the server only.
  * The client never sends them; it sends a `cid` (correlation id) instead so the
  * server can echo the acknowledgement back to the sender alone.
+ *
+ * Rule: a room password never travels in a URL. It is only ever a field of the
+ * `join` frame (a JSON payload inside the WebSocket) or of a `POST /api/rooms`
+ * body.
  */
 
 /** Maximum number of code points accepted in one chat message. */
@@ -14,6 +18,27 @@ export const MAX_NICK = 24;
 
 /** Maximum length of the client correlation id. */
 export const MAX_CID = 64;
+
+/** Maximum number of code points accepted in a room password. */
+export const MAX_PASS = 64;
+
+/** Wrong password attempts before the connection is closed. */
+export const PASS_ATTEMPTS = 5;
+
+/** Room slugs are lowercase, dash separated, 2..24 characters. */
+export const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,23}$/;
+
+/** Hard cap on rooms so storage and the lobby stay bounded. */
+export const MAX_ROOMS = 50;
+
+/** Rooms idle for longer than this are pruned when the lobby is listed. */
+export const ROOM_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Room creations allowed per IP per window. */
+export const CREATES_PER_WINDOW = 3;
+
+/** Length of the creation rate-limit window. */
+export const CREATE_WINDOW_MS = 60 * 60 * 1000;
 
 /** Rows kept in Durable Object storage. */
 export const HISTORY_LIMIT = 500;
@@ -48,8 +73,16 @@ export interface ChatMessage {
   text: string;
 }
 
+/** One row of the public lobby. */
+export interface RoomInfo {
+  slug: string;
+  locked: boolean;
+  createdAt: number;
+  lastSeen: number;
+}
+
 export type ClientFrame =
-  | { t: "join"; nick: string; color: string }
+  | { t: "join"; nick: string; color: string; pass?: string }
   | { t: "msg"; cid: string; text: string };
 
 export type ErrorCode =
@@ -60,12 +93,19 @@ export type ErrorCode =
   | "NOT_JOINED"
   | "FULL"
   | "DEGRADED"
-  | "BAD_FRAME";
+  | "BAD_FRAME"
+  | "BAD_SLUG"
+  | "ROOM_EXISTS"
+  | "ROOM_NOT_FOUND"
+  | "TOO_MANY_ROOMS"
+  | "TRY_LATER"
+  | "BAD_PASS";
 
 export type ServerFrame =
   | {
       t: "welcome";
       you: { nick: string; color: string };
+      room: { slug: string; locked: boolean };
       history: ChatMessage[];
       online: number;
       serverTs: number;
@@ -77,6 +117,8 @@ export type ServerFrame =
 export type NickResult = { ok: true; nick: string } | { ok: false; code: "BAD_NICK" };
 export type TextResult = { ok: true; text: string } | { ok: false; code: "EMPTY" | "TOO_LONG" };
 export type FrameResult = { ok: true; frame: ClientFrame } | { ok: false; code: "BAD_FRAME" };
+export type SlugResult = { ok: true; slug: string } | { ok: false; code: "BAD_SLUG" };
+export type PassResult = { ok: true; pass: string } | { ok: false; code: "TOO_LONG" };
 
 const CONTROL_CHARS = /[\u0000-\u001F\u007F]/g;
 const TEXT_STRIP = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
@@ -121,6 +163,25 @@ export function sanitizeColor(raw: unknown): string {
   return `hsl(${hue} ${sat}% ${light}%)`;
 }
 
+/** Lowercases, trims, and validates a room slug. */
+export function sanitizeSlug(raw: unknown): SlugResult {
+  if (typeof raw !== "string") return { ok: false, code: "BAD_SLUG" };
+  const slug = raw.trim().toLowerCase();
+  if (!SLUG_RE.test(slug)) return { ok: false, code: "BAD_SLUG" };
+  return { ok: true, slug };
+}
+
+/**
+ * A password is used verbatim (no trimming: a space can be intentional) and may
+ * be empty, which means "open room".
+ */
+export function normalizePass(raw: unknown): PassResult {
+  if (raw === undefined || raw === null) return { ok: true, pass: "" };
+  if (typeof raw !== "string") return { ok: false, code: "TOO_LONG" };
+  if (codePointLength(raw) > MAX_PASS) return { ok: false, code: "TOO_LONG" };
+  return { ok: true, pass: raw };
+}
+
 /** Parses and shape-checks one client frame. Never throws. */
 export function parseClientFrame(raw: string): FrameResult {
   let value: unknown;
@@ -136,7 +197,10 @@ export function parseClientFrame(raw: string): FrameResult {
   if (record.t === "join") {
     if (typeof record.nick !== "string") return BAD_FRAME;
     if (typeof record.color !== "string") return BAD_FRAME;
-    return { ok: true, frame: { t: "join", nick: record.nick, color: record.color } };
+    if (record.pass !== undefined && typeof record.pass !== "string") return BAD_FRAME;
+    return record.pass === undefined
+      ? { ok: true, frame: { t: "join", nick: record.nick, color: record.color } }
+      : { ok: true, frame: { t: "join", nick: record.nick, color: record.color, pass: record.pass } };
   }
 
   if (record.t === "msg") {
