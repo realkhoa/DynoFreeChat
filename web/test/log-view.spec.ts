@@ -97,6 +97,24 @@ describe("LogView", () => {
 
     expect(view.visibleCount).toBe(1);
   });
+
+  it("renders a 2-line message structure with info line and content line", () => {
+    const store = new Store();
+    store.addMessage(message("a", "nội dung tin nhắn ở dòng 2", "khoan"));
+    view.sync(store);
+
+    const row = root.querySelector<HTMLElement>(".log-row");
+    expect(row).not.toBeNull();
+    const info = row?.querySelector(".log-info");
+    expect(info).not.toBeNull();
+    expect(info?.querySelector(".log-nick")?.textContent).toBe("khoan");
+    expect(info?.querySelector(".log-time")).not.toBeNull();
+    expect(info?.querySelector(".log-mark")).not.toBeNull();
+
+    const text = row?.querySelector(".log-text");
+    expect(text).not.toBeNull();
+    expect(text?.textContent).toBe("nội dung tin nhắn ở dòng 2");
+  });
 });
 
 describe("replies and mentions", () => {

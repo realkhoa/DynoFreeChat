@@ -32,10 +32,11 @@
 }
 
 .log-row {
+  position: relative;
   display: grid;
-  grid-template-columns: 4.5ch 8ch 14ch 1ch minmax(0, 1fr);
-  gap: 0 0.75ch;
-  padding: 0 10px 0 0;
+  grid-template-columns: 4.5ch minmax(0, 1fr);
+  gap: 0 10px;
+  padding: 4px 10px 5px 0;
   min-height: calc(var(--log-size) * var(--log-line));
 }
 
@@ -54,29 +55,51 @@
   color: var(--fg-faint);
   user-select: none;
   border-right: 1px solid var(--border-subtle);
+  line-height: 1.4;
+}
+
+.log-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.log-info {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.4;
+  min-width: 0;
 }
 
 .log-time {
   color: var(--fg-faint);
+  font-size: 11px;
   user-select: none;
+  flex: none;
 }
 
 .log-nick {
   color: var(--fg-muted);
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 24ch;
 }
 
 .log-mark {
   color: var(--fg-faint);
   user-select: none;
+  flex: none;
 }
 
 .log-text {
   color: var(--fg);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  line-height: var(--log-line);
 }
 
 .log-row mark {
@@ -145,15 +168,14 @@
   position: relative;
 }
 
-/* quoted parent, in the text column above the message body */
+/* quoted parent, in the body above the message text */
 .log-quote {
-  grid-column: 5;
-  grid-row: 1;
   display: flex;
   align-items: baseline;
   gap: 4px;
   min-width: 0;
   padding: 0 0 0 6px;
+  margin: 1px 0 2px 0;
   border-left: 2px solid var(--border);
   color: var(--fg-dim);
   font-size: 11.5px;
@@ -179,11 +201,6 @@
   min-width: 0;
 }
 
-.log-row.has-quote .log-text {
-  grid-column: 5;
-  grid-row: 2;
-}
-
 /* @mention pills */
 .mention {
   padding: 0 2px;
@@ -205,7 +222,7 @@
 /* hover toolbar */
 .log-actions {
   position: absolute;
-  top: 0;
+  top: 3px;
   right: 8px;
   display: none;
   gap: 1px;
@@ -214,6 +231,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 1px 3px #00000022;
+  z-index: 2;
 }
 
 .log-row:hover .log-actions,

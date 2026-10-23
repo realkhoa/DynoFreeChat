@@ -15,8 +15,8 @@ export interface LogViewHandlers {
 }
 
 /**
- * Renders `Store.rows` as log lines with an editor-style gutter, Mattermost-ish
- * hover actions, quoted replies and @mention pills.
+ * @brief Renders `Store.rows` as log lines with an editor-style gutter, hover actions,
+ * quoted replies and @mention pills in a modern 2-line layout.
  */
 export class LogView {
   private readonly entries = new Map<Row, Entry>();
@@ -29,6 +29,11 @@ export class LogView {
   follow = true;
   onFollowChange?: (following: boolean) => void;
 
+  /**
+   * @brief Initializes the log view container and scroll listener.
+   * @param root The scrollable container DOM element.
+   * @param handlers Callback handlers for user actions like reply and copy.
+   */
   constructor(
     private readonly root: HTMLElement,
     private readonly handlers: LogViewHandlers = {},
@@ -51,7 +56,10 @@ export class LogView {
     );
   }
 
-  /** Nick colours are derived from the theme, so the view must be rebuilt. */
+  /**
+   * @brief Rebuilds rendered entries when theme changes to recalculate nick colours.
+   * @param theme The new theme ("dark" or "light").
+   */
   setTheme(theme: Theme): void {
     if (theme === this.theme) return;
     this.theme = theme;
@@ -61,6 +69,10 @@ export class LogView {
     this.atBottom = true;
   }
 
+  /**
+   * @brief Synchronizes log DOM entries with the given store.
+   * @param store The state store containing messages and filter state.
+   */
   sync(store: Store): void {
     this.query = store.filter;
     const added: HTMLElement[] = [];
@@ -93,15 +105,25 @@ export class LogView {
     if (this.follow && added.length > 0) this.scrollToBottom();
   }
 
+  /**
+   * @brief Checks if the log viewport is scrolled to the bottom.
+   * @return True if scroll offset is within 8px of the bottom.
+   */
   isAtBottom(): boolean {
     return this.root.scrollTop + this.root.clientHeight >= this.root.scrollHeight - 8;
   }
 
+  /**
+   * @brief Scrolls the log viewport all the way to the bottom.
+   */
   scrollToBottom(): void {
     this.root.scrollTop = this.root.scrollHeight;
     this.atBottom = true;
   }
 
+  /**
+   * @brief Clears all rendered log rows and resets line counter.
+   */
   clearLocal(): void {
     this.entries.clear();
     this.root.replaceChildren();
@@ -109,13 +131,20 @@ export class LogView {
     this.atBottom = true;
   }
 
+  /**
+   * @brief Gets the number of currently visible log rows.
+   * @return Count of visible rows matching current filter.
+   */
   get visibleCount(): number {
     let count = 0;
     for (const entry of this.entries.values()) if (!entry.el.hidden) count += 1;
     return count;
   }
 
-  /** Scrolls the line for `row` into view and flashes it. */
+  /**
+   * @brief Scrolls the line for `rowId` into view and flashes it.
+   * @param rowId The unique identifier of the row to reveal.
+   */
   reveal(rowId: string): void {
     const entry = Array.from(this.entries.entries()).find(([row]) => row.id === rowId);
     if (entry === undefined) return;
@@ -126,6 +155,15 @@ export class LogView {
     window.setTimeout(() => el.classList.remove("is-flash"), 900);
   }
 
+  /**
+   * @brief Renders a single row element with an editor-style line gutter and a 2-line layout.
+   * @details Line 1 displays metadata (nickname, timestamp, and status indicator mark).
+   * Line 2 displays the chat content (with optional quoted parent message for replies).
+   * @param row Store row model to render.
+   * @param visible Whether the row matches the current filter and should be shown.
+   * @param line Gutter line number.
+   * @return The constructed HTML element for the log row.
+   */
   private render(row: Row, visible: boolean, line: number): HTMLElement {
     const el = document.createElement("div");
     el.className = "log-row";
@@ -147,9 +185,11 @@ export class LogView {
     gutter.textContent = String(line);
     gutter.setAttribute("aria-hidden", "true");
 
-    const time = document.createElement("span");
-    time.className = "log-time";
-    time.textContent = formatTime(row.ts);
+    const body = document.createElement("div");
+    body.className = "log-body";
+
+    const info = document.createElement("div");
+    info.className = "log-info";
 
     const nick = document.createElement("span");
     nick.className = "log-nick";
@@ -159,15 +199,20 @@ export class LogView {
       nick.style.color = row.nick === this.selfNick ? "var(--accent)" : mutedColor(row.color, this.theme);
     }
 
+    const time = document.createElement("span");
+    time.className = "log-time";
+    time.textContent = formatTime(row.ts);
+
     const mark = document.createElement("span");
     mark.className = "log-mark";
     mark.textContent =
       row.kind === "chat" ? (row.state === "pending" ? "▍" : row.state === "failed" ? "✕" : "›") : "·";
 
-    el.append(gutter, time, nick, mark);
+    info.append(nick, time, mark);
+    body.append(info);
 
     if (row.replyTo !== undefined) {
-      const quote = document.createElement("span");
+      const quote = document.createElement("div");
       quote.className = "log-quote";
 
       const arrow = document.createElement("span");
@@ -184,13 +229,15 @@ export class LogView {
 
       quote.append(arrow, author, excerpt);
       quote.title = `${row.replyTo.nick}: ${row.replyTo.text}`;
-      el.append(quote);
+      body.append(quote);
     }
 
-    const text = document.createElement("span");
+    const text = document.createElement("div");
     text.className = "log-text";
     this.fillRich(text, row.text);
-    el.append(text);
+    body.append(text);
+
+    el.append(gutter, body);
 
     if (row.kind === "chat" && row.state !== "pending") {
       el.append(this.renderActions(row));
@@ -199,7 +246,11 @@ export class LogView {
     return el;
   }
 
-  /** Hover toolbar, the way Mattermost floats actions over a message. */
+  /**
+   * @brief Renders the hover action toolbar for replying and copying.
+   * @param row The row associated with the actions.
+   * @return Action container element.
+   */
   private renderActions(row: Row): HTMLElement {
     const actions = document.createElement("span");
     actions.className = "log-actions";
@@ -224,7 +275,11 @@ export class LogView {
     return actions;
   }
 
-  /** Writes text as text nodes, with @mention pills and filter highlights. */
+  /**
+   * @brief Writes text into target with @mention pills and search filter highlights.
+   * @param target The container element to receive rich text nodes.
+   * @param text Raw message text.
+   */
   private fillRich(target: HTMLElement, text: string): void {
     for (const segment of segmentText(text)) {
       if (segment.kind === "mention") {
@@ -239,6 +294,11 @@ export class LogView {
     }
   }
 
+  /**
+   * @brief Appends text while wrapping matches of current search query in `<mark>` tags.
+   * @param target The container element to receive nodes.
+   * @param text Text string to process.
+   */
   private appendWithHighlight(target: HTMLElement, text: string): void {
     if (this.query.length === 0) {
       target.append(text);
