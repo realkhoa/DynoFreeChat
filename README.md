@@ -18,9 +18,9 @@ Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao di�
 
 ## Tính năng
 
-- Giao diện **Visual Studio 2022** (không phải VS Code): title bar có chuông thông báo, menu bar + ô Search, **ribbon** 4 tab (Home / Room / View / Tools) với các group có caption, tab tài liệu, breadcrumb, log có số dòng như editor, **Solution Explorer bên phải**, dock Output ở dưới, status bar đúng theme.
+- Giao diện **Visual Studio 2022** (không phải VS Code): title bar có chuông thông báo, menu bar + ô Search, **ribbon** 4 tab (Home / Room / View / Tools) với các group có caption, tab tài liệu, breadcrumb, log có số dòng như editor, **Solution Explorer bên phải**, ô nhập tin Output ở dưới.
 - **Solution Explorer nhiều solution**: `DynoFreeChat` là dữ liệu thật (rooms), còn `Collab` và `VinaBIM` là **solution mẫu** (placeholder) để panel có hình dạng của một workspace thật — bấm vào sẽ báo rõ là placeholder, không giả vờ có dữ liệu.
-- **Đổi nickname** ở 3 chỗ: ribbon `Home → Nickname`, menu `Edit`/`Tools`, hoặc bấm vào nick ở status bar.
+- **Đổi nickname** ở ribbon `Home → Nickname`, hoặc menu `Edit`/`Tools`.
 - **Nhiều phòng**, tạo bằng tên (slug), vào bằng link `?r=<slug>`.
 - **Mật khẩu phòng tuỳ chọn** — hỏi **một lần** khi vào phòng lần đầu, sau đó nhớ trong `localStorage` nên reload hay mở lại link đều vào thẳng. Server kiểm tra, không lưu plaintext, mật khẩu không đi qua URL.
 - Mỗi tin nhắn = một dòng log: `HH:MM:SS  nick  ›  nội dung`, cột thẳng hàng, màu nick theo người.
@@ -31,13 +31,13 @@ Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao di�
 - **Reconnect** tự động với backoff 1s→30s có jitter; lịch sử được replay lại, dedupe theo id.
 - **Thông báo tin nhắn mới**, ba lớp và **không bao giờ kèm nội dung hay nickname**: chuông ở title bar (badge số chưa đọc, panel liệt kê `#phòng · N tin mới`, bấm để nhảy vào phòng), notification hệ điều hành khi tab ở nền, và **badge trên trình duyệt** — số đỏ vẽ thẳng lên favicon (`(3)` ở tiêu đề tab) kèm `navigator.setAppBadge` cho taskbar/PWA. Bật/tắt ở `Tools → Thông báo tin nhắn mới`.
 - **Âm thanh thông báo**: tiếng "ding" tổng hợp bằng WebAudio (không có file mp3, không request), hai nốt cho tin thường và ba nốt cao hơn khi bị `@tag`; chỉ kêu khi tab ở nền; bật/tắt ở `Tools → Âm thanh thông báo`, lưu trong `localStorage`.
-- **Dock Output thu gọn/đóng được**: `⌄` thu gọn còn đúng 23px (chỉ tab strip, bấm vào tab `Output` để mở lại), `✕` đóng hẳn (0px), `Ctrl+Alt+O` hoặc `View → Output` để mở lại. Trạng thái lưu trong `localStorage`.
+- **Dock Output ẩn/hiện được**: `Ctrl+Alt+O` hoặc `View → Output` để ẩn/hiện nhanh ô nhập tin. Trạng thái lưu trong `localStorage`.
 - **Ẩn ribbon** (`Ctrl+F1`, menu `View`, hoặc nút ⌃ trên ribbon) — lựa chọn được nhớ.
-- **Chế độ tối giản**: chỉ còn khung chat + ô nhập, không title bar/menu/ribbon/tab/breadcrumb/Solution Explorer/dock tabs/status bar. Bật bằng menu `View → Chế độ tối giản`, `Ctrl+Shift+M`, hoặc **ghim bằng URL** `?minimal=1` — tiện nhúng WebView. Nút `⌄` ở góc phải để thoát.
-- **Cỡ chữ khung chat riêng**: combo `100%` ở status bar (80–150%) hoặc `Ctrl+Shift+.` / `Ctrl+Shift+,`; chỉ đổi cỡ dòng log, toàn bộ chrome giữ nguyên cỡ. Lưu trong `localStorage`.
+- **Chế độ tối giản**: chỉ còn khung chat + ô nhập, không title bar/menu/ribbon/tab/breadcrumb/Solution Explorer. Bật bằng menu `View → Chế độ tối giản`, `Ctrl+Shift+M`, hoặc **ghim bằng URL** `?minimal=1` — tiện nhúng WebView. Nút `⌄` ở góc phải để thoát.
+- **Cỡ chữ khung chat riêng**: phím tắt `Ctrl+Shift+.` / `Ctrl+Shift+,`; chỉ đổi cỡ dòng log, toàn bộ chrome giữ nguyên cỡ. Lưu trong `localStorage`.
 - **Lọc log** (Ctrl+F, substring trên nick + nội dung) và combo All/Chat/System.
 - **Follow tail** tự cuộn khi ở đáy, tự tắt khi bạn cuộn lên, chip "↓ tin mới".
-- Trạng thái kết nối ở status bar; phím tắt Ctrl+L (xoá view), Ctrl+N (tạo room), Ctrl+End (xuống đáy).
+- Phím tắt: Ctrl+L (xoá view), Ctrl+N (tạo room), Ctrl+End (xuống đáy), Ctrl+Alt+O (ẩn/hiện ô nhập).
 - Danh mục room ở sidebar kiểu Solution Explorer, refresh mỗi 30s.
 
 Không có: đăng nhập, avatar, upload file, emoji picker, sửa/xoá tin, DM, thread.

@@ -81,7 +81,7 @@ const composerMeter = byId<HTMLElement>("composer-meter");
 const filterInput = byId<HTMLInputElement>("filter");
 const kindSelect = byId<HTMLSelectElement>("kind");
 const roomSearch = byId<HTMLInputElement>("room-search");
-const zoomSelect = byId<HTMLSelectElement>("log-zoom");
+const zoomSelect = document.getElementById("log-zoom") as HTMLSelectElement | null;
 const treeSearch = byId<HTMLInputElement>("tree-search");
 const newChip = byId<HTMLButtonElement>("new-chip");
 const newRoomButton = byId<HTMLButtonElement>("new-room");
@@ -94,7 +94,7 @@ const tabLabel = byId<HTMLElement>("tab-label");
 const tabClose = byId<HTMLButtonElement>("tab-close");
 const titlebarRoom = byId<HTMLElement>("titlebar-room");
 const crumbRoom = byId<HTMLElement>("crumb-room");
-const nickButton = byId<HTMLButtonElement>("nick");
+const nickButton = document.getElementById("nick") as HTMLButtonElement | null;
 const notifyBell = byId<HTMLButtonElement>("notify-bell");
 const bellCount = byId<HTMLElement>("bell-count");
 const notifyPanel = byId<HTMLElement>("notify-panel");
@@ -136,13 +136,13 @@ logView.selfNick = identity.nick;
 logView.setTheme(theme);
 
 const statusbar = new StatusBar({
-  root: byId<HTMLElement>("statusbar"),
-  conn: byId<HTMLElement>("conn"),
-  url: byId<HTMLElement>("wsurl"),
-  online: byId<HTMLElement>("online"),
-  count: byId<HTMLElement>("msgcount"),
+  root: document.getElementById("statusbar"),
+  conn: document.getElementById("conn"),
+  url: document.getElementById("wsurl"),
+  online: document.getElementById("online"),
+  count: document.getElementById("msgcount"),
   nick: nickButton,
-  lock: byId<HTMLElement>("room-lock"),
+  lock: document.getElementById("room-lock"),
 });
 
 const sidebar = new Sidebar(treeEl, sidebarFoot);
@@ -236,7 +236,7 @@ function setMode(mode: "start" | "room"): void {
  */
 function applyZoom(): void {
   logEl.style.setProperty("--log-size", `${zoomToPixels(zoom)}px`);
-  zoomSelect.value = String(zoom);
+  if (zoomSelect) zoomSelect.value = String(zoom);
 }
 
 function applyDockState(): void {
@@ -283,8 +283,6 @@ function updateChrome(): void {
   titlebarRoom.textContent = slug === undefined ? "no room" : `#${slug}`;
   crumbRoom.textContent = slug === undefined ? "Start" : `#${slug}`;
   tabClose.hidden = slug === undefined;
-  byId<HTMLElement>("dock-room").textContent = slug === undefined ? "" : `#${slug}`;
-
 
   const unread = notifier.unread;
   const base = slug === undefined ? BASE_TITLE : `#${slug} — DynoFreeChat`;
@@ -879,7 +877,6 @@ function decorateChrome(): void {
   setIconButton(byId<HTMLElement>("refresh-rooms"), "refresh", "Nạp lại danh sách room");
   setIconButton(byId<HTMLElement>("collapse-tree"), "collapse", "Thu gọn Solution Explorer");
   setIconButton(newChip, "follow", "Xuống tin mới nhất");
-  setIconButton(byId<HTMLElement>("dock-close"), "close", "Thu gọn Output");
   setIconButton(notifyBell, "bell", "Thông báo");
 }
 
@@ -914,7 +911,7 @@ function wire(): void {
     applyFilter(kindSelect.value as KindFilter);
   });
 
-  zoomSelect.addEventListener("change", () => {
+  zoomSelect?.addEventListener("change", () => {
     const next = Number(zoomSelect.value);
     if (Number.isFinite(next)) changeZoom(next as Zoom);
   });
@@ -928,17 +925,10 @@ function wire(): void {
   });
 
 
-  // The nickname lives in the status bar, as in VS: click it to rename.
-  nickButton.addEventListener("click", () => void changeNickname());
+  // Nickname change can also be triggered via Edit/Tools menu or status bar if present.
+  nickButton?.addEventListener("click", () => void changeNickname());
 
   byId<HTMLButtonElement>("minimal-exit").addEventListener("click", () => toggleMinimal());
-
-  byId<HTMLButtonElement>("dock-collapse").addEventListener("click", () => {
-    setDock(toggleDock(dock));
-  });
-  byId<HTMLButtonElement>("dock-tab").addEventListener("click", () => {
-    setDock(toggleDock(dock));
-  });
 
   byId<HTMLButtonElement>("dock-reply-cancel").addEventListener("click", () => {
     composer.setReply(null);
@@ -970,10 +960,6 @@ function wire(): void {
   tabClose.addEventListener("click", () => leaveRoom());
   byId<HTMLElement>("tab-room").addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "Enter" || event.key === "Delete") leaveRoom();
-  });
-
-  byId<HTMLButtonElement>("dock-close").addEventListener("click", () => {
-    setDock(closeDock(dock));
   });
 
   // WebAudio needs a user gesture before it may start.

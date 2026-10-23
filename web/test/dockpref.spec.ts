@@ -50,20 +50,22 @@ describe("dock state", () => {
     expect(isDockState("closed")).toBe(true);
   });
 
-  it("toggles between open and collapsed", () => {
-    expect(toggleDock("open")).toBe("collapsed");
+  it("toggles between open and closed", () => {
+    expect(toggleDock("open")).toBe("closed");
+    expect(toggleDock("closed")).toBe("open");
     expect(toggleDock("collapsed")).toBe("open");
   });
 
   it("closes from any state", () => {
     expect(closeDock("open")).toBe("closed");
     expect(closeDock("collapsed")).toBe("closed");
+    expect(closeDock("closed")).toBe("closed");
   });
 
-  it("reveals and collapses with the keyboard shortcut", () => {
+  it("reveals and closes with the keyboard shortcut", () => {
     expect(revealDock("closed")).toBe("open");
     expect(revealDock("collapsed")).toBe("open");
-    expect(revealDock("open")).toBe("collapsed");
+    expect(revealDock("open")).toBe("closed");
   });
 
   it("drives the data attribute", () => {
