@@ -4,11 +4,15 @@ import {
   MAX_NICK,
   MAX_TEXT,
   codePointLength,
+  extractMentions,
+  makeExcerpt,
   makeMessageId,
+  mentionsNick,
   parseClientFrame,
   sanitizeColor,
   sanitizeNick,
   sanitizeText,
+  segmentText,
 } from "../src/protocol";
 
 describe("sanitizeNick", () => {
@@ -116,5 +120,72 @@ describe("makeMessageId", () => {
 
   it("sorts increasing for increasing input", () => {
     expect(makeMessageId(2, 1) > makeMessageId(1, 99)).toBe(true);
+  });
+});
+
+describe("reply", () => {
+  it("parses a msg frame that answers another message", () => {
+    expect(parseClientFrame('{"t":"msg","cid":"1","text":"ok","replyTo":"mvkd9-1"}')).toEqual({
+      ok: true,
+      frame: { t: "msg", cid: "1", text: "ok", replyTo: "mvkd9-1" },
+    });
+  });
+
+  it("rejects a non-string replyTo", () => {
+    expect(parseClientFrame('{"t":"msg","cid":"1","text":"ok","replyTo":5}')).toEqual({
+      ok: false,
+      code: "BAD_FRAME",
+    });
+  });
+});
+
+describe("makeExcerpt", () => {
+  it("keeps short text intact and collapses whitespace", () => {
+    expect(makeExcerpt("  hai   dòng\n")).toBe("hai dòng");
+  });
+
+  it("truncates with an ellipsis", () => {
+    const excerpt = makeExcerpt("a".repeat(300));
+    expect(Array.from(excerpt)).toHaveLength(120);
+    expect(excerpt.endsWith("…")).toBe(true);
+  });
+});
+
+describe("extractMentions", () => {
+  it("finds mentions in order without duplicates", () => {
+    expect(extractMentions("hey @khoan, @dyno_x và @Khoan nữa")).toEqual(["khoan", "dyno_x"]);
+  });
+
+  it("ignores a bare @ and stops at punctuation", () => {
+    expect(extractMentions("@ @@@ (a@b) @linh.")).toEqual(["b", "linh"]);
+  });
+
+  it("caps the number of mentions", () => {
+    expect(extractMentions("@a @b @c @d @e @f @g @h @i @j", 3)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("mentionsNick", () => {
+  it("matches case-insensitively", () => {
+    expect(mentionsNick("Ê @Khoan ơi", "khoan")).toBe(true);
+    expect(mentionsNick("Ê @khoan ơi", "dyno")).toBe(false);
+  });
+
+  it("never matches an empty nick", () => {
+    expect(mentionsNick("@khoan", "   ")).toBe(false);
+  });
+});
+
+describe("segmentText", () => {
+  it("splits plain runs from mentions", () => {
+    expect(segmentText("chào @khoan nhé")).toEqual([
+      { kind: "text", value: "chào " },
+      { kind: "mention", value: "@khoan", nick: "khoan" },
+      { kind: "text", value: " nhé" },
+    ]);
+  });
+
+  it("returns a single text segment when there is no mention", () => {
+    expect(segmentText("không có ai")).toEqual([{ kind: "text", value: "không có ai" }]);
   });
 });

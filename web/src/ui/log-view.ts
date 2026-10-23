@@ -1,15 +1,22 @@
+import { segmentText } from "@dyno/shared/protocol";
 import { clampNick, formatTime, mutedColor } from "../lib/format";
 import type { Theme } from "../lib/theme";
 import type { Row, Store } from "../model/store";
+import { icon } from "./icons";
 
 interface Entry {
   el: HTMLElement;
   revision: number;
 }
 
+export interface LogViewHandlers {
+  onReply?: (row: Row) => void;
+  onCopy?: (row: Row) => void;
+}
+
 /**
- * Renders `Store.rows` as log lines with an editor-style line gutter. Appends
- * only what is new and re-renders a line only when its revision changed.
+ * Renders `Store.rows` as log lines with an editor-style gutter, Mattermost-ish
+ * hover actions, quoted replies and @mention pills.
  */
 export class LogView {
   private readonly entries = new Map<Row, Entry>();
@@ -19,11 +26,13 @@ export class LogView {
   private theme: Theme = "dark";
 
   selfNick = "";
-  /** When true, new rows scroll into view automatically. */
   follow = true;
   onFollowChange?: (following: boolean) => void;
 
-  constructor(private readonly root: HTMLElement) {
+  constructor(
+    private readonly root: HTMLElement,
+    private readonly handlers: LogViewHandlers = {},
+  ) {
     this.root.addEventListener(
       "scroll",
       () => {
@@ -100,11 +109,21 @@ export class LogView {
     this.atBottom = true;
   }
 
-  /** Number of rows currently visible, for the status bar. */
   get visibleCount(): number {
     let count = 0;
     for (const entry of this.entries.values()) if (!entry.el.hidden) count += 1;
     return count;
+  }
+
+  /** Scrolls the line for `row` into view and flashes it. */
+  reveal(rowId: string): void {
+    const entry = Array.from(this.entries.entries()).find(([row]) => row.id === rowId);
+    if (entry === undefined) return;
+
+    const el = entry[1].el;
+    el.scrollIntoView({ block: "center" });
+    el.classList.add("is-flash");
+    window.setTimeout(() => el.classList.remove("is-flash"), 900);
   }
 
   private render(row: Row, visible: boolean, line: number): HTMLElement {
@@ -120,6 +139,8 @@ export class LogView {
     if (row.state === "pending") el.classList.add("is-pending");
     if (row.state === "failed") el.classList.add("is-failed");
     if (row.kind === "chat" && row.nick === this.selfNick) el.classList.add("is-self");
+    if (row.mentionsMe) el.classList.add("is-mention");
+    if (row.replyTo !== undefined) el.classList.add("has-quote");
 
     const gutter = document.createElement("span");
     gutter.className = "log-num";
@@ -143,18 +164,84 @@ export class LogView {
     mark.textContent =
       row.kind === "chat" ? (row.state === "pending" ? "▍" : row.state === "failed" ? "✕" : "›") : "·";
 
+    el.append(gutter, time, nick, mark);
+
+    if (row.replyTo !== undefined) {
+      const quote = document.createElement("span");
+      quote.className = "log-quote";
+
+      const arrow = document.createElement("span");
+      arrow.className = "log-quote-arrow";
+      arrow.textContent = "↳";
+
+      const author = document.createElement("span");
+      author.className = "log-quote-nick";
+      author.textContent = row.replyTo.nick;
+
+      const excerpt = document.createElement("span");
+      excerpt.className = "log-quote-text";
+      excerpt.textContent = row.replyTo.text;
+
+      quote.append(arrow, author, excerpt);
+      quote.title = `${row.replyTo.nick}: ${row.replyTo.text}`;
+      el.append(quote);
+    }
+
     const text = document.createElement("span");
     text.className = "log-text";
-    this.fillText(text, row.text);
+    this.fillRich(text, row.text);
+    el.append(text);
 
-    el.append(gutter, time, nick, mark, text);
+    if (row.kind === "chat" && row.state !== "pending") {
+      el.append(this.renderActions(row));
+    }
+
     return el;
   }
 
-  /** Writes text as text nodes, wrapping filter hits in <mark>. No innerHTML. */
-  private fillText(target: HTMLElement, text: string): void {
+  /** Hover toolbar, the way Mattermost floats actions over a message. */
+  private renderActions(row: Row): HTMLElement {
+    const actions = document.createElement("span");
+    actions.className = "log-actions";
+
+    const replyButton = document.createElement("button");
+    replyButton.type = "button";
+    replyButton.className = "log-action";
+    replyButton.title = "Trả lời tin này";
+    replyButton.setAttribute("aria-label", "Trả lời tin này");
+    replyButton.append(icon("reply", 14));
+    replyButton.addEventListener("click", () => this.handlers.onReply?.(row));
+
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "log-action";
+    copyButton.title = "Copy nội dung";
+    copyButton.setAttribute("aria-label", "Copy nội dung");
+    copyButton.append(icon("copy", 14));
+    copyButton.addEventListener("click", () => this.handlers.onCopy?.(row));
+
+    actions.append(replyButton, copyButton);
+    return actions;
+  }
+
+  /** Writes text as text nodes, with @mention pills and filter highlights. */
+  private fillRich(target: HTMLElement, text: string): void {
+    for (const segment of segmentText(text)) {
+      if (segment.kind === "mention") {
+        const pill = document.createElement("span");
+        pill.className = "mention";
+        pill.textContent = segment.value;
+        pill.dataset.nick = segment.nick;
+        target.append(pill);
+        continue;
+      }
+      this.appendWithHighlight(target, segment.value);
+    }
+  }
+
+  private appendWithHighlight(target: HTMLElement, text: string): void {
     if (this.query.length === 0) {
-      target.textContent = text;
+      target.append(text);
       return;
     }
 

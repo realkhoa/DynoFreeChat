@@ -22,6 +22,9 @@ Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao di�
 - **Nhiều phòng**, tạo bằng tên (slug), vào bằng link `?r=<slug>`.
 - **Mật khẩu phòng tuỳ chọn** — hỏi **một lần** khi vào phòng lần đầu, sau đó nhớ trong `localStorage` nên reload hay mở lại link đều vào thẳng. Server kiểm tra, không lưu plaintext, mật khẩu không đi qua URL.
 - Mỗi tin nhắn = một dòng log: `HH:MM:SS  nick  ›  nội dung`, cột thẳng hàng, màu nick theo người.
+- **Thao tác kiểu Mattermost** trên mỗi dòng: action bar nổi khi hover, quote trả lời, mention pill.
+- **Trả lời tin nhắn**: hover một dòng → nút ↳ (hoặc copy); tin trả lời hiện trích dẫn tin gốc ngay trên nội dung. Server lưu bản trích nên reply vẫn đọc được kể cả khi tin gốc đã bị trim khỏi history.
+- **Tag `@nick`**: pill màu trong nội dung, autocomplete khi gõ `@` (↑↓ chọn, Tab/Enter nhận, Esc đóng), dòng có nhắc tới bạn được tô nền + vạch vàng, và chuông báo ghi rõ `· có nhắc bạn` (vẫn không kèm nội dung).
 - **Optimistic echo**: gõ là thấy dòng mờ ngay, server xác nhận thì sáng lên.
 - **Reconnect** tự động với backoff 1s→30s có jitter; lịch sử được replay lại, dedupe theo id.
 - **Thông báo tin nhắn mới**, hai lớp và **không bao giờ kèm nội dung hay nickname**: chuông ở title bar (badge số chưa đọc, panel liệt kê `#phòng · N tin mới`, bấm để nhảy vào phòng) và notification hệ điều hành khi tab ở nền. Bật/tắt ở `Tools → Thông báo tin nhắn mới`.
@@ -85,6 +88,7 @@ node scripts/ws-probe.mjs [wss-url]          # smoke test 1 kết nối WebSocke
 node scripts/cdp-check.mjs <url> --shot=out.png   # lái Chromium thật qua CDP, đọc DOM, chụp ảnh
 node scripts/cdp-theme-shot.mjs <url> light out.png   # chụp một theme cụ thể
 node scripts/cdp-errors.mjs <url>                 # in exception/console error của trang
+node scripts/cdp-interact.mjs <url>               # thử reply + autocomplete @nick trên trang thật
 ```
 
 ## Deploy

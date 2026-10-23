@@ -98,3 +98,61 @@ describe("LogView", () => {
     expect(view.visibleCount).toBe(1);
   });
 });
+
+describe("replies and mentions", () => {
+  it("renders the quoted parent above the message", () => {
+    const store = new Store();
+    store.addMessage({
+      ...message("a", "trả lời"),
+      replyTo: { id: "x", nick: "khoan", text: "câu gốc" },
+    });
+    view.sync(store);
+
+    const row = root.querySelector(".log-row");
+    expect(row?.classList.contains("has-quote")).toBe(true);
+    expect(root.querySelector(".log-quote-nick")?.textContent).toBe("khoan");
+    expect(root.querySelector(".log-quote-text")?.textContent).toBe("câu gốc");
+  });
+
+  it("turns @nick into a pill", () => {
+    const store = new Store();
+    store.addMessage(message("a", "chào @khoan nhé"));
+    view.sync(store);
+
+    const pill = root.querySelector(".mention");
+    expect(pill?.textContent).toBe("@khoan");
+    expect(pill?.getAttribute("data-nick")).toBe("khoan");
+  });
+
+  it("marks rows that mention the reader", () => {
+    const store = new Store();
+    store.selfNick = "khoan";
+    store.addMessage(message("a", "này @khoan", "dyno"));
+    view.sync(store);
+
+    expect(root.querySelector(".log-row.is-mention")).not.toBeNull();
+  });
+
+  it("does not mark rows that mention somebody else", () => {
+    const store = new Store();
+    store.selfNick = "khoan";
+    store.addMessage(message("a", "này @linh", "dyno"));
+    view.sync(store);
+
+    expect(root.querySelector(".log-row.is-mention")).toBeNull();
+  });
+
+  it("offers a reply action that reports the row", () => {
+    const store = new Store();
+    store.addMessage(message("a", "gốc", "dyno"));
+
+    const replies: string[] = [];
+    const actionView = new LogView(root, { onReply: (row) => replies.push(row.id) });
+    actionView.sync(store);
+
+    const replyButton = root.querySelector<HTMLButtonElement>(".log-action[aria-label='Trả lời tin này']");
+    expect(replyButton).not.toBeNull();
+    replyButton?.click();
+    expect(replies).toEqual(["a"]);
+  });
+});

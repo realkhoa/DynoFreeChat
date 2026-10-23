@@ -66,6 +66,9 @@
   --radius: 2px;
   --log-size: 12.5px;
   --log-line: 1.5;
+  --mention-bg: #007acc2e;
+  --mention-row: #d7ba7d14;
+
   --scroll-thumb: #686868;
   --scroll-thumb-hover: #9e9e9e;
 }
@@ -109,6 +112,9 @@
   --statusbar-dim: #5c5c5c;
   --statusbar-edge: #d6d6d6;
   --statusbar-chip: #e3e3e3;
+
+  --mention-bg: #007acc1f;
+  --mention-row: #fff4ce;
 
   --scroll-thumb: #c2c2c2;
   --scroll-thumb-hover: #a6a6a6;

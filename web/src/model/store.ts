@@ -1,4 +1,4 @@
-import type { ChatMessage } from "@dyno/shared/protocol";
+import { mentionsNick, type ChatMessage, type ReplyRef } from "@dyno/shared/protocol";
 
 export type RowKind = "chat" | "system" | "error";
 export type RowState = "ok" | "pending" | "failed";
@@ -13,6 +13,10 @@ export interface Row {
   nick: string;
   color: string;
   text: string;
+  /** Quoted parent, when this line answers another one. */
+  replyTo?: ReplyRef;
+  /** True when the text mentions the reader by name. */
+  mentionsMe: boolean;
   /** Bumped on every mutation; the log view re-renders only when it changes. */
   revision: number;
 }
@@ -25,12 +29,13 @@ export class Store {
   rows: Row[] = [];
   filter = "";
   kindFilter: KindFilter = "all";
+  /** The reader's own nickname, used to detect mentions. */
+  selfNick = "";
 
   private readonly seen = new Set<string>();
   private readonly pendingByCid = new Map<string, Row>();
   private seq = 0;
 
-  /** Number of rendered rows, for the status bar. */
   get length(): number {
     return this.rows.length;
   }
@@ -49,6 +54,7 @@ export class Store {
       nick: kind === "error" ? "error" : "system",
       color: "hsl(0 0% 62%)",
       text,
+      mentionsMe: false,
       revision: 0,
     };
     this.rows.push(row);
@@ -56,7 +62,7 @@ export class Store {
   }
 
   /** Optimistic echo: shown dimmed until the server acknowledges the message. */
-  addPending(cid: string, text: string, nick: string, color: string): Row {
+  addPending(cid: string, text: string, nick: string, color: string, replyTo?: ReplyRef): Row {
     const row: Row = {
       id: `p:${cid}`,
       ts: Date.now(),
@@ -65,6 +71,8 @@ export class Store {
       nick,
       color,
       text,
+      replyTo,
+      mentionsMe: mentionsNick(text, this.selfNick),
       revision: 0,
     };
     this.rows.push(row);
@@ -84,6 +92,8 @@ export class Store {
       pending.nick = message.nick;
       pending.color = message.color;
       pending.text = message.text;
+      pending.replyTo = message.replyTo;
+      pending.mentionsMe = mentionsNick(message.text, this.selfNick);
       pending.state = "ok";
       pending.revision += 1;
       return "resolved";
@@ -97,6 +107,8 @@ export class Store {
       nick: message.nick,
       color: message.color,
       text: message.text,
+      replyTo: message.replyTo,
+      mentionsMe: mentionsNick(message.text, this.selfNick),
       revision: 0,
     });
     return "appended";
@@ -109,6 +121,25 @@ export class Store {
       if (this.addMessage(message) === "appended") added += 1;
     }
     return added;
+  }
+
+  /** Finds a row by message id, for replying or quoting. */
+  find(id: string): Row | undefined {
+    return this.rows.find((row) => row.id === id);
+  }
+
+  /** Distinct nicks seen in this room, newest first — the mention candidates. */
+  nicks(): string[] {
+    const seen = new Set<string>();
+    const nicks: string[] = [];
+    for (let index = this.rows.length - 1; index >= 0; index -= 1) {
+      const row = this.rows[index];
+      if (row === undefined || row.kind !== "chat") continue;
+      if (seen.has(row.nick)) continue;
+      seen.add(row.nick);
+      nicks.push(row.nick);
+    }
+    return nicks;
   }
 
   failPending(cid: string, reason: string): Row | undefined {

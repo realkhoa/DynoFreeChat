@@ -26,6 +26,8 @@ export type IconName =
   | "redo"
   | "save"
   | "bell"
+  | "reply"
+  | "copy"
   | "dot";
 
 const PATHS: Record<IconName, string> = {
@@ -51,6 +53,8 @@ const PATHS: Record<IconName, string> = {
   redo: '<path d="M10.4 5.2 13 7.4l-2.6 2.2"/><path d="M13 7.4H7a3 3 0 0 0 0 6h2.4"/>',
   save: '<path d="M3 3h8.2L13 4.8V13H3Z"/><path d="M5.4 3v3.4h5.2V3"/><path d="M5.4 13v-3.6h5.2V13"/>',
   bell: '<path d="M4.3 6.7a3.7 3.7 0 0 1 7.4 0c0 2.3.5 3.3 1.1 4H3.2c.6-.7 1.1-1.7 1.1-4Z"/><path d="M6.6 12.4a1.5 1.5 0 0 0 2.8 0"/>',
+  reply: '<path d="M6.2 4.4 3 7.5l3.2 3.1"/><path d="M3 7.5h6a3.4 3.4 0 0 1 0 6.8H6.4"/>',
+  copy: '<rect x="5.4" y="5.4" width="7.2" height="7.2" rx="1"/><path d="M10.6 5.4V4.2a1 1 0 0 0-1-1H4.2a1 1 0 0 0-1 1v5.4a1 1 0 0 0 1 1h1.2"/>',
   dot: '<circle cx="8" cy="8" r="3.2" fill="currentColor" stroke="none"/>',
 };
 

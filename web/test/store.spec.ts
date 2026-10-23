@@ -93,3 +93,48 @@ describe("Store", () => {
     expect(store.matches(store.rows[0]!)).toBe(false);
   });
 });
+
+describe("Store replies and mentions", () => {
+  it("keeps the reply reference on the row", () => {
+    const store = new Store();
+    store.addMessage({
+      ...message("a", "trả lời"),
+      replyTo: { id: "parent", nick: "khoan", text: "gốc" },
+    });
+
+    expect(store.rows[0]?.replyTo).toEqual({ id: "parent", nick: "khoan", text: "gốc" });
+  });
+
+  it("flags a row that mentions the reader", () => {
+    const store = new Store();
+    store.selfNick = "khoan";
+    store.addMessage(message("a", "ê @Khoan ơi", { nick: "dyno" }));
+
+    expect(store.rows[0]?.mentionsMe).toBe(true);
+  });
+
+  it("does not flag a row that mentions somebody else", () => {
+    const store = new Store();
+    store.selfNick = "khoan";
+    store.addMessage(message("a", "ê @linh ơi", { nick: "dyno" }));
+
+    expect(store.rows[0]?.mentionsMe).toBe(false);
+  });
+
+  it("lists distinct nicks newest first for completion", () => {
+    const store = new Store();
+    store.addMessage(message("a", "1", { nick: "khoan" }));
+    store.addMessage(message("b", "2", { nick: "dyno" }));
+    store.addMessage(message("c", "3", { nick: "khoan" }));
+
+    expect(store.nicks()).toEqual(["khoan", "dyno"]);
+  });
+
+  it("finds a row by message id", () => {
+    const store = new Store();
+    store.addMessage(message("a", "một"));
+
+    expect(store.find("a")?.text).toBe("một");
+    expect(store.find("zzz")).toBeUndefined();
+  });
+});

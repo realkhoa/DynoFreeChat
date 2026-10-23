@@ -220,6 +220,12 @@
       </div>
 
       <div class="dock" id="dock">
+        <ul class="mention-menu" id="mention-menu" role="listbox" aria-label="Gợi ý nickname" hidden></ul>
+        <div class="dock-reply" id="dock-reply" hidden>
+          <span class="dock-reply-arrow" aria-hidden="true">↳</span>
+          <span class="dock-reply-text">Trả lời <b id="dock-reply-nick"></b>: <span id="dock-reply-excerpt"></span></span>
+          <button type="button" class="dock-reply-cancel" id="dock-reply-cancel" aria-label="Huỷ trả lời">✕</button>
+        </div>
         <div class="dock-body" id="composer" data-disabled="true">
           <span class="composer-prompt" aria-hidden="true">›</span>
           <input

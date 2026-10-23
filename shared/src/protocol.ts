@@ -19,6 +19,12 @@ export const MAX_NICK = 24;
 /** Maximum length of the client correlation id. */
 export const MAX_CID = 64;
 
+/** Longest excerpt kept for a quoted reply. */
+export const REPLY_EXCERPT = 120;
+
+/** Maximum number of mentions kept per message. */
+export const MAX_MENTIONS = 8;
+
 /** Maximum number of code points accepted in a room password. */
 export const MAX_PASS = 64;
 
@@ -71,6 +77,15 @@ export interface ChatMessage {
   /** `hsl(<hue> <sat>% <light>%)`. */
   color: string;
   text: string;
+  /** Denormalised snippet of the message this one answers. */
+  replyTo?: ReplyRef;
+}
+
+/** Enough of the parent message to render a quote without another round-trip. */
+export interface ReplyRef {
+  id: string;
+  nick: string;
+  text: string;
 }
 
 /** One row of the public lobby. */
@@ -83,7 +98,7 @@ export interface RoomInfo {
 
 export type ClientFrame =
   | { t: "join"; nick: string; color: string; pass?: string }
-  | { t: "msg"; cid: string; text: string };
+  | { t: "msg"; cid: string; text: string; replyTo?: string };
 
 export type ErrorCode =
   | "BAD_NICK"
@@ -207,6 +222,11 @@ export function parseClientFrame(raw: string): FrameResult {
     const cid = record.cid;
     if (typeof cid !== "string" || cid.length === 0 || cid.length > MAX_CID) return BAD_FRAME;
     if (typeof record.text !== "string") return BAD_FRAME;
+    if (record.replyTo !== undefined) {
+      if (typeof record.replyTo !== "string") return BAD_FRAME;
+      if (record.replyTo.length === 0 || record.replyTo.length > 40) return BAD_FRAME;
+      return { ok: true, frame: { t: "msg", cid, text: record.text, replyTo: record.replyTo } };
+    }
     return { ok: true, frame: { t: "msg", cid, text: record.text } };
   }
 
@@ -216,4 +236,63 @@ export function parseClientFrame(raw: string): FrameResult {
 /** Stable, sortable-by-prefix message id. */
 export function makeMessageId(ts: number, seq: number): string {
   return `${ts.toString(36)}-${seq.toString(36)}`;
+}
+
+/** Truncates a message to a quote-sized excerpt. */
+export function makeExcerpt(text: string, limit = REPLY_EXCERPT): string {
+  const chars = Array.from(text.replace(/\s+/g, " ").trim());
+  if (chars.length <= limit) return chars.join("");
+  return `${chars.slice(0, limit - 1).join("")}…`;
+}
+
+/**
+ * Nicknames cannot contain spaces, so a mention is `@` followed by letters,
+ * digits, `_`, `.` or `-`. Anything else ends the mention.
+ */
+const MENTION_RE = /@([\p{L}\p{N}_](?:[\p{L}\p{N}_.-]{0,22}[\p{L}\p{N}_])?)/gu;
+
+/** Unique nicknames mentioned in a message, in first-appearance order. */
+export function extractMentions(text: string, limit = MAX_MENTIONS): string[] {
+  const seen = new Set<string>();
+  const mentions: string[] = [];
+
+  for (const match of text.matchAll(MENTION_RE)) {
+    const nick = match[1];
+    if (nick === undefined) continue;
+    const key = nick.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    mentions.push(nick);
+    if (mentions.length >= limit) break;
+  }
+
+  return mentions;
+}
+
+/** True when `text` mentions `nick` (case-insensitive). */
+export function mentionsNick(text: string, nick: string): boolean {
+  const target = nick.trim().toLowerCase();
+  if (target.length === 0) return false;
+  return extractMentions(text).some((mention) => mention.toLowerCase() === target);
+}
+
+export type TextSegment =
+  | { kind: "text"; value: string }
+  | { kind: "mention"; value: string; nick: string };
+
+/** Splits a message into plain runs and `@mention` runs for rendering. */
+export function segmentText(text: string): TextSegment[] {
+  const segments: TextSegment[] = [];
+  let cursor = 0;
+
+  for (const match of text.matchAll(MENTION_RE)) {
+    const at = match.index ?? 0;
+    if (at > cursor) segments.push({ kind: "text", value: text.slice(cursor, at) });
+    const nick = match[1] ?? "";
+    segments.push({ kind: "mention", value: `@${nick}`, nick });
+    cursor = at + match[0].length;
+  }
+
+  if (cursor < text.length) segments.push({ kind: "text", value: text.slice(cursor) });
+  return segments;
 }

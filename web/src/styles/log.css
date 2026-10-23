@@ -138,3 +138,201 @@
     animation: none;
   }
 }
+
+/* ===================== replies, mentions, hover actions (Mattermost-ish) === */
+
+.log-row {
+  position: relative;
+}
+
+/* quoted parent, in the text column above the message body */
+.log-quote {
+  grid-column: 5;
+  grid-row: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 0 0 6px;
+  border-left: 2px solid var(--border);
+  color: var(--fg-dim);
+  font-size: 11.5px;
+  line-height: 1.4;
+  cursor: default;
+}
+
+.log-quote-arrow {
+  color: var(--fg-faint);
+}
+
+.log-quote-nick {
+  color: var(--fg-muted);
+  font-weight: 600;
+  flex: none;
+}
+
+.log-quote-text {
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.log-row.has-quote .log-text {
+  grid-column: 5;
+  grid-row: 2;
+}
+
+/* @mention pills */
+.mention {
+  padding: 0 2px;
+  border-radius: var(--radius);
+  background: var(--mention-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.log-row.is-mention {
+  background: var(--mention-row);
+  box-shadow: inset 2px 0 0 var(--warn);
+}
+
+.log-row.is-mention:hover {
+  background: var(--hover-row);
+}
+
+/* hover toolbar */
+.log-actions {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  display: none;
+  gap: 1px;
+  padding: 1px;
+  background: var(--editor);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px #00000022;
+}
+
+.log-row:hover .log-actions,
+.log-actions:focus-within {
+  display: flex;
+}
+
+.log-action {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--fg-dim);
+}
+
+.log-action:hover {
+  background: var(--hover-chrome);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.log-row.is-flash {
+  animation: flash 0.9s ease-out;
+}
+
+@keyframes flash {
+  from {
+    background: var(--sel);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+/* reply banner + mention completion, both anchored to the Output dock */
+.dock {
+  position: relative;
+}
+
+.dock-reply {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--fg-dim);
+  font-size: 11.5px;
+  overflow: hidden;
+}
+
+.dock-reply-arrow {
+  color: var(--accent);
+}
+
+.dock-reply-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dock-reply-text b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.dock-reply-excerpt {
+  color: var(--fg-dim);
+}
+
+.dock-reply-cancel {
+  margin-left: auto;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.dock-reply-cancel:hover {
+  background: var(--hover-chrome);
+  color: var(--fg);
+}
+
+.mention-menu {
+  position: absolute;
+  left: 8px;
+  bottom: calc(100% - 30px);
+  z-index: 50;
+  width: 230px;
+  max-height: 180px;
+  margin: 0;
+  padding: 2px;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--menu);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px #00000045;
+}
+
+.mention-item {
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  color: var(--fg);
+  font: 11.5px/1.4 var(--font-mono);
+  cursor: pointer;
+}
+
+.mention-item[aria-selected="true"] {
+  background: var(--tree-selected);
+}
+
+.mention-item:hover {
+  background: var(--hover-row);
+}

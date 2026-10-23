@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ServerFrame } from "@dyno/shared/protocol";
 import { connect, makeRoom } from "./helpers";
 
 describe("chat room", () => {
@@ -126,6 +127,72 @@ describe("chat room", () => {
     const client = await connect("khongcophongnay");
     client.join("khoan");
     await client.waitError("ROOM_NOT_FOUND");
+    client.close();
+  });
+});
+
+describe("replies and mentions", () => {
+  it("quotes the parent message when replying", async () => {
+    const slug = await makeRoom();
+
+    const alice = await connect(slug);
+    alice.join("alice");
+    await alice.welcome();
+    alice.say("câu gốc");
+    const original = (await alice.waitFor((frame) => frame.t === "append")) as Extract<
+      ServerFrame,
+      { t: "append" }
+    >;
+
+    alice.ws.send(JSON.stringify({ t: "msg", cid: "r1", text: "trả lời", replyTo: original.m.id }));
+    const reply = (await alice.waitFor(
+      (frame) => frame.t === "append" && frame.cid === "r1",
+    )) as Extract<ServerFrame, { t: "append" }>;
+
+    expect(reply.m.replyTo).toEqual({ id: original.m.id, nick: "alice", text: "câu gốc" });
+    alice.close();
+  });
+
+  it("keeps the quote in history", async () => {
+    const slug = await makeRoom();
+
+    const alice = await connect(slug);
+    alice.join("alice");
+    await alice.welcome();
+    alice.say("gốc");
+    const original = (await alice.waitFor((frame) => frame.t === "append")) as Extract<
+      ServerFrame,
+      { t: "append" }
+    >;
+    alice.ws.send(JSON.stringify({ t: "msg", cid: "r1", text: "reply", replyTo: original.m.id }));
+    await alice.waitFor((frame) => frame.t === "append" && frame.cid === "r1");
+    alice.close();
+
+    const bob = await connect(slug);
+    bob.join("bob");
+    const welcome = await bob.welcome();
+
+    const quoted = welcome.history.find((message) => message.text === "reply");
+    expect(quoted?.replyTo?.nick).toBe("alice");
+    expect(quoted?.replyTo?.text).toBe("gốc");
+    bob.close();
+  });
+
+  it("drops the quote when the parent is unknown", async () => {
+    const slug = await makeRoom();
+    const client = await connect(slug);
+    client.join("khoan");
+    await client.welcome();
+
+    client.ws.send(
+      JSON.stringify({ t: "msg", cid: "r1", text: "mồ côi", replyTo: "khongtontai" }),
+    );
+    const frame = (await client.waitFor(
+      (candidate) => candidate.t === "append" && candidate.cid === "r1",
+    )) as Extract<ServerFrame, { t: "append" }>;
+
+    expect(frame.m.text).toBe("mồ côi");
+    expect(frame.m.replyTo).toBeUndefined();
     client.close();
   });
 });

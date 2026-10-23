@@ -6,6 +6,7 @@ import {
   HISTORY_TRIM_TO,
   MAX_CONNECTIONS,
   PASS_ATTEMPTS,
+  makeExcerpt,
   makeMessageId,
   parseClientFrame,
   sanitizeColor,
@@ -38,7 +39,12 @@ type MessageRow = SqlRow<{
   nick: string;
   color: string;
   text: string;
+  reply_id: string | null;
+  reply_nick: string | null;
+  reply_text: string | null;
 }>;
+
+type ParentRow = SqlRow<{ nick: string; text: string }>;
 
 type CountRow = SqlRow<{ n: number }>;
 
@@ -208,6 +214,22 @@ export class ChatRoom extends DurableObject<Env> {
       text: text.text,
     };
 
+    // A reply is quoted from the stored parent, so the excerpt survives even if
+    // the parent is later trimmed out of history.
+    if (frame.replyTo !== undefined) {
+      try {
+        this.ensureReady();
+        const parent = this.sql
+          .exec<ParentRow>("SELECT nick, text FROM messages WHERE id = ?", frame.replyTo)
+          .toArray()[0];
+        if (parent !== undefined) {
+          message.replyTo = { id: frame.replyTo, nick: parent.nick, text: makeExcerpt(parent.text) };
+        }
+      } catch {
+        this.markDegraded();
+      }
+    }
+
     this.persist(message);
 
     for (const peer of this.ctx.getWebSockets()) {
@@ -248,6 +270,15 @@ export class ChatRoom extends DurableObject<Env> {
          text TEXT NOT NULL
        )`,
     );
+    // Reply columns were added after the first deploy: ALTER is idempotent here
+    // because a duplicate column simply throws and is ignored.
+    for (const column of ["reply_id TEXT", "reply_nick TEXT", "reply_text TEXT"]) {
+      try {
+        this.sql.exec(`ALTER TABLE messages ADD COLUMN ${column}`);
+      } catch {
+        // Already present.
+      }
+    }
     // C7: counted once per wake, never per message.
     this.rowCount = this.sql.exec<CountRow>("SELECT COUNT(*) AS n FROM messages").toArray()[0]?.n ?? 0;
     this.ready = true;
@@ -258,11 +289,24 @@ export class ChatRoom extends DurableObject<Env> {
       this.ensureReady();
       return this.sql
         .exec<MessageRow>(
-          "SELECT id, ts, nick, color, text FROM messages ORDER BY ts DESC LIMIT ?",
+          "SELECT id, ts, nick, color, text, reply_id, reply_nick, reply_text FROM messages ORDER BY ts DESC LIMIT ?",
           limit,
         )
         .toArray()
-        .reverse();
+        .reverse()
+        .map((row) => {
+          const message: ChatMessage = {
+            id: row.id,
+            ts: row.ts,
+            nick: row.nick,
+            color: row.color,
+            text: row.text,
+          };
+          if (row.reply_id !== null && row.reply_nick !== null && row.reply_text !== null) {
+            message.replyTo = { id: row.reply_id, nick: row.reply_nick, text: row.reply_text };
+          }
+          return message;
+        });
     } catch {
       this.markDegraded();
       return [];
@@ -273,12 +317,15 @@ export class ChatRoom extends DurableObject<Env> {
     try {
       this.ensureReady();
       this.sql.exec(
-        "INSERT INTO messages (id, ts, nick, color, text) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO messages (id, ts, nick, color, text, reply_id, reply_nick, reply_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         message.id,
         message.ts,
         message.nick,
         message.color,
         message.text,
+        message.replyTo?.id ?? null,
+        message.replyTo?.nick ?? null,
+        message.replyTo?.text ?? null,
       );
       this.rowCount += 1;
       this.trimIfNeeded();

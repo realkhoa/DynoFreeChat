@@ -2,7 +2,15 @@ import "./styles/tokens.css";
 import "./styles/ide.css";
 import "./styles/log.css";
 
-import { MAX_TEXT, type ClientFrame, type RoomInfo, type ServerFrame } from "@dyno/shared/protocol";
+import {
+  MAX_TEXT,
+  makeExcerpt,
+  mentionsNick,
+  type ClientFrame,
+  type ReplyRef,
+  type RoomInfo,
+  type ServerFrame,
+} from "@dyno/shared/protocol";
 import { createRoom, listRooms } from "./api";
 import { apiBase, roomSocketUrl, wsUrl } from "./env";
 import { byId } from "./lib/dom";
@@ -105,7 +113,10 @@ let lastRowCount = 0;
 let filterTimer: number | null = null;
 let suppressDisconnectNotice = false;
 
-const logView = new LogView(logEl);
+const logView = new LogView(logEl, {
+  onReply: (row) => composer.setReply({ id: row.id, nick: row.nick, text: makeExcerpt(row.text) }),
+  onCopy: (row) => void copyMessage(row.text),
+});
 logView.selfNick = identity.nick;
 logView.setTheme(theme);
 
@@ -144,7 +155,10 @@ const composer = new Composer({
   root: composerEl,
   input: composerInput,
   meter: composerMeter,
+  menu: byId<HTMLElement>("mention-menu"),
+  nicks: () => [...store.nicks(), identity.nick],
   onSend: sendMessage,
+  onReplyChange: renderReplyBanner,
 });
 
 const menubar = mountMenubar(menubarEl, handleMenuAction);
@@ -214,6 +228,18 @@ function updateChrome(): void {
  * The bell only ever lists room names and counts. Nothing in this panel can show
  * what was said, by construction: the data model has no message text.
  */
+function renderReplyBanner(reply: ReplyRef | null): void {
+  const banner = byId<HTMLElement>("dock-reply");
+  if (reply === null) {
+    banner.hidden = true;
+    return;
+  }
+
+  byId<HTMLElement>("dock-reply-nick").textContent = reply.nick;
+  byId<HTMLElement>("dock-reply-excerpt").textContent = reply.text;
+  banner.hidden = false;
+}
+
 function renderNotifications(): void {
   const entries = notifier.entries();
   const unread = notifier.unread;
@@ -235,7 +261,7 @@ function renderNotifications(): void {
 
     const count = document.createElement("span");
     count.className = "notify-count";
-    count.textContent = `${entry.count} tin mới`;
+    count.textContent = entry.mentions > 0 ? `${entry.count} tin · @bạn` : `${entry.count} tin mới`;
 
     const meta = document.createElement("span");
     meta.className = "notify-meta";
@@ -388,11 +414,13 @@ function enterRoom(slug: string, pass?: string): void {
   const gen = generation;
 
   store = new Store();
+  store.selfNick = identity.nick;
   logView.clearLocal();
   logView.selfNick = identity.nick;
   lastRowCount = 0;
   setFollow(true);
   notifier.reset();
+  composer.setReply(null);
 
   current = { slug, locked: false };
   joinPass = pass;
@@ -488,6 +516,7 @@ function handleFrame(gen: number, frame: ServerFrame): void {
       }
       joinPass = undefined;
       logView.selfNick = frame.you.nick;
+      store.selfNick = frame.you.nick;
       store.addHistory(frame.history);
       store.addSystem(
         `đã vào #${frame.room.slug}${frame.room.locked ? " (có mật khẩu)" : ""} — ${frame.online} người online`,
@@ -508,7 +537,9 @@ function handleFrame(gen: number, frame: ServerFrame): void {
       const outcome = store.addMessage(frame.m, frame.cid);
       if (outcome === "duplicate") break;
       if (frame.m.nick !== identity.nick) {
-        notifier.incoming(current?.slug ?? "room");
+        notifier.incoming(current?.slug ?? "room", {
+          mention: mentionsNick(frame.m.text, identity.nick),
+        });
         renderNotifications();
         updateChrome();
       }
@@ -551,16 +582,23 @@ function handleServerError(gen: number, frame: Extract<ServerFrame, { t: "error"
   }
 }
 
-function sendMessage(text: string): void {
+function sendMessage(text: string, replyTo?: string): void {
   if (socket === null || current === null) return;
 
   const trimmed = Array.from(text).slice(0, MAX_TEXT).join("");
   const cid = `c${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  const parent = replyTo === undefined ? undefined : store.find(replyTo);
+  const quoted: ReplyRef | undefined =
+    parent === undefined ? undefined : { id: parent.id, nick: parent.nick, text: makeExcerpt(parent.text) };
 
-  store.addPending(cid, trimmed, identity.nick, identity.color);
+  store.addPending(cid, trimmed, identity.nick, identity.color, quoted);
   render();
 
-  if (!socket.send({ t: "msg", cid, text: trimmed })) {
+  const frame: ClientFrame = quoted === undefined
+    ? { t: "msg", cid, text: trimmed }
+    : { t: "msg", cid, text: trimmed, replyTo: quoted.id };
+
+  if (!socket.send(frame)) {
     store.failPending(cid, "chưa kết nối");
     render();
   } else {
@@ -591,6 +629,7 @@ async function changeNickname(): Promise<void> {
 
   identity = saveNick(storage, identity, next);
   logView.selfNick = identity.nick;
+  store.selfNick = identity.nick;
   statusbar.setNick(identity.nick);
   store.addSystem(`nickname đổi thành ${identity.nick}`);
   render();
@@ -599,6 +638,16 @@ async function changeNickname(): Promise<void> {
   if (socket !== null && current !== null) {
     socket.send({ t: "join", nick: identity.nick, color: identity.color });
   }
+}
+
+async function copyMessage(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    store.addSystem("đã copy tin nhắn");
+  } catch {
+    store.addSystem("trình duyệt không cho copy", "error");
+  }
+  render();
 }
 
 async function copyRoomLink(): Promise<void> {
@@ -783,6 +832,11 @@ function wire(): void {
   // The nickname lives in the status bar, as in VS: click it to rename.
   nickButton.addEventListener("click", () => void changeNickname());
 
+  byId<HTMLButtonElement>("dock-reply-cancel").addEventListener("click", () => {
+    composer.setReply(null);
+    composer.focus();
+  });
+
   notifyBell.addEventListener("click", (event) => {
     event.stopPropagation();
     toggleNotificationsPanel();
@@ -882,6 +936,7 @@ function wire(): void {
 
 function boot(): void {
   applyTheme(document.documentElement, theme);
+  store.selfNick = identity.nick;
   decorateChrome();
   statusbar.setUrl(wsUrl);
   statusbar.setNick(identity.nick);

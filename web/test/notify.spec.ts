@@ -59,8 +59,8 @@ describe("Notifier", () => {
 
     expect(notifier.unread).toBe(3);
     expect(notifier.entries()).toEqual([
-      { room: "b", count: 2, at: 1_020 },
-      { room: "a", count: 1, at: 1_000 },
+      { room: "b", count: 2, mentions: 0, at: 1_020 },
+      { room: "a", count: 1, mentions: 0, at: 1_000 },
     ]);
   });
 
@@ -91,7 +91,7 @@ describe("Notifier", () => {
     notifier.incoming("b");
 
     notifier.resetRoom("b");
-    expect(notifier.entries()).toEqual([{ room: "a", count: 1, at: 1_000 }]);
+    expect(notifier.entries()).toEqual([{ room: "a", count: 1, mentions: 0, at: 1_000 }]);
     expect(notifier.unread).toBe(1);
   });
 
@@ -103,5 +103,23 @@ describe("Notifier", () => {
     expect(notifier.reset()).toBe(2);
     expect(notifier.unread).toBe(0);
     expect(notifier.entries()).toEqual([]);
+  });
+});
+
+describe("Notifier mentions", () => {
+  it("counts mentions per room without adding content", () => {
+    const shown: Array<{ title: string; body: string; tag: string }> = [];
+    const notifier = new Notifier({
+      isHidden: () => true,
+      show: (title, body, tag) => shown.push({ title, body, tag }),
+      now: () => 1_000,
+      minIntervalMs: 0,
+    });
+
+    notifier.incoming("chung", { mention: true });
+    notifier.incoming("chung");
+
+    expect(notifier.entries()).toEqual([{ room: "chung", count: 2, mentions: 1, at: 1_000 }]);
+    expect(shown[0]?.body).toBe("1 tin nhắn mới · có nhắc bạn");
   });
 });

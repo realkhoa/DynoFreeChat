@@ -17,6 +17,8 @@ export interface NotifierDeps {
 export interface NotificationEntry {
   room: string;
   count: number;
+  /** How many of those messages mention the reader. */
+  mentions: number;
   /** Timestamp of the newest message in this room. */
   at: number;
 }
@@ -50,15 +52,17 @@ export class Notifier {
    * Someone else posted in `room`. The message text is never passed in, so it
    * cannot leak into a notification by accident.
    */
-  incoming(room: string): void {
+  incoming(room: string, options: { mention?: boolean } = {}): void {
     if (!this.deps.isHidden()) return;
 
+    const mention = options.mention === true;
     const now = this.deps.now?.() ?? Date.now();
     const entry = this.rooms.get(room);
     if (entry === undefined) {
-      this.rooms.set(room, { room, count: 1, at: now });
+      this.rooms.set(room, { room, count: 1, mentions: mention ? 1 : 0, at: now });
     } else {
       entry.count += 1;
+      if (mention) entry.mentions += 1;
       entry.at = now;
     }
     this.unreadTotal += 1;
@@ -68,7 +72,8 @@ export class Notifier {
     const interval = this.deps.minIntervalMs ?? 5_000;
     if (now - this.lastShownAt < interval) return;
     this.lastShownAt = now;
-    this.deps.show(`#${room}`, `${this.unreadTotal} tin nhắn mới`, `room:${room}`);
+    const body = mention ? `${this.unreadTotal} tin nhắn mới · có nhắc bạn` : `${this.unreadTotal} tin nhắn mới`;
+    this.deps.show(`#${room}`, body, `room:${room}`);
   }
 
   /** Marks one room read — call when the user opens it. */
