@@ -252,13 +252,40 @@ function buildChatTabSpec(): RibbonTabSpec {
 }
 
 /**
- * @brief Constructs the specification for the Collab ribbon tab.
- * @return Tab specification for workspaces, notifications, themes, and help.
+ * @brief Constructs the specification for the Collab ribbon tab (TicTacToe games and collaboration).
+ * @return Tab specification for collaborative games and rooms.
  */
 function buildCollabTabSpec(): RibbonTabSpec {
   return {
     id: "collab",
     label: "Collab",
+    groups: [
+      {
+        label: "Trò chơi",
+        buttons: [
+          { action: "tictactoe", label: "Tic-Tac-Toe", icon: "hash", big: true, title: "Mở game cờ Tic-Tac-Toe" },
+          { action: "game-create", label: "Tạo phòng", icon: "plus", title: "Tạo mã phòng mới để mời bạn" },
+          { action: "game-join", label: "Vào bằng mã", icon: "room", title: "Nhập mã phòng để chơi chung" },
+        ],
+      },
+      {
+        label: "Chế độ",
+        buttons: [
+          { action: "game-ai", label: "Đấu với máy", icon: "person", big: true, title: "Luyện tập đơn người với máy" },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * @brief Constructs the specification for the Setting ribbon tab.
+ * @return Tab specification for workspaces, notifications, themes, and help.
+ */
+function buildSettingTabSpec(): RibbonTabSpec {
+  return {
+    id: "setting",
+    label: "Setting",
     groups: [
       {
         label: "Không gian",
@@ -292,9 +319,9 @@ function buildCollabTabSpec(): RibbonTabSpec {
 }
 
 /**
- * @brief Default ribbon configuration with two main tabs: Chat and Collab.
+ * @brief Default ribbon configuration with three main tabs: Chat, Collab, and Setting.
  * @return Array of ribbon tab specifications.
  */
 export function defaultRibbonSpec(): RibbonTabSpec[] {
-  return [buildChatTabSpec(), buildCollabTabSpec()];
+  return [buildChatTabSpec(), buildCollabTabSpec(), buildSettingTabSpec()];
 }

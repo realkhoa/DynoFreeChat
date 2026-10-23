@@ -30,6 +30,7 @@ import { applyTheme, loadTheme, otherTheme, saveTheme, type Theme } from "./lib/
 import { Store, type KindFilter } from "./model/store";
 import { ChatSocket, type SocketState } from "./net/socket";
 import { Composer } from "./ui/composer";
+import { GameDialog } from "./ui/game-dialog";
 import { icon, setIconButton } from "./ui/icons";
 import { LogView } from "./ui/log-view";
 import { mountMenubar, type MenuAction } from "./ui/menubar";
@@ -183,6 +184,14 @@ const chatPicker = new ChatPicker(
     onCreate: (slugPrefill) => openCreateDialog(slugPrefill),
   },
 );
+
+const gameDialog = new GameDialog({
+  dialog: byId<HTMLDialogElement>("game-dialog"),
+  wsUrl,
+  apiBase,
+  getIdentity: () => identity,
+  createRoomImpl: createRoom,
+});
 
 const composer = new Composer({
   root: composerEl,
@@ -899,6 +908,18 @@ function handleMenuAction(action: MenuAction): void {
       store.addSystem("DynoFreeChat — chat kiểu Visual Studio, Cloudflare DO + GitHub Pages");
       render();
       break;
+    case "tictactoe":
+      gameDialog.open();
+      break;
+    case "game-create":
+      gameDialog.open("online");
+      break;
+    case "game-join":
+      gameDialog.open();
+      break;
+    case "game-ai":
+      gameDialog.open("ai");
+      break;
   }
 }
 
@@ -1119,6 +1140,11 @@ function boot(): void {
   applyDockState();
 
   wire();
+
+  const hashMatch = window.location.hash.match(/ttt=([a-zA-Z0-9]+)/);
+  if (hashMatch !== null && hashMatch[1] !== undefined) {
+    gameDialog.open("online", hashMatch[1]);
+  }
 
   const requested = new URL(window.location.href).searchParams.get("r");
   if (requested !== null && /^[a-z0-9][a-z0-9-]{1,23}$/.test(requested)) {

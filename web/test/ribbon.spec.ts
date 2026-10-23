@@ -22,10 +22,10 @@ describe("Ribbon", () => {
     mount();
 
     const tabs = Array.from(root.querySelectorAll(".ribbon-tab")).map((tab) => tab.textContent);
-    expect(tabs).toEqual(["Chat", "Collab"]);
+    expect(tabs).toEqual(["Chat", "Collab", "Setting"]);
 
     const panels = Array.from(root.querySelectorAll<HTMLElement>(".ribbon-panel"));
-    expect(panels).toHaveLength(2);
+    expect(panels).toHaveLength(3);
     expect(panels.filter((panel) => !panel.hidden)).toHaveLength(1);
   });
 
@@ -40,6 +40,8 @@ describe("Ribbon", () => {
       "Cỡ chữ",
       "Cá nhân",
       "Kết nối",
+      "Trò chơi",
+      "Chế độ",
       "Không gian",
       "Thông báo",
       "Giao diện",

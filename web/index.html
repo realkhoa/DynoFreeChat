@@ -73,6 +73,16 @@
         <div class="menu-root">
           <button type="button" class="menu-trigger" data-menu="collab" aria-expanded="false">Collab</button>
           <ul class="menu-list" id="menu-collab" role="menu" hidden>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="tictactoe">Chơi Tic-Tac-Toe…</button></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="game-create">Tạo phòng game mới…</button></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="game-join">Nhập mã phòng để vào…</button></li>
+            <li class="menu-sep" role="separator"></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="game-ai">Chơi với máy (AI)…</button></li>
+          </ul>
+        </div>
+        <div class="menu-root">
+          <button type="button" class="menu-trigger" data-menu="setting" aria-expanded="false">Setting</button>
+          <ul class="menu-list" id="menu-setting" role="menu" hidden>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="sidebar">Ẩn/hiện Solution Explorer</button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="ribbon">Ẩn/hiện ribbon<kbd>Ctrl+F1</kbd></button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="minimal">Chế độ tối giản (chỉ chat)<kbd>Ctrl+Shift+M</kbd></button></li>
@@ -261,6 +271,93 @@
       <div class="dialog-actions picker-actions">
         <button type="button" class="button button--primary" id="picker-create">+ Tạo room mới</button>
         <button type="button" class="button" id="picker-cancel">Huỷ</button>
+      </div>
+    </dialog>
+
+    <dialog class="dialog game-dialog" id="game-dialog">
+      <div class="dialog-head">
+        <span class="game-dialog-mark" aria-hidden="true">#</span>
+        <span class="game-dialog-title">Tic-Tac-Toe - Visual Studio Collab Game</span>
+        <button type="button" class="picker-close" id="game-dialog-close" aria-label="Đóng">✕</button>
+      </div>
+
+      <div class="dialog-body game-body">
+        <!-- Lobby View -->
+        <div class="game-lobby-view" id="game-lobby-view">
+          <div class="game-section">
+            <h3 class="game-section-title">Chơi chung Online (Mã phòng)</h3>
+            <p class="game-section-desc">Nhập mã phòng 4 ký tự do bạn bè chia sẻ hoặc tạo phòng mới để gửi mã:</p>
+            <div class="game-join-row">
+              <input
+                id="game-code-input"
+                class="game-code-input"
+                type="text"
+                placeholder="MÃ PHÒNG (VD: 9B2X)"
+                maxlength="6"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button type="button" class="button button--primary" id="game-join-btn">Vào phòng</button>
+              <button type="button" class="button" id="game-create-btn">+ Tạo phòng mới</button>
+            </div>
+          </div>
+
+          <div class="game-sep"></div>
+
+          <div class="game-section">
+            <h3 class="game-section-title">Chế độ chơi nhanh</h3>
+            <div class="game-quick-buttons">
+              <button type="button" class="button" id="game-ai-btn">🤖 Chơi với máy (AI)</button>
+              <button type="button" class="button" id="game-local-btn">👥 Chơi 2 người trên máy</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Board View -->
+        <div class="game-board-view" id="game-board-view" hidden>
+          <div class="game-toolbar">
+            <span class="game-chip" id="game-room-code-badge">Phòng: 9B2X</span>
+            <span class="game-turn-badge" id="game-turn-indicator">Lượt: X</span>
+            <span class="game-toolbar-spacer"></span>
+            <button type="button" class="game-tool-btn" id="game-copy-code-btn" title="Copy mã và link mời bạn">Copy mã / Link</button>
+            <button type="button" class="game-tool-btn" id="game-exit-btn">Thoát sảnh</button>
+          </div>
+
+          <div class="game-status-banner" id="game-status-banner">Lượt của bạn (X)</div>
+
+          <div class="game-scoreboard">
+            <div class="score-card score-card--x">
+              <span class="score-label">Người chơi X</span>
+              <span class="score-val" id="game-score-x">0</span>
+            </div>
+            <div class="score-card score-card--draw">
+              <span class="score-label">Hoà</span>
+              <span class="score-val" id="game-score-draws">0</span>
+            </div>
+            <div class="score-card score-card--o">
+              <span class="score-label">Người chơi O</span>
+              <span class="score-val" id="game-score-o">0</span>
+            </div>
+          </div>
+
+          <div class="game-grid-wrapper">
+            <div class="game-grid" id="game-grid" role="grid" aria-label="Bàn cờ Tic-Tac-Toe">
+              <button type="button" class="game-cell" id="game-cell-0" data-cell="0" aria-label="Ô 0"></button>
+              <button type="button" class="game-cell" id="game-cell-1" data-cell="1" aria-label="Ô 1"></button>
+              <button type="button" class="game-cell" id="game-cell-2" data-cell="2" aria-label="Ô 2"></button>
+              <button type="button" class="game-cell" id="game-cell-3" data-cell="3" aria-label="Ô 3"></button>
+              <button type="button" class="game-cell" id="game-cell-4" data-cell="4" aria-label="Ô 4"></button>
+              <button type="button" class="game-cell" id="game-cell-5" data-cell="5" aria-label="Ô 5"></button>
+              <button type="button" class="game-cell" id="game-cell-6" data-cell="6" aria-label="Ô 6"></button>
+              <button type="button" class="game-cell" id="game-cell-7" data-cell="7" aria-label="Ô 7"></button>
+              <button type="button" class="game-cell" id="game-cell-8" data-cell="8" aria-label="Ô 8"></button>
+            </div>
+          </div>
+
+          <div class="game-board-actions">
+            <button type="button" class="button button--primary" id="game-rematch-btn">Ván mới</button>
+          </div>
+        </div>
       </div>
     </dialog>
 

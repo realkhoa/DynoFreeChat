@@ -1,3 +1,11 @@
+/**
+ * @file menubar.ts
+ * @brief Top-level Menubar navigation and action dispatcher.
+ */
+
+/**
+ * @brief Actions that can be dispatched from the menu bar.
+ */
 export type MenuAction =
   | "reload"
   | "copy-url"
@@ -17,15 +25,30 @@ export type MenuAction =
   | "reconnect"
   | "forget-pass"
   | "sidebar"
-  | "about";
+  | "about"
+  | "tictactoe"
+  | "game-create"
+  | "game-join"
+  | "game-ai";
 
+/**
+ * @brief Controls the interactive state of the application menubar.
+ */
 export interface Menubar {
+  /** Enables or disables a specific menu action */
   setEnabled(action: MenuAction, enabled: boolean): void;
+  /** Sets checked state for a menu toggle action */
   setChecked(action: MenuAction, checked: boolean): void;
+  /** Closes all open dropdown menus */
   closeAll(): void;
 }
 
-/** Classic menu bar: click to open, click outside or Escape to close. */
+/**
+ * @brief Mounts the classic IDE menubar with dropdown interaction and keyboard navigation.
+ * @param root Container element containing menu triggers.
+ * @param onAction Callback invoked when a menu action is triggered.
+ * @return Menubar controller instance.
+ */
 export function mountMenubar(root: HTMLElement, onAction: (action: MenuAction) => void): Menubar {
   const triggers = Array.from(root.querySelectorAll<HTMLButtonElement>(".menu-trigger"));
 

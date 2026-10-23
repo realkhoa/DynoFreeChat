@@ -18,7 +18,9 @@ Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao di�
 
 ## Tính năng
 
-- Giao diện **Visual Studio 2022** (không phải VS Code): title bar có chuông thông báo, menu bar + ô Search, **ribbon** 4 tab (Home / Room / View / Tools) với các group có caption, tab tài liệu, breadcrumb, log có số dòng như editor, **Solution Explorer bên phải**, ô nhập tin Output ở dưới.
+- Giao diện **Visual Studio 2022** (không phải VS Code): title bar có chuông thông báo, menu bar + ô Search, **ribbon** 3 tab (**Chat** / **Collab** / **Setting**) với các group có caption, tab tài liệu, breadcrumb, log có số dòng như editor, **Solution Explorer bên phải**, ô nhập tin Output ở dưới.
+- **Collab: Cờ Caro (Tic-Tac-Toe 3×3) Multiplayer**: Chơi đối kháng trực tuyến ngay trong giao diện IDE qua Cloudflare Durable Objects. Nhập mã phòng 4 ký tự (ví dụ `9B2X`), tạo phòng chia sẻ link trực tiếp (`#ttt=ROOMCODE`), đấu với AI (thuật toán Minimax tối ưu), hoặc chơi 2 người cục bộ. UI co giãn linh hoạt (responsive clamp) chơi mượt mà kể cả trong WebView siêu nhỏ.
+- **Tab Setting chuyên biệt**: Tập trung toàn bộ cấu hình không gian (Solution/Workspace), thông báo tin nhắn, âm thanh thông báo WebAudio, giao diện Light/Dark, và thông tin phần mềm.
 - **Solution Explorer nhiều solution**: `DynoFreeChat` là dữ liệu thật (rooms), còn `Collab` và `VinaBIM` là **solution mẫu** (placeholder) để panel có hình dạng của một workspace thật — bấm vào sẽ báo rõ là placeholder, không giả vờ có dữ liệu.
 - **Đổi nickname** ở ribbon `Home → Nickname`, hoặc menu `Edit`/`Tools`.
 - **Nhiều phòng**, tạo bằng tên (slug), vào bằng link `?r=<slug>`.

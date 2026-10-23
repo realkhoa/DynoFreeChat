@@ -1844,3 +1844,340 @@ button:disabled {
 :root[data-dock="closed"] .dock {
   display: none;
 }
+
+/* ---------------------------------------------------- Tic-Tac-Toe Game Dialog */
+
+.game-dialog {
+  width: min(440px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  min-width: 0;
+  max-height: calc(100dvh - 16px);
+  margin: auto;
+  overflow-y: auto;
+}
+
+.game-dialog-mark {
+  color: var(--accent);
+  font-weight: 700;
+  margin-right: 6px;
+  font-family: var(--font-mono);
+}
+
+.game-dialog-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.game-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.game-section-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.game-section-desc {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  color: var(--fg-dim);
+}
+
+.game-join-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.game-code-input {
+  flex: 1;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--editor);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font: 13px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.game-code-input:focus {
+  border-color: var(--accent);
+}
+
+.game-sep {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 0;
+}
+
+.game-quick-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.game-quick-buttons .button {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Board View */
+
+.game-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  background: var(--chrome);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.game-chip {
+  padding: 2px 6px;
+  background: var(--editor);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: 11px/1.3 var(--font-mono);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.game-turn-badge {
+  font: 11.5px/1.3 var(--font-ui);
+  color: var(--fg-dim);
+}
+
+.game-toolbar-spacer {
+  flex: 1;
+}
+
+.game-tool-btn {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.game-tool-btn:hover {
+  background: var(--hover-chrome);
+  color: var(--fg);
+}
+
+.game-status-banner {
+  padding: 8px 10px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--editor);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--fg);
+}
+
+.game-scoreboard {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+
+.score-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px;
+  background: var(--chrome);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.score-card--x .score-val {
+  color: var(--accent);
+}
+
+.score-card--o .score-val {
+  color: var(--warn);
+}
+
+.score-label {
+  font-size: 10.5px;
+  color: var(--fg-dim);
+}
+
+.score-val {
+  font: 18px/1.2 var(--font-mono);
+  font-weight: 700;
+}
+
+.game-grid-wrapper {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+}
+
+.game-grid {
+  display: grid;
+  grid-template-columns: repeat(3, clamp(48px, 20vw, 76px));
+  grid-template-rows: repeat(3, clamp(48px, 20vw, 76px));
+  gap: 4px;
+  background: var(--border);
+  padding: 4px;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.game-cell {
+  width: clamp(48px, 20vw, 76px);
+  height: clamp(48px, 20vw, 76px);
+  display: grid;
+  place-items: center;
+  background: var(--editor);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: clamp(22px, 8vw, 36px)/1 var(--font-mono);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s;
+  user-select: none;
+}
+
+.game-cell:hover:not(:disabled) {
+  background: var(--hover-row);
+  border-color: var(--accent);
+}
+
+.game-cell:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.game-cell.cell-x {
+  color: var(--accent);
+}
+
+.game-cell.cell-o {
+  color: var(--warn);
+}
+
+.game-cell.cell-win {
+  background: var(--sel);
+  border-color: var(--warn);
+  box-shadow: inset 0 0 10px rgba(215, 186, 125, 0.4);
+  animation: cellPulse 1.2s infinite alternate;
+}
+
+@keyframes cellPulse {
+  from {
+    filter: brightness(1);
+  }
+  to {
+    filter: brightness(1.25);
+  }
+}
+
+.game-board-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.game-rematch-btn {
+  min-width: 120px;
+}
+
+/* ---------------------------------------------------- Ultra-Compact WebView Mode */
+
+@media (max-width: 440px) {
+  .game-dialog {
+    width: calc(100vw - 8px);
+    max-width: calc(100vw - 8px);
+  }
+
+  .game-body {
+    padding: 10px 8px;
+    gap: 10px;
+  }
+
+  .game-join-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .game-quick-buttons {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .game-toolbar {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .game-status-banner {
+    padding: 6px 8px;
+    font-size: 11.5px;
+  }
+
+  .score-val {
+    font-size: 15px;
+  }
+
+  .tab {
+    min-width: 80px;
+    padding: 0 4px 0 6px;
+  }
+
+  .tab-label {
+    font-size: 11px;
+  }
+
+  .titlebar-center {
+    display: none;
+  }
+}
+
+@media (max-height: 540px) {
+  .game-body {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .game-scoreboard {
+    gap: 4px;
+  }
+
+  .score-card {
+    padding: 2px 4px;
+  }
+
+  .score-val {
+    font-size: 14px;
+  }
+
+  .game-grid-wrapper {
+    padding: 2px 0;
+  }
+
+  .game-grid {
+    grid-template-columns: repeat(3, clamp(36px, 13vh, 54px));
+    grid-template-rows: repeat(3, clamp(36px, 13vh, 54px));
+  }
+
+  .game-cell {
+    width: clamp(36px, 13vh, 54px);
+    height: clamp(36px, 13vh, 54px);
+    font-size: clamp(16px, 6vh, 24px);
+  }
+}
