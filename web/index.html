@@ -3,24 +3,45 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
-    <title>DynoFreeChat — Microsoft Visual Studio</title>
+    <meta name="color-scheme" content="light" />
+    <title>DynoFreeChat - Microsoft Visual Studio</title>
     <meta
       name="description"
       content="Chat room kiểu Visual Studio: mỗi tin nhắn là một dòng log. Tạo room, đặt mật khẩu, chat realtime."
     />
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='3' fill='%232d2d30'/%3E%3Crect x='9' y='8' width='10' height='16' rx='1' fill='none' stroke='%23007acc' stroke-width='2'/%3E%3Cpath d='M22 12v8' stroke='%239d9d9d' stroke-width='2'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='3' fill='%23f0f0f0'/%3E%3Crect x='9' y='8' width='9' height='16' rx='1' fill='none' stroke='%23007acc' stroke-width='2'/%3E%3Cpath d='M21 13v6' stroke='%236b6b6b' stroke-width='2'/%3E%3C/svg%3E"
     />
+    <script>
+      // Applies the saved theme before first paint so there is no flash.
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem("dyno.theme") === "light" ? "light" : "dark";
+      } catch (error) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    </script>
   </head>
   <body>
     <div class="ide">
       <header class="titlebar">
         <span class="titlebar-mark" id="titlebar-mark" aria-hidden="true"></span>
-        <span class="titlebar-title">DynoFreeChat — Microsoft Visual Studio</span>
-        <span class="titlebar-spacer"></span>
-        <span class="titlebar-doc" id="titlebar-room">no room</span>
+        <span class="titlebar-title">DynoFreeChat - Microsoft Visual Studio</span>
+        <span class="titlebar-right">
+          <button type="button" class="titlebar-bell" id="notify-bell" aria-expanded="false" aria-label="Thông báo" title="Thông báo">
+            <span class="bell-count" id="bell-count" hidden>0</span>
+          </button>
+          <span class="titlebar-room" id="titlebar-room">no room</span>
+        </span>
+        <div class="notify-panel" id="notify-panel" role="dialog" aria-label="Thông báo" hidden>
+          <div class="notify-head">
+            <span>Notifications</span>
+            <button type="button" class="notify-clear" id="notify-clear">Đánh dấu đã đọc</button>
+          </div>
+          <ul class="notify-list" id="notify-list"></ul>
+          <p class="notify-empty" id="notify-empty">không có thông báo mới</p>
+        </div>
       </header>
 
       <nav class="menubar" id="menubar" aria-label="Thanh menu">
@@ -28,6 +49,8 @@
           <button type="button" class="menu-trigger" data-menu="file" aria-expanded="false">File</button>
           <ul class="menu-list" id="menu-file" role="menu" hidden>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="reload">Nạp lại<kbd>F5</kbd></button></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="new-room">Room mới…<kbd>Ctrl+N</kbd></button></li>
+            <li class="menu-sep" role="separator"></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="copy-url">Copy link room<kbd>Ctrl+Shift+C</kbd></button></li>
           </ul>
         </div>
@@ -45,7 +68,9 @@
           <button type="button" class="menu-trigger" data-menu="view" aria-expanded="false">View</button>
           <ul class="menu-list" id="menu-view" role="menu" hidden>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="follow">Bám đuôi log<kbd>Ctrl+End</kbd></button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="sidebar">Ẩn/hiện project browser</button></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="sidebar">Ẩn/hiện Solution Explorer</button></li>
+            <li class="menu-sep" role="separator"></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="theme">Giao diện: Dark / Light<kbd>Ctrl+Shift+D</kbd></button></li>
           </ul>
         </div>
         <div class="menu-root">
@@ -72,7 +97,7 @@
         <div class="menu-root">
           <button type="button" class="menu-trigger" data-menu="debug" aria-expanded="false">Debug</button>
           <ul class="menu-list" id="menu-debug" role="menu" hidden>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="reconnect">Kết nối lại<kbd>Ctrl+Shift+R</kbd></button></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="reconnect">Kết nối lại room<kbd>Ctrl+Shift+R</kbd></button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" disabled>Start Debugging<kbd>F5</kbd></button></li>
           </ul>
         </div>
@@ -90,62 +115,73 @@
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="about">Về DynoFreeChat…</button></li>
           </ul>
         </div>
+
+        <span class="menubar-spacer"></span>
+
+        <label class="menu-search" for="room-search">
+          <span class="menu-search-icon" id="menu-search-icon" aria-hidden="true"></span>
+          <input id="room-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Tìm room" />
+          <span class="menu-search-chevron" aria-hidden="true"></span>
+        </label>
+        <span class="menubar-solution" id="menubar-solution">DynoFreeChat</span>
       </nav>
 
       <div class="stdbar" id="stdbar" aria-label="Standard toolbar">
-        <button type="button" class="stdbar-start" id="stdbar-connect" title="Kết nối lại room hiện tại">
-          <span class="stdbar-play" aria-hidden="true"></span><span>Connect</span>
-        </button>
+        <button type="button" class="tool-button" id="stdbar-undo" disabled title="Không áp dụng"></button>
+        <button type="button" class="tool-button" id="stdbar-redo" disabled title="Không áp dụng"></button>
+        <button type="button" class="tool-button" id="stdbar-save" disabled title="Không áp dụng"></button>
         <span class="stdbar-sep" aria-hidden="true"></span>
+        <select class="stdbar-combo" aria-label="Cấu hình" disabled>
+          <option>Debug</option>
+        </select>
+        <select class="stdbar-combo" aria-label="Nền tảng" disabled>
+          <option>Any CPU</option>
+        </select>
+        <select class="stdbar-combo stdbar-combo--room" id="stdbar-room" aria-label="Room đang mở">
+          <option value="">Chưa chọn room</option>
+        </select>
+        <button type="button" class="stdbar-start" id="stdbar-connect" title="Kết nối lại room hiện tại">
+          <span class="stdbar-play" aria-hidden="true"></span><span id="stdbar-start-label">Connect</span>
+        </button>
+        <span class="toolbar-spacer"></span>
         <button type="button" class="tool-button" id="stdbar-refresh"></button>
         <button type="button" class="tool-button" id="stdbar-clear"></button>
         <button type="button" class="tool-button" id="stdbar-follow" aria-pressed="true"></button>
-        <span class="toolbar-spacer"></span>
-        <span class="stdbar-hint" id="stdbar-hint">Debug&nbsp;·&nbsp;Any&nbsp;CPU</span>
       </div>
-      <div class="workbench">
-        <aside class="sidebar" id="sidebar" aria-label="Project browser">
-          <div class="sidebar-head">
-            <span class="section-title">Solution Explorer</span>
-            <div class="section-actions">
-              <button type="button" class="icon-button" id="new-room" aria-label="Tạo room mới" title="Tạo room mới (Ctrl+N)"></button>
-              <button type="button" class="icon-button" id="refresh-rooms" aria-label="Nạp lại danh sách" title="Nạp lại danh sách"></button>
-              <button type="button" class="icon-button" id="collapse-tree" aria-label="Thu gọn tất cả" title="Thu gọn tất cả"></button>
-            </div>
-          </div>
-          <ul class="tree" id="room-tree" role="tree" aria-label="Rooms"></ul>
-          <div class="sidebar-foot" id="sidebar-foot">đang tải…</div>
-        </aside>
 
+      <div class="tabstrip" role="tablist" aria-label="Document">
+        <div class="tab" role="tab" id="tab-room" aria-selected="true" tabindex="0">
+          <span class="tab-icon" id="tab-icon" aria-hidden="true"></span>
+          <span class="tab-label" id="tab-label">Start</span>
+          <button type="button" class="tab-close" id="tab-close" aria-label="Đóng room" title="Đóng room" hidden></button>
+        </div>
+      </div>
+
+      <div class="breadcrumb" id="breadcrumb">
+        <span class="crumb" id="crumb-solution">DynoFreeChat</span>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb" id="crumb-group">Rooms</span>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb crumb--current" id="crumb-room">Start</span>
+        <span class="toolbar-spacer"></span>
+        <label class="filter" for="filter">
+          <span class="filter-icon" id="filter-icon" aria-hidden="true"></span>
+          <input id="filter" type="search" placeholder="Find in output…" autocomplete="off" spellcheck="false" aria-label="Lọc log" />
+        </label>
+        <label class="combo" for="kind">
+          <span class="combo-label">Show output from:</span>
+          <span class="combo-shell">
+            <select id="kind">
+              <option value="all">All</option>
+              <option value="chat">Chat</option>
+              <option value="system">System</option>
+            </select>
+          </span>
+        </label>
+      </div>
+
+      <div class="content">
         <main class="editor" id="editor" data-mode="start">
-          <div class="tabstrip" role="tablist" aria-label="Document">
-            <div class="tab" role="tab" id="tab-room" aria-selected="true" tabindex="0">
-              <span class="tab-icon" id="tab-icon" aria-hidden="true"></span>
-              <span class="tab-label" id="tab-label">Start</span>
-              <button type="button" class="tab-close" id="tab-close" aria-label="Đóng room" title="Đóng room" hidden></button>
-            </div>
-          </div>
-
-          <div class="toolbar">
-            <label class="combo" for="kind">
-              <span class="combo-label">Show output from:</span>
-              <span class="combo-shell">
-                <select id="kind">
-                  <option value="all">All</option>
-                  <option value="chat">Chat</option>
-                  <option value="system">System</option>
-                </select>
-              </span>
-            </label>
-            <label class="filter" for="filter">
-              <span class="filter-icon" id="filter-icon" aria-hidden="true"></span>
-              <input id="filter" type="search" placeholder="Find in output…" autocomplete="off" spellcheck="false" aria-label="Lọc log" />
-            </label>
-            <span class="toolbar-spacer"></span>
-            <button type="button" class="tool-button" id="follow" aria-pressed="true"></button>
-            <button type="button" class="tool-button" id="clear"></button>
-          </div>
-
           <section class="startview" id="startview" aria-label="Bắt đầu">
             <h1>DynoFreeChat</h1>
             <p>chat kiểu Visual Studio · mỗi tin nhắn là một dòng log</p>
@@ -154,7 +190,7 @@
               <button type="button" class="button" id="start-refresh">Nạp lại danh sách</button>
             </div>
             <p class="hint">
-              chọn một room ở project browser · <kbd>Ctrl</kbd>+<kbd>N</kbd> tạo mới ·
+              chọn một room ở Solution Explorer · <kbd>Ctrl</kbd>+<kbd>N</kbd> tạo mới ·
               <kbd>Ctrl</kbd>+<kbd>F</kbd> lọc log
             </p>
           </section>
@@ -163,32 +199,58 @@
             <div class="log" id="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
             <button type="button" class="new-chip" id="new-chip" hidden>tin mới</button>
           </div>
-
-          <div class="composer" id="composer" data-disabled="true">
-            <span class="composer-prompt" aria-hidden="true">›</span>
-            <input
-              id="composer-input"
-              type="text"
-              placeholder="chọn một room để bắt đầu…"
-              autocomplete="off"
-              spellcheck="false"
-              maxlength="500"
-              aria-label="Nội dung tin nhắn"
-              disabled
-            />
-            <span class="composer-meter" id="composer-meter"></span>
-          </div>
         </main>
+
+        <aside class="sidebar" id="sidebar" aria-label="Solution Explorer">
+          <div class="sidebar-head">
+            <span class="sidebar-title">Solution Explorer</span>
+            <div class="section-actions">
+              <button type="button" class="icon-button" id="new-room" aria-label="Tạo room mới" title="Tạo room mới (Ctrl+N)"></button>
+              <button type="button" class="icon-button" id="refresh-rooms" aria-label="Nạp lại danh sách" title="Nạp lại danh sách"></button>
+              <button type="button" class="icon-button" id="collapse-tree" aria-label="Thu gọn tất cả" title="Thu gọn tất cả"></button>
+            </div>
+          </div>
+          <div class="sidebar-search">
+            <span class="sidebar-search-icon" id="tree-search-icon" aria-hidden="true"></span>
+            <input id="tree-search" type="search" placeholder="Search Solution Explorer (Ctrl+;)" autocomplete="off" spellcheck="false" aria-label="Tìm room" />
+          </div>
+          <ul class="tree" id="room-tree" role="tree" aria-label="Rooms"></ul>
+          <div class="sidebar-foot" id="sidebar-foot">đang tải…</div>
+        </aside>
+      </div>
+
+      <div class="dock" id="dock">
+        <div class="dock-body" id="composer" data-disabled="true">
+          <span class="composer-prompt" aria-hidden="true">›</span>
+          <input
+            id="composer-input"
+            type="text"
+            placeholder="chọn một room để bắt đầu…"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="500"
+            aria-label="Nội dung tin nhắn"
+            disabled
+          />
+          <span class="composer-meter" id="composer-meter"></span>
+        </div>
+        <div class="dock-tabs">
+          <button type="button" class="dock-tab" disabled>Error List</button>
+          <button type="button" class="dock-tab dock-tab--active" aria-selected="true">Output</button>
+          <span class="toolbar-spacer"></span>
+          <button type="button" class="dock-icon" id="dock-pin" aria-label="Ghim" title="Ghim"></button>
+          <button type="button" class="dock-icon" id="dock-close" aria-label="Đóng" title="Đóng"></button>
+        </div>
       </div>
 
       <footer class="statusbar" id="statusbar" data-connection="connecting">
-        <span class="statusitem statusitem--conn"><span class="conn-dot" aria-hidden="true"></span><span id="conn">Chưa kết nối</span></span>
-        <span class="statusitem statusitem--dim" id="wsurl">—</span>
+        <span class="statusitem statusitem--conn"><span class="conn-dot" aria-hidden="true"></span><span id="conn">Sẵn sàng</span></span>
         <span class="statusitem statusitem--dim" id="online">0 online</span>
         <span class="statusitem statusitem--dim" id="msgcount">0 dòng</span>
         <span class="status-spacer"></span>
-        <span class="statusitem" id="room-lock" hidden></span>
-        <span class="statusitem statusitem--dim" id="nick">—</span>
+        <span class="statusitem statusitem--dim" id="wsurl">—</span>
+        <span class="statusitem statusitem--dim" id="room-lock" hidden></span>
+        <button type="button" class="statusitem statusitem--button" id="nick" title="Đổi nickname">—</button>
         <span class="statusitem statusitem--dim">UTF-8</span>
       </footer>
     </div>
@@ -211,6 +273,24 @@
         <div class="dialog-actions">
           <button type="button" class="button" id="room-cancel">Huỷ</button>
           <button type="submit" class="button button--primary" id="room-submit">Tạo room</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="dialog" id="nick-dialog">
+      <form method="dialog" id="nick-form">
+        <div class="dialog-head">Đổi nickname</div>
+        <div class="dialog-body">
+          <div class="field">
+            <label for="nick-input">Nickname</label>
+            <input id="nick-input" maxlength="24" autocomplete="off" spellcheck="false" />
+            <span class="field-hint">1–24 ký tự. Mọi người trong room đều thấy tên này.</span>
+          </div>
+          <p class="dialog-error" id="nick-error" role="alert"></p>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="button" id="nick-cancel">Huỷ</button>
+          <button type="submit" class="button button--primary" id="nick-submit">Lưu</button>
         </div>
       </form>
     </dialog>

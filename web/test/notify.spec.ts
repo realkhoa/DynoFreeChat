@@ -26,9 +26,7 @@ describe("Notifier", () => {
     notifier.incoming("chung");
 
     expect(shown).toHaveLength(1);
-    expect(shown[0]?.title).toBe("#chung");
-    expect(shown[0]?.body).toBe("1 tin nhắn mới");
-    expect(shown[0]?.tag).toBe("room:chung");
+    expect(shown[0]).toEqual({ title: "#chung", body: "1 tin nhắn mới", tag: "room:chung" });
   });
 
   it("carries no message text or nickname at all", () => {
@@ -41,16 +39,32 @@ describe("Notifier", () => {
     }
   });
 
-  it("counts unread even while the tab is visible", () => {
+  it("stays quiet while the tab is being watched", () => {
     const { notifier, shown } = harness({ hidden: false });
     notifier.incoming("chung");
     notifier.incoming("chung");
 
     expect(shown).toHaveLength(0);
-    expect(notifier.unread).toBe(2);
+    expect(notifier.unread).toBe(0);
+    expect(notifier.entries()).toEqual([]);
   });
 
-  it("throttles notifications and reports the accumulated count", () => {
+  it("groups unread counts per room, newest first", () => {
+    const { notifier, clock } = harness();
+    notifier.incoming("a");
+    clock.now += 10;
+    notifier.incoming("b");
+    clock.now += 10;
+    notifier.incoming("b");
+
+    expect(notifier.unread).toBe(3);
+    expect(notifier.entries()).toEqual([
+      { room: "b", count: 2, at: 1_020 },
+      { room: "a", count: 1, at: 1_000 },
+    ]);
+  });
+
+  it("throttles OS notifications but keeps counting", () => {
     const { notifier, shown, clock } = harness();
     notifier.incoming("chung");
     notifier.incoming("chung");
@@ -62,21 +76,32 @@ describe("Notifier", () => {
     expect(shown[1]?.body).toBe("3 tin nhắn mới");
   });
 
-  it("stays quiet when disabled but still tracks unread", () => {
+  it("keeps unread while disabled but shows nothing", () => {
     const { notifier, shown } = harness({ enabled: false });
-    notifier.incoming("chung");
     notifier.incoming("chung");
 
     expect(shown).toHaveLength(0);
-    expect(notifier.unread).toBe(2);
+    expect(notifier.unread).toBe(1);
   });
 
-  it("clears unread on reset and reports what it cleared", () => {
-    const { notifier } = harness({ hidden: false });
+  it("clears one room without touching the others", () => {
+    const { notifier } = harness();
     notifier.incoming("a");
+    notifier.incoming("b");
+    notifier.incoming("b");
+
+    notifier.resetRoom("b");
+    expect(notifier.entries()).toEqual([{ room: "a", count: 1, at: 1_000 }]);
+    expect(notifier.unread).toBe(1);
+  });
+
+  it("clears everything on reset and reports the count", () => {
+    const { notifier } = harness();
     notifier.incoming("a");
+    notifier.incoming("b");
 
     expect(notifier.reset()).toBe(2);
     expect(notifier.unread).toBe(0);
+    expect(notifier.entries()).toEqual([]);
   });
 });

@@ -1,15 +1,13 @@
-/* --------------------------- log viewport + composer (the "Output" pane) */
+/* ----------------------- log pane (the "document" area) + output dock */
 
 .logwrap {
-  grid-row: 3;
   position: relative;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.editor[data-mode="start"] .logwrap,
-.editor[data-mode="start"] .composer {
+.editor[data-mode="start"] .logwrap {
   display: none;
 }
 
@@ -20,7 +18,7 @@
 .log {
   flex: 1;
   min-height: 0;
-  padding: 4px 0 8px;
+  padding: 4px 0 10px;
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--editor);
@@ -30,14 +28,14 @@
 
 .log:focus-visible {
   outline: 1px solid var(--accent);
-  outline-offset: -1px;
+  outline-offset: -2px;
 }
 
 .log-row {
   display: grid;
-  grid-template-columns: 8ch 14ch 1ch minmax(0, 1fr);
+  grid-template-columns: 4.5ch 8ch 14ch 1ch minmax(0, 1fr);
   gap: 0 0.75ch;
-  padding: 0 10px;
+  padding: 0 10px 0 0;
   min-height: calc(var(--log-size) * var(--log-line));
 }
 
@@ -47,6 +45,15 @@
 
 .log-row[hidden] {
   display: none;
+}
+
+/* editor-style gutter */
+.log-num {
+  padding-right: 8px;
+  text-align: right;
+  color: var(--fg-faint);
+  user-select: none;
+  border-right: 1px solid var(--border-subtle);
 }
 
 .log-time {
@@ -81,6 +88,7 @@
 /* self */
 .log-row.is-self .log-nick {
   color: var(--accent);
+  font-weight: 600;
 }
 
 /* system + error rows */
@@ -102,7 +110,7 @@
 
 /* optimistic echo until the server acknowledges */
 .log-row.is-pending {
-  opacity: 0.55;
+  opacity: 0.6;
 }
 
 .log-row.is-pending .log-mark {
@@ -111,7 +119,7 @@
 }
 
 .log-row.is-failed {
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .log-row.is-failed .log-mark,
@@ -125,54 +133,8 @@
   }
 }
 
-/* ---------------------------------------------------------------- composer */
-
-.composer {
-  grid-row: 4;
-  display: grid;
-  grid-template-columns: 1ch minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0 5px;
-  height: 26px;
-  padding: 0 10px;
-  background: var(--editor);
-  border-top: 1px solid var(--border);
-  font: var(--log-size) / 1 var(--font-mono);
-}
-
-.composer[data-disabled="true"] {
-  opacity: 0.55;
-}
-
-.composer-prompt {
-  color: var(--accent);
-  user-select: none;
-}
-
-.composer input {
-  height: 100%;
-  background: transparent;
-  border: 0;
-  outline: none;
-  color: var(--fg);
-  font: inherit;
-  min-width: 0;
-}
-
-.composer input::placeholder {
-  color: var(--fg-faint);
-}
-
-.composer-meter {
-  font-size: 10.5px;
-  color: var(--fg-faint);
-  font-variant-numeric: tabular-nums;
-}
-
-.composer-meter[data-state="warn"] {
-  color: var(--warn);
-}
-
-.composer-meter[data-state="over"] {
-  color: var(--err);
+@media (prefers-reduced-motion: reduce) {
+  .log-row.is-pending .log-mark {
+    animation: none;
+  }
 }

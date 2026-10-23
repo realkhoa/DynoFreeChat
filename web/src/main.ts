@@ -6,22 +6,25 @@ import { MAX_TEXT, type ClientFrame, type RoomInfo, type ServerFrame } from "@dy
 import { createRoom, listRooms } from "./api";
 import { apiBase, roomSocketUrl, wsUrl } from "./env";
 import { byId } from "./lib/dom";
+import { formatAge } from "./lib/format";
 import { loadIdentity, saveNick, type Identity } from "./lib/identity";
 import { Notifier } from "./lib/notify";
 import { PassVault } from "./lib/passvault";
+import { applyTheme, loadTheme, otherTheme, saveTheme, type Theme } from "./lib/theme";
 import { Store, type KindFilter } from "./model/store";
 import { ChatSocket, type SocketState } from "./net/socket";
 import { Composer } from "./ui/composer";
 import { icon, setIconButton } from "./ui/icons";
 import { LogView } from "./ui/log-view";
 import { mountMenubar, type MenuAction } from "./ui/menubar";
+import { NickDialog } from "./ui/nick-dialog";
 import { RoomDialog } from "./ui/room-dialog";
 import { Sidebar } from "./ui/sidebar";
 import { StatusBar } from "./ui/statusbar";
 
 const PENDING_TTL_MS = 10_000;
 const FILTER_DEBOUNCE_MS = 120;
-const BASE_TITLE = "DynoFreeChat — Microsoft Visual Studio";
+const BASE_TITLE = "DynoFreeChat - Microsoft Visual Studio";
 
 const ERROR_TEXT: Record<string, string> = {
   BAD_NICK: "nickname không hợp lệ",
@@ -60,10 +63,13 @@ const composerInput = byId<HTMLInputElement>("composer-input");
 const composerMeter = byId<HTMLElement>("composer-meter");
 const filterInput = byId<HTMLInputElement>("filter");
 const kindSelect = byId<HTMLSelectElement>("kind");
-const followButton = byId<HTMLButtonElement>("follow");
-const clearButton = byId<HTMLButtonElement>("clear");
+const roomSearch = byId<HTMLInputElement>("room-search");
+const treeSearch = byId<HTMLInputElement>("tree-search");
+const followButton = byId<HTMLButtonElement>("stdbar-follow");
+const clearButton = byId<HTMLButtonElement>("stdbar-clear");
 const newChip = byId<HTMLButtonElement>("new-chip");
 const newRoomButton = byId<HTMLButtonElement>("new-room");
+const roomSelect = byId<HTMLSelectElement>("stdbar-room");
 const treeEl = byId<HTMLElement>("room-tree");
 const sidebarEl = byId<HTMLElement>("sidebar");
 const sidebarFoot = byId<HTMLElement>("sidebar-foot");
@@ -71,15 +77,26 @@ const menubarEl = byId<HTMLElement>("menubar");
 const tabLabel = byId<HTMLElement>("tab-label");
 const tabClose = byId<HTMLButtonElement>("tab-close");
 const titlebarRoom = byId<HTMLElement>("titlebar-room");
+const crumbRoom = byId<HTMLElement>("crumb-room");
+const nickButton = byId<HTMLButtonElement>("nick");
+const notifyBell = byId<HTMLButtonElement>("notify-bell");
+const bellCount = byId<HTMLElement>("bell-count");
+const notifyPanel = byId<HTMLElement>("notify-panel");
+const notifyList = byId<HTMLElement>("notify-list");
+const notifyEmpty = byId<HTMLElement>("notify-empty");
+const notifyClear = byId<HTMLButtonElement>("notify-clear");
 const dialogEl = byId<HTMLDialogElement>("room-dialog");
+const nickDialogEl = byId<HTMLDialogElement>("nick-dialog");
 
 // ------------------------------------------------------------------ instances
 
 const storage = safeStorage();
 let identity: Identity = loadIdentity(storage);
 const vault = new PassVault(storage);
+let theme: Theme = loadTheme(storage);
 
 let store = new Store();
+let rooms: RoomInfo[] = [];
 let socket: ChatSocket | null = null;
 let current: { slug: string; locked: boolean } | null = null;
 let joinPass: string | undefined;
@@ -90,6 +107,7 @@ let suppressDisconnectNotice = false;
 
 const logView = new LogView(logEl);
 logView.selfNick = identity.nick;
+logView.setTheme(theme);
 
 const statusbar = new StatusBar({
   root: byId<HTMLElement>("statusbar"),
@@ -97,7 +115,7 @@ const statusbar = new StatusBar({
   url: byId<HTMLElement>("wsurl"),
   online: byId<HTMLElement>("online"),
   count: byId<HTMLElement>("msgcount"),
-  nick: byId<HTMLElement>("nick"),
+  nick: nickButton,
   lock: byId<HTMLElement>("room-lock"),
 });
 
@@ -113,6 +131,13 @@ const dialog = new RoomDialog(dialogEl, {
   submit: byId<HTMLButtonElement>("room-submit"),
   cancel: byId<HTMLButtonElement>("room-cancel"),
   error: byId<HTMLElement>("room-error"),
+});
+
+const nickDialog = new NickDialog(nickDialogEl, {
+  form: byId<HTMLFormElement>("nick-form"),
+  input: byId<HTMLInputElement>("nick-input"),
+  error: byId<HTMLElement>("nick-error"),
+  cancel: byId<HTMLButtonElement>("nick-cancel"),
 });
 
 const composer = new Composer({
@@ -163,12 +188,89 @@ function render(): void {
 
 function setFollow(following: boolean): void {
   logView.follow = following;
-  const hint = following ? "Đang bám đuôi log" : "Đã tạm dừng bám đuôi log";
-  for (const button of [followButton, byId<HTMLButtonElement>("stdbar-follow")]) {
-    button.setAttribute("aria-pressed", String(following));
-    button.title = hint;
-  }
+  followButton.setAttribute("aria-pressed", String(following));
+  followButton.title = following ? "Đang bám đuôi log" : "Đã tạm dừng bám đuôi log";
   if (following) newChip.hidden = true;
+}
+
+function setMode(mode: "start" | "room"): void {
+  editorEl.dataset.mode = mode;
+}
+
+function updateChrome(): void {
+  const slug = current?.slug;
+  tabLabel.textContent = slug === undefined ? "Start" : `#${slug}`;
+  titlebarRoom.textContent = slug === undefined ? "no room" : `#${slug}`;
+  crumbRoom.textContent = slug === undefined ? "Start" : `#${slug}`;
+  tabClose.hidden = slug === undefined;
+  roomSelect.value = slug ?? "";
+
+  const unread = notifier.unread;
+  const base = slug === undefined ? BASE_TITLE : `#${slug} — DynoFreeChat`;
+  document.title = unread > 0 ? `(${unread}) ${base}` : base;
+}
+
+/**
+ * The bell only ever lists room names and counts. Nothing in this panel can show
+ * what was said, by construction: the data model has no message text.
+ */
+function renderNotifications(): void {
+  const entries = notifier.entries();
+  const unread = notifier.unread;
+
+  bellCount.hidden = unread === 0;
+  bellCount.textContent = unread > 99 ? "99+" : String(unread);
+  notifyBell.title = unread === 0 ? "Thông báo" : `${unread} tin nhắn mới`;
+  notifyClear.disabled = unread === 0;
+
+  const items = entries.map((entry) => {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "notify-item";
+
+    const room = document.createElement("span");
+    room.className = "notify-room";
+    room.textContent = `#${entry.room}`;
+
+    const count = document.createElement("span");
+    count.className = "notify-count";
+    count.textContent = `${entry.count} tin mới`;
+
+    const meta = document.createElement("span");
+    meta.className = "notify-meta";
+    meta.textContent = formatAge(entry.at);
+
+    button.append(room, count, meta);
+    button.addEventListener("click", () => {
+      notifier.resetRoom(entry.room);
+      closeNotifications();
+      renderNotifications();
+      updateChrome();
+      enterRoom(entry.room, vault.get(entry.room));
+    });
+
+    item.append(button);
+    return item;
+  });
+
+  notifyList.replaceChildren(...items);
+  notifyEmpty.hidden = items.length > 0;
+}
+
+function openNotifications(): void {
+  notifyPanel.hidden = false;
+  notifyBell.setAttribute("aria-expanded", "true");
+}
+
+function closeNotifications(): void {
+  notifyPanel.hidden = true;
+  notifyBell.setAttribute("aria-expanded", "false");
+}
+
+function toggleNotificationsPanel(): void {
+  if (notifyPanel.hidden) openNotifications();
+  else closeNotifications();
 }
 
 /** Drops the socket and rejoins the current room, reusing a remembered password. */
@@ -180,27 +282,63 @@ function reconnect(): void {
   enterRoom(current.slug, vault.get(current.slug));
 }
 
-function setMode(mode: "start" | "room"): void {
-  editorEl.dataset.mode = mode;
-}
-
-function updateTitle(): void {
-  const unread = notifier.unread;
-  const base = current === null ? BASE_TITLE : `#${current.slug} — DynoFreeChat`;
-  document.title = unread > 0 ? `(${unread}) ${base}` : base;
+function toggleTheme(): void {
+  theme = otherTheme(theme);
+  saveTheme(storage, theme);
+  applyTheme(document.documentElement, theme);
+  logView.setTheme(theme);
+  menubar.setChecked("theme", theme === "light");
+  store.addSystem(`giao diện: ${theme}`);
+  render();
 }
 
 // --------------------------------------------------------------------- rooms
 
 async function refreshRooms(): Promise<void> {
   try {
-    const rooms = await listRooms(apiBase);
+    rooms = await listRooms(apiBase);
     sidebar.render(rooms, current?.slug ?? null, pickRoom);
+    sidebar.setQuery(treeSearch.value);
     const locked = rooms.filter((room) => room.locked).length;
     sidebar.setFoot(`${rooms.length} room · ${locked} có mật khẩu`);
+    fillRoomSelect();
   } catch {
     sidebar.setFoot("không tải được danh sách room");
   }
+}
+
+/** The "startup project" combo doubles as the room picker. */
+function fillRoomSelect(): void {
+  const options = rooms.map((room) => {
+    const option = document.createElement("option");
+    option.value = room.slug;
+    option.textContent = room.locked ? `${room.slug} (locked)` : room.slug;
+    return option;
+  });
+
+  if (current !== null && !rooms.some((room) => room.slug === current?.slug)) {
+    const option = document.createElement("option");
+    option.value = current.slug;
+    option.textContent = current.slug;
+    options.unshift(option);
+  }
+
+  if (options.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Chưa chọn room";
+    roomSelect.replaceChildren(option);
+    return;
+  }
+
+  roomSelect.replaceChildren(...options);
+  roomSelect.value = current?.slug ?? options[0]?.value ?? "";
+}
+
+function setRoomQuery(query: string): void {
+  sidebar.setQuery(query);
+  if (roomSearch.value !== query) roomSearch.value = query;
+  if (treeSearch.value !== query) treeSearch.value = query;
 }
 
 function pickRoom(room: RoomInfo): void {
@@ -260,13 +398,8 @@ function enterRoom(slug: string, pass?: string): void {
   joinPass = pass;
 
   store.addSystem(`đang vào #${slug}…`);
-  tabLabel.textContent = `#${slug}`;
-  titlebarRoom.textContent = `#${slug}`;
-  tabClose.hidden = false;
-  composer.setEnabled(false);
-  updateUrl(slug);
   setMode("room");
-  updateTitle();
+  updateChrome();
   render();
 
   const created = new ChatSocket({ url: roomSocketUrl(wsUrl, slug) });
@@ -274,11 +407,12 @@ function enterRoom(slug: string, pass?: string): void {
   created.onState((state, detail) => handleState(gen, state, detail));
   created.onFrame((frame) => handleFrame(gen, frame));
   created.connect();
+  composer.setEnabled(false);
 
   void refreshRooms();
 }
 
-function leaveRoom(clearUrl = true): void {
+function leaveRoom(updateUrl = true): void {
   generation += 1;
   socket?.close("leaving room");
   socket = null;
@@ -286,23 +420,24 @@ function leaveRoom(clearUrl = true): void {
   joinPass = undefined;
   composer.setEnabled(false);
 
-  if (clearUrl) {
-    store = new Store();
-    logView.clearLocal();
-    lastRowCount = 0;
-    updateUrl(null);
-    setMode("start");
-    tabLabel.textContent = "Start";
-    titlebarRoom.textContent = "no room";
-    tabClose.hidden = true;
-    statusbar.setLocked(false);
-    statusbar.setOnline(0);
-    store.addSystem("đã rời room");
-    notifier.reset();
-    updateTitle();
-    render();
-    void refreshRooms();
+  store = new Store();
+  logView.clearLocal();
+  lastRowCount = 0;
+  setMode("start");
+  statusbar.setLocked(false);
+  statusbar.setOnline(0);
+  store.addSystem("đã rời room");
+  notifier.reset();
+  updateChrome();
+  render();
+
+  if (updateUrl) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("r");
+    window.history.replaceState(null, "", url);
   }
+
+  void refreshRooms();
 }
 
 function handleState(
@@ -361,8 +496,9 @@ function handleFrame(gen: number, frame: ServerFrame): void {
       composer.focus();
       statusbar.setOnline(frame.online);
       statusbar.setLocked(frame.room.locked);
-      titlebarRoom.textContent = `#${frame.room.slug}`;
-      updateTitle();
+      notifier.resetRoom(frame.room.slug);
+      renderNotifications();
+      updateChrome();
       render();
       void refreshRooms();
       break;
@@ -373,7 +509,8 @@ function handleFrame(gen: number, frame: ServerFrame): void {
       if (outcome === "duplicate") break;
       if (frame.m.nick !== identity.nick) {
         notifier.incoming(current?.slug ?? "room");
-        updateTitle();
+        renderNotifications();
+        updateChrome();
       }
       render();
       break;
@@ -403,6 +540,7 @@ function handleServerError(gen: number, frame: Extract<ServerFrame, { t: "error"
 
   const slug = current?.slug;
   if (frame.code === "BAD_PASS" && slug !== undefined) vault.forget(slug);
+
   composer.setEnabled(false);
   suppressDisconnectNotice = true;
   socket?.close("auth failed");
@@ -432,13 +570,6 @@ function sendMessage(text: string): void {
 
 // ------------------------------------------------------------------- actions
 
-function updateUrl(slug: string | null): void {
-  const url = new URL(window.location.href);
-  if (slug === null) url.searchParams.delete("r");
-  else url.searchParams.set("r", slug);
-  window.history.replaceState(null, "", url);
-}
-
 function clearLog(): void {
   store.clearLocal();
   logView.clearLocal();
@@ -452,19 +583,19 @@ function applyFilter(kind: KindFilter, query = filterInput.value): void {
   render();
 }
 
-function changeNickname(): void {
-  const next = window.prompt("Nickname mới", identity.nick);
-  if (next === null) return;
+async function changeNickname(): Promise<void> {
+  if (nickDialog.isOpen) return;
 
-  const updated = saveNick(storage, identity, next);
-  if (updated.nick === identity.nick) return;
+  const next = await nickDialog.open(identity.nick);
+  if (next === null || next === identity.nick) return;
 
-  identity = updated;
+  identity = saveNick(storage, identity, next);
   logView.selfNick = identity.nick;
   statusbar.setNick(identity.nick);
   store.addSystem(`nickname đổi thành ${identity.nick}`);
   render();
 
+  // Re-joining updates the name on the server for everyone in the room.
   if (socket !== null && current !== null) {
     socket.send({ t: "join", nick: identity.nick, color: identity.color });
   }
@@ -531,7 +662,7 @@ function handleMenuAction(action: MenuAction): void {
       void copyRoomLink();
       break;
     case "nickname":
-      changeNickname();
+      void changeNickname();
       break;
     case "clear":
       clearLog();
@@ -546,6 +677,9 @@ function handleMenuAction(action: MenuAction): void {
       break;
     case "notify":
       void toggleNotifications();
+      break;
+    case "theme":
+      toggleTheme();
       break;
     case "sidebar":
       sidebarEl.hidden = !sidebarEl.hidden;
@@ -575,19 +709,24 @@ function handleMenuAction(action: MenuAction): void {
 // --------------------------------------------------------------------- wiring
 
 function decorateChrome(): void {
-  byId<HTMLElement>("titlebar-mark").append(icon("solution", 14));
-  byId<HTMLElement>("tab-icon").append(icon("room", 14));
-  byId<HTMLElement>("filter-icon").append(icon("search", 13));
+  byId<HTMLElement>("titlebar-mark").append(icon("solution", 15));
+  byId<HTMLElement>("tab-icon").append(icon("folder", 14));
+  byId<HTMLElement>("filter-icon").append(icon("search", 12));
+  byId<HTMLElement>("menu-search-icon").append(icon("search", 12));
+  byId<HTMLElement>("tree-search-icon").append(icon("search", 12));
   setIconButton(byId<HTMLElement>("tab-close"), "close", "Đóng room");
   setIconButton(byId<HTMLElement>("new-room"), "plus", "Tạo room mới (Ctrl+N)");
   setIconButton(byId<HTMLElement>("refresh-rooms"), "refresh", "Nạp lại danh sách room");
-  setIconButton(byId<HTMLElement>("collapse-tree"), "chevron-right", "Thu gọn project browser");
-  setIconButton(byId<HTMLElement>("follow"), "follow", "Bám đuôi log (Ctrl+End)");
-  setIconButton(byId<HTMLElement>("clear"), "trash", "Xoá log cục bộ (Ctrl+L)");
+  setIconButton(byId<HTMLElement>("collapse-tree"), "collapse", "Thu gọn Solution Explorer");
+  setIconButton(byId<HTMLElement>("stdbar-undo"), "undo", "Hoàn tác");
+  setIconButton(byId<HTMLElement>("stdbar-redo"), "redo", "Làm lại");
+  setIconButton(byId<HTMLElement>("stdbar-save"), "save", "Lưu");
   setIconButton(byId<HTMLElement>("stdbar-refresh"), "refresh", "Nạp lại danh sách room");
   setIconButton(byId<HTMLElement>("stdbar-clear"), "trash", "Xoá log cục bộ");
   setIconButton(byId<HTMLElement>("stdbar-follow"), "follow", "Bám đuôi log");
   setIconButton(newChip, "follow", "Xuống tin mới nhất");
+  setIconButton(byId<HTMLElement>("dock-close"), "close", "Thu gọn Output");
+  setIconButton(notifyBell, "bell", "Thông báo");
 }
 
 function wire(): void {
@@ -612,6 +751,21 @@ function wire(): void {
   byId<HTMLButtonElement>("start-new").addEventListener("click", () => openCreateDialog());
   byId<HTMLButtonElement>("start-refresh").addEventListener("click", () => void refreshRooms());
 
+  byId<HTMLButtonElement>("stdbar-refresh").addEventListener("click", () => void refreshRooms());
+  byId<HTMLButtonElement>("stdbar-connect").addEventListener("click", () => reconnect());
+
+  roomSelect.addEventListener("change", () => {
+    const room = rooms.find((candidate) => candidate.slug === roomSelect.value);
+    if (room !== undefined) pickRoom(room);
+  });
+
+  for (const input of [roomSearch, treeSearch]) {
+    input.addEventListener("input", () => setRoomQuery(input.value));
+    input.addEventListener("keydown", (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRoomQuery("");
+    });
+  }
+
   kindSelect.addEventListener("change", () => {
     applyFilter(kindSelect.value as KindFilter);
   });
@@ -625,12 +779,30 @@ function wire(): void {
   });
 
   clearButton.addEventListener("click", () => clearLog());
-  byId<HTMLButtonElement>("stdbar-refresh").addEventListener("click", () => void refreshRooms());
-  byId<HTMLButtonElement>("stdbar-clear").addEventListener("click", () => clearLog());
-  byId<HTMLButtonElement>("stdbar-connect").addEventListener("click", () => reconnect());
-  byId<HTMLButtonElement>("stdbar-follow").addEventListener("click", () => {
-    setFollow(!logView.follow);
-    if (logView.follow) logView.scrollToBottom();
+
+  // The nickname lives in the status bar, as in VS: click it to rename.
+  nickButton.addEventListener("click", () => void changeNickname());
+
+  notifyBell.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleNotificationsPanel();
+  });
+
+  notifyClear.addEventListener("click", () => {
+    notifier.reset();
+    renderNotifications();
+    updateChrome();
+  });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target as Node | null;
+    if (target === null || notifyPanel.hidden) return;
+    if (notifyPanel.contains(target) || notifyBell.contains(target)) return;
+    closeNotifications();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !notifyPanel.hidden) closeNotifications();
   });
 
   tabClose.addEventListener("click", () => leaveRoom());
@@ -638,10 +810,20 @@ function wire(): void {
     if (event.key === "Enter" || event.key === "Delete") leaveRoom();
   });
 
+  // The active dock tab restores the composer, like reopening a tool window.
+  const dock = byId<HTMLElement>("dock");
+  dock.querySelector<HTMLButtonElement>(".dock-tab--active")?.addEventListener("click", () => {
+    composerEl.hidden = false;
+    composer.focus();
+  });
+  byId<HTMLButtonElement>("dock-close").addEventListener("click", () => {
+    composerEl.hidden = true;
+  });
+
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
-    notifier.reset();
-    updateTitle();
+    renderNotifications();
+    updateChrome();
   });
 
   document.addEventListener("keydown", (event) => {
@@ -649,6 +831,16 @@ function wire(): void {
     if (!mod) return;
 
     const key = event.key.toLowerCase();
+    if (event.shiftKey && key === "d") {
+      event.preventDefault();
+      toggleTheme();
+      return;
+    }
+    if (event.shiftKey && key === "r") {
+      event.preventDefault();
+      reconnect();
+      return;
+    }
     if (key === "f") {
       event.preventDefault();
       filterInput.focus();
@@ -665,9 +857,10 @@ function wire(): void {
       openCreateDialog();
       return;
     }
-    if (event.shiftKey && key === "r") {
+    if (event.key === ";") {
       event.preventDefault();
-      reconnect();
+      treeSearch.focus();
+      treeSearch.select();
       return;
     }
     if (event.key === "End") {
@@ -688,6 +881,7 @@ function wire(): void {
 }
 
 function boot(): void {
+  applyTheme(document.documentElement, theme);
   decorateChrome();
   statusbar.setUrl(wsUrl);
   statusbar.setNick(identity.nick);
@@ -695,6 +889,8 @@ function boot(): void {
   statusbar.setOnline(0);
   setFollow(true);
   syncNotifyMenu();
+  renderNotifications();
+  menubar.setChecked("theme", theme === "light");
 
   wire();
 
@@ -702,8 +898,8 @@ function boot(): void {
   if (requested !== null && /^[a-z0-9][a-z0-9-]{1,23}$/.test(requested)) {
     enterRoom(requested, vault.get(requested));
   } else {
-    store.addSystem("chọn một room ở project browser, hoặc bấm + để tạo room mới");
-    updateTitle();
+    store.addSystem("chọn một room ở Solution Explorer, hoặc bấm + để tạo room mới");
+    updateChrome();
     render();
     void refreshRooms();
   }

@@ -19,6 +19,13 @@ export type IconName =
   | "refresh"
   | "trash"
   | "collapse"
+  | "folder"
+  | "file"
+  | "pin"
+  | "undo"
+  | "redo"
+  | "save"
+  | "bell"
   | "dot";
 
 const PATHS: Record<IconName, string> = {
@@ -37,6 +44,13 @@ const PATHS: Record<IconName, string> = {
   trash:
     '<path d="M3.4 4.8h9.2M6.4 4.8V3.6h3.2v1.2M4.6 4.8l.6 8h5.6l.6-8"/><path d="M6.8 7v3.4M9.2 7v3.4"/>',
   collapse: '<path d="M10.6 3.4v9.2"/><path d="M8 8H3.6"/><path d="M5.6 6 3.6 8l2 2"/>',
+  folder: '<path d="M2.4 4.9h4.2l1.2 1.5h5.8v5.6c0 .5-.4.9-.9.9H3.3a.9.9 0 0 1-.9-.9V4.9Z"/>',
+  file: '<path d="M4.2 2.6h5l3 3v7.8H4.2Z"/><path d="M9 2.6v3.2h3.2"/>',
+  pin: '<path d="M6.2 2.8h3.6l-.7 3 2.1 2.1H4.8l2.1-2.1-.7-3Z"/><path d="M8 7.9v4.9"/>',
+  undo: '<path d="M5.6 5.2 3 7.4l2.6 2.2"/><path d="M3 7.4h6a3 3 0 0 1 0 6H6.6"/>',
+  redo: '<path d="M10.4 5.2 13 7.4l-2.6 2.2"/><path d="M13 7.4H7a3 3 0 0 0 0 6h2.4"/>',
+  save: '<path d="M3 3h8.2L13 4.8V13H3Z"/><path d="M5.4 3v3.4h5.2V3"/><path d="M5.4 13v-3.6h5.2V13"/>',
+  bell: '<path d="M4.3 6.7a3.7 3.7 0 0 1 7.4 0c0 2.3.5 3.3 1.1 4H3.2c.6-.7 1.1-1.7 1.1-4Z"/><path d="M6.6 12.4a1.5 1.5 0 0 0 2.8 0"/>',
   dot: '<circle cx="8" cy="8" r="3.2" fill="currentColor" stroke="none"/>',
 };
 

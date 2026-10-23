@@ -2,7 +2,10 @@
 
 Chat room nhiều phòng, giao diện giả lập **Visual Studio 2022 dark** — mỗi tin nhắn là một dòng log. Frontend tĩnh trên **GitHub Pages**, realtime bằng **Cloudflare Worker + Durable Objects**, mỗi phòng có thể đặt **mật khẩu**.
 
-![Giao diện](docs/screenshot.png)
+![Giao diện dark](docs/screenshot.png)
+![Giao diện light](docs/screenshot-light.png)
+
+Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao diện` hoặc `Ctrl+Shift+D`; lựa chọn lưu trong `localStorage` và được áp trước lần paint đầu tiên nên không bị nháy.
 
 **Đang chạy:**
 
@@ -15,13 +18,13 @@ Chat room nhiều phòng, giao diện giả lập **Visual Studio 2022 dark** �
 
 ## Tính năng
 
-- Giao diện **Visual Studio 2022** (không phải VS Code): thanh chuẩn có nút Connect xanh, menu bar đầy đủ, Solution Explorer 3 cấp, tool window Output, status bar xanh.
+- Giao diện **Visual Studio 2022** (không phải VS Code): title bar có chuông thông báo, menu bar + ô Search, thanh chuẩn (Debug / Any CPU / nút Connect xanh), tab tài liệu, breadcrumb, log có số dòng như editor, **Solution Explorer bên phải** 3 cấp, dock Output ở dưới, status bar đúng theme.
 - **Nhiều phòng**, tạo bằng tên (slug), vào bằng link `?r=<slug>`.
 - **Mật khẩu phòng tuỳ chọn** — hỏi **một lần** khi vào phòng lần đầu, sau đó nhớ trong `localStorage` nên reload hay mở lại link đều vào thẳng. Server kiểm tra, không lưu plaintext, mật khẩu không đi qua URL.
 - Mỗi tin nhắn = một dòng log: `HH:MM:SS  nick  ›  nội dung`, cột thẳng hàng, màu nick theo người.
 - **Optimistic echo**: gõ là thấy dòng mờ ngay, server xác nhận thì sáng lên.
 - **Reconnect** tự động với backoff 1s→30s có jitter; lịch sử được replay lại, dedupe theo id.
-- **Thông báo tin nhắn mới** qua Notification API khi tab ở nền: chỉ báo *phòng nào* và *bao nhiêu tin*, **tuyệt đối không kèm nội dung hay nickname**. Bật/tắt ở `Tools → Thông báo tin nhắn mới`.
+- **Thông báo tin nhắn mới**, hai lớp và **không bao giờ kèm nội dung hay nickname**: chuông ở title bar (badge số chưa đọc, panel liệt kê `#phòng · N tin mới`, bấm để nhảy vào phòng) và notification hệ điều hành khi tab ở nền. Bật/tắt ở `Tools → Thông báo tin nhắn mới`.
 - **Lọc log** (Ctrl+F, substring trên nick + nội dung) và chip All/Chat/System.
 - **Follow tail** tự cuộn khi ở đáy, tự tắt khi bạn cuộn lên, chip "↓ tin mới".
 - Trạng thái kết nối ở status bar; phím tắt Ctrl+L (xoá view), Ctrl+N (tạo room), Ctrl+End (xuống đáy).
@@ -80,6 +83,8 @@ Tiện ích trong `scripts/`:
 node scripts/seed-demo.mjs chung [pass]      # tạo room + bơm 6 tin mẫu (API/WS qua env để trỏ production)
 node scripts/ws-probe.mjs [wss-url]          # smoke test 1 kết nối WebSocket, in frame đầu tiên
 node scripts/cdp-check.mjs <url> --shot=out.png   # lái Chromium thật qua CDP, đọc DOM, chụp ảnh
+node scripts/cdp-theme-shot.mjs <url> light out.png   # chụp một theme cụ thể
+node scripts/cdp-errors.mjs <url>                 # in exception/console error của trang
 ```
 
 ## Deploy

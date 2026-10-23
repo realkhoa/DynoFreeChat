@@ -10,6 +10,7 @@ export class Sidebar {
   private rooms: RoomInfo[] = [];
   private current: string | null = null;
   private onPick: ((room: RoomInfo) => void) | null = null;
+  private query = "";
   private solutionOpen = true;
   private groupOpen = true;
 
@@ -27,6 +28,23 @@ export class Sidebar {
 
   setFoot(text: string): void {
     this.foot.textContent = text;
+  }
+
+  /** Filters the tree by room name, the way Solution Explorer search does. */
+  setQuery(query: string): void {
+    const next = query.trim().toLowerCase();
+    if (next === this.query) return;
+    this.query = next;
+    this.paint();
+  }
+
+  get filtering(): boolean {
+    return this.query.length > 0;
+  }
+
+  private visibleRooms(): RoomInfo[] {
+    if (this.query.length === 0) return this.rooms;
+    return this.rooms.filter((room) => room.slug.toLowerCase().includes(this.query));
   }
 
   collapseAll(): void {
@@ -48,13 +66,14 @@ export class Sidebar {
     if (this.solutionOpen) {
       fragment.append(this.groupRow());
       if (this.groupOpen) {
-        if (this.rooms.length === 0) {
+        const rooms = this.visibleRooms();
+        if (rooms.length === 0) {
           const empty = document.createElement("li");
           empty.className = "tree-empty";
-          empty.textContent = "chưa có room nào";
+          empty.textContent = this.filtering ? "không khớp room nào" : "chưa có room nào";
           fragment.append(empty);
         } else {
-          for (const room of this.rooms) fragment.append(this.roomRow(room));
+          for (const room of rooms) fragment.append(this.roomRow(room));
         }
       }
     }
@@ -112,7 +131,7 @@ export class Sidebar {
 
     const meta = document.createElement("span");
     meta.className = "tree-meta";
-    meta.textContent = `${this.rooms.length} room`;
+    meta.textContent = `${this.visibleRooms().length} room`;
 
     hit.append(glyph, label, meta);
     hit.addEventListener("click", () => {

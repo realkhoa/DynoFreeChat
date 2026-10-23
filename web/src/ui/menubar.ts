@@ -6,6 +6,7 @@ export type MenuAction =
   | "find"
   | "follow"
   | "notify"
+  | "theme"
   | "new-room"
   | "reconnect"
   | "forget-pass"

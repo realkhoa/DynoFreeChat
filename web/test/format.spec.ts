@@ -54,9 +54,13 @@ describe("clampNick", () => {
 });
 
 describe("mutedColor", () => {
-  it("keeps the hue but pulls saturation down", () => {
+  it("keeps the hue but pulls saturation down in the dark theme", () => {
     expect(mutedColor("hsl(205 70% 62%)")).toBe("hsl(205 20% 72%)");
     expect(mutedColor("hsl(275 100% 30%)")).toBe("hsl(275 20% 72%)");
+  });
+
+  it("darkens instead of lightening for the light theme", () => {
+    expect(mutedColor("hsl(205 70% 62%)", "light")).toBe("hsl(205 42% 38%)");
   });
 
   it("falls back for anything unparseable", () => {

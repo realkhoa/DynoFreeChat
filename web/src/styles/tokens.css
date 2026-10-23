@@ -1,5 +1,7 @@
-/* Visual Studio 2022 dark tokens. Every colour in the app comes from here.
-   Values follow the VS dark theme sheet so the shell reads as a real IDE. */
+/* Visual Studio 2022 palettes.
+   Dark is the default; `:root[data-theme="light"]` overrides the colour tokens.
+   Every colour in the app comes from here — no component hardcodes a value. */
+
 :root {
   color-scheme: dark;
 
@@ -7,13 +9,13 @@
   --editor: #1e1e1e;
   --panel: #252526;
   --chrome: #2d2d30;
-  --titlebar: #3c3c3c;
+  --titlebar: #2d2d30;
   --section: #333337;
   --menu: #1b1b1c;
 
   /* lines */
   --border: #3f3f46;
-  --border-subtle: #333337;
+  --border-subtle: #37373d;
   --hairline: #ffffff12;
 
   /* text */
@@ -25,36 +27,89 @@
   /* interaction */
   --accent: #007acc;
   --accent-hover: #1c97ea;
-  --vs-purple: #68217a;
   --hover-row: #2a2d2e;
   --hover-chrome: #3f3f46;
   --tree-selected: #094771;
   --sel: #264f78;
 
-  /* status */
-  --ok: #4ec9b0;
-  --warn: #dcdcaa;
+  /* state */
+  --ok: #6bc46d;
+  --warn: #d7ba7d;
   --err: #f14c4c;
   --info: #569cd6;
+
+  /* filesystem-ish accents, from the VS icon set */
+  --folder: #dcb67a;
+  --project: #4b8ed6;
+
+  /* status bar */
   --statusbar: #007acc;
-  --statusbar-warn: #a06a00;
-  --statusbar-error: #6b1b1b;
+  --statusbar-fg: #ffffff;
+  --statusbar-dim: #ffffffb8;
+  --statusbar-edge: #00629c;
+  --statusbar-chip: #00629c;
 
   /* type */
   --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
   --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "JetBrains Mono", ui-monospace, monospace;
 
   /* metrics */
-  --titlebar-h: 28px;
-  --menubar-h: 24px;
-  --tabstrip-h: 28px;
-  --toolbar-h: 26px;
-  --statusbar-h: 22px;
-  --sidebar-w: 250px;
-  --row-h: 22px;
+  --titlebar-h: 30px;
+  --menubar-h: 26px;
   --stdbar-h: 26px;
+  --tabstrip-h: 28px;
+  --breadcrumb-h: 24px;
+  --statusbar-h: 22px;
+  --sidebar-w: 288px;
+  --row-h: 22px;
 
   --radius: 2px;
   --log-size: 12.5px;
-  --log-line: 1.45;
+  --log-line: 1.5;
+  --scroll-thumb: #686868;
+  --scroll-thumb-hover: #9e9e9e;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --editor: #ffffff;
+  --panel: #f5f5f5;
+  --chrome: #f0f0f0;
+  --titlebar: #f0f0f0;
+  --section: #eeeef2;
+  --menu: #ffffff;
+
+  --border: #cccccc;
+  --border-subtle: #e5e5e5;
+  --hairline: #00000012;
+
+  --fg: #1e1e1e;
+  --fg-muted: #3a3a3a;
+  --fg-dim: #6b6b6b;
+  --fg-faint: #9b9b9b;
+
+  --accent: #007acc;
+  --accent-hover: #0067c0;
+  --hover-row: #e8f1fb;
+  --hover-chrome: #dadada;
+  --tree-selected: #cce4f7;
+  --sel: #cce4f7;
+
+  --ok: #107c10;
+  --warn: #a86a00;
+  --err: #c42b1c;
+  --info: #0f6cbd;
+
+  --folder: #dcb67a;
+  --project: #3b6fb6;
+
+  --statusbar: #f0f0f0;
+  --statusbar-fg: #1e1e1e;
+  --statusbar-dim: #5c5c5c;
+  --statusbar-edge: #d6d6d6;
+  --statusbar-chip: #e3e3e3;
+
+  --scroll-thumb: #c2c2c2;
+  --scroll-thumb-hover: #a6a6a6;
 }

@@ -25,13 +25,14 @@ export function formatAge(ts: number, now: number = Date.now()): string {
 const HSL_RE = /^hsl\((\d{1,3}) (\d{1,3})% (\d{1,3})%\)$/;
 
 /**
- * Collapses a per-user hue into the muted band the rest of the shell lives in.
- * Hue still identifies the speaker; saturation does not shout.
+ * Collapses a per-user hue into the muted band the current theme lives in.
+ * Hue still identifies the speaker; saturation never shouts.
  */
-export function mutedColor(color: string): string {
+export function mutedColor(color: string, theme: "dark" | "light" = "dark"): string {
   const match = HSL_RE.exec(color.trim());
   if (!match) return "var(--fg-muted)";
-  return `hsl(${Number(match[1])} 20% 72%)`;
+  const hue = Number(match[1]);
+  return theme === "light" ? `hsl(${hue} 42% 38%)` : `hsl(${hue} 20% 72%)`;
 }
 
 /** Plain-text version of a message, used by "copy" and by tests. */

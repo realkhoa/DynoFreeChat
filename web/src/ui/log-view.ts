@@ -1,4 +1,5 @@
 import { clampNick, formatTime, mutedColor } from "../lib/format";
+import type { Theme } from "../lib/theme";
 import type { Row, Store } from "../model/store";
 
 interface Entry {
@@ -7,13 +8,15 @@ interface Entry {
 }
 
 /**
- * Renders `Store.rows` as log lines. Appends only what is new and re-renders a
- * line only when its revision changed, so a busy room stays cheap.
+ * Renders `Store.rows` as log lines with an editor-style line gutter. Appends
+ * only what is new and re-renders a line only when its revision changed.
  */
 export class LogView {
   private readonly entries = new Map<Row, Entry>();
   private query = "";
   private atBottom = true;
+  private nextLine = 1;
+  private theme: Theme = "dark";
 
   selfNick = "";
   /** When true, new rows scroll into view automatically. */
@@ -39,6 +42,16 @@ export class LogView {
     );
   }
 
+  /** Nick colours are derived from the theme, so the view must be rebuilt. */
+  setTheme(theme: Theme): void {
+    if (theme === this.theme) return;
+    this.theme = theme;
+    this.entries.clear();
+    this.root.replaceChildren();
+    this.nextLine = 1;
+    this.atBottom = true;
+  }
+
   sync(store: Store): void {
     this.query = store.filter;
     const added: HTMLElement[] = [];
@@ -48,14 +61,16 @@ export class LogView {
       const existing = this.entries.get(row);
 
       if (existing === undefined) {
-        const el = this.render(row, visible);
+        const el = this.render(row, visible, this.nextLine);
+        this.nextLine += 1;
         this.entries.set(row, { el, revision: row.revision });
         added.push(el);
         continue;
       }
 
       if (existing.revision !== row.revision) {
-        const next = this.render(row, visible);
+        const line = Number(existing.el.dataset.line ?? "0");
+        const next = this.render(row, visible, line);
         existing.el.replaceWith(next);
         existing.el = next;
         existing.revision = row.revision;
@@ -81,6 +96,7 @@ export class LogView {
   clearLocal(): void {
     this.entries.clear();
     this.root.replaceChildren();
+    this.nextLine = 1;
     this.atBottom = true;
   }
 
@@ -91,11 +107,12 @@ export class LogView {
     return count;
   }
 
-  private render(row: Row, visible: boolean): HTMLElement {
+  private render(row: Row, visible: boolean, line: number): HTMLElement {
     const el = document.createElement("div");
     el.className = "log-row";
     el.dataset.id = row.id;
     el.dataset.kind = row.kind;
+    el.dataset.line = String(line);
     el.hidden = !visible;
 
     if (row.kind === "system") el.classList.add("is-system");
@@ -103,6 +120,11 @@ export class LogView {
     if (row.state === "pending") el.classList.add("is-pending");
     if (row.state === "failed") el.classList.add("is-failed");
     if (row.kind === "chat" && row.nick === this.selfNick) el.classList.add("is-self");
+
+    const gutter = document.createElement("span");
+    gutter.className = "log-num";
+    gutter.textContent = String(line);
+    gutter.setAttribute("aria-hidden", "true");
 
     const time = document.createElement("span");
     time.className = "log-time";
@@ -113,7 +135,7 @@ export class LogView {
     nick.textContent = clampNick(row.nick);
     nick.title = row.nick;
     if (row.kind === "chat") {
-      nick.style.color = row.nick === this.selfNick ? "var(--accent)" : mutedColor(row.color);
+      nick.style.color = row.nick === this.selfNick ? "var(--accent)" : mutedColor(row.color, this.theme);
     }
 
     const mark = document.createElement("span");
@@ -125,7 +147,7 @@ export class LogView {
     text.className = "log-text";
     this.fillText(text, row.text);
 
-    el.append(time, nick, mark, text);
+    el.append(gutter, time, nick, mark, text);
     return el;
   }
 
