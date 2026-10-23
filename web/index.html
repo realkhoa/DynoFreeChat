@@ -22,6 +22,10 @@
           localStorage.getItem("dyno.ribbon") === "off" ? "off" : "on";
         document.documentElement.dataset.minimal =
           localStorage.getItem("dyno.minimal") === "on" ? "on" : "off";
+        document.documentElement.dataset.dock =
+          ["collapsed", "closed"].includes(localStorage.getItem("dyno.dock"))
+            ? localStorage.getItem("dyno.dock")
+            : "open";
       } catch (error) {
         document.documentElement.dataset.theme = "dark";
       }
@@ -75,6 +79,7 @@
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="sidebar">Ẩn/hiện Solution Explorer</button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="ribbon">Ẩn/hiện ribbon<kbd>Ctrl+F1</kbd></button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="minimal">Chế độ tối giản (chỉ chat)<kbd>Ctrl+Shift+M</kbd></button></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="dock">Output (ô nhập tin)<kbd>Ctrl+Alt+O</kbd></button></li>
             <li class="menu-sep" role="separator"></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="theme">Giao diện: Dark / Light<kbd>Ctrl+Shift+D</kbd></button></li>
           </ul>
@@ -227,11 +232,11 @@
           <span class="composer-meter" id="composer-meter"></span>
         </div>
         <div class="dock-tabs">
-          <button type="button" class="dock-tab" disabled>Error List</button>
-          <button type="button" class="dock-tab dock-tab--active" aria-selected="true">Output</button>
+          <button type="button" class="dock-tab dock-tab--active" id="dock-tab" aria-selected="true">Output</button>
+          <span class="dock-room" id="dock-room"></span>
           <span class="toolbar-spacer"></span>
-          <button type="button" class="dock-icon" id="dock-pin" aria-label="Ghim" title="Ghim"></button>
-          <button type="button" class="dock-icon" id="dock-close" aria-label="Đóng" title="Đóng"></button>
+          <button type="button" class="dock-icon" id="dock-collapse" aria-label="Thu gọn Output" title="Thu gọn"></button>
+          <button type="button" class="dock-icon" id="dock-close" aria-label="Đóng Output" title="Đóng (Ctrl+Alt+O để mở lại)"></button>
         </div>
       </div>
 

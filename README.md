@@ -31,6 +31,7 @@ Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao di�
 - **Reconnect** tự động với backoff 1s→30s có jitter; lịch sử được replay lại, dedupe theo id.
 - **Thông báo tin nhắn mới**, ba lớp và **không bao giờ kèm nội dung hay nickname**: chuông ở title bar (badge số chưa đọc, panel liệt kê `#phòng · N tin mới`, bấm để nhảy vào phòng), notification hệ điều hành khi tab ở nền, và **badge trên trình duyệt** — số đỏ vẽ thẳng lên favicon (`(3)` ở tiêu đề tab) kèm `navigator.setAppBadge` cho taskbar/PWA. Bật/tắt ở `Tools → Thông báo tin nhắn mới`.
 - **Âm thanh thông báo**: tiếng "ding" tổng hợp bằng WebAudio (không có file mp3, không request), hai nốt cho tin thường và ba nốt cao hơn khi bị `@tag`; chỉ kêu khi tab ở nền; bật/tắt ở `Tools → Âm thanh thông báo`, lưu trong `localStorage`.
+- **Dock Output thu gọn/đóng được**: `⌄` thu gọn còn đúng 23px (chỉ tab strip, bấm vào tab `Output` để mở lại), `✕` đóng hẳn (0px), `Ctrl+Alt+O` hoặc `View → Output` để mở lại. Trạng thái lưu trong `localStorage`.
 - **Ẩn ribbon** (`Ctrl+F1`, menu `View`, hoặc nút ⌃ trên ribbon) — lựa chọn được nhớ.
 - **Chế độ tối giản**: chỉ còn khung chat + ô nhập, không title bar/menu/ribbon/tab/breadcrumb/Solution Explorer/dock tabs/status bar. Bật bằng menu `View → Chế độ tối giản`, `Ctrl+Shift+M`, hoặc **ghim bằng URL** `?minimal=1` — tiện nhúng WebView. Nút `⌄` ở góc phải để thoát.
 - **Cỡ chữ khung chat riêng**: combo `100%` ở status bar (80–150%) hoặc `Ctrl+Shift+.` / `Ctrl+Shift+,`; chỉ đổi cỡ dòng log, toàn bộ chrome giữ nguyên cỡ. Lưu trong `localStorage`.

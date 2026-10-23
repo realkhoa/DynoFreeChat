@@ -12,6 +12,7 @@ export type MenuAction =
   | "zoom-out"
   | "ribbon"
   | "minimal"
+  | "dock"
   | "new-room"
   | "reconnect"
   | "forget-pass"

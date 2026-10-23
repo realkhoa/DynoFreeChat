@@ -1641,3 +1641,41 @@ button:disabled {
   opacity: 1;
   color: var(--fg);
 }
+
+/* ------------------------------------------- Output dock: compact + closable */
+
+.dock-body {
+  height: 24px;
+}
+
+.dock-tabs {
+  height: 22px;
+  padding: 0 4px;
+}
+
+.dock-tab {
+  padding: 0 10px;
+  font-size: 10.5px;
+  border-bottom-width: 2px;
+}
+
+.dock-room {
+  display: flex;
+  align-items: center;
+  font: 10.5px/1 var(--font-mono);
+  color: var(--fg-faint);
+}
+
+.dock-icon {
+  width: 18px;
+  height: 18px;
+  align-self: center;
+}
+
+:root[data-dock="collapsed"] .dock-body {
+  display: none;
+}
+
+:root[data-dock="closed"] .dock {
+  display: none;
+}

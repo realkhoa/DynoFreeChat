@@ -16,6 +16,7 @@ import { apiBase, roomSocketUrl, wsUrl } from "./env";
 import { applyBrowserBadges } from "./lib/badge";
 import { loadZoom, saveZoom, stepZoom, zoomToPixels, type Zoom } from "./lib/zoom";
 import { byId } from "./lib/dom";
+import { applyDock, closeDock, loadDock, revealDock, saveDock, toggleDock, type DockState } from "./lib/dockpref";
 import { joinPassFor } from "./lib/joinpass";
 import { applyMinimal, loadMinimal, minimalFromSearch, saveMinimal } from "./lib/minimal";
 import { applyRibbonVisible, loadRibbonVisible, saveRibbonVisible } from "./lib/ribbonpref";
@@ -115,6 +116,7 @@ let theme: Theme = loadTheme(storage);
 let zoom: Zoom = loadZoom(storage);
 let ribbonVisible = loadRibbonVisible(storage);
 let minimal = loadMinimal(storage);
+let dock: DockState = loadDock(storage);
 
 let store = new Store();
 let rooms: RoomInfo[] = [];
@@ -237,6 +239,17 @@ function applyZoom(): void {
   zoomSelect.value = String(zoom);
 }
 
+function applyDockState(): void {
+  applyDock(document.documentElement, dock);
+  menubar.setChecked("dock", dock !== "closed");
+  if (dock === "open") composer.focus();
+}
+
+function setDock(next: DockState): void {
+  dock = saveDock(storage, next);
+  applyDockState();
+}
+
 function applyChromeVisibility(): void {
   applyRibbonVisible(document.documentElement, ribbonVisible);
   applyMinimal(document.documentElement, minimal);
@@ -270,6 +283,7 @@ function updateChrome(): void {
   titlebarRoom.textContent = slug === undefined ? "no room" : `#${slug}`;
   crumbRoom.textContent = slug === undefined ? "Start" : `#${slug}`;
   tabClose.hidden = slug === undefined;
+  byId<HTMLElement>("dock-room").textContent = slug === undefined ? "" : `#${slug}`;
 
 
   const unread = notifier.unread;
@@ -809,6 +823,9 @@ function handleMenuAction(action: MenuAction): void {
     case "ribbon":
       toggleRibbon();
       break;
+    case "dock":
+      setDock(revealDock(dock));
+      break;
     case "minimal":
       toggleMinimal();
       break;
@@ -916,6 +933,13 @@ function wire(): void {
 
   byId<HTMLButtonElement>("minimal-exit").addEventListener("click", () => toggleMinimal());
 
+  byId<HTMLButtonElement>("dock-collapse").addEventListener("click", () => {
+    setDock(toggleDock(dock));
+  });
+  byId<HTMLButtonElement>("dock-tab").addEventListener("click", () => {
+    setDock(toggleDock(dock));
+  });
+
   byId<HTMLButtonElement>("dock-reply-cancel").addEventListener("click", () => {
     composer.setReply(null);
     composer.focus();
@@ -948,14 +972,8 @@ function wire(): void {
     if (event.key === "Enter" || event.key === "Delete") leaveRoom();
   });
 
-  // The active dock tab restores the composer, like reopening a tool window.
-  const dock = byId<HTMLElement>("dock");
-  dock.querySelector<HTMLButtonElement>(".dock-tab--active")?.addEventListener("click", () => {
-    composerEl.hidden = false;
-    composer.focus();
-  });
   byId<HTMLButtonElement>("dock-close").addEventListener("click", () => {
-    composerEl.hidden = true;
+    setDock(closeDock(dock));
   });
 
   // WebAudio needs a user gesture before it may start.
@@ -975,6 +993,11 @@ function wire(): void {
 
     const key = event.key.toLowerCase();
     // Ctrl+Shift+. and Ctrl+Shift+, zoom the chat pane, like the VS editor.
+    if (event.altKey && key === "o") {
+      event.preventDefault();
+      setDock(revealDock(dock));
+      return;
+    }
     if (event.key === "F1") {
       event.preventDefault();
       toggleRibbon();
@@ -1064,6 +1087,7 @@ function boot(): void {
   const urlMinimal = minimalFromSearch(window.location.search);
   if (urlMinimal !== undefined) minimal = saveMinimal(storage, urlMinimal);
   applyChromeVisibility();
+  applyDockState();
 
   wire();
 
