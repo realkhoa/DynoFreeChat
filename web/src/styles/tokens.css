@@ -1,43 +1,60 @@
-/* Visual Studio 2022 dark tokens. Every colour in the app comes from here. */
+/* Visual Studio 2022 dark tokens. Every colour in the app comes from here.
+   Values follow the VS dark theme sheet so the shell reads as a real IDE. */
 :root {
   color-scheme: dark;
 
-  --bg: #1e1e1e;
+  /* surfaces */
+  --editor: #1e1e1e;
   --panel: #252526;
   --chrome: #2d2d30;
   --titlebar: #3c3c3c;
   --section: #333337;
+  --menu: #1b1b1c;
 
+  /* lines */
   --border: #3f3f46;
-  --border-soft: #333337;
+  --border-subtle: #333337;
+  --hairline: #ffffff12;
 
+  /* text */
   --fg: #f1f1f1;
   --fg-muted: #c8c8c8;
   --fg-dim: #9d9d9d;
   --fg-faint: #6d6d6d;
 
+  /* interaction */
   --accent: #007acc;
   --accent-hover: #1c97ea;
   --vs-purple: #68217a;
+  --hover-row: #2a2d2e;
+  --hover-chrome: #3f3f46;
+  --tree-selected: #094771;
+  --sel: #264f78;
 
+  /* status */
   --ok: #4ec9b0;
   --warn: #dcdcaa;
   --err: #f14c4c;
   --info: #569cd6;
+  --statusbar: #007acc;
+  --statusbar-warn: #a06a00;
+  --statusbar-error: #6b1b1b;
 
-  --sel: #264f78;
-  --row-hover: #2a2d2e;
-
-  --font-ui: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  /* type */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
   --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "JetBrains Mono", ui-monospace, monospace;
 
+  /* metrics */
   --titlebar-h: 28px;
   --menubar-h: 24px;
-  --tabstrip-h: 30px;
-  --toolbar-h: 30px;
+  --tabstrip-h: 28px;
+  --toolbar-h: 26px;
   --statusbar-h: 22px;
-  --sidebar-w: 248px;
+  --sidebar-w: 250px;
+  --row-h: 22px;
+  --stdbar-h: 26px;
 
   --radius: 2px;
-  --log-size: 13px;
+  --log-size: 12.5px;
+  --log-line: 1.45;
 }

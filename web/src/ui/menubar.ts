@@ -5,11 +5,16 @@ export type MenuAction =
   | "clear"
   | "find"
   | "follow"
+  | "notify"
+  | "new-room"
+  | "reconnect"
+  | "forget-pass"
   | "sidebar"
   | "about";
 
 export interface Menubar {
   setEnabled(action: MenuAction, enabled: boolean): void;
+  setChecked(action: MenuAction, checked: boolean): void;
   closeAll(): void;
 }
 
@@ -61,11 +66,20 @@ export function mountMenubar(root: HTMLElement, onAction: (action: MenuAction) =
     if (event.key === "Escape") closeAll();
   });
 
+  const entryFor = (action: MenuAction): HTMLButtonElement | null =>
+    root.querySelector<HTMLButtonElement>(`.menu-entry[data-action="${action}"]`);
+
   return {
     closeAll,
     setEnabled(action: MenuAction, enabled: boolean): void {
-      const entry = root.querySelector<HTMLButtonElement>(`.menu-entry[data-action="${action}"]`);
+      const entry = entryFor(action);
       if (entry !== null) entry.disabled = !enabled;
+    },
+    setChecked(action: MenuAction, checked: boolean): void {
+      const entry = entryFor(action);
+      if (entry === null) return;
+      entry.setAttribute("role", "menuitemcheckbox");
+      entry.setAttribute("aria-checked", String(checked));
     },
   };
 }

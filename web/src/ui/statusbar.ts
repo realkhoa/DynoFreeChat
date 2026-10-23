@@ -1,4 +1,5 @@
 import type { SocketState } from "../net/socket";
+import { icon } from "./icons";
 
 export interface StatusBarDeps {
   root: HTMLElement;
@@ -11,10 +12,10 @@ export interface StatusBarDeps {
 }
 
 const CONNECTION_LABEL: Record<SocketState, string> = {
-  idle: "Chưa kết nối",
-  connecting: "Đang kết nối…",
+  idle: "Sẵn sàng",
+  connecting: "Đang kết nối",
   open: "Connected",
-  reconnecting: "Reconnecting…",
+  reconnecting: "Reconnecting",
   closed: "Offline",
 };
 
@@ -31,6 +32,7 @@ export class StatusBar {
 
   setUrl(url: string): void {
     this.deps.url.textContent = url.replace(/^wss?:\/\//, "");
+    this.deps.url.title = url;
   }
 
   setOnline(online: number): void {
@@ -41,11 +43,20 @@ export class StatusBar {
     this.deps.count.textContent = `${count} dòng`;
   }
 
+  /** The line counter only means something inside a room. */
+  setCountVisible(visible: boolean): void {
+    this.deps.count.hidden = !visible;
+  }
+
   setNick(nick: string): void {
     this.deps.nick.textContent = nick;
   }
 
   setLocked(locked: boolean): void {
     this.deps.lock.hidden = !locked;
+    if (locked) {
+      this.deps.lock.replaceChildren(icon("lock", 12));
+      this.deps.lock.title = "room có mật khẩu";
+    }
   }
 }

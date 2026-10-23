@@ -8,7 +8,7 @@ export function formatTime(ts: number): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-/** Coarse relative age for the room list: "vừa xong", "3 phút", "2 giờ", "5 ngày". */
+/** Coarse relative age for the project browser: "vừa xong", "3 phút", "2 giờ". */
 export function formatAge(ts: number, now: number = Date.now()): string {
   const seconds = Math.max(0, Math.round((now - ts) / 1000));
   if (seconds < 45) return "vừa xong";
@@ -20,6 +20,18 @@ export function formatAge(ts: number, now: number = Date.now()): string {
   if (days < 30) return `${days} ngày`;
   const months = Math.round(days / 30);
   return `${months} tháng`;
+}
+
+const HSL_RE = /^hsl\((\d{1,3}) (\d{1,3})% (\d{1,3})%\)$/;
+
+/**
+ * Collapses a per-user hue into the muted band the rest of the shell lives in.
+ * Hue still identifies the speaker; saturation does not shout.
+ */
+export function mutedColor(color: string): string {
+  const match = HSL_RE.exec(color.trim());
+  if (!match) return "var(--fg-muted)";
+  return `hsl(${Number(match[1])} 20% 72%)`;
 }
 
 /** Plain-text version of a message, used by "copy" and by tests. */

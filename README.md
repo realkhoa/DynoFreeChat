@@ -15,11 +15,13 @@ Chat room nhiều phòng, giao diện giả lập **Visual Studio 2022 dark** �
 
 ## Tính năng
 
+- Giao diện **Visual Studio 2022** (không phải VS Code): thanh chuẩn có nút Connect xanh, menu bar đầy đủ, Solution Explorer 3 cấp, tool window Output, status bar xanh.
 - **Nhiều phòng**, tạo bằng tên (slug), vào bằng link `?r=<slug>`.
-- **Mật khẩu phòng tuỳ chọn** — kiểm tra ở server, không lưu plaintext, không đi qua URL.
+- **Mật khẩu phòng tuỳ chọn** — hỏi **một lần** khi vào phòng lần đầu, sau đó nhớ trong `localStorage` nên reload hay mở lại link đều vào thẳng. Server kiểm tra, không lưu plaintext, mật khẩu không đi qua URL.
 - Mỗi tin nhắn = một dòng log: `HH:MM:SS  nick  ›  nội dung`, cột thẳng hàng, màu nick theo người.
 - **Optimistic echo**: gõ là thấy dòng mờ ngay, server xác nhận thì sáng lên.
 - **Reconnect** tự động với backoff 1s→30s có jitter; lịch sử được replay lại, dedupe theo id.
+- **Thông báo tin nhắn mới** qua Notification API khi tab ở nền: chỉ báo *phòng nào* và *bao nhiêu tin*, **tuyệt đối không kèm nội dung hay nickname**. Bật/tắt ở `Tools → Thông báo tin nhắn mới`.
 - **Lọc log** (Ctrl+F, substring trên nick + nội dung) và chip All/Chat/System.
 - **Follow tail** tự cuộn khi ở đáy, tự tắt khi bạn cuộn lên, chip "↓ tin mới".
 - Trạng thái kết nối ở status bar; phím tắt Ctrl+L (xoá view), Ctrl+N (tạo room), Ctrl+End (xuống đáy).
@@ -144,6 +146,7 @@ Các quy tắc được cài trong code, không phải lời hứa:
   Nó là khoá cửa phòng chat, đừng dùng lại mật khẩu quan trọng.
 - **Không có auth**: ai có link là vào được phòng mở, và ai cũng tạo được phòng. Chống lạm dụng bằng
   rate limit, cap 50 phòng, cap 100 kết nối, origin allowlist. Bị flood thì hỏng availability, không hỏng ví.
+- Mật khẩu phòng được nhớ trong `localStorage` (`dyno.passes`) để khỏi nhập lại — cùng mức tin cậy như cookie phiên, chỉ nằm trên máy bạn. `Edit → Quên mật khẩu room` xoá nó.
 - Không có secret nào trong bundle frontend.
 - Nội dung tin nhắn được render bằng `textContent` (không `innerHTML`), nên không có XSS từ tin nhắn.
 

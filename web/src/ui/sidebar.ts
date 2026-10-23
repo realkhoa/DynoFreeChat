@@ -1,57 +1,170 @@
 import type { RoomInfo } from "@dyno/shared/protocol";
 import { formatAge } from "../lib/format";
+import { icon } from "./icons";
 
-/** Solution-Explorer-style room list. */
+/**
+ * The project browser: solution → project → rooms, the same three levels a
+ * Solution Explorer shows. Collapse state lives here, not in the caller.
+ */
 export class Sidebar {
+  private rooms: RoomInfo[] = [];
+  private current: string | null = null;
+  private onPick: ((room: RoomInfo) => void) | null = null;
+  private solutionOpen = true;
+  private groupOpen = true;
+
   constructor(
-    private readonly list: HTMLElement,
+    private readonly tree: HTMLElement,
     private readonly foot: HTMLElement,
   ) {}
 
   render(rooms: RoomInfo[], current: string | null, onPick: (room: RoomInfo) => void): void {
-    const fragment = document.createDocumentFragment();
-
-    for (const room of rooms) {
-      const item = document.createElement("li");
-
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "room-item";
-      button.dataset.slug = room.slug;
-      button.title = room.locked ? `#${room.slug} — có mật khẩu` : `#${room.slug}`;
-      if (room.slug === current) button.setAttribute("aria-current", "true");
-
-      const glyph = document.createElement("span");
-      glyph.className = room.locked ? "room-lock" : "room-age";
-      glyph.textContent = room.locked ? "🔒" : "#";
-      glyph.setAttribute("aria-hidden", "true");
-
-      const slug = document.createElement("span");
-      slug.className = "room-slug";
-      slug.textContent = room.slug;
-
-      const age = document.createElement("span");
-      age.className = "room-age";
-      age.textContent = formatAge(room.lastSeen);
-
-      button.append(glyph, slug, age);
-      button.addEventListener("click", () => onPick(room));
-      item.append(button);
-      fragment.append(item);
-    }
-
-    if (rooms.length === 0) {
-      const item = document.createElement("li");
-      item.className = "room-item";
-      item.style.color = "var(--fg-faint)";
-      item.textContent = "chưa có room nào";
-      fragment.append(item);
-    }
-
-    this.list.replaceChildren(fragment);
+    this.rooms = rooms;
+    this.current = current;
+    this.onPick = onPick;
+    this.paint();
   }
 
   setFoot(text: string): void {
     this.foot.textContent = text;
+  }
+
+  collapseAll(): void {
+    this.solutionOpen = false;
+    this.groupOpen = false;
+    this.paint();
+  }
+
+  expandAll(): void {
+    this.solutionOpen = true;
+    this.groupOpen = true;
+    this.paint();
+  }
+
+  private paint(): void {
+    const fragment = document.createDocumentFragment();
+    fragment.append(this.solutionRow());
+
+    if (this.solutionOpen) {
+      fragment.append(this.groupRow());
+      if (this.groupOpen) {
+        if (this.rooms.length === 0) {
+          const empty = document.createElement("li");
+          empty.className = "tree-empty";
+          empty.textContent = "chưa có room nào";
+          fragment.append(empty);
+        } else {
+          for (const room of this.rooms) fragment.append(this.roomRow(room));
+        }
+      }
+    }
+
+    this.tree.replaceChildren(fragment);
+  }
+
+  private node(
+    depth: number,
+    expandable: boolean,
+    open: boolean,
+    onToggle: (() => void) | null,
+  ): { row: HTMLLIElement; hit: HTMLButtonElement } {
+    const row = document.createElement("li");
+    row.className = "tree-row";
+    row.dataset.depth = String(depth);
+    row.setAttribute("role", "treeitem");
+    if (expandable) row.setAttribute("aria-expanded", String(open));
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "tree-toggle";
+    if (expandable) {
+      toggle.append(icon(open ? "chevron-down" : "chevron-right"));
+      toggle.setAttribute("aria-label", open ? "Thu gọn" : "Mở rộng");
+      toggle.addEventListener("click", () => onToggle?.());
+    } else {
+      toggle.disabled = true;
+      toggle.tabIndex = -1;
+      toggle.setAttribute("aria-hidden", "true");
+    }
+
+    const hit = document.createElement("button");
+    hit.type = "button";
+    hit.className = "tree-hit";
+
+    row.append(toggle, hit);
+    return { row, hit };
+  }
+
+  private solutionRow(): HTMLLIElement {
+    const { row, hit } = this.node(0, true, this.solutionOpen, () => {
+      this.solutionOpen = !this.solutionOpen;
+      this.paint();
+    });
+    row.classList.add("tree-row--root");
+
+    const glyph = document.createElement("span");
+    glyph.className = "tree-icon";
+    glyph.append(icon("solution"));
+
+    const label = document.createElement("span");
+    label.className = "tree-label";
+    label.textContent = "DynoFreeChat";
+
+    const meta = document.createElement("span");
+    meta.className = "tree-meta";
+    meta.textContent = `${this.rooms.length} room`;
+
+    hit.append(glyph, label, meta);
+    hit.addEventListener("click", () => {
+      this.solutionOpen = !this.solutionOpen;
+      this.paint();
+    });
+    return row;
+  }
+
+  private groupRow(): HTMLLIElement {
+    const { row, hit } = this.node(1, true, this.groupOpen, () => {
+      this.groupOpen = !this.groupOpen;
+      this.paint();
+    });
+
+    const glyph = document.createElement("span");
+    glyph.className = "tree-icon";
+    glyph.append(icon("room"));
+
+    const label = document.createElement("span");
+    label.className = "tree-label";
+    label.textContent = "Rooms";
+
+    hit.append(glyph, label);
+    hit.addEventListener("click", () => {
+      this.groupOpen = !this.groupOpen;
+      this.paint();
+    });
+    return row;
+  }
+
+  private roomRow(room: RoomInfo): HTMLLIElement {
+    const { row, hit } = this.node(2, false, true, null);
+    row.classList.add("tree-row--room");
+    if (room.slug === this.current) row.setAttribute("aria-selected", "true");
+
+    const glyph = document.createElement("span");
+    glyph.className = "tree-icon";
+    glyph.dataset.icon = room.locked ? "lock" : "hash";
+    glyph.append(icon(room.locked ? "lock" : "hash"));
+
+    const label = document.createElement("span");
+    label.className = "tree-label";
+    label.textContent = room.slug;
+    label.title = room.locked ? `#${room.slug} — có mật khẩu` : `#${room.slug}`;
+
+    const age = document.createElement("span");
+    age.className = "tree-meta";
+    age.textContent = formatAge(room.lastSeen);
+
+    hit.append(glyph, label, age);
+    hit.addEventListener("click", () => this.onPick?.(room));
+    return row;
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "@dyno/shared/protocol";
-import { clampNick, formatAge, formatChatLine, formatTime } from "../src/lib/format";
+import { clampNick, formatAge, formatChatLine, formatTime, mutedColor } from "../src/lib/format";
 
 const local = (hour: number, minute: number, second: number): number =>
   new Date(2026, 0, 1, hour, minute, second).getTime();
@@ -50,5 +50,17 @@ describe("clampNick", () => {
     const clamped = clampNick("a".repeat(40), 10);
     expect(Array.from(clamped)).toHaveLength(10);
     expect(clamped.endsWith("…")).toBe(true);
+  });
+});
+
+describe("mutedColor", () => {
+  it("keeps the hue but pulls saturation down", () => {
+    expect(mutedColor("hsl(205 70% 62%)")).toBe("hsl(205 20% 72%)");
+    expect(mutedColor("hsl(275 100% 30%)")).toBe("hsl(275 20% 72%)");
+  });
+
+  it("falls back for anything unparseable", () => {
+    expect(mutedColor("red")).toBe("var(--fg-muted)");
+    expect(mutedColor("")).toBe("var(--fg-muted)");
   });
 });

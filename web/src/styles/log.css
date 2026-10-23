@@ -1,22 +1,31 @@
-/* ------------------------------- log viewport + composer (the "Output" pane) */
+/* --------------------------- log viewport + composer (the "Output" pane) */
 
 .logwrap {
+  grid-row: 3;
   position: relative;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
+.editor[data-mode="start"] .logwrap,
+.editor[data-mode="start"] .composer {
+  display: none;
+}
+
+.editor[data-mode="room"] .startview {
+  display: none;
+}
+
 .log {
   flex: 1;
   min-height: 0;
-  padding: 6px 0 10px;
+  padding: 4px 0 8px;
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--bg);
-  font: var(--log-size) / 1.55 var(--font-mono);
+  background: var(--editor);
+  font: var(--log-size) / var(--log-line) var(--font-mono);
   font-variant-numeric: tabular-nums;
-  contain: content;
 }
 
 .log:focus-visible {
@@ -26,14 +35,14 @@
 
 .log-row {
   display: grid;
-  grid-template-columns: 8.5ch 16ch 1.5ch minmax(0, 1fr);
+  grid-template-columns: 8ch 14ch 1ch minmax(0, 1fr);
   gap: 0 0.75ch;
   padding: 0 10px;
-  min-height: 1.55em;
+  min-height: calc(var(--log-size) * var(--log-line));
 }
 
 .log-row:hover {
-  background: var(--row-hover);
+  background: var(--hover-row);
 }
 
 .log-row[hidden] {
@@ -46,11 +55,10 @@
 }
 
 .log-nick {
-  color: var(--vs-purple);
+  color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
 }
 
 .log-mark {
@@ -75,14 +83,9 @@
   color: var(--accent);
 }
 
-.log-row.is-self .log-mark {
-  color: var(--accent);
-}
-
-/* system events: joins, errors, notices */
+/* system + error rows */
 .log-row.is-system .log-nick {
   color: var(--fg-faint);
-  font-weight: 400;
   font-style: italic;
 }
 
@@ -104,7 +107,7 @@
 
 .log-row.is-pending .log-mark {
   animation: blink 1s steps(2, start) infinite;
-  color: var(--accent);
+  color: var(--fg-dim);
 }
 
 .log-row.is-failed {
@@ -122,22 +125,17 @@
   }
 }
 
-.log-error {
-  padding: 24px 16px;
-  color: var(--fg-faint);
-  font-size: 12px;
-}
-
 /* ---------------------------------------------------------------- composer */
 
 .composer {
+  grid-row: 4;
   display: grid;
-  grid-template-columns: 2ch minmax(0, 1fr) auto;
+  grid-template-columns: 1ch minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0 6px;
+  gap: 0 5px;
+  height: 26px;
   padding: 0 10px;
-  height: 30px;
-  background: var(--bg);
+  background: var(--editor);
   border-top: 1px solid var(--border);
   font: var(--log-size) / 1 var(--font-mono);
 }
@@ -166,7 +164,7 @@
 }
 
 .composer-meter {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--fg-faint);
   font-variant-numeric: tabular-nums;
 }

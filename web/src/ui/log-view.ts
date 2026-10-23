@@ -1,4 +1,4 @@
-import { clampNick, formatTime } from "../lib/format";
+import { clampNick, formatTime, mutedColor } from "../lib/format";
 import type { Row, Store } from "../model/store";
 
 interface Entry {
@@ -113,7 +113,7 @@ export class LogView {
     nick.textContent = clampNick(row.nick);
     nick.title = row.nick;
     if (row.kind === "chat") {
-      nick.style.color = row.nick === this.selfNick ? "var(--accent)" : row.color;
+      nick.style.color = row.nick === this.selfNick ? "var(--accent)" : mutedColor(row.color);
     }
 
     const mark = document.createElement("span");
