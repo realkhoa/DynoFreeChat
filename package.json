@@ -1,0 +1,26 @@
+{
+  "name": "dynofreechat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "shared",
+    "worker",
+    "web"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck -ws --if-present",
+    "test": "npm run test -ws --if-present",
+    "build": "npm run build -w web",
+    "dev:web": "npm run dev -w web",
+    "dev:worker": "npm run dev -w worker",
+    "deploy:worker": "npm run deploy -w worker"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
+  }
+}

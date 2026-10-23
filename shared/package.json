@@ -1,0 +1,20 @@
+{
+  "name": "@dyno/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./protocol": {
+      "types": "./src/protocol.ts",
+      "import": "./src/protocol.ts"
+    },
+    "./ratelimit": {
+      "types": "./src/ratelimit.ts",
+      "import": "./src/ratelimit.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  }
+}
