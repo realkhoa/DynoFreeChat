@@ -1,9 +1,11 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_RIBBON_VISIBLE,
   applyRibbonVisible,
   loadRibbonVisible,
   saveRibbonVisible,
+  updateRibbonToggleButton,
 } from "../src/lib/ribbonpref";
 
 function fakeStorage(seed: Record<string, string> = {}): Storage {
@@ -56,5 +58,39 @@ describe("ribbon visibility", () => {
 
     applyRibbonVisible(root, true);
     expect(attrs["data-ribbon"]).toBe("on");
+  });
+
+  it("updates toggle button state when visible", () => {
+    const button = document.createElement("button");
+    const icon = document.createElement("span");
+    icon.className = "menubar-ribbon-icon";
+    const label = document.createElement("span");
+    label.className = "menubar-ribbon-label";
+    button.append(icon, label);
+
+    updateRibbonToggleButton(button, true);
+
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.title).toBe("Ẩn ribbon (Ctrl+F1)");
+    expect(button.classList.contains("is-off")).toBe(false);
+    expect(icon.textContent).toBe("⌃");
+    expect(label.textContent).toBe("Ribbon");
+  });
+
+  it("updates toggle button state when hidden", () => {
+    const button = document.createElement("button");
+    const icon = document.createElement("span");
+    icon.className = "menubar-ribbon-icon";
+    const label = document.createElement("span");
+    label.className = "menubar-ribbon-label";
+    button.append(icon, label);
+
+    updateRibbonToggleButton(button, false);
+
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(button.title).toBe("Hiện ribbon (Ctrl+F1)");
+    expect(button.classList.contains("is-off")).toBe(true);
+    expect(icon.textContent).toBe("⌵");
+    expect(label.textContent).toBe("Hiện Ribbon");
   });
 });

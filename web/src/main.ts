@@ -19,7 +19,7 @@ import { byId } from "./lib/dom";
 import { applyDock, closeDock, loadDock, revealDock, saveDock, toggleDock, type DockState } from "./lib/dockpref";
 import { joinPassFor } from "./lib/joinpass";
 import { applyMinimal, loadMinimal, minimalFromSearch, saveMinimal } from "./lib/minimal";
-import { applyRibbonVisible, loadRibbonVisible, saveRibbonVisible } from "./lib/ribbonpref";
+import { applyRibbonVisible, loadRibbonVisible, saveRibbonVisible, updateRibbonToggleButton } from "./lib/ribbonpref";
 import { Outbox } from "./lib/outbox";
 import { formatAge } from "./lib/format";
 import { loadIdentity, saveNick, type Identity } from "./lib/identity";
@@ -273,6 +273,11 @@ function applyChromeVisibility(): void {
   applyMinimal(document.documentElement, minimal);
   menubar.setChecked("ribbon", ribbonVisible);
   menubar.setChecked("minimal", minimal);
+
+  const ribbonToggle = document.getElementById("menubar-ribbon-toggle");
+  if (ribbonToggle !== null) {
+    updateRibbonToggleButton(ribbonToggle, ribbonVisible);
+  }
 }
 
 function toggleRibbon(): void {
@@ -964,6 +969,9 @@ function wire(): void {
   nickButton?.addEventListener("click", () => void changeNickname());
 
   byId<HTMLButtonElement>("minimal-exit").addEventListener("click", () => toggleMinimal());
+
+  const menubarRibbonToggle = document.getElementById("menubar-ribbon-toggle");
+  menubarRibbonToggle?.addEventListener("click", () => toggleRibbon());
 
   byId<HTMLButtonElement>("dock-reply-cancel").addEventListener("click", () => {
     composer.setReply(null);
