@@ -173,6 +173,23 @@ async function openGame(browser) {
   await sleep(300);
 }
 
+/**
+ * Polls until the board is live (connected, opponent present). Fixed sleeps were
+ * unreliable against a cold Cloudflare Durable Object.
+ */
+async function waitForLive(browser, label, timeoutMs = 25000) {
+  const started = Date.now();
+  for (;;) {
+    const state = await browser.evaluate(boardState);
+    const status = state.status ?? "";
+    const settled =
+      !status.includes("Đang kết nối") && !status.includes("chờ đối thủ") && !status.includes("Không ");
+    if (settled) return { label, waitedMs: Date.now() - started, ...state };
+    if (Date.now() - started > timeoutMs) return { label, waitedMs: -1, ...state };
+    await sleep(250);
+  }
+}
+
 async function clickCell(browser, cell) {
   const result = await browser.evaluate(`(() => {
     const el = document.querySelector("#editor-cell-${cell}");
@@ -201,44 +218,69 @@ async function main() {
     const beforeBob = await bob.evaluate(boardState);
     findings.push({ step: "chat rows before game", alice: beforeAlice.chatRows, bob: beforeBob.chatRows });
 
-    // ---- host creates a room
-    await openGame(alice);
-    findings.push({ step: "create", click: await alice.click("#game-create-btn") });
-    await sleep(1200);
-    const hosted = await alice.evaluate(boardState);
-    findings.push({ step: "hosted", hosted });
-    const code = /Session:\s*([A-Z0-9]{4})/.exec(hosted.badge ?? "")?.[1] ?? null;
-    if (code === null) throw new Error(`could not read the room code from ${JSON.stringify(hosted.badge)}`);
-    findings.push({ step: "room code", code });
+    // Pass an existing 4-character code to skip room creation (the create API is
+    // rate limited per IP, and two players typing the same code is a real case).
+    const presetCode = process.argv[3] ?? null;
+    let code = presetCode;
 
-    // ---- peer joins by code
-    await openGame(bob);
-    await bob.evaluate(`(() => {
-      const input = document.querySelector("#game-code-input");
-      input.value = ${JSON.stringify(code)};
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      return input.value;
-    })()`);
-    findings.push({ step: "join", click: await bob.click("#game-join-btn") });
-    await sleep(1800);
+    if (code === null) {
+      await openGame(alice);
+      findings.push({ step: "create", click: await alice.click("#game-create-btn") });
+      await sleep(1200);
+      const hosted = await alice.evaluate(boardState);
+      findings.push({ step: "hosted", hosted });
+      code = /Session:\s*([A-Z0-9]{4})/.exec(hosted.badge ?? "")?.[1] ?? null;
+      if (code === null) throw new Error(`could not read the room code from ${JSON.stringify(hosted.badge)}`);
+      findings.push({ step: "room code", code });
+    } else {
+      findings.push({ step: "preset room code", code });
+    }
 
+    // ---- both players enter the room; the preset path also joins as host side
+    const joinByCode = async (browser) => {
+      await openGame(browser);
+      await browser.evaluate(`(() => {
+        const input = document.querySelector("#game-code-input");
+        input.value = ${JSON.stringify(code)};
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        return input.value;
+      })()`);
+      await browser.click("#game-join-btn");
+    };
+
+    if (code === presetCode) await joinByCode(alice);
+    await joinByCode(bob);
+
+    findings.push({ step: "alice live", ...(await waitForLive(alice, "alice")) });
+    findings.push({ step: "bob live", ...(await waitForLive(bob, "bob")) });
     findings.push({ step: "after join", alice: await alice.evaluate(boardState), bob: await bob.evaluate(boardState) });
 
-    // ---- a full round: X (host) wins on row 0-1-2, O answers on 4 and 5
+    // Whoever ended up as X opens, which can be either browser when both typed
+    // the same code and the role tiebreak switched one of them.
+    const roleOf = (state) => (/(?:\(|\s)([XO])\)?\s*$/.exec(state.badge ?? "")?.[1] ?? null);
+    const aliceRole = roleOf(await alice.evaluate(boardState));
+    const bobRole = roleOf(await bob.evaluate(boardState));
+    findings.push({ step: "roles", aliceRole, bobRole });
+
+    if (aliceRole === bobRole) throw new Error(`roles did not settle: ${aliceRole}/${bobRole}`);
+    const xName = aliceRole === "X" ? "alice" : "bob";
+    const oName = xName === "alice" ? "bob" : "alice";
+    const actor = (name) => (name === "alice" ? alice : bob);
+
+    // ---- a full round: X wins on row 0-1-2, O answers on 4 and 5
     const moves = [];
     const steps = [
-      ["alice", 0],
-      ["bob", 0], // already taken by the host: must be refused
-      ["bob", 4],
-      ["alice", 1],
-      ["bob", 5],
-      ["alice", 2],
+      [xName, 0],
+      [oName, 0], // already taken by X: must be refused
+      [oName, 4],
+      [xName, 1],
+      [oName, 5],
+      [xName, 2],
     ];
     for (const [who, cell] of steps) {
-      const actor = who === "alice" ? alice : bob;
-      const result = await clickCell(actor, cell);
+      const result = await clickCell(actor(who), cell);
       moves.push({ who, cell, result });
-      await sleep(250);
+      await sleep(300);
       findings.push({
         move: `${who}:${cell}`,
         alice: await alice.evaluate(boardState),
@@ -267,8 +309,8 @@ async function main() {
     findings.push({ shot: await bob.shot("online-peer") });
 
     // ---- rematch relayed, starter alternates to O on both sides
-    findings.push({ step: "rematch", click: await alice.click("#game-code-rematch-btn") });
-    await sleep(900);
+    findings.push({ step: "rematch", click: await actor(xName).click("#game-code-rematch-btn") });
+    await sleep(1200);
     const rematchAlice = await alice.evaluate(boardState);
     const rematchBob = await bob.evaluate(boardState);
     findings.push({

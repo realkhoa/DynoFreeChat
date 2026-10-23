@@ -61,6 +61,27 @@ export interface OnlineGameSessionOptions {
 }
 
 /**
+ * @brief Turns a room-creation failure into a sentence the player can act on.
+ * @param roomCode The code the host tried to register.
+ * @param code Failure code from the registry API.
+ * @return Human readable status line.
+ */
+export function createFailureText(roomCode: string, code: string | undefined): string {
+  switch (code) {
+    case "TRY_LATER":
+      return `Máy chủ đang giới hạn tạo phòng. Thử lại sau vài phút, hoặc vào phòng có sẵn bằng mã.`;
+    case "TOO_MANY_ROOMS":
+      return `Lobby đã đủ phòng, không tạo thêm được. Hãy vào phòng có sẵn bằng mã.`;
+    case "BAD_SLUG":
+      return `Mã phòng [${roomCode}] không hợp lệ.`;
+    case "NETWORK":
+      return `Không gọi được máy chủ để tạo phòng [${roomCode}]. Kiểm tra kết nối mạng.`;
+    default:
+      return `Không tạo được phòng [${roomCode}]${code === undefined ? "" : ` (${code})`}. Thử lại sau.`;
+  }
+}
+
+/**
  * @brief Owns the WebSocket for one online game and translates frames into game messages.
  */
 export class OnlineGameSession {
@@ -103,10 +124,21 @@ export class OnlineGameSession {
     // Only the creator registers the room. A joiner that silently created the
     // room would turn a typo in the code into a room that nobody else can see.
     if (this.options.asHost && this.options.createRoomImpl !== undefined) {
+      let created: { ok: boolean; code?: string };
       try {
-        await this.options.createRoomImpl(this.options.apiBase, { slug });
+        created = await this.options.createRoomImpl(this.options.apiBase, { slug });
       } catch {
-        // The socket join below reports the real reason.
+        created = { ok: false, code: "NETWORK" };
+      }
+
+      // PROCEED on success and on ROOM_EXISTS (the code is taken but usable);
+      // anything else means the room does not exist, so joining would only earn
+      // a fatal 4403 and leave the player looking at a locked board.
+      if (!created.ok && created.code !== "ROOM_EXISTS") {
+        this.options.onConnectedChange(false);
+        this.options.onPeerCount(0);
+        this.options.onStatusText(createFailureText(this.options.roomCode, created.code));
+        return;
       }
     }
 

@@ -20,7 +20,11 @@ interface Harness {
   connected: boolean[];
 }
 
-function makeSession(asHost = true, role: PlayerMark = "X"): Harness {
+function makeSession(
+  asHost = true,
+  role: PlayerMark = "X",
+  createResult: { ok: boolean; code?: string } = { ok: true },
+): Harness {
   const socket = new FakeSocket("wss://fake/ws");
   const harness: Harness = {
     session: undefined as unknown as OnlineGameSession,
@@ -51,7 +55,7 @@ function makeSession(asHost = true, role: PlayerMark = "X"): Harness {
     },
     createRoomImpl: async () => {
       harness.createCalls += 1;
-      return { ok: true };
+      return createResult;
     },
     onStatusText: (text) => harness.statuses.push(text),
     onConnectedChange: (value) => harness.connected.push(value),
@@ -164,6 +168,25 @@ describe("OnlineGameSession", () => {
     h.socket.open();
     h.socket.receive({ t: "error", code: "ROOM_NOT_FOUND" });
     expect(h.statuses.some((text) => text.includes("Không tìm thấy phòng"))).toBe(true);
+  });
+
+  it("explains a refused room creation instead of dialling a room that cannot exist", async () => {
+    const h = makeSession(true, "X", { ok: false, code: "TRY_LATER" });
+    await h.session.connect();
+
+    expect(h.createCalls).toBe(1);
+    expect(h.url).toBe("");
+    expect(h.statuses.some((text) => text.includes("giới hạn tạo phòng"))).toBe(true);
+    expect(h.connected).toEqual([false]);
+  });
+
+  it("still connects when the code is already taken", async () => {
+    const h = makeSession(true, "X", { ok: false, code: "ROOM_EXISTS" });
+    await h.session.connect();
+
+    expect(h.url).toBe("wss://fake/ws?r=ttt-abcd");
+    h.socket.open();
+    expect(h.connected.at(-1)).toBe(true);
   });
 
   it("reports the connection state and stops on close", async () => {
