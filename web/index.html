@@ -18,6 +18,10 @@
       try {
         document.documentElement.dataset.theme =
           localStorage.getItem("dyno.theme") === "light" ? "light" : "dark";
+        document.documentElement.dataset.ribbon =
+          localStorage.getItem("dyno.ribbon") === "off" ? "off" : "on";
+        document.documentElement.dataset.minimal =
+          localStorage.getItem("dyno.minimal") === "on" ? "on" : "off";
       } catch (error) {
         document.documentElement.dataset.theme = "dark";
       }
@@ -69,6 +73,8 @@
           <ul class="menu-list" id="menu-view" role="menu" hidden>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="follow">Bám đuôi log<kbd>Ctrl+End</kbd></button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="sidebar">Ẩn/hiện Solution Explorer</button></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="ribbon">Ẩn/hiện ribbon<kbd>Ctrl+F1</kbd></button></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="minimal">Chế độ tối giản (chỉ chat)<kbd>Ctrl+Shift+M</kbd></button></li>
             <li class="menu-sep" role="separator"></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="theme">Giao diện: Dark / Light<kbd>Ctrl+Shift+D</kbd></button></li>
           </ul>
@@ -229,6 +235,7 @@
         </div>
       </div>
 
+      <button type="button" class="minimal-exit" id="minimal-exit" aria-label="Hiện thanh công cụ" title="Hiện thanh công cụ (Ctrl+Shift+M)">⌄</button>
       <footer class="statusbar" id="statusbar" data-connection="connecting">
         <span class="statusitem statusitem--conn"><span class="conn-dot" aria-hidden="true"></span><span id="conn">Sẵn sàng</span></span>
         <span class="statusitem statusitem--dim" id="online">0 online</span>

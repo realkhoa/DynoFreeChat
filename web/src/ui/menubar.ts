@@ -10,6 +10,8 @@ export type MenuAction =
   | "sound"
   | "zoom-in"
   | "zoom-out"
+  | "ribbon"
+  | "minimal"
   | "new-room"
   | "reconnect"
   | "forget-pass"

@@ -16,6 +16,10 @@ import { apiBase, roomSocketUrl, wsUrl } from "./env";
 import { applyBrowserBadges } from "./lib/badge";
 import { loadZoom, saveZoom, stepZoom, zoomToPixels, type Zoom } from "./lib/zoom";
 import { byId } from "./lib/dom";
+import { joinPassFor } from "./lib/joinpass";
+import { applyMinimal, loadMinimal, minimalFromSearch, saveMinimal } from "./lib/minimal";
+import { applyRibbonVisible, loadRibbonVisible, saveRibbonVisible } from "./lib/ribbonpref";
+import { Outbox } from "./lib/outbox";
 import { formatAge } from "./lib/format";
 import { loadIdentity, saveNick, type Identity } from "./lib/identity";
 import { Notifier } from "./lib/notify";
@@ -105,8 +109,12 @@ const storage = safeStorage();
 let identity: Identity = loadIdentity(storage);
 const vault = new PassVault(storage);
 const sound = new SoundPlayer({ storage });
+const outbox = new Outbox();
+let outboxWarned = false;
 let theme: Theme = loadTheme(storage);
 let zoom: Zoom = loadZoom(storage);
+let ribbonVisible = loadRibbonVisible(storage);
+let minimal = loadMinimal(storage);
 
 let store = new Store();
 let rooms: RoomInfo[] = [];
@@ -167,7 +175,9 @@ const composer = new Composer({
 });
 
 const menubar = mountMenubar(menubarEl, handleMenuAction);
-const ribbon = new Ribbon(byId<HTMLElement>("ribbon"), defaultRibbonSpec(), handleMenuAction);
+const ribbon = new Ribbon(byId<HTMLElement>("ribbon"), defaultRibbonSpec(), handleMenuAction, () =>
+  toggleRibbon(),
+);
 
 /**
  * Notifications carry a room label and a count — never message text, never a
@@ -227,11 +237,30 @@ function applyZoom(): void {
   zoomSelect.value = String(zoom);
 }
 
+function applyChromeVisibility(): void {
+  applyRibbonVisible(document.documentElement, ribbonVisible);
+  applyMinimal(document.documentElement, minimal);
+  menubar.setChecked("ribbon", ribbonVisible);
+  menubar.setChecked("minimal", minimal);
+}
+
+function toggleRibbon(): void {
+  ribbonVisible = saveRibbonVisible(storage, !ribbonVisible);
+  applyChromeVisibility();
+}
+
+/** Only the log and the composer, for embedding in a WebView. */
+function toggleMinimal(): void {
+  minimal = saveMinimal(storage, !minimal);
+  applyChromeVisibility();
+  if (!minimal) composer.focus();
+}
+
 function changeZoom(next: Zoom): void {
   if (next === zoom) return;
   zoom = saveZoom(storage, next);
   applyZoom();
-  store.addSystem(`cỡ chữ khung chat: ${zoom}%`);
+
   render();
 }
 
@@ -422,6 +451,8 @@ function enterRoom(slug: string, pass?: string): void {
   setFollow(true);
   notifier.reset();
   composer.setReply(null);
+  outbox.clear();
+  outboxWarned = false;
 
   current = { slug, locked: false };
   joinPass = pass;
@@ -447,6 +478,8 @@ function leaveRoom(updateUrl = true): void {
   socket = null;
   current = null;
   joinPass = undefined;
+  outbox.clear();
+  outboxWarned = false;
   composer.setEnabled(false);
 
   store = new Store();
@@ -479,14 +512,18 @@ function handleState(
   statusbar.setConnection(state, detail.attempt);
 
   if (state === "open" && socket !== null) {
+    // A reconnect is a new connection: the remembered password has to travel
+    // again, otherwise a tab switch looks like a wrong password.
+    const pass = joinPassFor(joinPass, current?.slug, (slug) => vault.get(slug));
     const frame: ClientFrame = { t: "join", nick: identity.nick, color: identity.color };
-    if (joinPass !== undefined && joinPass.length > 0) frame.pass = joinPass;
+    if (pass !== undefined) frame.pass = pass;
     socket.send(frame);
     return;
   }
-
   if (state === "closed") {
-    composer.setEnabled(false);
+    // Still in a room: keep the composer alive so typed messages queue
+    // instead of being lost. Auth failures disable it explicitly elsewhere.
+    if (current === null) composer.setEnabled(false);
 
     // A refused password or a vanished room is already explained by the error
     // row (and the dialog); a second "connection lost" line would be a lie.
@@ -523,6 +560,7 @@ function handleFrame(gen: number, frame: ServerFrame): void {
         `đã vào #${frame.room.slug}${frame.room.locked ? " (có mật khẩu)" : ""} — ${frame.online} người online`,
       );
       composer.setEnabled(true);
+      flushOutbox();
       composer.focus();
       statusbar.setOnline(frame.online);
       statusbar.setLocked(frame.room.locked);
@@ -572,7 +610,7 @@ function handleServerError(gen: number, frame: Extract<ServerFrame, { t: "error"
   if (frame.code !== "BAD_PASS" && frame.code !== "ROOM_NOT_FOUND") return;
 
   const slug = current?.slug;
-  if (frame.code === "BAD_PASS" && slug !== undefined) vault.forget(slug);
+  if (frame.code === "BAD_PASS" && slug !== undefined && vault.has(slug)) vault.forget(slug);
 
   composer.setEnabled(false);
   suppressDisconnectNotice = true;
@@ -581,6 +619,34 @@ function handleServerError(gen: number, frame: Extract<ServerFrame, { t: "error"
 
   if (gen === generation && slug !== undefined) {
     window.setTimeout(() => openJoinDialog(slug, text), 0);
+  }
+}
+
+
+/** Sends everything typed while the socket was down, in order. */
+function flushOutbox(): void {
+  if (outbox.empty) return;
+
+  const queued = outbox.take();
+  let sent = 0;
+
+  for (const message of queued) {
+    const frame: ClientFrame =
+      message.replyTo === undefined
+        ? { t: "msg", cid: message.cid, text: message.text }
+        : { t: "msg", cid: message.cid, text: message.text, replyTo: message.replyTo };
+
+    if (socket === null || !socket.send(frame)) {
+      outbox.queue(message);
+      continue;
+    }
+    sent += 1;
+  }
+
+  outboxWarned = outbox.size > 0;
+  if (sent > 0) {
+    store.addSystem(`đã gửi lại ${sent} tin đang chờ`);
+    render();
   }
 }
 
@@ -600,12 +666,20 @@ function sendMessage(text: string, replyTo?: string): void {
     ? { t: "msg", cid, text: trimmed }
     : { t: "msg", cid, text: trimmed, replyTo: quoted.id };
 
-  if (!socket.send(frame)) {
-    store.failPending(cid, "chưa kết nối");
-    render();
-  } else {
+  if (socket.send(frame)) {
     setFollow(true);
+    return;
   }
+
+  // Offline: keep the row pending and queue the frame for the next welcome.
+  outbox.queue(
+    quoted === undefined ? { cid, text: trimmed } : { cid, text: trimmed, replyTo: quoted.id },
+  );
+  if (!outboxWarned) {
+    outboxWarned = true;
+    store.addSystem("chưa kết nối — tin nhắn sẽ được gửi lại khi vào lại room");
+  }
+  render();
 }
 
 // ------------------------------------------------------------------- actions
@@ -732,6 +806,12 @@ function handleMenuAction(action: MenuAction): void {
     case "theme":
       toggleTheme();
       break;
+    case "ribbon":
+      toggleRibbon();
+      break;
+    case "minimal":
+      toggleMinimal();
+      break;
     case "zoom-in":
       changeZoom(stepZoom(zoom, 1));
       break;
@@ -834,6 +914,8 @@ function wire(): void {
   // The nickname lives in the status bar, as in VS: click it to rename.
   nickButton.addEventListener("click", () => void changeNickname());
 
+  byId<HTMLButtonElement>("minimal-exit").addEventListener("click", () => toggleMinimal());
+
   byId<HTMLButtonElement>("dock-reply-cancel").addEventListener("click", () => {
     composer.setReply(null);
     composer.focus();
@@ -893,6 +975,16 @@ function wire(): void {
 
     const key = event.key.toLowerCase();
     // Ctrl+Shift+. and Ctrl+Shift+, zoom the chat pane, like the VS editor.
+    if (event.key === "F1") {
+      event.preventDefault();
+      toggleRibbon();
+      return;
+    }
+    if (event.shiftKey && key === "m") {
+      event.preventDefault();
+      toggleMinimal();
+      return;
+    }
     if (event.shiftKey && event.code === "Period") {
       event.preventDefault();
       changeZoom(stepZoom(zoom, 1));
@@ -943,6 +1035,7 @@ function wire(): void {
   });
 
   window.setInterval(() => {
+    if (socket?.state !== "open") return;
     const expired = store.expirePending(Date.now(), PENDING_TTL_MS);
     if (expired.length === 0) return;
     for (const cid of expired) store.failPending(cid, "server không phản hồi");
@@ -966,6 +1059,11 @@ function boot(): void {
   menubar.setChecked("theme", theme === "light");
   menubar.setChecked("sound", sound.isEnabled);
   applyZoom();
+
+  // A WebView can pin the layout with ?minimal=1 instead of storage.
+  const urlMinimal = minimalFromSearch(window.location.search);
+  if (urlMinimal !== undefined) minimal = saveMinimal(storage, urlMinimal);
+  applyChromeVisibility();
 
   wire();
 

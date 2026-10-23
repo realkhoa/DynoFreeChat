@@ -6,9 +6,8 @@ export type SocketState = "idle" | "connecting" | "open" | "reconnecting" | "clo
 export type FrameHandler = (frame: ServerFrame) => void;
 export type StateHandler = (state: SocketState, detail: { attempt: number; reason?: string }) => void;
 
-/** Close codes that mean "do not retry": bad password, room gone. */
+/** Close codes that mean "no point retrying on our own": bad password, room gone. */
 const FATAL_CODES = new Set([4403, 4404]);
-const MAX_ATTEMPTS = 12;
 
 export interface ChatSocketOptions {
   url: string;
@@ -127,12 +126,13 @@ export class ChatSocket {
     });
   }
 
+  /**
+   * Retries forever: an outage or a sleeping tab should heal on its own instead
+   * of leaving the room dead until someone reloads the page. The delay is capped
+   * at 30s, so long outages cost one request every half minute.
+   */
   private scheduleRetry(reason: string): void {
     if (this.manualClose) return;
-    if (this.attempt >= MAX_ATTEMPTS) {
-      this.setState("closed", reason);
-      return;
-    }
 
     const delay = nextDelay(this.attempt, this.rand);
     this.attempt += 1;

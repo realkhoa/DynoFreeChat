@@ -1555,3 +1555,89 @@ button:disabled {
 .tree-row--file:hover {
   background: var(--hover-row);
 }
+
+/* ============================== chrome visibility: hide ribbon, minimal mode */
+
+:root[data-ribbon="off"] {
+  --ribbon-h: 0px;
+}
+
+:root[data-ribbon="off"] .ribbon {
+  display: none;
+}
+
+.ribbon-tabs-spacer {
+  flex: 1;
+}
+
+.ribbon-collapse {
+  align-self: center;
+  width: 20px;
+  height: 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.ribbon-collapse:hover {
+  background: var(--panel);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+/* minimal: only the log and the composer, for a WebView host */
+:root[data-minimal="on"] .ide {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+:root[data-minimal="on"] .titlebar,
+:root[data-minimal="on"] .menubar,
+:root[data-minimal="on"] .ribbon,
+:root[data-minimal="on"] .tabstrip,
+:root[data-minimal="on"] .breadcrumb,
+:root[data-minimal="on"] .sidebar,
+:root[data-minimal="on"] .dock-tabs,
+:root[data-minimal="on"] .statusbar {
+  display: none;
+}
+
+:root[data-minimal="on"] .content {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:root[data-minimal="on"] .dock {
+  border-top: 1px solid var(--border);
+}
+
+:root[data-minimal="on"] .log {
+  padding-top: 6px;
+}
+
+.minimal-exit {
+  display: none;
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 80;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 0 0 0 var(--radius);
+  background: var(--chrome);
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.55;
+}
+
+:root[data-minimal="on"] .minimal-exit {
+  display: grid;
+  place-items: center;
+}
+
+.minimal-exit:hover {
+  opacity: 1;
+  color: var(--fg);
+}

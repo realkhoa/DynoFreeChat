@@ -37,6 +37,7 @@ export class Ribbon {
     private readonly root: HTMLElement,
     private readonly spec: RibbonTabSpec[],
     private readonly onAction: (action: MenuAction) => void,
+    private readonly onCollapse?: () => void,
   ) {
     this.active = spec[0]?.id ?? "";
     this.paint();
@@ -90,6 +91,19 @@ export class Ribbon {
 
       body.append(panel);
       this.tabs.set(tabSpec.id, { tab, panel });
+    }
+
+    if (this.onCollapse !== undefined) {
+      const spacer = document.createElement("span");
+      spacer.className = "ribbon-tabs-spacer";
+      const collapse = document.createElement("button");
+      collapse.type = "button";
+      collapse.className = "ribbon-collapse";
+      collapse.title = "Ẩn ribbon (Ctrl+F1)";
+      collapse.setAttribute("aria-label", "Ẩn ribbon");
+      collapse.textContent = "⌃";
+      collapse.addEventListener("click", () => this.onCollapse?.());
+      tabStrip.append(spacer, collapse);
     }
 
     this.root.replaceChildren(tabStrip, body);

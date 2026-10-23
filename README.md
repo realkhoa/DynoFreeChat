@@ -31,6 +31,8 @@ Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao di�
 - **Reconnect** tự động với backoff 1s→30s có jitter; lịch sử được replay lại, dedupe theo id.
 - **Thông báo tin nhắn mới**, ba lớp và **không bao giờ kèm nội dung hay nickname**: chuông ở title bar (badge số chưa đọc, panel liệt kê `#phòng · N tin mới`, bấm để nhảy vào phòng), notification hệ điều hành khi tab ở nền, và **badge trên trình duyệt** — số đỏ vẽ thẳng lên favicon (`(3)` ở tiêu đề tab) kèm `navigator.setAppBadge` cho taskbar/PWA. Bật/tắt ở `Tools → Thông báo tin nhắn mới`.
 - **Âm thanh thông báo**: tiếng "ding" tổng hợp bằng WebAudio (không có file mp3, không request), hai nốt cho tin thường và ba nốt cao hơn khi bị `@tag`; chỉ kêu khi tab ở nền; bật/tắt ở `Tools → Âm thanh thông báo`, lưu trong `localStorage`.
+- **Ẩn ribbon** (`Ctrl+F1`, menu `View`, hoặc nút ⌃ trên ribbon) — lựa chọn được nhớ.
+- **Chế độ tối giản**: chỉ còn khung chat + ô nhập, không title bar/menu/ribbon/tab/breadcrumb/Solution Explorer/dock tabs/status bar. Bật bằng menu `View → Chế độ tối giản`, `Ctrl+Shift+M`, hoặc **ghim bằng URL** `?minimal=1` — tiện nhúng WebView. Nút `⌄` ở góc phải để thoát.
 - **Cỡ chữ khung chat riêng**: combo `100%` ở status bar (80–150%) hoặc `Ctrl+Shift+.` / `Ctrl+Shift+,`; chỉ đổi cỡ dòng log, toàn bộ chrome giữ nguyên cỡ. Lưu trong `localStorage`.
 - **Lọc log** (Ctrl+F, substring trên nick + nội dung) và combo All/Chat/System.
 - **Follow tail** tự cuộn khi ở đáy, tự tắt khi bạn cuộn lên, chip "↓ tin mới".
@@ -122,6 +124,19 @@ Mỗi lần push `main`, workflow `.github/workflows/deploy-web.yml` sẽ typech
 (`base` = `/DynoFreeChat/`, đổi bằng biến `PAGES_BASE` nếu tên repo khác).
 
 Worker deploy thủ công: số lần deploy thấp, không có vòng CI→wrangler→CI.
+
+## Nhúng vào WebView (Visual Studio extension)
+
+Load thẳng URL có sẵn, không cần build lại:
+
+```
+https://realkhoa.github.io/DynoFreeChat/?r=chung&minimal=1
+```
+
+- `minimal=1` ghim layout chỉ-chat, `minimal=0` để tắt; tham số này thắng cả lựa chọn đã lưu, nên mỗi tool window có thể có layout riêng.
+- WebView2 giữ `localStorage` theo profile: theme, cỡ chữ, nick và mật khẩu phòng đã nhớ vẫn dùng lại.
+- Thoát tối giản bằng `Ctrl+Shift+M` hoặc nút `⌄` góc phải.
+- WebSocket tới `wss://dynofreechat-api.nbk2124-z.workers.dev/ws` chạy bình thường trong WebView2; âm thanh cần một cú click đầu để mở AudioContext.
 
 ## Chi phí — phần quan trọng nhất
 
