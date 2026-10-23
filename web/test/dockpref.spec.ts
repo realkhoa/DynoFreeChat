@@ -29,46 +29,49 @@ function fakeStorage(seed: Record<string, string> = {}): Storage {
 }
 
 describe("dock state", () => {
-  it("starts open", () => {
+  it("starts open by default", () => {
     expect(DEFAULT_DOCK).toBe("open");
     expect(loadDock(fakeStorage())).toBe("open");
     expect(loadDock(null)).toBe("open");
   });
 
-  it("remembers every state", () => {
-    const storage = fakeStorage();
-    saveDock(storage, "collapsed");
-    expect(loadDock(storage)).toBe("collapsed");
+  it("resets stale legacy states on load to ensure chat input is always open", () => {
+    const storage = fakeStorage({ "dyno.dock": "collapsed" });
+    expect(loadDock(storage)).toBe("open");
+    expect(storage.getItem("dyno.dock")).toBeNull();
 
-    saveDock(storage, "closed");
-    expect(loadDock(storage)).toBe("closed");
+    storage.setItem("dyno.dock", "closed");
+    expect(loadDock(storage)).toBe("open");
+    expect(storage.getItem("dyno.dock")).toBeNull();
   });
 
-  it("ignores junk", () => {
-    expect(loadDock(fakeStorage({ "dyno.dock": "tiny" }))).toBe("open");
-    expect(isDockState("tiny")).toBe(false);
+  it("validates states", () => {
+    expect(isDockState("open")).toBe(true);
     expect(isDockState("closed")).toBe(true);
+    expect(isDockState("collapsed")).toBe(false);
+    expect(isDockState("tiny")).toBe(false);
   });
 
   it("toggles between open and closed", () => {
     expect(toggleDock("open")).toBe("closed");
     expect(toggleDock("closed")).toBe("open");
-    expect(toggleDock("collapsed")).toBe("open");
   });
 
-  it("closes from any state", () => {
+  it("closes explicitly", () => {
     expect(closeDock("open")).toBe("closed");
-    expect(closeDock("collapsed")).toBe("closed");
     expect(closeDock("closed")).toBe("closed");
   });
 
-  it("reveals and closes with the keyboard shortcut", () => {
+  it("reveals and closes with keyboard shortcut or menu action", () => {
     expect(revealDock("closed")).toBe("open");
-    expect(revealDock("collapsed")).toBe("open");
     expect(revealDock("open")).toBe("closed");
   });
 
-  it("drives the data attribute", () => {
+  it("persists and applies data attribute", () => {
+    const storage = fakeStorage();
+    saveDock(storage, "closed");
+    expect(storage.getItem("dyno.dock")).toBe("closed");
+
     const attrs: Record<string, string> = {};
     const root = {
       setAttribute: (name: string, value: string) => {
@@ -76,7 +79,7 @@ describe("dock state", () => {
       },
     } as unknown as HTMLElement;
 
-    applyDock(root, "collapsed");
-    expect(attrs["data-dock"]).toBe("collapsed");
+    applyDock(root, "closed");
+    expect(attrs["data-dock"]).toBe("closed");
   });
 });

@@ -22,10 +22,10 @@
           localStorage.getItem("dyno.ribbon") === "off" ? "off" : "on";
         document.documentElement.dataset.minimal =
           localStorage.getItem("dyno.minimal") === "on" ? "on" : "off";
-        document.documentElement.dataset.dock =
-          ["collapsed", "closed"].includes(localStorage.getItem("dyno.dock"))
-            ? localStorage.getItem("dyno.dock")
-            : "open";
+        document.documentElement.dataset.dock = "open";
+        try {
+          localStorage.removeItem("dyno.dock");
+        } catch (e) {}
       } catch (error) {
         document.documentElement.dataset.theme = "dark";
       }

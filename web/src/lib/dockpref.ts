@@ -1,16 +1,16 @@
 /**
  * @file dockpref.ts
- * @brief State management and persistence for the chat composer Output dock.
- * @details Manages whether the dock is visible ("open") or hidden ("closed"/"collapsed").
+ * @brief State management for the chat composer Output dock.
+ * @details Manages whether the chat input dock is visible ("open") or hidden ("closed").
+ * Always defaults to "open" on page load so the chat composer is never missing.
  */
 
 /**
  * @brief Represents the visual state of the Output dock.
  * - "open": composer input visible.
- * - "collapsed": collapsed/hidden.
- * - "closed": fully hidden, restorable via shortcut or View -> Output menu.
+ * - "closed": temporarily hidden via Ctrl+Alt+O or View -> Output menu.
  */
-export type DockState = "open" | "collapsed" | "closed";
+export type DockState = "open" | "closed";
 
 const STORAGE_KEY = "dyno.dock";
 export const DEFAULT_DOCK: DockState = "open";
@@ -18,39 +18,42 @@ export const DEFAULT_DOCK: DockState = "open";
 /**
  * @brief Validates if an unknown value is a valid DockState.
  * @param value Value to check.
- * @return True if value is "open", "collapsed", or "closed".
+ * @return True if value is "open" or "closed".
  */
 export function isDockState(value: unknown): value is DockState {
-  return value === "open" || value === "collapsed" || value === "closed";
+  return value === "open" || value === "closed";
 }
 
 /**
- * @brief Loads the saved dock state from localStorage.
+ * @brief Initializes the dock state for the session.
+ * @details Always defaults to "open" on startup so the input box is readily available.
+ * Cleans up any stale persisted collapsed/closed states from previous sessions.
  * @param storage Browser storage or null.
- * @return The loaded DockState, or DEFAULT_DOCK ("open") on error/missing.
+ * @return Always returns "open" on page load.
  */
 export function loadDock(storage: Storage | null): DockState {
-  if (storage === null) return DEFAULT_DOCK;
-  try {
-    const raw = storage.getItem(STORAGE_KEY);
-    return isDockState(raw) ? raw : DEFAULT_DOCK;
-  } catch {
-    return DEFAULT_DOCK;
+  if (storage !== null) {
+    try {
+      storage.removeItem(STORAGE_KEY);
+    } catch {
+      // Storage access error or private mode: ignore.
+    }
   }
+  return DEFAULT_DOCK;
 }
 
 /**
- * @brief Saves the current dock state to localStorage.
+ * @brief Updates or saves the dock state for the current session.
  * @param storage Browser storage or null.
- * @param state The DockState to save.
- * @return The saved DockState.
+ * @param state The DockState to apply.
+ * @return The state.
  */
 export function saveDock(storage: Storage | null, state: DockState): DockState {
   if (storage !== null) {
     try {
       storage.setItem(STORAGE_KEY, state);
     } catch {
-      // Private mode: the state simply does not persist.
+      // Private mode: ignore.
     }
   }
   return state;
@@ -66,7 +69,7 @@ export function toggleDock(state: DockState): DockState {
 }
 
 /**
- * @brief Closes the dock completely.
+ * @brief Closes the dock.
  * @param _state Current dock state.
  * @return Always returns "closed".
  */
