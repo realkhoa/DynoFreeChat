@@ -177,9 +177,10 @@ Web:
 Unit and integration:
 
 - `npm test -w shared -- --pool=threads` — 43 passed.
-- `npm test -w web -- --pool=threads` — 212 passed.
-- `npm test -w worker` — 29 passed, including the ephemeral-relay, no-persistence and
-  separate-bucket cases against a real `ChatRoom` Durable Object.
+- `npm test -w web -- --pool=threads` — 219 passed.
+- `npm test -w worker` — 31 passed, including the ephemeral-relay, no-persistence,
+  separate-bucket and unauthenticated-socket cases against a real `ChatRoom` Durable
+  Object.
 - `npm run typecheck` — clean in all three workspaces.
 
 Browser, through CDP (`scripts/cdp-ttt-layout.mjs`, `scripts/cdp-ttt-online.mjs`):
@@ -189,7 +190,31 @@ Browser, through CDP (`scripts/cdp-ttt-layout.mjs`, `scripts/cdp-ttt-online.mjs`
   reach the board), grid bottom inside the viewport.
 - A won cell reports `animation-name: none` on the element and a single 0.5s `cellWinFade`
   on `::after` — no infinite animation remains.
-- Two headless clients, one worker: host creates room `6CX4`, peer joins by code, five
-  moves, both boards identical at every step (`XXX.OO...`), both announce the same winner,
-  an occupied cell is refused, chat rows stay at 1 on both sides (no protocol JSON in the
-  log), and "Ván mới" resets both boards with the starter alternating to O.
+- Two headless clients against a real worker, fresh room: host creates `FJAG`, peer joins
+  by code, five moves, both boards identical at every step (`XXX.OO...`), both announce
+  the same winner with the same score, an occupied cell is refused, chat rows stay at 1 on
+  both sides, and "Ván mới" resets both boards with the starter alternating to O.
+- Same flow with a stale socket deliberately held open in the room: the handshake still
+  converges (host X, guest O).
+
+### Two defects only production exposed
+
+Both were found by replaying the flow against the deployed worker, not by tests:
+
+1. **Handshake before authentication.** The room broadcasts `presence` to every accepted
+   socket, including one whose `join` is still being verified. A client that reacted to
+   that presence sent `hello` early, the room dropped it as `NOT_JOINED`, and the client
+   had already recorded the handshake as sent — so it never retried and both players sat
+   on the same mark. Fixed on both sides: the room only counts, notifies and relays to
+   sockets that finished joining, and the client refuses game frames until `welcome`.
+
+2. **Presence is not a reliable "peer arrived" signal.** A room can look occupied by a
+   socket the edge has dropped but the object has not evicted. The first real player then
+   latches its handshake on that ghost and never speaks again, so the second player's hello
+   goes unanswered. The handshake now answers any hello it has not answered before, once
+   per peer id, which closes the loop without a storm.
+
+Residual operational note: an abrupt browser kill leaves a socket the edge reports as
+`1006` some time later, so a room used by repeated automated runs accumulates stale
+sockets until the object notices. Real rooms start empty; a room reused by test harnesses
+may look occupied while nobody is there.
