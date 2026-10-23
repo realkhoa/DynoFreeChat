@@ -13,10 +13,12 @@ import {
 } from "@dyno/shared/protocol";
 import { createRoom, listRooms } from "./api";
 import { apiBase, roomSocketUrl, wsUrl } from "./env";
+import { applyBrowserBadges } from "./lib/badge";
 import { byId } from "./lib/dom";
 import { formatAge } from "./lib/format";
 import { loadIdentity, saveNick, type Identity } from "./lib/identity";
 import { Notifier } from "./lib/notify";
+import { SoundPlayer } from "./lib/sound";
 import { PassVault } from "./lib/passvault";
 import { applyTheme, loadTheme, otherTheme, saveTheme, type Theme } from "./lib/theme";
 import { Store, type KindFilter } from "./model/store";
@@ -101,6 +103,7 @@ const nickDialogEl = byId<HTMLDialogElement>("nick-dialog");
 const storage = safeStorage();
 let identity: Identity = loadIdentity(storage);
 const vault = new PassVault(storage);
+const sound = new SoundPlayer({ storage });
 let theme: Theme = loadTheme(storage);
 
 let store = new Store();
@@ -222,6 +225,9 @@ function updateChrome(): void {
   const unread = notifier.unread;
   const base = slug === undefined ? BASE_TITLE : `#${slug} — DynoFreeChat`;
   document.title = unread > 0 ? `(${unread}) ${base}` : base;
+
+  // Tab icon counter + taskbar badge (where the browser supports it).
+  applyBrowserBadges(unread);
 }
 
 /**
@@ -537,9 +543,10 @@ function handleFrame(gen: number, frame: ServerFrame): void {
       const outcome = store.addMessage(frame.m, frame.cid);
       if (outcome === "duplicate") break;
       if (frame.m.nick !== identity.nick) {
-        notifier.incoming(current?.slug ?? "room", {
-          mention: mentionsNick(frame.m.text, identity.nick),
-        });
+        const mention = mentionsNick(frame.m.text, identity.nick);
+        notifier.incoming(current?.slug ?? "room", { mention });
+        // Beep only when nobody is looking at the room, like Mattermost.
+        if (document.visibilityState === "hidden") sound.play(mention ? "mention" : "message");
         renderNotifications();
         updateChrome();
       }
@@ -730,6 +737,12 @@ function handleMenuAction(action: MenuAction): void {
     case "theme":
       toggleTheme();
       break;
+    case "sound":
+      sound.setEnabled(!sound.isEnabled);
+      menubar.setChecked("sound", sound.isEnabled);
+      store.addSystem(sound.isEnabled ? "đã bật âm thanh thông báo" : "đã tắt âm thanh thông báo");
+      render();
+      break;
     case "sidebar":
       sidebarEl.hidden = !sidebarEl.hidden;
       break;
@@ -874,6 +887,11 @@ function wire(): void {
     composerEl.hidden = true;
   });
 
+  // WebAudio needs a user gesture before it may start.
+  const unlockAudio = (): void => sound.unlock();
+  document.addEventListener("pointerdown", unlockAudio, { once: true });
+  document.addEventListener("keydown", unlockAudio, { once: true });
+
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
     renderNotifications();
@@ -946,6 +964,7 @@ function boot(): void {
   syncNotifyMenu();
   renderNotifications();
   menubar.setChecked("theme", theme === "light");
+  menubar.setChecked("sound", sound.isEnabled);
 
   wire();
 

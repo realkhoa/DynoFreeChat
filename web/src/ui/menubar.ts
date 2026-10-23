@@ -7,6 +7,7 @@ export type MenuAction =
   | "follow"
   | "notify"
   | "theme"
+  | "sound"
   | "new-room"
   | "reconnect"
   | "forget-pass"

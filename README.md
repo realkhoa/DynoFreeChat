@@ -27,7 +27,8 @@ Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao di�
 - **Tag `@nick`**: pill màu trong nội dung, autocomplete khi gõ `@` (↑↓ chọn, Tab/Enter nhận, Esc đóng), dòng có nhắc tới bạn được tô nền + vạch vàng, và chuông báo ghi rõ `· có nhắc bạn` (vẫn không kèm nội dung).
 - **Optimistic echo**: gõ là thấy dòng mờ ngay, server xác nhận thì sáng lên.
 - **Reconnect** tự động với backoff 1s→30s có jitter; lịch sử được replay lại, dedupe theo id.
-- **Thông báo tin nhắn mới**, hai lớp và **không bao giờ kèm nội dung hay nickname**: chuông ở title bar (badge số chưa đọc, panel liệt kê `#phòng · N tin mới`, bấm để nhảy vào phòng) và notification hệ điều hành khi tab ở nền. Bật/tắt ở `Tools → Thông báo tin nhắn mới`.
+- **Thông báo tin nhắn mới**, ba lớp và **không bao giờ kèm nội dung hay nickname**: chuông ở title bar (badge số chưa đọc, panel liệt kê `#phòng · N tin mới`, bấm để nhảy vào phòng), notification hệ điều hành khi tab ở nền, và **badge trên trình duyệt** — số đỏ vẽ thẳng lên favicon (`(3)` ở tiêu đề tab) kèm `navigator.setAppBadge` cho taskbar/PWA. Bật/tắt ở `Tools → Thông báo tin nhắn mới`.
+- **Âm thanh thông báo**: tiếng "ding" tổng hợp bằng WebAudio (không có file mp3, không request), hai nốt cho tin thường và ba nốt cao hơn khi bị `@tag`; chỉ kêu khi tab ở nền; bật/tắt ở `Tools → Âm thanh thông báo`, lưu trong `localStorage`.
 - **Lọc log** (Ctrl+F, substring trên nick + nội dung) và chip All/Chat/System.
 - **Follow tail** tự cuộn khi ở đáy, tự tắt khi bạn cuộn lên, chip "↓ tin mới".
 - Trạng thái kết nối ở status bar; phím tắt Ctrl+L (xoá view), Ctrl+N (tạo room), Ctrl+End (xuống đáy).
@@ -89,6 +90,7 @@ node scripts/cdp-check.mjs <url> --shot=out.png   # lái Chromium thật qua CDP
 node scripts/cdp-theme-shot.mjs <url> light out.png   # chụp một theme cụ thể
 node scripts/cdp-errors.mjs <url>                 # in exception/console error của trang
 node scripts/cdp-interact.mjs <url>               # thử reply + autocomplete @nick trên trang thật
+node scripts/cdp-badge-sound.mjs <url>            # kiểm tra favicon badge + âm thanh (chạy với dev server)
 ```
 
 ## Deploy
