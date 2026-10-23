@@ -187,7 +187,7 @@ export class ChatRoom extends DurableObject<Env> {
       you: { nick: conn.nick, color: conn.color },
       room: { slug: conn.slug, locked: conn.locked },
       history: this.history(HISTORY_REPLAY),
-      online: this.ctx.getWebSockets().length,
+      online: this.authedSockets().length,
       serverTs: Date.now(),
     });
 
@@ -270,9 +270,18 @@ export class ChatRoom extends DurableObject<Env> {
     }
 
     const relay: ServerFrame = { t: "game", data: frame.data, nick: conn.nick };
-    for (const peer of this.ctx.getWebSockets()) {
-      if (peer !== ws) this.send(peer, relay);
-    }
+    for (const peer of this.authedSockets(ws)) this.send(peer, relay);
+  }
+
+  /**
+   * Sockets that finished joining. A socket is accepted before its `join` is
+   * verified, and treating such a socket as a player would both inflate the
+   * presence count and deliver frames to a client that cannot yet act on them.
+   * @param excluded Socket to leave out, normally the sender.
+   * @return Authenticated peers.
+   */
+  private authedSockets(excluded?: WebSocket): WebSocket[] {
+    return this.ctx.getWebSockets().filter((peer) => peer !== excluded && this.readConn(peer).authed);
   }
 
   private async verify(slug: string, pass: string): Promise<VerifyResult> {
@@ -447,7 +456,7 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   private broadcastPresence(excluded?: WebSocket): void {
-    const peers = this.ctx.getWebSockets().filter((peer) => peer !== excluded);
+    const peers = this.authedSockets(excluded);
     const frame: ServerFrame = { t: "presence", online: peers.length };
     for (const peer of peers) this.send(peer, frame);
   }

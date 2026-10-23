@@ -28,6 +28,7 @@ class Browser {
     this.pending = new Map();
     this.nextId = 1;
     this.events = new Map();
+    this.trace = [];
   }
 
   async launch() {
@@ -69,6 +70,7 @@ class Browser {
 
     await this.send("Page.enable");
     await this.send("Runtime.enable");
+    await this.send("Network.enable");
   }
 
   dispatch(message) {
@@ -80,7 +82,44 @@ class Browser {
       else entry.resolve(message.result);
       return;
     }
-    for (const handler of this.events.get(message.method) ?? []) handler(message.params);
+
+    const params = message.params ?? {};
+    switch (message.method) {
+      case "Network.webSocketCreated":
+        this.trace.push({ wsCreated: params.url });
+        break;
+      case "Network.webSocketHandshakeResponseReceived":
+        this.trace.push({ wsHandshake: params.response?.status });
+        break;
+      case "Network.webSocketFrameReceived": {
+        let kind = null;
+        try {
+          kind = JSON.parse(params.response?.payloadData ?? "{}").t ?? null;
+        } catch {
+          kind = null;
+        }
+        this.trace.push({ frame: kind });
+        break;
+      }
+      case "Network.webSocketFrameSent": {
+        let kind = null;
+        try {
+          kind = JSON.parse(params.response?.payloadData ?? "{}").t ?? null;
+        } catch {
+          kind = null;
+        }
+        this.trace.push({ sent: kind });
+        break;
+      }
+      case "Network.loadingFailed":
+        this.trace.push({ error: `${params.errorText} ${params.type ?? ""}` });
+        break;
+      case "Runtime.exceptionThrown":
+        this.trace.push({ exception: params.exceptionDetails?.exception?.description?.slice(0, 200) });
+        break;
+    }
+
+    for (const handler of this.events.get(message.method) ?? []) handler(params);
   }
 
   send(method, params = {}) {
@@ -134,6 +173,21 @@ class Browser {
     const file = path.join(OUT_DIR, `${name}.png`);
     writeFileSync(file, Buffer.from(data, "base64"));
     return file;
+  }
+
+  /**
+   * Returns the transport trace, so a run that never becomes live shows whether
+   * the socket opened and whether game frames actually arrived.
+   */
+  probeSockets() {
+    return {
+      wsUrls: this.trace.filter((entry) => entry.wsCreated !== undefined).map((entry) => entry.wsCreated),
+      wsHandshake: this.trace.filter((entry) => entry.wsHandshake !== undefined).map((entry) => entry.wsHandshake),
+      received: this.trace.filter((entry) => entry.frame !== undefined).map((entry) => entry.frame),
+      sent: this.trace.filter((entry) => entry.sent !== undefined).map((entry) => entry.sent),
+      errors: this.trace.filter((entry) => entry.error !== undefined),
+      exceptions: this.trace.filter((entry) => entry.exception !== undefined).slice(-3),
+    };
   }
 
   async close() {
@@ -255,6 +309,9 @@ async function main() {
     findings.push({ step: "bob live", ...(await waitForLive(bob, "bob")) });
     findings.push({ step: "after join", alice: await alice.evaluate(boardState), bob: await bob.evaluate(boardState) });
 
+    // Diagnostics also ride on the room, so a stuck run still shows why.
+    findings.push({ step: "socket probes", alice: await alice.probeSockets(), bob: await bob.probeSockets() });
+
     // Whoever ended up as X opens, which can be either browser when both typed
     // the same code and the role tiebreak switched one of them.
     const roleOf = (state) => (/(?:\(|\s)([XO])\)?\s*$/.exec(state.badge ?? "")?.[1] ?? null);
@@ -326,6 +383,10 @@ async function main() {
     findings.push({ shot: await alice.shot("online-rematch") });
 
     console.log(JSON.stringify(findings, null, 2));
+  } catch (error) {
+    // Print what was observed so a failed run explains itself.
+    console.error(JSON.stringify(findings, null, 2));
+    throw error;
   } finally {
     await alice.close();
     await bob.close();

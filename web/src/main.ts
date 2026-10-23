@@ -202,11 +202,12 @@ function selectGameTab(): void {
   tabGame.setAttribute("aria-selected", "true");
   tabRoom.setAttribute("aria-selected", "false");
   gameEditorPanel.hidden = false;
-  byId<HTMLElement>("startview").hidden = true;
-  byId<HTMLElement>("logwrap").hidden = true;
+  // `logwrap` is a class, not an id: looking it up by id used to throw here, which
+  // aborted the rest of the handler — and with it `gameDialog.open(mode)`, so the
+  // menu entries "Chơi với máy" and "Tạo phòng mới" silently did nothing.
+  crumbRoom.textContent = "DiagnosticMatrix.cs";
   byId<HTMLElement>("crumb-solution").textContent = "DynoFreeChat";
   byId<HTMLElement>("crumb-group").textContent = "Collab";
-  crumbRoom.textContent = "DiagnosticMatrix.cs";
 }
 
 function closeGameTab(): void {

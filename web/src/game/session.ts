@@ -89,6 +89,8 @@ export class OnlineGameSession {
   private readonly options: OnlineGameSessionOptions;
   private isClosed = false;
   private role: PlayerMark;
+  /** True once the server confirmed the join, which is when game frames are legal. */
+  private authenticated = false;
   /** True once the handshake was re-announced for the peer that is now present. */
   private announcedPeer = false;
 
@@ -154,6 +156,8 @@ export class OnlineGameSession {
 
     sock.onState((state: SocketState) => {
       this.options.onConnectedChange(state === "open");
+      this.authenticated = false;
+      this.announcedPeer = false;
       if (state === "open") {
         // Authenticate the socket first; `welcome` is what releases the handshake.
         sock.send({ t: "join", nick: this.options.identity.nick, color: this.options.identity.color });
@@ -169,6 +173,7 @@ export class OnlineGameSession {
       switch (frame.t) {
         case "welcome":
           // `welcome` proves the join was accepted, so the handshake can go out.
+          this.authenticated = true;
           this.announcePeer(frame.online);
           this.sendHello();
           this.options.onPeerCount(frame.online);
@@ -177,6 +182,13 @@ export class OnlineGameSession {
               ? "Đối thủ đã có trong phòng!"
               : `Mã phòng: ${this.options.roomCode} - Chia sẻ mã để bạn bè vào chơi!`,
           );
+          break;
+
+        case "presence":
+          this.options.onPeerCount(frame.online);
+          // Whoever arrived first said hello to an empty room, so the frame was
+          // lost. Re-announce when the peer shows up or the roles never settle.
+          if (this.announcePeer(frame.online)) this.sendHello();
           break;
 
         case "presence":
@@ -225,6 +237,11 @@ export class OnlineGameSession {
    * @return True exactly once per peer arrival.
    */
   private announcePeer(online: number): boolean {
+    // Before `welcome` the room does not recognise this socket, so a frame sent
+    // now would be dropped as NOT_JOINED while the client would have counted the
+    // handshake as done.
+    if (!this.authenticated) return false;
+
     const peerPresent = online >= 2;
     if (!peerPresent) {
       this.announcedPeer = false;
@@ -241,7 +258,7 @@ export class OnlineGameSession {
    * @return True when the frame reached the socket.
    */
   send(message: GameMessage): boolean {
-    if (this.socket === null) return false;
+    if (this.socket === null || !this.authenticated) return false;
     return this.socket.send({ t: "game", data: encodeGameMessage(message) });
   }
 

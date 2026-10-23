@@ -132,6 +132,48 @@ describe("chat room", () => {
 });
 
 describe("ephemeral game frames", () => {
+  it("does not count or notify sockets that have not joined yet", async () => {
+    const slug = await makeRoom();
+
+    const alice = await connect(slug);
+    alice.join("alice");
+    const aliceWelcome = await alice.welcome();
+    // A socket is accepted before it proves it may join, so it must not appear as
+    // a player: the count and the presence broadcast would both lie, and a client
+    // that reacts to presence would send a frame the room refuses.
+    expect(aliceWelcome.online).toBe(1);
+
+    const anonymous = await connect(slug);
+    const bob = await connect(slug);
+    bob.join("bob");
+    await bob.welcome();
+
+    // Only alice and bob joined, so the anonymous socket must not be announced.
+    await alice.waitFor((frame) => frame.t === "presence" && frame.online === 2);
+    expect(anonymous.frames.some((frame) => frame.t === "presence")).toBe(false);
+
+    alice.close();
+    bob.close();
+    anonymous.close();
+  });
+
+  it("never relays game traffic to a socket that has not joined", async () => {
+    const slug = await makeRoom();
+
+    const alice = await connect(slug);
+    alice.join("alice");
+    await alice.welcome();
+
+    const anonymous = await connect(slug);
+    alice.game('{"k":"hello"}');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(anonymous.frames.some((frame) => frame.t === "game")).toBe(false);
+
+    alice.close();
+    anonymous.close();
+  });
+
   it("relays a game frame to the peer only, with the sender's nick", async () => {
     const slug = await makeRoom();
 

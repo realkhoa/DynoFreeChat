@@ -151,6 +151,23 @@ describe("OnlineGameSession", () => {
     expect(h.moves).toHaveLength(1);
   });
 
+  it("never handshakes before the join is confirmed", async () => {
+    const h = makeSession(true, "X");
+    await h.session.connect();
+    h.socket.open();
+
+    // The room broadcasts presence to accepted sockets, so one can arrive before
+    // `welcome`. Sending then is dropped as NOT_JOINED and the client would never
+    // retry, leaving both players on the same mark.
+    h.socket.receive({ t: "presence", online: 2 });
+    expect(h.socket.gamePayloads()).toHaveLength(0);
+    expect(h.session.send({ k: "resync" })).toBe(false);
+
+    h.socket.receive(welcome(2));
+    expect(h.socket.gamePayloads<HelloMessage>()).toHaveLength(1);
+    expect(h.session.send({ k: "resync" })).toBe(true);
+  });
+
   it("re-announces the handshake when a peer finally arrives", async () => {
     const h = makeSession(true, "X");
     await h.session.connect();
