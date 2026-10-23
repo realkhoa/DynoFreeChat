@@ -36,6 +36,7 @@ import { mountMenubar, type MenuAction } from "./ui/menubar";
 import { NickDialog } from "./ui/nick-dialog";
 import { defaultRibbonSpec, Ribbon } from "./ui/ribbon";
 import { RoomDialog } from "./ui/room-dialog";
+import { ChatPicker } from "./ui/chat-picker";
 import { Sidebar } from "./ui/sidebar";
 import { StatusBar } from "./ui/statusbar";
 
@@ -92,6 +93,7 @@ const sidebarFoot = byId<HTMLElement>("sidebar-foot");
 const menubarEl = byId<HTMLElement>("menubar");
 const tabLabel = byId<HTMLElement>("tab-label");
 const tabClose = byId<HTMLButtonElement>("tab-close");
+const tabNew = byId<HTMLButtonElement>("tab-new");
 const titlebarRoom = byId<HTMLElement>("titlebar-room");
 const crumbRoom = byId<HTMLElement>("crumb-room");
 const nickButton = document.getElementById("nick") as HTMLButtonElement | null;
@@ -103,6 +105,7 @@ const notifyEmpty = byId<HTMLElement>("notify-empty");
 const notifyClear = byId<HTMLButtonElement>("notify-clear");
 const dialogEl = byId<HTMLDialogElement>("room-dialog");
 const nickDialogEl = byId<HTMLDialogElement>("nick-dialog");
+const pickerDialogEl = byId<HTMLDialogElement>("picker-dialog");
 
 // ------------------------------------------------------------------ instances
 
@@ -165,6 +168,21 @@ const nickDialog = new NickDialog(nickDialogEl, {
   error: byId<HTMLElement>("nick-error"),
   cancel: byId<HTMLButtonElement>("nick-cancel"),
 });
+
+const chatPicker = new ChatPicker(
+  pickerDialogEl,
+  {
+    search: byId<HTMLInputElement>("picker-search"),
+    list: byId<HTMLElement>("picker-list"),
+    cancel: byId<HTMLButtonElement>("picker-cancel"),
+    closeX: byId<HTMLButtonElement>("picker-close-x"),
+    createButton: byId<HTMLButtonElement>("picker-create"),
+  },
+  {
+    onPick: (room) => pickRoom(room),
+    onCreate: (slugPrefill) => openCreateDialog(slugPrefill),
+  },
+);
 
 const composer = new Composer({
   root: composerEl,
@@ -432,9 +450,13 @@ function openJoinDialog(slug: string, message?: string): void {
   });
 }
 
-function openCreateDialog(): void {
+/**
+ * @brief Opens the modal dialog to create a new chat room.
+ * @param slugPrefill Optional pre-filled slug name for the new room.
+ */
+function openCreateDialog(slugPrefill?: string): void {
   if (dialog.isOpen) return;
-  dialog.open("create", {}, async (result) => {
+  dialog.open("create", { slug: slugPrefill }, async (result) => {
     const created = await createRoom(
       apiBase,
       result.pass.length > 0 ? { slug: result.slug, pass: result.pass } : { slug: result.slug },
@@ -444,6 +466,17 @@ function openCreateDialog(): void {
     enterRoom(created.slug, result.pass.length > 0 ? result.pass : undefined);
     void refreshRooms();
     return null;
+  });
+}
+
+/**
+ * @brief Opens the chat picker modal to choose an existing room or create a new one.
+ */
+function openChatPicker(): void {
+  if (chatPicker.isOpen) return;
+  chatPicker.open(rooms, current?.slug ?? null);
+  void refreshRooms().then(() => {
+    if (chatPicker.isOpen) chatPicker.updateRooms(rooms, current?.slug ?? null);
   });
 }
 
@@ -843,7 +876,7 @@ function handleMenuAction(action: MenuAction): void {
       sidebarEl.hidden = !sidebarEl.hidden;
       break;
     case "new-room":
-      openCreateDialog();
+      openChatPicker();
       break;
     case "reconnect":
       reconnect();
@@ -873,6 +906,7 @@ function decorateChrome(): void {
   byId<HTMLElement>("menu-search-icon").append(icon("search", 12));
   byId<HTMLElement>("tree-search-icon").append(icon("search", 12));
   setIconButton(byId<HTMLElement>("tab-close"), "close", "Đóng room");
+  setIconButton(tabNew, "plus", "Mở chat mới (Ctrl+N)");
   setIconButton(byId<HTMLElement>("new-room"), "plus", "Tạo room mới (Ctrl+N)");
   setIconButton(byId<HTMLElement>("refresh-rooms"), "refresh", "Nạp lại danh sách room");
   setIconButton(byId<HTMLElement>("collapse-tree"), "collapse", "Thu gọn Solution Explorer");
@@ -892,10 +926,11 @@ function wire(): void {
     logView.scrollToBottom();
   });
 
-  newRoomButton.addEventListener("click", () => openCreateDialog());
+  tabNew.addEventListener("click", () => openChatPicker());
+  newRoomButton.addEventListener("click", () => openChatPicker());
   byId<HTMLButtonElement>("refresh-rooms").addEventListener("click", () => void refreshRooms());
   byId<HTMLButtonElement>("collapse-tree").addEventListener("click", () => sidebar.collapseAll());
-  byId<HTMLButtonElement>("start-new").addEventListener("click", () => openCreateDialog());
+  byId<HTMLButtonElement>("start-new").addEventListener("click", () => openChatPicker());
   byId<HTMLButtonElement>("start-refresh").addEventListener("click", () => void refreshRooms());
 
 
@@ -1027,7 +1062,7 @@ function wire(): void {
     }
     if (key === "n") {
       event.preventDefault();
-      openCreateDialog();
+      openChatPicker();
       return;
     }
     if (event.key === ";") {

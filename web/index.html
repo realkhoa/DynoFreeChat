@@ -146,6 +146,7 @@
           <span class="tab-label" id="tab-label">Start</span>
           <button type="button" class="tab-close" id="tab-close" aria-label="Đóng room" title="Đóng room" hidden></button>
         </div>
+        <button type="button" class="tab-new" id="tab-new" aria-label="Mở chat mới" title="Mở chat mới (Ctrl+N)"></button>
       </div>
 
       <div class="breadcrumb" id="breadcrumb">
@@ -274,6 +275,30 @@
           <button type="submit" class="button button--primary" id="nick-submit">Lưu</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog class="dialog picker-dialog" id="picker-dialog">
+      <div class="dialog-head">
+        <span>Chọn room chat</span>
+        <button type="button" class="picker-close" id="picker-close-x" aria-label="Đóng">✕</button>
+      </div>
+      <div class="dialog-body picker-body">
+        <div class="field">
+          <input
+            id="picker-search"
+            type="search"
+            placeholder="Tìm theo tên room…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Tìm room"
+          />
+        </div>
+        <div class="picker-list" id="picker-list" role="listbox" aria-label="Danh sách room"></div>
+      </div>
+      <div class="dialog-actions picker-actions">
+        <button type="button" class="button button--primary" id="picker-create">+ Tạo room mới</button>
+        <button type="button" class="button" id="picker-cancel">Huỷ</button>
+      </div>
     </dialog>
 
     <script type="module" src="/src/main.ts"></script>
