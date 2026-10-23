@@ -114,7 +114,7 @@ describe("OnlineGameSession", () => {
     expect(h.online).toEqual([1, 2]);
 
     h.socket.receive(welcome(2));
-    expect(h.socket.gamePayloads()).toHaveLength(2);
+    expect(h.socket.gamePayloads()).toHaveLength(3);
     expect(h.hellos).toHaveLength(0);
   });
 
@@ -149,6 +149,43 @@ describe("OnlineGameSession", () => {
     h.socket.receive({ t: "game", data: "{rubbish", nick: "peer" });
     h.socket.receive({ t: "game", data: JSON.stringify({ k: "move", cell: 99 }), nick: "peer" });
     expect(h.moves).toHaveLength(1);
+  });
+
+  it("re-announces the handshake when a peer finally arrives", async () => {
+    const h = makeSession(true, "X");
+    await h.session.connect();
+    h.socket.open();
+
+    // First player alone: the hello goes out to nobody.
+    h.socket.receive(welcome(1));
+    expect(h.socket.gamePayloads<HelloMessage>()).toHaveLength(1);
+
+    // Peer shows up: the earlier frame was lost, so it has to be repeated or the
+    // roles never settle and both players sit on the same mark.
+    h.socket.receive({ t: "presence", online: 2 });
+    expect(h.socket.gamePayloads<HelloMessage>()).toHaveLength(2);
+
+    // Further presence noise must not produce more hellos.
+    h.socket.receive({ t: "presence", online: 2 });
+    expect(h.socket.gamePayloads<HelloMessage>()).toHaveLength(2);
+
+    // A reconnect drops and re-adds the peer, which is a fresh arrival.
+    h.socket.receive({ t: "presence", online: 1 });
+    h.socket.receive({ t: "presence", online: 2 });
+    expect(h.socket.gamePayloads<HelloMessage>()).toHaveLength(3);
+  });
+
+  it("carries the settled role in a later handshake", async () => {
+    const h = makeSession(true, "O");
+    await h.session.connect();
+    h.socket.open();
+    h.socket.receive(welcome(1));
+
+    h.session.setRole("X");
+    h.socket.receive({ t: "presence", online: 2 });
+
+    const payloads = h.socket.gamePayloads<HelloMessage>();
+    expect(payloads.at(-1)?.role).toBe("X");
   });
 
   it("sends moves as game frames, never as chat messages", async () => {

@@ -319,6 +319,21 @@ describe("GameCoordinator online", () => {
     expect(large.state.role).toBe("O");
   });
 
+  it("does not flap the roles when the peer hello arrives again", async () => {
+    const { socket, state } = await onlineRoom(false, "aaa", "O");
+
+    // The handshake repeats on every presence change; settling twice would put
+    // both players back on the same mark.
+    relay(socket, { k: "hello", clientId: "peer-x", role: "O", nick: "bob" });
+    expect(state.role).toBe("X");
+
+    relay(socket, { k: "hello", clientId: "peer-x", role: "O", nick: "bob" });
+    expect(state.role).toBe("X");
+
+    relay(socket, { k: "hello", clientId: "peer-x", role: "X", nick: "bob" });
+    expect(state.role).toBe("X");
+  });
+
   it("resets both sides on a rematch and alternates the starter", async () => {
     const { coordinator, socket, state } = await onlineRoom(true);
 

@@ -78,6 +78,8 @@ export class GameCoordinator {
   private outcome: GameOutcome = { winner: null };
   private aiTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly clientId: string;
+  /** Peer whose handshake already settled the roles, so later hellos cannot flap them. */
+  private peerClientId: string | null = null;
 
   constructor(private readonly options: GameCoordinatorOptions) {
     this.clientId = options.clientId ?? Math.random().toString(36).slice(2, 10);
@@ -268,15 +270,20 @@ export class GameCoordinator {
     // Both sides may pick the same role (two people typing the same code). The
     // smaller client id keeps X; because both sides compare the same two values,
     // exactly one of them switches and the room converges after one round trip.
-    if (peerRole === this.myRole) {
-      const keepX = this.clientId < peerClientId;
-      const resolved: PlayerMark = keepX ? "X" : "O";
-      if (resolved !== this.myRole) {
-        this.myRole = resolved;
-        this.session?.setRole(resolved);
-        this.options.callbacks.onRoomBadge(`${this.roomCode} (${resolved})`);
-        this.options.callbacks.onStatus(`Bạn là ${resolved} (${peerNick} là ${otherMark(resolved)}).`);
-        this.sync();
+    // Settling is per peer: hellos repeat on every presence change, and re-running
+    // the comparison would flip the roles back and forth.
+    if (this.peerClientId !== peerClientId) {
+      this.peerClientId = peerClientId;
+      if (peerRole === this.myRole) {
+        const keepX = this.clientId < peerClientId;
+        const resolved: PlayerMark = keepX ? "X" : "O";
+        if (resolved !== this.myRole) {
+          this.myRole = resolved;
+          this.session?.setRole(resolved);
+          this.options.callbacks.onRoomBadge(`${this.roomCode} (${resolved})`);
+          this.options.callbacks.onStatus(`Bạn là ${resolved} (${peerNick} là ${otherMark(resolved)}).`);
+          this.sync();
+        }
       }
     }
 

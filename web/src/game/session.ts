@@ -89,6 +89,8 @@ export class OnlineGameSession {
   private readonly options: OnlineGameSessionOptions;
   private isClosed = false;
   private role: PlayerMark;
+  /** True once the handshake was re-announced for the peer that is now present. */
+  private announcedPeer = false;
 
   /**
    * @brief Initializes a new OnlineGameSession.
@@ -167,8 +169,9 @@ export class OnlineGameSession {
       switch (frame.t) {
         case "welcome":
           // `welcome` proves the join was accepted, so the handshake can go out.
+          this.announcePeer(frame.online);
+          this.sendHello();
           this.options.onPeerCount(frame.online);
-          this.send({ k: "hello", clientId: this.options.clientId, role: this.role, nick: this.options.identity.nick });
           this.options.onStatusText(
             frame.online >= 2
               ? "Đối thủ đã có trong phòng!"
@@ -178,6 +181,9 @@ export class OnlineGameSession {
 
         case "presence":
           this.options.onPeerCount(frame.online);
+          // Whoever arrived first said hello to an empty room, so the frame was
+          // lost. Re-announce when the peer shows up or the roles never settle.
+          if (this.announcePeer(frame.online)) this.sendHello();
           break;
 
         case "game":
@@ -197,6 +203,36 @@ export class OnlineGameSession {
     });
 
     sock.connect();
+  }
+
+  /**
+   * @brief Sends the opening handshake, carrying the role this client now plays.
+   * @return True when the frame reached the socket.
+   */
+  sendHello(): boolean {
+    return this.send({
+      k: "hello",
+      clientId: this.options.clientId,
+      role: this.role,
+      nick: this.options.identity.nick,
+    });
+  }
+
+  /**
+   * @brief Records whether a peer is present and answers whether this is the
+   * first observation of that state, which is when the handshake must repeat.
+   * @param online Number of sockets in the room, including ours.
+   * @return True exactly once per peer arrival.
+   */
+  private announcePeer(online: number): boolean {
+    const peerPresent = online >= 2;
+    if (!peerPresent) {
+      this.announcedPeer = false;
+      return false;
+    }
+    if (this.announcedPeer) return false;
+    this.announcedPeer = true;
+    return true;
   }
 
   /**
