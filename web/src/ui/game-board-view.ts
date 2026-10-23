@@ -83,7 +83,7 @@ export class GameBoardView {
     for (let i = 0; i < 9; i++) {
       const cell = this.cells[i];
       if (!cell) continue;
-      const val = board[i];
+      const val: PlayerMark | null = board[i] ?? null;
       const disabled = val !== null || isGameOver || !isMyTurn;
       this.updateCell(cell, i, val, outcome.line, disabled);
     }
