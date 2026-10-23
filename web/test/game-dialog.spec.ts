@@ -151,4 +151,18 @@ describe("GameDialog component", () => {
     expect(dialogEl.querySelector<HTMLElement>("#game-lobby-view")?.hasAttribute("hidden")).toBe(false);
     expect(dialogEl.querySelector<HTMLElement>("#game-board-view")?.hasAttribute("hidden")).toBe(true);
   });
+
+  it("does not dim or blur a live board", () => {
+    // Defaults are stealth on, so the lobby starts disguised.
+    expect(dialogEl.classList.contains("is-stealth")).toBe(true);
+    expect(dialogEl.classList.contains("is-stealth--blur")).toBe(true);
+
+    gameDialog.startLocalGame();
+    expect(dialogEl.classList.contains("is-stealth")).toBe(false);
+    expect(dialogEl.classList.contains("is-stealth--blur")).toBe(false);
+
+    // Leaving the round restores the disguise.
+    gameDialog.openFloating();
+    expect(dialogEl.classList.contains("is-stealth")).toBe(true);
+  });
 });

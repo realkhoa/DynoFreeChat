@@ -145,16 +145,17 @@ export class GameDialog {
 
   /**
    * @brief Applies active stealth and code styling classes to DOM elements.
-   * @details The blur is what makes the disguise convincing, but a blurred board
-   * cannot be played, so it is suspended while a round is on screen. Opacity
-   * alone still hides the contents at a glance.
+   * @details The blur and the dimming are what make the disguise convincing, but a
+   * dimmed, blurred board cannot be read or hit. Both are suspended while a round
+   * is on screen and return as soon as the lobby is back.
    */
   private applyStealthDom(): void {
     const playing = this.boardViewEl.hidden === false;
+    const stealthOff = this.stealthPref.stealth && !playing;
     const targets = [this.dialog, this.editorPanel].filter((el): el is HTMLElement => el !== null);
     for (const el of targets) {
-      el.classList.toggle("is-stealth", this.stealthPref.stealth);
-      el.classList.toggle("is-stealth--blur", this.stealthPref.stealth && !playing);
+      el.classList.toggle("is-stealth", stealthOff);
+      el.classList.toggle("is-stealth--blur", stealthOff);
       el.classList.toggle("game-code-mode", this.stealthPref.codeMode);
       el.style.setProperty("--stealth-opacity", String(this.stealthPref.opacity));
     }
