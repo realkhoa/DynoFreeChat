@@ -98,7 +98,10 @@ export class LogView {
         continue;
       }
 
-      if (existing.el.hidden !== !visible) existing.el.hidden = !visible;
+      // Legacy `[TTT]` rows stay hidden forever, so a plain visibility sync must
+      // not resurrect them.
+      const hidden = !visible || existing.el.dataset.legacy === "1";
+      if (existing.el.hidden !== hidden) existing.el.hidden = hidden;
     }
 
     if (added.length > 0) this.root.append(...added);
@@ -167,10 +170,16 @@ export class LogView {
   private render(row: Row, visible: boolean, line: number): HTMLElement {
     const el = document.createElement("div");
     el.className = "log-row";
+
+    // Game traffic used to travel as chat messages prefixed with `[TTT]`. Those
+    // rows are already stored in some rooms; hide them instead of migrating data.
+    const legacyGame = row.kind === "chat" && row.text.startsWith("[TTT]");
+    if (legacyGame) el.dataset.legacy = "1";
+
     el.dataset.id = row.id;
     el.dataset.kind = row.kind;
     el.dataset.line = String(line);
-    el.hidden = !visible;
+    el.hidden = legacyGame || !visible;
 
     if (row.kind === "system") el.classList.add("is-system");
     if (row.kind === "error") el.classList.add("is-error");

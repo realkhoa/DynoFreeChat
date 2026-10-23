@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RATE_CAPACITY, RATE_REFILL_MS } from "../src/protocol";
+import { GAME_CAPACITY, GAME_REFILL_MS, RATE_CAPACITY, RATE_REFILL_MS } from "../src/protocol";
 import { newBucket, take } from "../src/ratelimit";
 
 const T0 = 1_700_000_000_000;
@@ -53,5 +53,33 @@ describe("token bucket", () => {
     const snapshot = { ...bucket };
     take(bucket, T0 + 5_000);
     expect(bucket).toEqual(snapshot);
+  });
+
+  it("honours an explicit capacity and refill for a separate bucket", () => {
+    let bucket = newBucket(T0, GAME_CAPACITY);
+    expect(bucket.tokens).toBe(GAME_CAPACITY);
+
+    for (let i = 0; i < GAME_CAPACITY; i += 1) {
+      const result = take(bucket, T0, GAME_CAPACITY, GAME_REFILL_MS);
+      expect(result.ok).toBe(true);
+      bucket = result.bucket;
+    }
+
+    const blocked = take(bucket, T0, GAME_CAPACITY, GAME_REFILL_MS);
+    expect(blocked.ok).toBe(false);
+
+    const refilled = take(bucket, T0 + GAME_REFILL_MS, GAME_CAPACITY, GAME_REFILL_MS);
+    expect(refilled.ok).toBe(true);
+  });
+
+  it("keeps a game bucket independent of the chat bucket", () => {
+    let chat = newBucket(T0);
+    let game = newBucket(T0, GAME_CAPACITY);
+
+    for (let i = 0; i < RATE_CAPACITY; i += 1) chat = take(chat, T0).bucket;
+    for (let i = 0; i < GAME_CAPACITY; i += 1) game = take(game, T0, GAME_CAPACITY, GAME_REFILL_MS).bucket;
+
+    expect(take(chat, T0).ok).toBe(false);
+    expect(take(game, T0, GAME_CAPACITY, GAME_REFILL_MS).ok).toBe(false);
   });
 });

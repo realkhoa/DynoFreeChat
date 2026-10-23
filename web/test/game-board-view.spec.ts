@@ -79,4 +79,33 @@ describe("GameBoardView", () => {
     view.setCodeMode(false);
     expect(cells[3]?.textContent).toBe("");
   });
+
+  it("keeps the board locked while the peer is missing", () => {
+    const board: BoardState = [null, null, null, null, null, null, null, null, null];
+    const scores = { x: 0, o: 0, draws: 0 };
+
+    view.update(board, "X", "X", { winner: null }, scores, "online", false);
+    const cells = root.querySelectorAll<HTMLButtonElement>(".game-cell");
+    expect(cells[4]?.disabled).toBe(true);
+
+    view.update(board, "X", "X", { winner: null }, scores, "online", true);
+    expect(cells[4]?.disabled).toBe(false);
+  });
+
+  it("skips repainting cells whose state did not change", () => {
+    const board: BoardState = [null, null, null, null, null, null, null, null, null];
+    const scores = { x: 0, o: 0, draws: 0 };
+    view.update(board, "X", null, { winner: null }, scores, "local", true);
+
+    // Tampering with the DOM surfaces only if the next render rewrites the cell.
+    const target = root.querySelector<HTMLButtonElement>(".game-cell");
+    if (target === null) throw new Error("missing cell");
+    target.textContent = "tampered";
+    view.update(board, "X", null, { winner: null }, scores, "local", true);
+    expect(target.textContent).toBe("tampered");
+
+    const next: BoardState = ["X", null, null, null, null, null, null, null, null];
+    view.update(next, "O", null, { winner: null }, scores, "local", true);
+    expect(target.textContent).toBe("X");
+  });
 });

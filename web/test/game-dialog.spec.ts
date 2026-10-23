@@ -111,4 +111,44 @@ describe("GameDialog component", () => {
     closeBtn.click();
     expect(dialogEl.open).toBe(false);
   });
+
+  it("tears down once when the host tab handler closes it again", () => {
+    let tabCloseCalls = 0;
+    const loops = new GameDialog({
+      dialog: dialogEl,
+      wsUrl: "wss://fake/ws",
+      apiBase: "https://fake",
+      getIdentity: () => ({ nick: "DevUser", color: "hsl(200 50% 50%)" }),
+      // Mirrors main.ts `closeGameTab`: it hides the tab and closes the dialog,
+      // which used to call straight back into this handler forever.
+      onTabClose: () => {
+        tabCloseCalls += 1;
+        loops.close();
+      },
+    });
+
+    loops.close();
+    expect(tabCloseCalls).toBe(1);
+    expect(dialogEl.open).toBe(false);
+  });
+
+  it("floats into a dialog even when closing the tab closes the dialog", () => {
+    let tabCloseCalls = 0;
+    const floaty = new GameDialog({
+      dialog: dialogEl,
+      wsUrl: "wss://fake/ws",
+      apiBase: "https://fake",
+      getIdentity: () => ({ nick: "DevUser", color: "hsl(200 50% 50%)" }),
+      onTabClose: () => {
+        tabCloseCalls += 1;
+        floaty.close();
+      },
+    });
+
+    floaty.openFloating();
+    expect(tabCloseCalls).toBe(1);
+    expect(dialogEl.open).toBe(true);
+    expect(dialogEl.querySelector<HTMLElement>("#game-lobby-view")?.hasAttribute("hidden")).toBe(false);
+    expect(dialogEl.querySelector<HTMLElement>("#game-board-view")?.hasAttribute("hidden")).toBe(true);
+  });
 });

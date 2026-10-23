@@ -53,13 +53,13 @@ export interface GameScore {
 }
 
 /**
- * @brief Wire message protocol for multiplayer synchronization over WebSockets.
+ * @brief Returns the opposing mark.
+ * @param mark "X" or "O".
+ * @return The other mark.
  */
-export type TttProtocolMessage =
-  | { type: "join"; role: PlayerMark; nick: string }
-  | { type: "move"; cell: number; player: PlayerMark }
-  | { type: "reset"; starter: PlayerMark }
-  | { type: "sync"; board: BoardState; turn: PlayerMark; scores: GameScore };
+export function otherMark(mark: PlayerMark): PlayerMark {
+  return mark === "X" ? "O" : "X";
+}
 
 /**
  * @brief All 8 possible 3-in-a-row winning combinations on a 3x3 grid.
@@ -146,7 +146,7 @@ export function computeBestMove(board: BoardState, aiMark: PlayerMark): number {
   const available = getAvailableMoves(board);
   if (available.length === 0) return -1;
 
-  const opponentMark: PlayerMark = aiMark === "X" ? "O" : "X";
+  const opponentMark = otherMark(aiMark);
 
   // Immediate win or block check
   const winMove = findWinningMove(board, aiMark);
@@ -158,10 +158,9 @@ export function computeBestMove(board: BoardState, aiMark: PlayerMark): number {
   // Prefer center
   if (board[4] === null) return 4;
 
-  // Prefer corners
-  const corners = [0, 2, 6, 8].filter((c) => board[c] === null);
-  if (corners.length > 0) {
-    return corners[Math.floor(Math.random() * corners.length)] ?? corners[0] ?? 0;
+  // Prefer corners, in a fixed order so play is deterministic and testable
+  for (const corner of [0, 2, 8, 6]) {
+    if (board[corner] === null) return corner;
   }
 
   // Minimax fallback for remaining moves
@@ -308,31 +307,4 @@ export function codeFromRoomSlug(slug: string): string {
     return slug.slice(4).toUpperCase();
   }
   return slug.toUpperCase();
-}
-
-/**
- * @brief Serializes a Tic-Tac-Toe message into a chat text payload with prefix.
- * @param message Protocol message object.
- * @return String formatted with [TTT] prefix.
- */
-export function serializeTttMessage(message: TttProtocolMessage): string {
-  return `[TTT]${JSON.stringify(message)}`;
-}
-
-/**
- * @brief Deserializes a chat text message into a TttProtocolMessage if it carries the [TTT] prefix.
- * @param text Raw chat message text.
- * @return Deserialized message or null if not a valid game message.
- */
-export function deserializeTttMessage(text: string): TttProtocolMessage | null {
-  if (!text.startsWith("[TTT]")) return null;
-  try {
-    const raw = JSON.parse(text.slice(5)) as TttProtocolMessage;
-    if (typeof raw === "object" && raw !== null && typeof raw.type === "string") {
-      return raw;
-    }
-    return null;
-  } catch {
-    return null;
-  }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ServerFrame } from "@dyno/shared/protocol";
+import { MAX_GAME_PAYLOAD, RATE_CAPACITY, type ServerFrame } from "@dyno/shared/protocol";
 import { connect, makeRoom } from "./helpers";
 
 describe("chat room", () => {
@@ -128,6 +128,120 @@ describe("chat room", () => {
     client.join("khoan");
     await client.waitError("ROOM_NOT_FOUND");
     client.close();
+  });
+});
+
+describe("ephemeral game frames", () => {
+  it("relays a game frame to the peer only, with the sender's nick", async () => {
+    const slug = await makeRoom();
+
+    const alice = await connect(slug);
+    alice.join("alice");
+    await alice.welcome();
+
+    const bob = await connect(slug);
+    bob.join("bob");
+    await bob.welcome();
+
+    alice.game('{"k":"hello"}');
+
+    const relayed = (await bob.waitFor((frame) => frame.t === "game")) as Extract<
+      ServerFrame,
+      { t: "game" }
+    >;
+    expect(relayed.data).toBe('{"k":"hello"}');
+    expect(relayed.nick).toBe("alice");
+
+    // The sender never gets its own frame back: it already applied the move.
+    expect(alice.frames.some((frame) => frame.t === "game")).toBe(false);
+
+    alice.close();
+    bob.close();
+  });
+
+  it("does not persist game frames or replay them as history", async () => {
+    const slug = await makeRoom();
+
+    const alice = await connect(slug);
+    alice.join("alice");
+    await alice.welcome();
+    alice.game('{"k":"move","cell":4,"player":"X","seq":1}');
+    alice.say("tin nhắn thật");
+    await alice.waitFor((frame) => frame.t === "append" && frame.m.text === "tin nhắn thật");
+    alice.close();
+
+    const bob = await connect(slug);
+    bob.join("bob");
+    const welcome = await bob.welcome();
+    expect(welcome.history.map((message) => message.text)).toEqual(["tin nhắn thật"]);
+    bob.close();
+  });
+
+  it("refuses a game frame before join", async () => {
+    const slug = await makeRoom();
+    const client = await connect(slug);
+    client.game('{"k":"hello"}');
+    await client.waitError("NOT_JOINED");
+    client.close();
+  });
+
+  it("rejects an over-long game payload", async () => {
+    const slug = await makeRoom();
+    const client = await connect(slug);
+    client.join("khoan");
+    await client.welcome();
+
+    client.game("x".repeat(MAX_GAME_PAYLOAD + 1));
+    await client.waitError("BAD_FRAME");
+    client.close();
+  });
+
+  it("gives game frames their own allowance, far above the chat bucket", async () => {
+    const slug = await makeRoom();
+
+    const alice = await connect(slug);
+    alice.join("alice");
+    await alice.welcome();
+
+    const bob = await connect(slug);
+    bob.join("bob");
+    await bob.welcome();
+
+    // Well past RATE_CAPACITY: a real game must never be throttled like chat.
+    for (let seq = 1; seq <= RATE_CAPACITY * 2; seq += 1) {
+      alice.game(JSON.stringify({ k: "move", cell: 0, player: "X", seq }));
+    }
+
+    await bob.waitFor(
+      (frame) => frame.t === "game" && frame.data.includes('"seq":' + String(RATE_CAPACITY * 2)),
+    );
+    expect(alice.frames.some((frame) => frame.t === "error")).toBe(false);
+
+    alice.close();
+    bob.close();
+  });
+
+  it("does not let game traffic consume the chat allowance", async () => {
+    const slug = await makeRoom();
+
+    const alice = await connect(slug);
+    alice.join("alice");
+    await alice.welcome();
+    const bob = await connect(slug);
+    bob.join("bob");
+    await bob.welcome();
+
+    for (let i = 0; i < 10; i += 1) alice.game('{"k":"hello"}');
+    await bob.waitFor((frame) => frame.t === "game");
+
+    alice.say("vẫn chat được");
+    const appended = (await alice.waitFor(
+      (frame) => frame.t === "append" && frame.m.text === "vẫn chat được",
+    )) as Extract<ServerFrame, { t: "append" }>;
+    expect(appended.m.text).toBe("vẫn chat được");
+
+    alice.close();
+    bob.close();
   });
 });
 

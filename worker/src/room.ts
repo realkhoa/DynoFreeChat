@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   DEFAULT_COLOR,
+  GAME_CAPACITY,
+  GAME_REFILL_MS,
   HISTORY_LIMIT,
   HISTORY_REPLAY,
   HISTORY_TRIM_TO,
@@ -27,7 +29,10 @@ interface Conn {
   slug: string;
   nick: string;
   color: string;
+  /** Chat token bucket: persisted messages are the expensive ones. */
   bucket: Bucket;
+  /** Game token bucket: ephemeral frames, much more headroom than chat. */
+  gameBucket: Bucket;
   authed: boolean;
   locked: boolean;
   attempts: number;
@@ -93,6 +98,7 @@ export class ChatRoom extends DurableObject<Env> {
       nick: "",
       color: DEFAULT_COLOR,
       bucket: newBucket(Date.now()),
+      gameBucket: newBucket(Date.now(), GAME_CAPACITY),
       authed: false,
       locked: false,
       attempts: 0,
@@ -118,6 +124,11 @@ export class ChatRoom extends DurableObject<Env> {
 
     if (parsed.frame.t === "join") {
       await this.handleJoin(ws, parsed.frame);
+      return;
+    }
+
+    if (parsed.frame.t === "game") {
+      this.handleGame(ws, parsed.frame);
       return;
     }
 
@@ -234,6 +245,33 @@ export class ChatRoom extends DurableObject<Env> {
 
     for (const peer of this.ctx.getWebSockets()) {
       this.send(peer, peer === ws ? { t: "append", m: message, cid: frame.cid } : { t: "append", m: message });
+    }
+  }
+
+  /**
+   * Ephemeral peer-to-peer relay used by the in-room games. Nothing here is
+   * persisted, replayed in `history`, or counted as chat: a move is a transport
+   * event, not a message. The sender is excluded because it already applied its
+   * own move locally.
+   */
+  private handleGame(ws: WebSocket, frame: Extract<ClientFrame, { t: "game" }>): void {
+    const conn = this.readConn(ws);
+    if (!conn.authed) {
+      this.sendError(ws, "NOT_JOINED");
+      return;
+    }
+
+    const rush = take(conn.gameBucket, Date.now(), GAME_CAPACITY, GAME_REFILL_MS);
+    conn.gameBucket = rush.bucket;
+    ws.serializeAttachment(conn);
+    if (!rush.ok) {
+      this.sendError(ws, "RATE_LIMIT", undefined, String(rush.retryInMs));
+      return;
+    }
+
+    const relay: ServerFrame = { t: "game", data: frame.data, nick: conn.nick };
+    for (const peer of this.ctx.getWebSockets()) {
+      if (peer !== ws) this.send(peer, relay);
     }
   }
 
@@ -366,16 +404,33 @@ export class ChatRoom extends DurableObject<Env> {
     } catch {
       stored = undefined;
     }
-    if (typeof stored === "object" && stored !== null) return stored as Conn;
 
-    return {
+    const now = Date.now();
+    const blank: Conn = {
       slug: "",
       nick: "",
       color: DEFAULT_COLOR,
-      bucket: newBucket(Date.now()),
+      bucket: newBucket(now),
+      gameBucket: newBucket(now, GAME_CAPACITY),
       authed: false,
       locked: false,
       attempts: 0,
+    };
+
+    if (typeof stored !== "object" || stored === null) return blank;
+
+    // Attachments survive hibernation and upgrades, so an object written by an
+    // older build may lack a bucket. Normalise instead of trusting the shape.
+    const partial = stored as Partial<Conn>;
+    return {
+      slug: typeof partial.slug === "string" ? partial.slug : blank.slug,
+      nick: typeof partial.nick === "string" ? partial.nick : blank.nick,
+      color: typeof partial.color === "string" ? partial.color : blank.color,
+      bucket: partial.bucket ?? blank.bucket,
+      gameBucket: partial.gameBucket ?? blank.gameBucket,
+      authed: partial.authed === true,
+      locked: partial.locked === true,
+      attempts: typeof partial.attempts === "number" ? partial.attempts : 0,
     };
   }
 

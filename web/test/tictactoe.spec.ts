@@ -4,14 +4,12 @@ import {
   codeFromRoomSlug,
   computeBestMove,
   createEmptyBoard,
-  deserializeTttMessage,
   evaluateBoard,
   generateRoomCode,
   getAvailableMoves,
+  otherMark,
   roomSlugFromCode,
-  serializeTttMessage,
   type BoardState,
-  type TttProtocolMessage,
 } from "../src/game/tictactoe";
 
 describe("tictactoe logic", () => {
@@ -103,19 +101,18 @@ describe("tictactoe logic", () => {
     expect(codeFromRoomSlug("room123")).toBe("ROOM123");
   });
 
-  it("serializes and deserializes game protocol messages", () => {
-    const msg: TttProtocolMessage = {
-      type: "move",
-      cell: 4,
-      player: "X",
-    };
-    const serialized = serializeTttMessage(msg);
-    expect(serialized.startsWith("[TTT]")).toBe(true);
+  it("AI picks a free corner deterministically", () => {
+    // Center taken, no immediate win or block: the choice must not depend on RNG.
+    const board: BoardState = [null, "X", null, null, "O", null, null, null, null];
+    expect(computeBestMove(board, "O")).toBe(0);
+    expect(computeBestMove(board, "O")).toBe(0);
 
-    const deserialized = deserializeTttMessage(serialized);
-    expect(deserialized).toEqual(msg);
+    const board2: BoardState = ["X", null, null, null, "O", null, null, null, null];
+    expect(computeBestMove(board2, "O")).toBe(2);
+  });
 
-    expect(deserializeTttMessage("Hello world")).toBeNull();
-    expect(deserializeTttMessage("[TTT]not-json")).toBeNull();
+  it("swaps marks", () => {
+    expect(otherMark("X")).toBe("O");
+    expect(otherMark("O")).toBe("X");
   });
 });

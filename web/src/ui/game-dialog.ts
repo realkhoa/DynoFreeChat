@@ -45,6 +45,8 @@ export class GameDialog {
 
   private readonly coordinator: GameCoordinator;
   private stealthPref: StealthPref;
+  /** Guards the tab-close ↔ dialog-close cycle. */
+  private closing = false;
 
   private lobbyView!: HTMLElement;
   private boardViewEl!: HTMLElement;
@@ -70,8 +72,8 @@ export class GameDialog {
       getIdentity: options.getIdentity,
       createRoomImpl: options.createRoomImpl,
       callbacks: {
-        onUpdate: (board, turn, role, outcome, scores, mode) => {
-          this.boardView.update(board, turn, role, outcome, scores, mode);
+        onUpdate: (board, turn, role, outcome, scores, mode, canPlay) => {
+          this.boardView.update(board, turn, role, outcome, scores, mode, canPlay);
         },
         onStatus: (text) => this.boardView.setStatus(text),
         onRoomBadge: (badge) => this.boardView.setRoomBadge(badge),
@@ -143,11 +145,16 @@ export class GameDialog {
 
   /**
    * @brief Applies active stealth and code styling classes to DOM elements.
+   * @details The blur is what makes the disguise convincing, but a blurred board
+   * cannot be played, so it is suspended while a round is on screen. Opacity
+   * alone still hides the contents at a glance.
    */
   private applyStealthDom(): void {
+    const playing = this.boardViewEl.hidden === false;
     const targets = [this.dialog, this.editorPanel].filter((el): el is HTMLElement => el !== null);
     for (const el of targets) {
       el.classList.toggle("is-stealth", this.stealthPref.stealth);
+      el.classList.toggle("is-stealth--blur", this.stealthPref.stealth && !playing);
       el.classList.toggle("game-code-mode", this.stealthPref.codeMode);
       el.style.setProperty("--stealth-opacity", String(this.stealthPref.opacity));
     }
@@ -170,10 +177,12 @@ export class GameDialog {
 
   /**
    * @brief Opens the game view as a floating dialog modal.
+   * @details Uses {@link close} rather than the host callback directly, so the tab
+   * is torn down exactly once and the modal is only raised afterwards.
    */
   openFloating(): void {
-    this.onTabClose?.();
-    this.dialog.showModal();
+    this.close();
+    if (!this.dialog.open) this.dialog.showModal();
     this.showLobby();
   }
 
@@ -195,11 +204,22 @@ export class GameDialog {
 
   /**
    * @brief Closes the dialog or document tab and cleans up network connections.
+   * @details `onTabClose` calls back into the host, whose tab-close handler calls
+   * this method again. A re-entrant call performs the teardown but does not
+   * re-notify, so the cycle terminates after exactly one host notification.
    */
   close(): void {
+    const reentrant = this.closing;
     this.coordinator.cleanup();
     this.dialog.close();
-    this.onTabClose?.();
+    if (reentrant) return;
+
+    this.closing = true;
+    try {
+      this.onTabClose?.();
+    } finally {
+      this.closing = false;
+    }
   }
 
   /**
@@ -210,6 +230,7 @@ export class GameDialog {
     this.lobbyView.hidden = false;
     this.boardViewEl.hidden = true;
     this.codeInput.value = "";
+    this.applyStealthDom();
   }
 
   /**
@@ -241,5 +262,6 @@ export class GameDialog {
   private showBoardView(): void {
     this.lobbyView.hidden = true;
     this.boardViewEl.hidden = false;
+    this.applyStealthDom();
   }
 }

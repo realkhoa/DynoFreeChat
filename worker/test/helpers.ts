@@ -52,6 +52,11 @@ export class Client {
     return cid;
   }
 
+  /** Sends one ephemeral game frame. */
+  game(data: string): void {
+    this.send({ t: "game", data });
+  }
+
   async waitFor(match: (frame: ServerFrame) => boolean, timeoutMs = 3000): Promise<ServerFrame> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {

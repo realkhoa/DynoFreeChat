@@ -64,6 +64,18 @@ export const RATE_CAPACITY = 5;
 /** One token is refilled every this many milliseconds. */
 export const RATE_REFILL_MS = 1500;
 
+/**
+ * Token bucket used by ephemeral game frames. Kept separate from the chat bucket
+ * so a fast game never starves real chat in the same room, and vice versa.
+ */
+export const GAME_CAPACITY = 20;
+
+/** One game token is refilled every this many milliseconds. */
+export const GAME_REFILL_MS = 200;
+
+/** Maximum length of an ephemeral game payload. */
+export const MAX_GAME_PAYLOAD = 2048;
+
 /** Colour assigned when a client sends something unparseable. */
 export const DEFAULT_COLOR = "hsl(210 40% 70%)";
 
@@ -98,7 +110,8 @@ export interface RoomInfo {
 
 export type ClientFrame =
   | { t: "join"; nick: string; color: string; pass?: string }
-  | { t: "msg"; cid: string; text: string; replyTo?: string };
+  | { t: "msg"; cid: string; text: string; replyTo?: string }
+  | { t: "game"; data: string };
 
 export type ErrorCode =
   | "BAD_NICK"
@@ -126,6 +139,7 @@ export type ServerFrame =
       serverTs: number;
     }
   | { t: "append"; m: ChatMessage; cid?: string }
+  | { t: "game"; data: string; nick: string }
   | { t: "presence"; online: number }
   | { t: "error"; code: ErrorCode; cid?: string; detail?: string };
 
@@ -228,6 +242,13 @@ export function parseClientFrame(raw: string): FrameResult {
       return { ok: true, frame: { t: "msg", cid, text: record.text, replyTo: record.replyTo } };
     }
     return { ok: true, frame: { t: "msg", cid, text: record.text } };
+  }
+
+  if (record.t === "game") {
+    if (typeof record.data !== "string") return BAD_FRAME;
+    if (record.data.length === 0) return BAD_FRAME;
+    if (codePointLength(record.data) > MAX_GAME_PAYLOAD) return BAD_FRAME;
+    return { ok: true, frame: { t: "game", data: record.data } };
   }
 
   return BAD_FRAME;

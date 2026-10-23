@@ -1848,12 +1848,27 @@ button:disabled {
 /* ---------------------------------------------------- Tic-Tac-Toe Game Dialog */
 
 .game-dialog {
+  --ttt-cell: clamp(44px, min(18vw, 11.5dvh), 72px);
   width: min(440px, calc(100vw - 16px));
   max-width: calc(100vw - 16px);
   min-width: 0;
-  max-height: calc(100dvh - 16px);
+  max-height: calc(100dvh - 12px);
   margin: auto;
-  overflow-y: auto;
+  overflow: hidden;
+}
+
+/* The board is anchored: the grid never shrinks below a comfortable target and
+   the surrounding chrome absorbs the squeeze instead of the layout overflowing. */
+.game-dialog .game-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.game-dialog .game-board-view {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+  min-height: 0;
 }
 
 .game-dialog-mark {
@@ -2030,8 +2045,8 @@ button:disabled {
 
 .game-grid {
   display: grid;
-  grid-template-columns: repeat(3, clamp(48px, 20vw, 76px));
-  grid-template-rows: repeat(3, clamp(48px, 20vw, 76px));
+  grid-template-columns: repeat(3, var(--ttt-cell, clamp(44px, 18vw, 72px)));
+  grid-template-rows: repeat(3, var(--ttt-cell, clamp(44px, 18vw, 72px)));
   gap: 4px;
   background: var(--border);
   padding: 4px;
@@ -2040,8 +2055,10 @@ button:disabled {
 }
 
 .game-cell {
-  width: clamp(48px, 20vw, 76px);
-  height: clamp(48px, 20vw, 76px);
+  width: var(--ttt-cell, clamp(44px, 18vw, 72px));
+  height: var(--ttt-cell, clamp(44px, 18vw, 72px));
+  min-width: 44px;
+  min-height: 44px;
   display: grid;
   place-items: center;
   background: var(--editor);
@@ -2052,6 +2069,7 @@ button:disabled {
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, transform 0.08s;
   user-select: none;
+  position: relative;
 }
 
 .game-cell:hover:not(:disabled) {
@@ -2071,19 +2089,41 @@ button:disabled {
   color: var(--warn);
 }
 
+/*
+ * A won cell is a static highlight plus one compositor-only fade-in. It used to
+ * be an infinite `filter: brightness()` animation, which forced the enclosing
+ * `.is-stealth` blur layer to be recomputed on every frame, forever.
+ */
 .game-cell.cell-win {
   background: var(--sel);
   border-color: var(--warn);
   box-shadow: inset 0 0 10px rgba(215, 186, 125, 0.4);
-  animation: cellPulse 1.2s infinite alternate;
 }
 
-@keyframes cellPulse {
+.game-cell.cell-win::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(215, 186, 125, 0.55), transparent 70%);
+  opacity: 0;
+  animation: cellWinFade 0.5s ease-out forwards;
+}
+
+@keyframes cellWinFade {
   from {
-    filter: brightness(1);
+    opacity: 0;
   }
   to {
-    filter: brightness(1.25);
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-cell.cell-win::after {
+    animation: none;
+    opacity: 0.55;
   }
 }
 
@@ -2148,10 +2188,14 @@ button:disabled {
   }
 }
 
-@media (max-height: 540px) {
+@media (max-height: 680px) {
+  .game-dialog {
+    --ttt-cell: clamp(44px, 12.5dvh, 56px);
+  }
+
   .game-body {
-    padding: 6px 8px;
-    gap: 6px;
+    padding: 8px 10px;
+    gap: 8px;
   }
 
   .game-scoreboard {
@@ -2166,19 +2210,16 @@ button:disabled {
     font-size: 14px;
   }
 
+  .score-label {
+    display: none;
+  }
+
   .game-grid-wrapper {
     padding: 2px 0;
   }
 
-  .game-grid {
-    grid-template-columns: repeat(3, clamp(36px, 13vh, 54px));
-    grid-template-rows: repeat(3, clamp(36px, 13vh, 54px));
-  }
-
   .game-cell {
-    width: clamp(36px, 13vh, 54px);
-    height: clamp(36px, 13vh, 54px);
-    font-size: clamp(16px, 6vh, 24px);
+    font-size: clamp(18px, 6vh, 26px);
   }
 }
 
@@ -2189,10 +2230,19 @@ button:disabled {
   --stealth-blur: 2px;
 }
 
+/*
+ * Stealth is applied in two layers. Opacity always dims the surface; the blur is
+ * a separate class the dialog removes while a round is on screen, because a
+ * blurred board cannot be played and an animated layer inside a blur is
+ * recomputed every frame.
+ */
 .is-stealth {
   opacity: var(--stealth-opacity);
-  filter: blur(var(--stealth-blur));
   transition: opacity 0.18s ease, filter 0.18s ease;
+}
+
+.is-stealth--blur {
+  filter: blur(var(--stealth-blur));
 }
 
 .is-stealth:hover,
@@ -2358,15 +2408,16 @@ button:disabled {
   color: var(--fg);
 }
 
-/* Code Mode Cell Disguise */
+/* Code Mode Cell Disguise: docked code view only. The float dialog is a real
+   board and keeps a comfortable >=44px target. */
 
-.game-code-mode .game-cell {
-  width: 32px;
-  height: 24px;
-  min-width: 32px;
-  min-height: 24px;
+.game-editor-panel.game-code-mode .game-cell {
+  width: 38px;
+  height: 30px;
+  min-width: 38px;
+  min-height: 30px;
   border-radius: 2px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   font-family: var(--font-mono);
   background: var(--chrome);
@@ -2378,23 +2429,27 @@ button:disabled {
   box-shadow: none;
 }
 
-.game-code-mode .game-cell.cell-x {
+.game-editor-panel.game-code-mode .game-cell.cell-x {
   color: #569cd6;
   background: rgba(86, 156, 214, 0.12);
 }
 
-.game-code-mode .game-cell.cell-o {
+.game-editor-panel.game-code-mode .game-cell.cell-o {
   color: #ce9178;
   background: rgba(206, 145, 120, 0.12);
 }
 
-.game-code-mode .game-cell.cell-empty {
+.game-editor-panel.game-code-mode .game-cell.cell-empty {
   color: #6a9955;
 }
 
-.game-code-mode .game-cell.cell-win {
+.game-editor-panel.game-code-mode .game-cell.cell-win {
   border-color: #569cd6;
   background: rgba(86, 156, 214, 0.28);
   box-shadow: none;
+}
+
+.game-editor-panel.game-code-mode .game-cell.cell-win::after {
   animation: none;
+  opacity: 0;
 }

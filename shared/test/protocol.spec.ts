@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_COLOR,
+  MAX_GAME_PAYLOAD,
   MAX_NICK,
   MAX_TEXT,
   codePointLength,
@@ -93,6 +94,29 @@ describe("parseClientFrame", () => {
       ok: true,
       frame: { t: "join", nick: "khoan", color: "hsl(1 2% 3%)" },
     });
+  });
+
+  it("parses a game frame", () => {
+    expect(parseClientFrame('{"t":"game","data":"{\\"k\\":\\"move\\"}"}')).toEqual({
+      ok: true,
+      frame: { t: "game", data: '{"k":"move"}' },
+    });
+  });
+
+  it("rejects a game frame that is not a string or is empty", () => {
+    expect(parseClientFrame('{"t":"game"}')).toEqual({ ok: false, code: "BAD_FRAME" });
+    expect(parseClientFrame('{"t":"game","data":5}')).toEqual({ ok: false, code: "BAD_FRAME" });
+    expect(parseClientFrame('{"t":"game","data":""}')).toEqual({ ok: false, code: "BAD_FRAME" });
+  });
+
+  it("rejects a game payload longer than the cap", () => {
+    const tooLong = "x".repeat(MAX_GAME_PAYLOAD + 1);
+    expect(parseClientFrame(JSON.stringify({ t: "game", data: tooLong }))).toEqual({
+      ok: false,
+      code: "BAD_FRAME",
+    });
+    const atCap = "x".repeat(MAX_GAME_PAYLOAD);
+    expect(parseClientFrame(JSON.stringify({ t: "game", data: atCap })).ok).toBe(true);
   });
 
   it("rejects an unknown frame type", () => {
