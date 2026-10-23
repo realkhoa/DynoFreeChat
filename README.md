@@ -127,6 +127,8 @@ Worker deploy thủ công: số lần deploy thấp, không có vòng CI→wrang
 
 ## Nhúng vào WebView (Visual Studio extension)
 
+![Chế độ tối giản](docs/screenshot-minimal.png)
+
 Load thẳng URL có sẵn, không cần build lại:
 
 ```
