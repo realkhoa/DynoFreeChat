@@ -20,6 +20,7 @@
     "deploy:worker": "npm run deploy -w worker"
   },
   "devDependencies": {
+    "jsdom": "^26.1.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.12"
   }

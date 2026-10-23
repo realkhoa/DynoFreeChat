@@ -321,10 +321,17 @@ GET  /ws?r=<slug>                → 101 (nâng cấp WebSocket), 404 nếu thi�
 
 ### 13.6 UI
 
-Hai màn, cùng một khung IDE:
+Một khung IDE duy nhất, hai chế độ (`data-mode` trên `.editor`):
 
-- **Lobby** — tab `Start` thay cho tab room: danh sách row kiểu "Recent projects" (`slug · 🔒 · 2 ngày trước`), nút `+ New Room…` mở dialog (slug + pass + "Create"), double-click row hoặc Enter để vào; nếu locked thì hỏi pass trong dialog nhỏ.
-- **Room** — khung log như §8, tab đổi thành `#<slug>`, status bar thêm `🔒` nếu locked. `Ctrl+Shift+O` về lobby. URL đổi thành `?r=<slug>` để share link (dùng `history.replaceState`, không reload).
+- **Sidebar "Rooms"** (thay cho lobby dạng tab trong bản nháp): danh sách kiểu Solution Explorer — mỗi row là
+  `glyph · slug · tuổi tương đối` (`🔒` nếu có mật khẩu, `#` nếu mở). Nút `+` trên header mở dialog tạo room;
+  click row để vào (room có mật khẩu thì mở dialog hỏi pass). Refresh mỗi 30s.
+- **Start view** khi chưa vào room: tên app, mô tả, nút `+ Tạo room mới` / `Nạp lại danh sách`, gợi ý phím tắt.
+- **Room view**: khung log như §8, tab đổi thành `#<slug>`, status bar thêm `🔒` nếu locked, URL `?r=<slug>`
+  (`history.replaceState`, không reload) để share link. `✕` trên tab để rời room.
+
+Lý do đổi so với bản nháp: danh sách room nằm ở sidebar vừa giống IDE hơn (Solution Explorer), vừa bớt được
+một màn hình và một lần điều hướng. `Ctrl+Shift+O` của bản nháp bị bỏ vì không còn lobby riêng.
 
 ### 13.7 Chi phí thêm
 

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>DynoFreeChat — Microsoft Visual Studio</title>
+    <meta
+      name="description"
+      content="Chat room kiểu Visual Studio: mỗi tin nhắn là một dòng log. Tạo room, đặt mật khẩu, chat realtime."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%232d2d30'/%3E%3Cpath d='M8 10l16 6-16 6z' fill='%23007acc'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div class="ide">
+      <header class="titlebar">
+        <span class="titlebar-mark" aria-hidden="true"></span>
+        <span class="titlebar-title">DynoFreeChat — Microsoft Visual Studio</span>
+        <span class="titlebar-spacer"></span>
+        <span class="titlebar-badge" id="titlebar-room">no room</span>
+      </header>
+
+      <nav class="menubar" id="menubar" aria-label="Thanh menu">
+        <div class="menu-root">
+          <button type="button" class="menu-trigger" data-menu="file" aria-expanded="false">File</button>
+          <ul class="menu-list" id="menu-file" hidden>
+            <li><button type="button" class="menu-entry" data-action="reload">Nạp lại<kbd>F5</kbd></button></li>
+            <li><button type="button" class="menu-entry" data-action="copy-url">Copy link room<kbd>Ctrl+Shift+C</kbd></button></li>
+          </ul>
+        </div>
+        <div class="menu-root">
+          <button type="button" class="menu-trigger" data-menu="edit" aria-expanded="false">Edit</button>
+          <ul class="menu-list" id="menu-edit" hidden>
+            <li><button type="button" class="menu-entry" data-action="nickname">Đổi nickname…</button></li>
+            <li><button type="button" class="menu-entry" data-action="clear">Xoá log (cục bộ)<kbd>Ctrl+L</kbd></button></li>
+            <li class="menu-sep" role="separator"></li>
+            <li><button type="button" class="menu-entry" data-action="find">Tìm trong log<kbd>Ctrl+F</kbd></button></li>
+          </ul>
+        </div>
+        <div class="menu-root">
+          <button type="button" class="menu-trigger" data-menu="view" aria-expanded="false">View</button>
+          <ul class="menu-list" id="menu-view" hidden>
+            <li><button type="button" class="menu-entry" data-action="follow">Bám đuôi log<kbd>Ctrl+End</kbd></button></li>
+            <li><button type="button" class="menu-entry" data-action="sidebar">Ẩn/hiện danh sách room</button></li>
+          </ul>
+        </div>
+        <div class="menu-root">
+          <button type="button" class="menu-trigger" data-menu="help" aria-expanded="false">Help</button>
+          <ul class="menu-list" id="menu-help" hidden>
+            <li><button type="button" class="menu-entry" data-action="about">Về DynoFreeChat…</button></li>
+          </ul>
+        </div>
+      </nav>
+
+      <div class="workbench">
+        <aside class="sidebar" id="sidebar" aria-label="Danh sách room">
+          <div class="sidebar-head">
+            <span>Rooms</span>
+            <button type="button" class="icon-button" id="new-room" title="Tạo room mới (Ctrl+N)" aria-label="Tạo room mới">+</button>
+          </div>
+          <ul class="room-list" id="room-list"></ul>
+          <div class="sidebar-foot" id="sidebar-foot">đang tải…</div>
+        </aside>
+
+        <main class="editor" id="editor" data-mode="start">
+          <div class="tabstrip" role="tablist" aria-label="Tab">
+            <button type="button" class="tab" role="tab" id="tab-room" aria-selected="true">
+              <span class="tab-icon" aria-hidden="true">▤</span>
+              <span class="tab-label" id="tab-label">Start</span>
+              <span class="tab-close" id="tab-close" role="button" aria-label="Rời room" title="Rời room" hidden>✕</span>
+            </button>
+          </div>
+
+          <div class="toolbar">
+            <label class="filter" for="filter">
+              <span aria-hidden="true">🔍</span>
+              <input id="filter" type="search" placeholder="lọc log…" autocomplete="off" spellcheck="false" aria-label="Lọc log" />
+            </label>
+            <button type="button" class="chip" id="chip-all" aria-pressed="true">All</button>
+            <button type="button" class="chip" id="chip-chat" aria-pressed="false">Chat</button>
+            <button type="button" class="chip" id="chip-system" aria-pressed="false">System</button>
+            <span class="toolbar-sep" aria-hidden="true"></span>
+            <button type="button" class="tool-button" id="follow" aria-pressed="true" title="Tự cuộn xuống tin mới">▼ Follow</button>
+            <span class="toolbar-spacer"></span>
+            <button type="button" class="tool-button" id="clear" title="Xoá log cục bộ (Ctrl+L)">Clear</button>
+          </div>
+
+          <section class="startview" id="startview" aria-label="Bắt đầu">
+            <h1>DynoFreeChat</h1>
+            <p>chat kiểu Visual Studio · mỗi tin nhắn là một dòng log</p>
+            <div class="startview-actions">
+              <button type="button" class="button button--primary" id="start-new">+ Tạo room mới</button>
+              <button type="button" class="button" id="start-refresh">Nạp lại danh sách</button>
+            </div>
+            <p class="hint">
+              chọn một room ở cột trái · <kbd>Ctrl</kbd>+<kbd>N</kbd> tạo mới ·
+              <kbd>Ctrl</kbd>+<kbd>F</kbd> lọc log
+            </p>
+          </section>
+
+          <div class="logwrap">
+            <div class="log" id="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
+            <button type="button" class="new-chip" id="new-chip" hidden>↓ tin mới</button>
+          </div>
+
+          <div class="composer" id="composer" data-disabled="true">
+            <span class="composer-prompt" aria-hidden="true">›</span>
+            <input
+              id="composer-input"
+              type="text"
+              placeholder="chọn hoặc tạo một room để bắt đầu…"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="500"
+              aria-label="Nội dung tin nhắn"
+              disabled
+            />
+            <span class="composer-meter" id="composer-meter"></span>
+          </div>
+        </main>
+      </div>
+
+      <footer class="statusbar" id="statusbar" data-connection="connecting">
+        <span class="statusitem"><span class="conn-dot" aria-hidden="true"></span><span id="conn">Chưa kết nối</span></span>
+        <span class="statusitem statusitem--dim" id="wsurl">—</span>
+        <span class="statusitem statusitem--dim" id="online">0 online</span>
+        <span class="statusitem statusitem--dim" id="msgcount">0 dòng</span>
+        <span class="status-spacer"></span>
+        <span class="statusitem statusitem--dim" id="room-lock" hidden>🔒</span>
+        <span class="statusitem statusitem--dim" id="nick">—</span>
+        <span class="statusitem statusitem--dim">UTF-8</span>
+      </footer>
+    </div>
+
+    <dialog class="dialog" id="room-dialog">
+      <form method="dialog" id="room-form">
+        <div class="dialog-head" id="room-dialog-title">Room mới</div>
+        <div class="dialog-body">
+          <div class="field">
+            <label for="room-slug">Tên room</label>
+            <input id="room-slug" name="slug" required pattern="[a-z0-9][a-z0-9\-]{1,23}" maxlength="24" autocomplete="off" spellcheck="false" placeholder="vd: anh-em" />
+            <span class="field-hint" id="room-slug-hint">2–24 ký tự: a-z, 0-9, dấu gạch ngang.</span>
+          </div>
+          <div class="field">
+            <label for="room-pass" id="room-pass-label">Mật khẩu (để trống = phòng mở)</label>
+            <input id="room-pass" name="pass" type="password" maxlength="64" autocomplete="new-password" />
+          </div>
+          <p class="dialog-error" id="room-error" role="alert"></p>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="button" id="room-cancel">Huỷ</button>
+          <button type="submit" class="button button--primary" id="room-submit">Tạo room</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

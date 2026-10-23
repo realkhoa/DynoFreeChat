@@ -1,0 +1,43 @@
+/* Visual Studio 2022 dark tokens. Every colour in the app comes from here. */
+:root {
+  color-scheme: dark;
+
+  --bg: #1e1e1e;
+  --panel: #252526;
+  --chrome: #2d2d30;
+  --titlebar: #3c3c3c;
+  --section: #333337;
+
+  --border: #3f3f46;
+  --border-soft: #333337;
+
+  --fg: #f1f1f1;
+  --fg-muted: #c8c8c8;
+  --fg-dim: #9d9d9d;
+  --fg-faint: #6d6d6d;
+
+  --accent: #007acc;
+  --accent-hover: #1c97ea;
+  --vs-purple: #68217a;
+
+  --ok: #4ec9b0;
+  --warn: #dcdcaa;
+  --err: #f14c4c;
+  --info: #569cd6;
+
+  --sel: #264f78;
+  --row-hover: #2a2d2e;
+
+  --font-ui: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "JetBrains Mono", ui-monospace, monospace;
+
+  --titlebar-h: 28px;
+  --menubar-h: 24px;
+  --tabstrip-h: 30px;
+  --toolbar-h: 30px;
+  --statusbar-h: 22px;
+  --sidebar-w: 248px;
+
+  --radius: 2px;
+  --log-size: 13px;
+}

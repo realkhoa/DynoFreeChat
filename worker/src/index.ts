@@ -6,15 +6,26 @@ import { ChatRoom } from "./room";
 
 export { ChatRoom, Registry };
 
-/** Exact-match origin allowlist. A missing Origin (CLI, curl) is allowed. */
+/**
+ * Exact-match origin allowlist. A missing Origin (CLI, curl, miniflare) is
+ * allowed. The token `localhost` allows any loopback origin, which keeps local
+ * dev working when Vite picks a different port.
+ */
 export function isAllowedOrigin(origin: string | null, allowlist: string): boolean {
   if (origin === null || origin.length === 0) return true;
+
   const allowed = allowlist
     .split(",")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
   if (allowed.length === 0) return true;
-  return allowed.includes(origin);
+  if (allowed.includes(origin)) return true;
+
+  if (allowed.includes("localhost") && /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/.test(origin)) {
+    return true;
+  }
+
+  return false;
 }
 
 function corsHeaders(origin: string | null): Record<string, string> {

@@ -1,0 +1,180 @@
+/* ------------------------------- log viewport + composer (the "Output" pane) */
+
+.logwrap {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.log {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 0 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg);
+  font: var(--log-size) / 1.55 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  contain: content;
+}
+
+.log:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: 8.5ch 16ch 1.5ch minmax(0, 1fr);
+  gap: 0 0.75ch;
+  padding: 0 10px;
+  min-height: 1.55em;
+}
+
+.log-row:hover {
+  background: var(--row-hover);
+}
+
+.log-row[hidden] {
+  display: none;
+}
+
+.log-time {
+  color: var(--fg-faint);
+  user-select: none;
+}
+
+.log-nick {
+  color: var(--vs-purple);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.log-mark {
+  color: var(--fg-faint);
+  user-select: none;
+}
+
+.log-text {
+  color: var(--fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.log-row mark {
+  background: var(--sel);
+  color: inherit;
+  border-radius: 1px;
+}
+
+/* self */
+.log-row.is-self .log-nick {
+  color: var(--accent);
+}
+
+.log-row.is-self .log-mark {
+  color: var(--accent);
+}
+
+/* system events: joins, errors, notices */
+.log-row.is-system .log-nick {
+  color: var(--fg-faint);
+  font-weight: 400;
+  font-style: italic;
+}
+
+.log-row.is-system .log-text {
+  color: var(--fg-dim);
+  font-style: italic;
+}
+
+.log-row.is-error .log-nick,
+.log-row.is-error .log-text,
+.log-row.is-error .log-mark {
+  color: var(--err);
+}
+
+/* optimistic echo until the server acknowledges */
+.log-row.is-pending {
+  opacity: 0.55;
+}
+
+.log-row.is-pending .log-mark {
+  animation: blink 1s steps(2, start) infinite;
+  color: var(--accent);
+}
+
+.log-row.is-failed {
+  opacity: 0.8;
+}
+
+.log-row.is-failed .log-mark,
+.log-row.is-failed .log-text {
+  color: var(--err);
+}
+
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.log-error {
+  padding: 24px 16px;
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------------- composer */
+
+.composer {
+  display: grid;
+  grid-template-columns: 2ch minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 6px;
+  padding: 0 10px;
+  height: 30px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  font: var(--log-size) / 1 var(--font-mono);
+}
+
+.composer[data-disabled="true"] {
+  opacity: 0.55;
+}
+
+.composer-prompt {
+  color: var(--accent);
+  user-select: none;
+}
+
+.composer input {
+  height: 100%;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--fg);
+  font: inherit;
+  min-width: 0;
+}
+
+.composer input::placeholder {
+  color: var(--fg-faint);
+}
+
+.composer-meter {
+  font-size: 11px;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-meter[data-state="warn"] {
+  color: var(--warn);
+}
+
+.composer-meter[data-state="over"] {
+  color: var(--err);
+}
