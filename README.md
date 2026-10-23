@@ -29,7 +29,8 @@ Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao di�
 - **Reconnect** tự động với backoff 1s→30s có jitter; lịch sử được replay lại, dedupe theo id.
 - **Thông báo tin nhắn mới**, ba lớp và **không bao giờ kèm nội dung hay nickname**: chuông ở title bar (badge số chưa đọc, panel liệt kê `#phòng · N tin mới`, bấm để nhảy vào phòng), notification hệ điều hành khi tab ở nền, và **badge trên trình duyệt** — số đỏ vẽ thẳng lên favicon (`(3)` ở tiêu đề tab) kèm `navigator.setAppBadge` cho taskbar/PWA. Bật/tắt ở `Tools → Thông báo tin nhắn mới`.
 - **Âm thanh thông báo**: tiếng "ding" tổng hợp bằng WebAudio (không có file mp3, không request), hai nốt cho tin thường và ba nốt cao hơn khi bị `@tag`; chỉ kêu khi tab ở nền; bật/tắt ở `Tools → Âm thanh thông báo`, lưu trong `localStorage`.
-- **Lọc log** (Ctrl+F, substring trên nick + nội dung) và chip All/Chat/System.
+- **Cỡ chữ khung chat riêng**: combo `100%` ở status bar (80–150%) hoặc `Ctrl+Shift+.` / `Ctrl+Shift+,`; chỉ đổi cỡ dòng log, toàn bộ chrome giữ nguyên cỡ. Lưu trong `localStorage`.
+- **Lọc log** (Ctrl+F, substring trên nick + nội dung) và combo All/Chat/System.
 - **Follow tail** tự cuộn khi ở đáy, tự tắt khi bạn cuộn lên, chip "↓ tin mới".
 - Trạng thái kết nối ở status bar; phím tắt Ctrl+L (xoá view), Ctrl+N (tạo room), Ctrl+End (xuống đáy).
 - Danh mục room ở sidebar kiểu Solution Explorer, refresh mỗi 30s.

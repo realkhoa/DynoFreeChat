@@ -14,6 +14,7 @@ import {
 import { createRoom, listRooms } from "./api";
 import { apiBase, roomSocketUrl, wsUrl } from "./env";
 import { applyBrowserBadges } from "./lib/badge";
+import { loadZoom, saveZoom, stepZoom, zoomToPixels, type Zoom } from "./lib/zoom";
 import { byId } from "./lib/dom";
 import { formatAge } from "./lib/format";
 import { loadIdentity, saveNick, type Identity } from "./lib/identity";
@@ -74,6 +75,7 @@ const composerMeter = byId<HTMLElement>("composer-meter");
 const filterInput = byId<HTMLInputElement>("filter");
 const kindSelect = byId<HTMLSelectElement>("kind");
 const roomSearch = byId<HTMLInputElement>("room-search");
+const zoomSelect = byId<HTMLSelectElement>("log-zoom");
 const treeSearch = byId<HTMLInputElement>("tree-search");
 const followButton = byId<HTMLButtonElement>("stdbar-follow");
 const clearButton = byId<HTMLButtonElement>("stdbar-clear");
@@ -105,6 +107,7 @@ let identity: Identity = loadIdentity(storage);
 const vault = new PassVault(storage);
 const sound = new SoundPlayer({ storage });
 let theme: Theme = loadTheme(storage);
+let zoom: Zoom = loadZoom(storage);
 
 let store = new Store();
 let rooms: RoomInfo[] = [];
@@ -212,6 +215,23 @@ function setFollow(following: boolean): void {
 
 function setMode(mode: "start" | "room"): void {
   editorEl.dataset.mode = mode;
+}
+
+/**
+ * Scales the chat log only: the custom property is set on the log element, so
+ * the rest of the shell keeps its own size.
+ */
+function applyZoom(): void {
+  logEl.style.setProperty("--log-size", `${zoomToPixels(zoom)}px`);
+  zoomSelect.value = String(zoom);
+}
+
+function changeZoom(next: Zoom): void {
+  if (next === zoom) return;
+  zoom = saveZoom(storage, next);
+  applyZoom();
+  store.addSystem(`cỡ chữ khung chat: ${zoom}%`);
+  render();
 }
 
 function updateChrome(): void {
@@ -832,6 +852,11 @@ function wire(): void {
     applyFilter(kindSelect.value as KindFilter);
   });
 
+  zoomSelect.addEventListener("change", () => {
+    const next = Number(zoomSelect.value);
+    if (Number.isFinite(next)) changeZoom(next as Zoom);
+  });
+
   filterInput.addEventListener("input", () => {
     if (filterTimer !== null) window.clearTimeout(filterTimer);
     filterTimer = window.setTimeout(() => {
@@ -903,6 +928,17 @@ function wire(): void {
     if (!mod) return;
 
     const key = event.key.toLowerCase();
+    // Ctrl+Shift+. and Ctrl+Shift+, zoom the chat pane, like the VS editor.
+    if (event.shiftKey && event.code === "Period") {
+      event.preventDefault();
+      changeZoom(stepZoom(zoom, 1));
+      return;
+    }
+    if (event.shiftKey && event.code === "Comma") {
+      event.preventDefault();
+      changeZoom(stepZoom(zoom, -1));
+      return;
+    }
     if (event.shiftKey && key === "d") {
       event.preventDefault();
       toggleTheme();
@@ -965,6 +1001,7 @@ function boot(): void {
   renderNotifications();
   menubar.setChecked("theme", theme === "light");
   menubar.setChecked("sound", sound.isEnabled);
+  applyZoom();
 
   wire();
 
