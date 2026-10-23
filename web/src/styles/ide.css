@@ -54,9 +54,22 @@ button:disabled {
 
 .ide {
   display: grid;
+  grid-template-areas:
+    "titlebar"
+    "menubar"
+    "ribbon"
+    "tabstrip"
+    "breadcrumb"
+    "content"
+    "dock";
   grid-template-rows:
-    var(--titlebar-h) var(--menubar-h) var(--stdbar-h) var(--tabstrip-h)
-    var(--breadcrumb-h) minmax(0, 1fr) auto;
+    var(--titlebar-h)
+    var(--menubar-h)
+    var(--ribbon-h)
+    var(--tabstrip-h)
+    var(--breadcrumb-h)
+    minmax(0, 1fr)
+    auto;
   height: 100vh;
   height: 100dvh;
 }
@@ -64,6 +77,7 @@ button:disabled {
 /* ------------------------------------------------------------- title bar */
 
 .titlebar {
+  grid-area: titlebar;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
@@ -106,6 +120,7 @@ button:disabled {
 /* ---------------------------------------------------------------- menubar */
 
 .menubar {
+  grid-area: menubar;
   display: flex;
   align-items: stretch;
   gap: 0;
@@ -365,6 +380,7 @@ button:disabled {
 /* ------------------------------------------------------------- tab strip */
 
 .tabstrip {
+  grid-area: tabstrip;
   display: flex;
   align-items: stretch;
   background: var(--chrome);
@@ -449,6 +465,7 @@ button:disabled {
 /* ------------------------------------------------------------ breadcrumb */
 
 .breadcrumb {
+  grid-area: breadcrumb;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -566,6 +583,7 @@ button:disabled {
 /* ================================================ content: editor + tree */
 
 .content {
+  grid-area: content;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--sidebar-w);
   min-height: 0;
@@ -796,6 +814,7 @@ button:disabled {
 /* ============================================================= output dock */
 
 .dock {
+  grid-area: dock;
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -1353,14 +1372,8 @@ button:disabled {
 
 /* ===================================================== ribbon (fills the UI) */
 
-.ide {
-  /* titlebar · menubar · ribbon · tabs · breadcrumb · content · dock */
-  grid-template-rows:
-    var(--titlebar-h) var(--menubar-h) var(--ribbon-h) var(--tabstrip-h)
-    var(--breadcrumb-h) minmax(0, 1fr) auto;
-}
-
 .ribbon {
+  grid-area: ribbon;
   display: grid;
   grid-template-rows: 22px var(--ribbon-body-h);
   background: var(--chrome);
@@ -1518,6 +1531,23 @@ button:disabled {
   --ribbon-h: 0px;
 }
 
+:root[data-ribbon="off"] .ide {
+  grid-template-areas:
+    "titlebar"
+    "menubar"
+    "tabstrip"
+    "breadcrumb"
+    "content"
+    "dock";
+  grid-template-rows:
+    var(--titlebar-h)
+    var(--menubar-h)
+    var(--tabstrip-h)
+    var(--breadcrumb-h)
+    minmax(0, 1fr)
+    auto;
+}
+
 :root[data-ribbon="off"] .ribbon {
   display: none;
 }
@@ -1545,6 +1575,9 @@ button:disabled {
 
 /* minimal: only the log and the composer, for a WebView host */
 :root[data-minimal="on"] .ide {
+  grid-template-areas:
+    "content"
+    "dock";
   grid-template-rows: minmax(0, 1fr) auto;
 }
 
