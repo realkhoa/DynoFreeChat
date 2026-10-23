@@ -54,76 +54,35 @@
 
       <nav class="menubar" id="menubar" aria-label="Thanh menu">
         <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="file" aria-expanded="false">File</button>
-          <ul class="menu-list" id="menu-file" role="menu" hidden>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="reload">Nạp lại<kbd>F5</kbd></button></li>
+          <button type="button" class="menu-trigger" data-menu="chat" aria-expanded="false">Chat</button>
+          <ul class="menu-list" id="menu-chat" role="menu" hidden>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="new-room">Room mới…<kbd>Ctrl+N</kbd></button></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="reload">Nạp lại<kbd>F5</kbd></button></li>
             <li class="menu-sep" role="separator"></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="copy-url">Copy link room<kbd>Ctrl+Shift+C</kbd></button></li>
-          </ul>
-        </div>
-        <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="edit" aria-expanded="false">Edit</button>
-          <ul class="menu-list" id="menu-edit" role="menu" hidden>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="reconnect">Kết nối lại room<kbd>Ctrl+Shift+R</kbd></button></li>
+            <li class="menu-sep" role="separator"></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="nickname">Đổi nickname…</button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="clear">Xoá log (cục bộ)<kbd>Ctrl+L</kbd></button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="forget-pass" disabled>Quên mật khẩu room</button></li>
             <li class="menu-sep" role="separator"></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="clear">Xoá log (cục bộ)<kbd>Ctrl+L</kbd></button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="find">Tìm trong log<kbd>Ctrl+F</kbd></button></li>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="follow">Bám đuôi log<kbd>Ctrl+End</kbd></button></li>
           </ul>
         </div>
         <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="view" aria-expanded="false">View</button>
-          <ul class="menu-list" id="menu-view" role="menu" hidden>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="follow">Bám đuôi log<kbd>Ctrl+End</kbd></button></li>
+          <button type="button" class="menu-trigger" data-menu="collab" aria-expanded="false">Collab</button>
+          <ul class="menu-list" id="menu-collab" role="menu" hidden>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="sidebar">Ẩn/hiện Solution Explorer</button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="ribbon">Ẩn/hiện ribbon<kbd>Ctrl+F1</kbd></button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="minimal">Chế độ tối giản (chỉ chat)<kbd>Ctrl+Shift+M</kbd></button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="dock">Output (ô nhập tin)<kbd>Ctrl+Alt+O</kbd></button></li>
             <li class="menu-sep" role="separator"></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="theme">Giao diện: Dark / Light<kbd>Ctrl+Shift+D</kbd></button></li>
-          </ul>
-        </div>
-        <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="git" aria-expanded="false">Git</button>
-          <ul class="menu-list" id="menu-git" role="menu" hidden>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" disabled>Clone Repository…</button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" disabled>Manage Branches</button></li>
-          </ul>
-        </div>
-        <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="project" aria-expanded="false">Project</button>
-          <ul class="menu-list" id="menu-project" role="menu" hidden>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="new-room">Phòng mới…<kbd>Ctrl+N</kbd></button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" disabled>Properties…</button></li>
-          </ul>
-        </div>
-        <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="build" aria-expanded="false">Build</button>
-          <ul class="menu-list" id="menu-build" role="menu" hidden>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" disabled>Build Solution<kbd>Ctrl+Shift+B</kbd></button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" disabled>Rebuild Solution</button></li>
-          </ul>
-        </div>
-        <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="debug" aria-expanded="false">Debug</button>
-          <ul class="menu-list" id="menu-debug" role="menu" hidden>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="reconnect">Kết nối lại room<kbd>Ctrl+Shift+R</kbd></button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" disabled>Start Debugging<kbd>F5</kbd></button></li>
-          </ul>
-        </div>
-        <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="tools" aria-expanded="false">Tools</button>
-          <ul class="menu-list" id="menu-tools" role="menu" hidden>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="notify">Thông báo tin nhắn mới</button></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="sound">Âm thanh thông báo</button></li>
             <li class="menu-sep" role="separator"></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="nickname">Đổi nickname…</button></li>
-          </ul>
-        </div>
-        <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="help" aria-expanded="false">Help</button>
-          <ul class="menu-list" id="menu-help" role="menu" hidden>
+            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="theme">Giao diện: Dark / Light<kbd>Ctrl+Shift+D</kbd></button></li>
+            <li class="menu-sep" role="separator"></li>
             <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="about">Về DynoFreeChat…</button></li>
           </ul>
         </div>

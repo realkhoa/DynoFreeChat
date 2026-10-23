@@ -22,10 +22,10 @@ describe("Ribbon", () => {
     mount();
 
     const tabs = Array.from(root.querySelectorAll(".ribbon-tab")).map((tab) => tab.textContent);
-    expect(tabs).toEqual(["Home", "Room", "View", "Tools"]);
+    expect(tabs).toEqual(["Chat", "Collab"]);
 
     const panels = Array.from(root.querySelectorAll<HTMLElement>(".ribbon-panel"));
-    expect(panels).toHaveLength(4);
+    expect(panels).toHaveLength(2);
     expect(panels.filter((panel) => !panel.hidden)).toHaveLength(1);
   });
 
@@ -34,17 +34,27 @@ describe("Ribbon", () => {
     const groups = Array.from(root.querySelectorAll(".ribbon-group-label")).map(
       (label) => label.textContent,
     );
-    expect(groups).toEqual(["Rooms", "Kết nối", "Cá nhân", "Tin nhắn", "Cỡ chữ", "Giao diện", "Cửa sổ", "Thông báo", "Liên kết"]);
+    expect(groups).toEqual([
+      "Rooms",
+      "Tin nhắn",
+      "Cỡ chữ",
+      "Cá nhân",
+      "Kết nối",
+      "Không gian",
+      "Thông báo",
+      "Giao diện",
+      "Hỗ trợ",
+    ]);
   });
 
   it("switches panels", () => {
     const ribbon = mount();
-    ribbon.showTab("view");
+    ribbon.showTab("collab");
 
     const panels = Array.from(root.querySelectorAll<HTMLElement>(".ribbon-panel"));
     expect(panels.filter((panel) => !panel.hidden)).toHaveLength(1);
     const active = root.querySelector('.ribbon-tab[aria-selected="true"]');
-    expect(active?.textContent).toBe("View");
+    expect(active?.textContent).toBe("Collab");
   });
 
   it("forwards clicks to the action handler", () => {
