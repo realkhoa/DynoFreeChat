@@ -270,8 +270,6 @@ export class GameCoordinator {
     // Both sides may pick the same role (two people typing the same code). The
     // smaller client id keeps X; because both sides compare the same two values,
     // exactly one of them switches and the room converges after one round trip.
-    // Settling is per peer: hellos repeat on every presence change, and re-running
-    // the comparison would flip the roles back and forth.
     if (this.peerClientId !== peerClientId) {
       this.peerClientId = peerClientId;
       if (peerRole === this.myRole) {
@@ -285,6 +283,12 @@ export class GameCoordinator {
           this.sync();
         }
       }
+
+      // Answer the handshake. A hello is sent once when we join, and it is lost if
+      // nobody was in the room yet — or it reaches only a stale socket that has
+      // not been evicted. Replying once per peer is what makes the exchange
+      // self-healing: whoever speaks second always gets an answer.
+      this.session?.sendHello();
     }
 
     if (this.myRole === "X") this.sendState();

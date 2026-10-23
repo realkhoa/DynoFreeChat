@@ -334,6 +334,26 @@ describe("GameCoordinator online", () => {
     expect(state.role).toBe("X");
   });
 
+  it("answers a peer hello so the peer can settle too", async () => {
+    // A stale socket can make the room look occupied before the real opponent
+    // arrives, so our own hello may have gone nowhere. Answering theirs is what
+    // closes the loop.
+    const h = makeCoordinator("aaa");
+    await h.coordinator.startOnlineGame("ABCD", false);
+    h.socket.open();
+    h.socket.receive(welcome(2));
+
+    const helloCount = (): number => sent(h.socket).filter((message) => message.k === "hello").length;
+    const before = helloCount();
+
+    relay(h.socket, { k: "hello", clientId: "peer-y", role: "O", nick: "bob" });
+    expect(helloCount()).toBe(before + 1);
+
+    // The reply must not start a storm: the same peer is answered once.
+    relay(h.socket, { k: "hello", clientId: "peer-y", role: "O", nick: "bob" });
+    expect(helloCount()).toBe(before + 1);
+  });
+
   it("resets both sides on a rematch and alternates the starter", async () => {
     const { coordinator, socket, state } = await onlineRoom(true);
 
