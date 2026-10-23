@@ -204,13 +204,16 @@ export class ChatPicker {
       }
     } else if (event.key === "Enter") {
       event.preventDefault();
-      if (this.selectedIndex >= 0 && this.selectedIndex < filtered.length) {
-        const picked = filtered[this.selectedIndex];
+      const selected =
+        this.selectedIndex >= 0 && this.selectedIndex < filtered.length
+          ? filtered[this.selectedIndex]
+          : filtered.length === 1
+            ? filtered[0]
+            : undefined;
+
+      if (selected !== undefined) {
         this.close();
-        this.handlers.onPick(picked);
-      } else if (filtered.length === 1) {
-        this.close();
-        this.handlers.onPick(filtered[0]);
+        this.handlers.onPick(selected);
       } else if (filtered.length === 0) {
         const query = this.elements.search.value.trim().toLowerCase();
         this.close();

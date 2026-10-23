@@ -13,9 +13,9 @@ describe("ChatPicker", () => {
   let elements: ChatPickerElements;
 
   const mockRooms: RoomInfo[] = [
-    { slug: "chung", locked: false, lastSeen: Date.now() - 5000 },
-    { slug: "du-an-a", locked: true, lastSeen: Date.now() - 3600000 },
-    { slug: "dev-team", locked: false, lastSeen: Date.now() - 86400000 },
+    { slug: "chung", locked: false, createdAt: Date.now() - 100000, lastSeen: Date.now() - 5000 },
+    { slug: "du-an-a", locked: true, createdAt: Date.now() - 10000000, lastSeen: Date.now() - 3600000 },
+    { slug: "dev-team", locked: false, createdAt: Date.now() - 90000000, lastSeen: Date.now() - 86400000 },
   ];
 
   beforeEach(() => {
