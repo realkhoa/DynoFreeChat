@@ -28,6 +28,11 @@ export type IconName =
   | "bell"
   | "reply"
   | "copy"
+  | "person"
+  | "play"
+  | "sound"
+  | "theme"
+  | "info"
   | "dot";
 
 const PATHS: Record<IconName, string> = {
@@ -55,6 +60,11 @@ const PATHS: Record<IconName, string> = {
   bell: '<path d="M4.3 6.7a3.7 3.7 0 0 1 7.4 0c0 2.3.5 3.3 1.1 4H3.2c.6-.7 1.1-1.7 1.1-4Z"/><path d="M6.6 12.4a1.5 1.5 0 0 0 2.8 0"/>',
   reply: '<path d="M6.2 4.4 3 7.5l3.2 3.1"/><path d="M3 7.5h6a3.4 3.4 0 0 1 0 6.8H6.4"/>',
   copy: '<rect x="5.4" y="5.4" width="7.2" height="7.2" rx="1"/><path d="M10.6 5.4V4.2a1 1 0 0 0-1-1H4.2a1 1 0 0 0-1 1v5.4a1 1 0 0 0 1 1h1.2"/>',
+  person: '<circle cx="8" cy="5.6" r="2.6"/><path d="M3.4 13.4c0-2.6 2.1-4.2 4.6-4.2s4.6 1.6 4.6 4.2"/>',
+  play: '<path d="M5.2 3.6 12.4 8l-7.2 4.4Z"/>',
+  sound: '<path d="M4.4 6.4h2.2L10 4v8L6.6 9.6H4.4Z"/><path d="M12 6.4a2.4 2.4 0 0 1 0 3.2"/>',
+  theme: '<circle cx="8" cy="8" r="4.8"/><path d="M8 3.2v9.6" /><path d="M8 3.2a4.8 4.8 0 0 1 0 9.6Z" fill="currentColor" stroke="none"/>',
+  info: '<circle cx="8" cy="8" r="5"/><path d="M8 7.2v3.4"/><circle cx="8" cy="5.4" r="0.6" fill="currentColor" stroke="none"/>',
   dot: '<circle cx="8" cy="8" r="3.2" fill="currentColor" stroke="none"/>',
 };
 

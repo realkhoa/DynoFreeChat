@@ -8,6 +8,8 @@ export type MenuAction =
   | "notify"
   | "theme"
   | "sound"
+  | "zoom-in"
+  | "zoom-out"
   | "new-room"
   | "reconnect"
   | "forget-pass"

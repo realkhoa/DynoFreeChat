@@ -18,7 +18,9 @@ Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao di�
 
 ## Tính năng
 
-- Giao diện **Visual Studio 2022** (không phải VS Code): title bar có chuông thông báo, menu bar + ô Search, thanh chuẩn (Debug / Any CPU / nút Connect xanh), tab tài liệu, breadcrumb, log có số dòng như editor, **Solution Explorer bên phải** 3 cấp, dock Output ở dưới, status bar đúng theme.
+- Giao diện **Visual Studio 2022** (không phải VS Code): title bar có chuông thông báo, menu bar + ô Search, **ribbon** 4 tab (Home / Room / View / Tools) với các group có caption, tab tài liệu, breadcrumb, log có số dòng như editor, **Solution Explorer bên phải**, dock Output ở dưới, status bar đúng theme.
+- **Solution Explorer nhiều solution**: `DynoFreeChat` là dữ liệu thật (rooms), còn `Collab` và `VinaBIM` là **solution mẫu** (placeholder) để panel có hình dạng của một workspace thật — bấm vào sẽ báo rõ là placeholder, không giả vờ có dữ liệu.
+- **Đổi nickname** ở 3 chỗ: ribbon `Home → Nickname`, menu `Edit`/`Tools`, hoặc bấm vào nick ở status bar.
 - **Nhiều phòng**, tạo bằng tên (slug), vào bằng link `?r=<slug>`.
 - **Mật khẩu phòng tuỳ chọn** — hỏi **một lần** khi vào phòng lần đầu, sau đó nhớ trong `localStorage` nên reload hay mở lại link đều vào thẳng. Server kiểm tra, không lưu plaintext, mật khẩu không đi qua URL.
 - Mỗi tin nhắn = một dòng log: `HH:MM:SS  nick  ›  nội dung`, cột thẳng hàng, màu nick theo người.

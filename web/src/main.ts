@@ -29,6 +29,7 @@ import { icon, setIconButton } from "./ui/icons";
 import { LogView } from "./ui/log-view";
 import { mountMenubar, type MenuAction } from "./ui/menubar";
 import { NickDialog } from "./ui/nick-dialog";
+import { defaultRibbonSpec, Ribbon } from "./ui/ribbon";
 import { RoomDialog } from "./ui/room-dialog";
 import { Sidebar } from "./ui/sidebar";
 import { StatusBar } from "./ui/statusbar";
@@ -77,11 +78,9 @@ const kindSelect = byId<HTMLSelectElement>("kind");
 const roomSearch = byId<HTMLInputElement>("room-search");
 const zoomSelect = byId<HTMLSelectElement>("log-zoom");
 const treeSearch = byId<HTMLInputElement>("tree-search");
-const followButton = byId<HTMLButtonElement>("stdbar-follow");
-const clearButton = byId<HTMLButtonElement>("stdbar-clear");
 const newChip = byId<HTMLButtonElement>("new-chip");
 const newRoomButton = byId<HTMLButtonElement>("new-room");
-const roomSelect = byId<HTMLSelectElement>("stdbar-room");
+
 const treeEl = byId<HTMLElement>("room-tree");
 const sidebarEl = byId<HTMLElement>("sidebar");
 const sidebarFoot = byId<HTMLElement>("sidebar-foot");
@@ -168,6 +167,7 @@ const composer = new Composer({
 });
 
 const menubar = mountMenubar(menubarEl, handleMenuAction);
+const ribbon = new Ribbon(byId<HTMLElement>("ribbon"), defaultRibbonSpec(), handleMenuAction);
 
 /**
  * Notifications carry a room label and a count — never message text, never a
@@ -204,12 +204,13 @@ function render(): void {
   statusbar.setNick(identity.nick);
   menubar.setEnabled("copy-url", current !== null);
   menubar.setEnabled("forget-pass", current !== null && vault.has(current.slug));
+  ribbon.setEnabled("forget-pass", current !== null && vault.has(current.slug));
+  ribbon.setEnabled("copy-url", current !== null);
 }
 
 function setFollow(following: boolean): void {
   logView.follow = following;
-  followButton.setAttribute("aria-pressed", String(following));
-  followButton.title = following ? "Đang bám đuôi log" : "Đã tạm dừng bám đuôi log";
+  ribbon.setChecked("follow", following);
   if (following) newChip.hidden = true;
 }
 
@@ -240,7 +241,7 @@ function updateChrome(): void {
   titlebarRoom.textContent = slug === undefined ? "no room" : `#${slug}`;
   crumbRoom.textContent = slug === undefined ? "Start" : `#${slug}`;
   tabClose.hidden = slug === undefined;
-  roomSelect.value = slug ?? "";
+
 
   const unread = notifier.unread;
   const base = slug === undefined ? BASE_TITLE : `#${slug} — DynoFreeChat`;
@@ -349,42 +350,16 @@ function toggleTheme(): void {
 async function refreshRooms(): Promise<void> {
   try {
     rooms = await listRooms(apiBase);
-    sidebar.render(rooms, current?.slug ?? null, pickRoom);
+    sidebar.render(rooms, current?.slug ?? null, pickRoom, (notice) => {
+      store.addSystem(notice);
+      render();
+    });
     sidebar.setQuery(treeSearch.value);
     const locked = rooms.filter((room) => room.locked).length;
     sidebar.setFoot(`${rooms.length} room · ${locked} có mật khẩu`);
-    fillRoomSelect();
   } catch {
     sidebar.setFoot("không tải được danh sách room");
   }
-}
-
-/** The "startup project" combo doubles as the room picker. */
-function fillRoomSelect(): void {
-  const options = rooms.map((room) => {
-    const option = document.createElement("option");
-    option.value = room.slug;
-    option.textContent = room.locked ? `${room.slug} (locked)` : room.slug;
-    return option;
-  });
-
-  if (current !== null && !rooms.some((room) => room.slug === current?.slug)) {
-    const option = document.createElement("option");
-    option.value = current.slug;
-    option.textContent = current.slug;
-    options.unshift(option);
-  }
-
-  if (options.length === 0) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "Chưa chọn room";
-    roomSelect.replaceChildren(option);
-    return;
-  }
-
-  roomSelect.replaceChildren(...options);
-  roomSelect.value = current?.slug ?? options[0]?.value ?? "";
 }
 
 function setRoomQuery(query: string): void {
@@ -757,6 +732,12 @@ function handleMenuAction(action: MenuAction): void {
     case "theme":
       toggleTheme();
       break;
+    case "zoom-in":
+      changeZoom(stepZoom(zoom, 1));
+      break;
+    case "zoom-out":
+      changeZoom(stepZoom(zoom, -1));
+      break;
     case "sound":
       sound.setEnabled(!sound.isEnabled);
       menubar.setChecked("sound", sound.isEnabled);
@@ -800,12 +781,6 @@ function decorateChrome(): void {
   setIconButton(byId<HTMLElement>("new-room"), "plus", "Tạo room mới (Ctrl+N)");
   setIconButton(byId<HTMLElement>("refresh-rooms"), "refresh", "Nạp lại danh sách room");
   setIconButton(byId<HTMLElement>("collapse-tree"), "collapse", "Thu gọn Solution Explorer");
-  setIconButton(byId<HTMLElement>("stdbar-undo"), "undo", "Hoàn tác");
-  setIconButton(byId<HTMLElement>("stdbar-redo"), "redo", "Làm lại");
-  setIconButton(byId<HTMLElement>("stdbar-save"), "save", "Lưu");
-  setIconButton(byId<HTMLElement>("stdbar-refresh"), "refresh", "Nạp lại danh sách room");
-  setIconButton(byId<HTMLElement>("stdbar-clear"), "trash", "Xoá log cục bộ");
-  setIconButton(byId<HTMLElement>("stdbar-follow"), "follow", "Bám đuôi log");
   setIconButton(newChip, "follow", "Xuống tin mới nhất");
   setIconButton(byId<HTMLElement>("dock-close"), "close", "Thu gọn Output");
   setIconButton(notifyBell, "bell", "Thông báo");
@@ -813,14 +788,10 @@ function decorateChrome(): void {
 
 function wire(): void {
   logView.onFollowChange = (following) => {
-    followButton.setAttribute("aria-pressed", String(following));
-    if (following) newChip.hidden = true;
+  ribbon.setChecked("follow", following);
+  if (following) newChip.hidden = true;
   };
 
-  followButton.addEventListener("click", () => {
-    setFollow(!logView.follow);
-    if (logView.follow) logView.scrollToBottom();
-  });
 
   newChip.addEventListener("click", () => {
     setFollow(true);
@@ -833,13 +804,7 @@ function wire(): void {
   byId<HTMLButtonElement>("start-new").addEventListener("click", () => openCreateDialog());
   byId<HTMLButtonElement>("start-refresh").addEventListener("click", () => void refreshRooms());
 
-  byId<HTMLButtonElement>("stdbar-refresh").addEventListener("click", () => void refreshRooms());
-  byId<HTMLButtonElement>("stdbar-connect").addEventListener("click", () => reconnect());
 
-  roomSelect.addEventListener("change", () => {
-    const room = rooms.find((candidate) => candidate.slug === roomSelect.value);
-    if (room !== undefined) pickRoom(room);
-  });
 
   for (const input of [roomSearch, treeSearch]) {
     input.addEventListener("input", () => setRoomQuery(input.value));
@@ -865,7 +830,6 @@ function wire(): void {
     }, FILTER_DEBOUNCE_MS);
   });
 
-  clearButton.addEventListener("click", () => clearLog());
 
   // The nickname lives in the status bar, as in VS: click it to rename.
   nickButton.addEventListener("click", () => void changeNickname());
