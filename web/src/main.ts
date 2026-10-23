@@ -2,7 +2,7 @@ import "./styles/tokens.css";
 import "./styles/ide.css";
 import "./styles/log.css";
 
-import { MAX_TEXT, type ChatMessage, type ClientFrame, type RoomInfo, type ServerFrame } from "@dyno/shared/protocol";
+import { MAX_TEXT, type ClientFrame, type RoomInfo, type ServerFrame } from "@dyno/shared/protocol";
 import { createRoom, listRooms } from "./api";
 import { apiBase, roomSocketUrl, wsUrl } from "./env";
 import { byId } from "./lib/dom";
@@ -567,5 +567,3 @@ function boot(): void {
 
 boot();
 
-// Kept for the browser console and for typing assistance in tests.
-export type { ChatMessage };
