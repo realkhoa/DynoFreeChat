@@ -54,11 +54,9 @@
   --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "JetBrains Mono", ui-monospace, monospace;
 
   /* metrics */
-  --titlebar-h: 30px;
-  --menubar-h: 26px;
-  --stdbar-h: 26px;
-  --ribbon-h: 92px;
-  --ribbon-body-h: 70px;
+  --titlebar-h: 32px;
+  --menubar-h: 30px;
+  --stdbar-h: 28px;
   --tabstrip-h: 28px;
   --breadcrumb-h: 24px;
   --statusbar-h: 22px;
