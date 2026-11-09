@@ -34,8 +34,16 @@
   <body>
     <div class="ide">
       <header class="titlebar">
-        <span class="titlebar-mark" id="titlebar-mark" aria-hidden="true"></span>
-        <span class="titlebar-title">DynoFreeChat - Microsoft Visual Studio</span>
+        <div class="titlebar-left">
+          <span class="titlebar-mark" id="titlebar-mark" aria-hidden="true"></span>
+          <span class="titlebar-title">DynoFreeChat</span>
+        </div>
+        <div class="titlebar-center">
+          <label class="titlebar-search" for="room-search">
+            <span class="titlebar-search-icon" id="menu-search-icon" aria-hidden="true"></span>
+            <input id="room-search" type="search" placeholder="Search rooms (Ctrl+K)" autocomplete="off" spellcheck="false" aria-label="Tìm room" />
+          </label>
+        </div>
         <span class="titlebar-right">
           <button type="button" class="titlebar-bell" id="notify-bell" aria-expanded="false" aria-label="Thông báo" title="Thông báo">
             <span class="bell-count" id="bell-count" hidden>0</span>
@@ -98,20 +106,8 @@
         </div>
 
         <span class="menubar-spacer"></span>
-
-        <label class="menu-search" for="room-search">
-          <span class="menu-search-icon" id="menu-search-icon" aria-hidden="true"></span>
-          <input id="room-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Tìm room" />
-          <span class="menu-search-chevron" aria-hidden="true"></span>
-        </label>
-        <span class="menubar-solution" id="menubar-solution">DynoFreeChat</span>
-        <button type="button" class="menubar-ribbon-toggle" id="menubar-ribbon-toggle" title="Ẩn ribbon (Ctrl+F1)" aria-label="Ẩn/hiện Ribbon" aria-pressed="true">
-          <span class="menubar-ribbon-icon" id="menubar-ribbon-icon" aria-hidden="true">⌃</span>
-          <span class="menubar-ribbon-label">Ribbon</span>
-        </button>
+        <div class="toolbar-standard" id="toolbar-standard" aria-label="Standard toolbar"></div>
       </nav>
-
-      <div class="ribbon" id="ribbon" aria-label="Ribbon"></div>
 
       <div class="tabstrip" role="tablist" aria-label="Document">
         <div class="tab" role="tab" id="tab-room" aria-selected="true" tabindex="0">
@@ -134,12 +130,8 @@
         <span class="crumb-sep" aria-hidden="true">›</span>
         <span class="crumb crumb--current" id="crumb-room">Start</span>
         <span class="toolbar-spacer"></span>
-        <label class="filter" for="filter">
-          <span class="filter-icon" id="filter-icon" aria-hidden="true"></span>
-          <input id="filter" type="search" placeholder="Find in output…" autocomplete="off" spellcheck="false" aria-label="Lọc log" />
-        </label>
         <label class="combo" for="kind">
-          <span class="combo-label">Show output from:</span>
+          <span class="combo-label">Output:</span>
           <span class="combo-shell">
             <select id="kind">
               <option value="all">All</option>
@@ -153,19 +145,30 @@
       <div class="content">
         <main class="editor" id="editor" data-mode="start">
           <section class="startview" id="startview" aria-label="Bắt đầu">
-            <h1>DynoFreeChat</h1>
-            <p>chat kiểu Visual Studio · mỗi tin nhắn là một dòng log</p>
-            <div class="startview-actions">
-              <button type="button" class="button button--primary" id="start-new">Tạo room mới</button>
-              <button type="button" class="button" id="start-refresh">Nạp lại danh sách</button>
+            <div class="startview-card">
+              <div class="startview-badge">VS 2022</div>
+              <h1>DynoFreeChat</h1>
+              <p class="startview-desc">Chat room phong cách Visual Studio · Mỗi tin nhắn là một dòng log</p>
+              <div class="startview-shortcuts">
+                <div class="shortcut-item"><kbd>Ctrl+K</kbd><span>Tìm và chọn room</span></div>
+                <div class="shortcut-item"><kbd>Ctrl+N</kbd><span>Tạo room mới</span></div>
+                <div class="shortcut-item"><kbd>Ctrl+F</kbd><span>Tìm kiếm trong log</span></div>
+                <div class="shortcut-item"><kbd>Ctrl+Shift+D</kbd><span>Đổi Dark / Light</span></div>
+              </div>
+              <div class="startview-actions">
+                <button type="button" class="button button--primary" id="start-new">+ Tạo room mới</button>
+                <button type="button" class="button" id="start-refresh">⟳ Nạp lại danh sách</button>
+              </div>
             </div>
-            <p class="hint">
-              chọn một room ở Solution Explorer · <kbd>Ctrl</kbd>+<kbd>N</kbd> tạo mới ·
-              <kbd>Ctrl</kbd>+<kbd>F</kbd> lọc log
-            </p>
           </section>
 
           <div class="logwrap">
+            <div class="editor-find-bar" id="editor-find-bar" hidden>
+              <span class="find-icon" id="filter-icon" aria-hidden="true"></span>
+              <input id="filter" type="search" placeholder="Find in output (Ctrl+F)…" autocomplete="off" spellcheck="false" aria-label="Lọc log" />
+              <span class="find-count" id="find-count"></span>
+              <button type="button" class="find-close" id="find-close" aria-label="Đóng tìm kiếm" title="Đóng (Esc)">✕</button>
+            </div>
             <div class="log" id="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
             <button type="button" class="new-chip" id="new-chip" hidden>tin mới</button>
           </div>
