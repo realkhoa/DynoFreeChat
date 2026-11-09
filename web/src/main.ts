@@ -247,22 +247,40 @@ function syncSettingsDialog(): void {
   });
 }
 
+/**
+ * @brief Switches the active IDE editor view to the main Room chat tab.
+ * @details Hides the collab editor view, restores the room chat or start screen
+ * according to editor mode, updates IDE breadcrumbs, and triggers a full UI render.
+ * @return void
+ */
 function selectRoomTab(): void {
   tabRoom.setAttribute("aria-selected", "true");
   tabGame.setAttribute("aria-selected", "false");
   gameEditorPanel.hidden = true;
+  const logwrapEl = document.querySelector<HTMLElement>(".logwrap");
+  const startviewEl = document.getElementById("startview");
+  if (logwrapEl) logwrapEl.hidden = editorEl.dataset.mode === "start";
+  if (startviewEl) startviewEl.hidden = editorEl.dataset.mode !== "start";
   updateChrome();
   render();
 }
 
+/**
+ * @brief Switches the active IDE editor view to the Collab C# editor tab.
+ * @details Unhides the collab editor panel while cleanly hiding the room chat
+ * logwrap and startview to prevent dual-view layout thrashing and input lag.
+ * @return void
+ */
 function selectGameTab(): void {
   tabGame.hidden = false;
   tabGame.setAttribute("aria-selected", "true");
   tabRoom.setAttribute("aria-selected", "false");
   gameEditorPanel.hidden = false;
-  // `logwrap` is a class, not an id: looking it up by id used to throw here, which
-  // aborted the rest of the handler — and with it `gameDialog.open(mode)`, so the
-  // menu entries "Chơi với máy" and "Tạo phòng mới" silently did nothing.
+  const logwrapEl = document.querySelector<HTMLElement>(".logwrap");
+  const startviewEl = document.getElementById("startview");
+  if (logwrapEl) logwrapEl.hidden = true;
+  if (startviewEl) startviewEl.hidden = true;
+
   crumbRoom.textContent = "DiagnosticMatrix.cs";
   byId<HTMLElement>("crumb-solution").textContent = "DynoFreeChat";
   byId<HTMLElement>("crumb-group").textContent = "Collab";
@@ -1105,7 +1123,7 @@ function wire(): void {
   byId<HTMLButtonElement>("start-refresh").addEventListener("click", () => void refreshRooms());
 
   document.getElementById("btn-hub-chat")?.addEventListener("click", () => openChatPicker());
-  document.getElementById("btn-hub-collab")?.addEventListener("click", () => gameDialog.open());
+  document.getElementById("btn-hub-collab")?.addEventListener("click", () => gameDialog.openFloating());
   document.getElementById("btn-hub-setting")?.addEventListener("click", () => {
     settingsDialog.open({
       theme,

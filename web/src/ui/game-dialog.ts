@@ -152,13 +152,19 @@ export class GameDialog {
   private applyStealthDom(): void {
     const playing = this.boardViewEl.hidden === false;
     const stealthOff = this.stealthPref.stealth && !playing;
-    const targets = [this.dialog, this.editorPanel].filter((el): el is HTMLElement => el !== null);
-    for (const el of targets) {
-      el.classList.toggle("is-stealth", stealthOff);
-      el.classList.toggle("is-stealth--blur", stealthOff);
-      el.classList.toggle("game-code-mode", this.stealthPref.codeMode);
-      el.style.setProperty("--stealth-opacity", String(this.stealthPref.opacity));
+
+    this.dialog.classList.toggle("is-stealth", stealthOff);
+    this.dialog.classList.toggle("is-stealth--blur", stealthOff);
+    this.dialog.classList.toggle("game-code-mode", this.stealthPref.codeMode);
+    this.dialog.style.setProperty("--stealth-opacity", String(this.stealthPref.opacity));
+
+    if (this.editorPanel !== null) {
+      this.editorPanel.classList.toggle("game-code-mode", this.stealthPref.codeMode);
+      this.editorPanel.classList.toggle("is-stealth", stealthOff);
+      this.editorPanel.classList.remove("is-stealth--blur");
+      this.editorPanel.style.setProperty("--stealth-opacity", String(this.stealthPref.opacity));
     }
+
     this.boardView.setCodeMode(this.stealthPref.codeMode);
 
     const stealthBtns = document.querySelectorAll("#game-dialog-stealth-btn, #game-code-stealth-btn");

@@ -165,4 +165,27 @@ describe("GameDialog component", () => {
     gameDialog.openFloating();
     expect(dialogEl.classList.contains("is-stealth")).toBe(true);
   });
+
+  it("applies stealth opacity to editorPanel without applying performance-degrading blur", () => {
+    const editorPanelEl = document.createElement("div");
+    editorPanelEl.id = "game-editor-panel";
+    document.body.append(editorPanelEl);
+
+    const dialogWithEditor = new GameDialog({
+      dialog: dialogEl,
+      editorPanel: editorPanelEl,
+      wsUrl: "wss://fake/ws",
+      apiBase: "https://fake",
+      getIdentity: () => ({ nick: "DevUser", color: "hsl(200 50% 50%)" }),
+    });
+
+    // Stealth is enabled by default in lobby
+    expect(editorPanelEl.classList.contains("is-stealth")).toBe(true);
+    expect(editorPanelEl.classList.contains("is-stealth--blur")).toBe(false);
+
+    // Starting local game removes stealth
+    dialogWithEditor.startLocalGame();
+    expect(editorPanelEl.classList.contains("is-stealth")).toBe(false);
+    expect(editorPanelEl.classList.contains("is-stealth--blur")).toBe(false);
+  });
 });

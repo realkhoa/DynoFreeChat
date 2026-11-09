@@ -2309,7 +2309,8 @@ button:disabled {
  */
 .is-stealth {
   opacity: var(--stealth-opacity);
-  transition: opacity 0.18s ease, filter 0.18s ease;
+  transition: opacity 0.15s ease;
+  will-change: opacity;
 }
 
 .is-stealth--blur {
@@ -2319,7 +2320,11 @@ button:disabled {
 .is-stealth:hover,
 .is-stealth:focus-within {
   opacity: 0.98;
-  filter: blur(0);
+}
+
+.is-stealth--blur:hover,
+.is-stealth--blur:focus-within {
+  filter: none;
 }
 
 .tab--game .tab-icon {
@@ -2335,6 +2340,15 @@ button:disabled {
   font: 12.5px/1.4 var(--font-mono);
   overflow: hidden;
   user-select: text;
+  contain: layout style;
+}
+
+.game-editor-panel[hidden] {
+  display: none !important;
+}
+
+.logwrap[hidden] {
+  display: none !important;
 }
 
 .game-code-toolbar {
