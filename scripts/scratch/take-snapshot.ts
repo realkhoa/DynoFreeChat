@@ -27,6 +27,8 @@ interface SnapshotConfig {
   theme: "dark" | "light" | "both";
   /** Base output path or directory. */
   outBase: string;
+  /** Optional element selector to click before capturing snapshot. */
+  clickSelector?: string;
 }
 
 /**
@@ -234,6 +236,7 @@ async function captureThemeShot(
   width: number,
   height: number,
   outFile: string,
+  clickSelector?: string,
 ): Promise<void> {
   console.log(`[Snapshot] Preparing ${theme} theme viewport ${width}x${height}...`);
 
@@ -257,6 +260,15 @@ async function captureThemeShot(
   // Navigate again so initialization scripts read updated theme
   await client.send("Page.navigate", { url: baseUrl });
   await sleep(2500);
+
+  if (clickSelector) {
+    console.log(`[Snapshot] Clicking element '${clickSelector}'...`);
+    await client.evaluate(`
+      const target = document.querySelector(${JSON.stringify(clickSelector)});
+      if (target) (target).click();
+    `);
+    await sleep(600);
+  }
 
   // Capture screenshot
   const result = await client.send("Page.captureScreenshot", {
@@ -290,6 +302,7 @@ async function main() {
     height: 900,
     theme: (getArg("--theme=", "both") as "dark" | "light" | "both") || "both",
     outBase: getArg("--out=", join(process.cwd(), ".shots", "snapshot-current")),
+    clickSelector: getArg("--click=", ""),
   };
 
   const sizeArg = getArg("--size=", "");
@@ -372,14 +385,30 @@ async function main() {
       const darkOut = config.outBase.endsWith(".png")
         ? config.outBase.replace(".png", "-dark.png")
         : `${config.outBase}-dark.png`;
-      await captureThemeShot(client, baseUrl, "dark", config.width, config.height, darkOut);
+      await captureThemeShot(
+        client,
+        baseUrl,
+        "dark",
+        config.width,
+        config.height,
+        darkOut,
+        config.clickSelector,
+      );
     }
 
     if (config.theme === "light" || config.theme === "both") {
       const lightOut = config.outBase.endsWith(".png")
         ? config.outBase.replace(".png", "-light.png")
         : `${config.outBase}-light.png`;
-      await captureThemeShot(client, baseUrl, "light", config.width, config.height, lightOut);
+      await captureThemeShot(
+        client,
+        baseUrl,
+        "light",
+        config.width,
+        config.height,
+        lightOut,
+        config.clickSelector,
+      );
     }
 
     client.close();

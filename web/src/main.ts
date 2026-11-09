@@ -38,6 +38,7 @@ import { NickDialog } from "./ui/nick-dialog";
 import { defaultToolbarSpec, StandardToolbar } from "./ui/toolbar";
 import { RoomDialog } from "./ui/room-dialog";
 import { ChatPicker } from "./ui/chat-picker";
+import { SettingsDialog } from "./ui/settings-dialog";
 import { Sidebar } from "./ui/sidebar";
 import { StatusBar } from "./ui/statusbar";
 
@@ -111,6 +112,7 @@ const notifyClear = byId<HTMLButtonElement>("notify-clear");
 const dialogEl = byId<HTMLDialogElement>("room-dialog");
 const nickDialogEl = byId<HTMLDialogElement>("nick-dialog");
 const pickerDialogEl = byId<HTMLDialogElement>("picker-dialog");
+const settingsDialogEl = byId<HTMLDialogElement>("settings-dialog");
 
 // ------------------------------------------------------------------ instances
 
@@ -188,6 +190,62 @@ const chatPicker = new ChatPicker(
     onCreate: (slugPrefill) => openCreateDialog(slugPrefill),
   },
 );
+
+const settingsDialog = new SettingsDialog(
+  settingsDialogEl,
+  {
+    toggleTheme: byId<HTMLButtonElement>("settings-toggle-theme"),
+    toggleMinimal: byId<HTMLButtonElement>("settings-toggle-minimal"),
+    toggleSidebar: byId<HTMLButtonElement>("settings-toggle-sidebar"),
+    toggleDock: byId<HTMLButtonElement>("settings-toggle-dock"),
+    toggleSound: byId<HTMLButtonElement>("settings-toggle-sound"),
+    toggleNotify: byId<HTMLButtonElement>("settings-toggle-notify"),
+    zoomIn: byId<HTMLButtonElement>("settings-zoom-in"),
+    zoomOut: byId<HTMLButtonElement>("settings-zoom-out"),
+    zoomLabel: byId<HTMLElement>("settings-zoom-label"),
+    changeNick: byId<HTMLButtonElement>("settings-change-nick"),
+    nickDesc: byId<HTMLElement>("settings-nick-desc"),
+    closeBtn: byId<HTMLButtonElement>("settings-close"),
+    closeX: byId<HTMLButtonElement>("settings-close-x"),
+  },
+  {
+    onToggleTheme: () => {
+      toggleTheme();
+      syncSettingsDialog();
+    },
+    onToggleMinimal: () => toggleMinimal(),
+    onToggleSidebar: () => {
+      sidebarEl.hidden = !sidebarEl.hidden;
+    },
+    onToggleDock: () => setDock(revealDock(dock)),
+    onToggleSound: () => {
+      sound.setEnabled(!sound.isEnabled);
+      menubar.setChecked("sound", sound.isEnabled);
+      store.addSystem(sound.isEnabled ? "đã bật âm thanh thông báo" : "đã tắt âm thanh thông báo");
+      render();
+      syncSettingsDialog();
+    },
+    onToggleNotify: () => void toggleNotifications(),
+    onZoomIn: () => {
+      changeZoom(stepZoom(zoom, 1));
+      syncSettingsDialog();
+    },
+    onZoomOut: () => {
+      changeZoom(stepZoom(zoom, -1));
+      syncSettingsDialog();
+    },
+    onChangeNick: () => void changeNickname(),
+  },
+);
+
+function syncSettingsDialog(): void {
+  settingsDialog.update({
+    theme,
+    soundEnabled: sound.isEnabled,
+    nick: identity.nick,
+    zoomPercent: Math.round(zoom * 100),
+  });
+}
 
 function selectRoomTab(): void {
   tabRoom.setAttribute("aria-selected", "true");
@@ -343,6 +401,7 @@ function changeZoom(next: Zoom): void {
   applyZoom();
 
   render();
+  syncSettingsDialog();
 }
 
 function updateChrome(): void {
@@ -452,6 +511,7 @@ function toggleTheme(): void {
   menubar.setChecked("theme", theme === "light");
   store.addSystem(`giao diện: ${theme}`);
   render();
+  syncSettingsDialog();
 }
 
 // --------------------------------------------------------------------- rooms
@@ -829,6 +889,7 @@ async function changeNickname(): Promise<void> {
   statusbar.setNick(identity.nick);
   store.addSystem(`nickname đổi thành ${identity.nick}`);
   render();
+  syncSettingsDialog();
 
   // Re-joining updates the name on the server for everyone in the room.
   if (socket !== null && current !== null) {
@@ -965,8 +1026,12 @@ function handleMenuAction(action: MenuAction): void {
       break;
     }
     case "about":
-      store.addSystem("DynoFreeChat — chat kiểu Visual Studio, Cloudflare DO + GitHub Pages");
-      render();
+      settingsDialog.open({
+        theme,
+        soundEnabled: sound.isEnabled,
+        nick: identity.nick,
+        zoomPercent: Math.round(zoom * 100),
+      });
       break;
     case "tictactoe":
       gameDialog.open();
@@ -1038,6 +1103,17 @@ function wire(): void {
   byId<HTMLButtonElement>("collapse-tree").addEventListener("click", () => sidebar.collapseAll());
   byId<HTMLButtonElement>("start-new").addEventListener("click", () => openChatPicker());
   byId<HTMLButtonElement>("start-refresh").addEventListener("click", () => void refreshRooms());
+
+  document.getElementById("btn-hub-chat")?.addEventListener("click", () => openChatPicker());
+  document.getElementById("btn-hub-collab")?.addEventListener("click", () => gameDialog.open());
+  document.getElementById("btn-hub-setting")?.addEventListener("click", () => {
+    settingsDialog.open({
+      theme,
+      soundEnabled: sound.isEnabled,
+      nick: identity.nick,
+      zoomPercent: Math.round(zoom * 100),
+    });
+  });
 
 
 

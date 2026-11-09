@@ -191,13 +191,6 @@ export class OnlineGameSession {
           if (this.announcePeer(frame.online)) this.sendHello();
           break;
 
-        case "presence":
-          this.options.onPeerCount(frame.online);
-          // Whoever arrived first said hello to an empty room, so the frame was
-          // lost. Re-announce when the peer shows up or the roles never settle.
-          if (this.announcePeer(frame.online)) this.sendHello();
-          break;
-
         case "game":
           this.handlePayload(frame.data);
           break;

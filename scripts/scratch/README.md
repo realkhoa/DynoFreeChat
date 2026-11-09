@@ -17,6 +17,7 @@ This directory hosts developer tools, exploratory scripts, diagnostic utilities,
 | `--theme` | string | `dark` | Target theme (`dark`, `light`, or `both`). |
 | `--size` | string | `1440x900` | Viewport dimensions (`<width>x<height>`). |
 | `--out` | string | `.shots/snapshot-current` | Prefix or path for output PNG files. |
+| `--click` | string | `""` | Optional CSS selector to click before taking screenshot (e.g. modal triggers). |
 
 ## 4. Usage Examples
 ```bash
@@ -28,6 +29,9 @@ bun run scripts/scratch/take-snapshot.ts --theme=both
 
 # Take custom resolution snapshot
 bun run scripts/scratch/take-snapshot.ts --theme=dark --size=1920x1080 --out=.shots/full-hd.png
+
+# Take snapshot of a modal popover
+bun run scripts/scratch/take-snapshot.ts --out=.shots/snapshot-modal-settings --click="#btn-hub-setting"
 ```
 
 ## 5. Output Structure & Schema

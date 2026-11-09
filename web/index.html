@@ -61,48 +61,10 @@
       </header>
 
       <nav class="menubar" id="menubar" aria-label="Thanh menu">
-        <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="chat" aria-expanded="false">Chat</button>
-          <ul class="menu-list" id="menu-chat" role="menu" hidden>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="new-room">Room mới…<kbd>Ctrl+N</kbd></button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="reload">Nạp lại<kbd>F5</kbd></button></li>
-            <li class="menu-sep" role="separator"></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="copy-url">Copy link room<kbd>Ctrl+Shift+C</kbd></button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="reconnect">Kết nối lại room<kbd>Ctrl+Shift+R</kbd></button></li>
-            <li class="menu-sep" role="separator"></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="nickname">Đổi nickname…</button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="forget-pass" disabled>Quên mật khẩu room</button></li>
-            <li class="menu-sep" role="separator"></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="clear">Xoá log (cục bộ)<kbd>Ctrl+L</kbd></button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="find">Tìm trong log<kbd>Ctrl+F</kbd></button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="follow">Bám đuôi log<kbd>Ctrl+End</kbd></button></li>
-          </ul>
-        </div>
-        <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="collab" aria-expanded="false">Collab</button>
-          <ul class="menu-list" id="menu-collab" role="menu" hidden>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="tictactoe">Chơi Tic-Tac-Toe…</button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="game-create">Tạo phòng game mới…</button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="game-join">Nhập mã phòng để vào…</button></li>
-            <li class="menu-sep" role="separator"></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="game-ai">Chơi với máy (AI)…</button></li>
-          </ul>
-        </div>
-        <div class="menu-root">
-          <button type="button" class="menu-trigger" data-menu="setting" aria-expanded="false">Setting</button>
-          <ul class="menu-list" id="menu-setting" role="menu" hidden>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="sidebar">Ẩn/hiện Solution Explorer</button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="ribbon">Ẩn/hiện ribbon<kbd>Ctrl+F1</kbd></button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="minimal">Chế độ tối giản (chỉ chat)<kbd>Ctrl+Shift+M</kbd></button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="dock">Output (ô nhập tin)<kbd>Ctrl+Alt+O</kbd></button></li>
-            <li class="menu-sep" role="separator"></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="notify">Thông báo tin nhắn mới</button></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="sound">Âm thanh thông báo</button></li>
-            <li class="menu-sep" role="separator"></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="theme">Giao diện: Dark / Light<kbd>Ctrl+Shift+D</kbd></button></li>
-            <li class="menu-sep" role="separator"></li>
-            <li role="none"><button type="button" role="menuitem" class="menu-entry" data-action="about">Về DynoFreeChat…</button></li>
-          </ul>
+        <div class="menubar-buttons">
+          <button type="button" class="menubar-btn" id="btn-hub-chat" title="Chat Hub & danh sách phòng (Ctrl+K / Ctrl+N)">Chat</button>
+          <button type="button" class="menubar-btn" id="btn-hub-collab" title="Collab Hub & Tic-Tac-Toe (Ctrl+B)">Collab</button>
+          <button type="button" class="menubar-btn" id="btn-hub-setting" title="Cài đặt hệ thống (Settings)">Setting</button>
         </div>
 
         <span class="menubar-spacer"></span>
@@ -433,6 +395,98 @@
             <button type="button" class="button button--primary" id="game-rematch-btn">Ván mới</button>
           </div>
         </div>
+      </div>
+    </dialog>
+
+    <dialog class="dialog settings-dialog" id="settings-dialog">
+      <div class="dialog-head settings-head">
+        <span class="settings-title">Cài đặt hệ thống (Options)</span>
+        <button type="button" class="picker-close" id="settings-close-x" aria-label="Đóng">✕</button>
+      </div>
+
+      <div class="dialog-body settings-body">
+        <!-- Section: Giao diện -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Giao diện & Hiển thị</h3>
+          <div class="settings-row">
+            <div class="settings-label-wrap">
+              <span class="settings-label">Chủ đề giao diện (Theme)</span>
+              <span class="settings-desc">Chuyển đổi tông màu tối (Dark) hoặc sáng (Light) phong cách Visual Studio</span>
+            </div>
+            <button type="button" class="button" id="settings-toggle-theme">Chuyển theme</button>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label-wrap">
+              <span class="settings-label">Chế độ tối giản (Minimal IDE)</span>
+              <span class="settings-desc">Ẩn thanh công cụ và sidebar, chỉ giữ lại khung chat tinh gọn (Ctrl+Shift+M)</span>
+            </div>
+            <button type="button" class="button" id="settings-toggle-minimal">Bật/tắt Minimal</button>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label-wrap">
+              <span class="settings-label">Solution Explorer (Sidebar)</span>
+              <span class="settings-desc">Danh sách cây thư mục các phòng chat bên trái</span>
+            </div>
+            <button type="button" class="button" id="settings-toggle-sidebar">Ẩn/hiện Sidebar</button>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label-wrap">
+              <span class="settings-label">Output Dock (Khung gõ tin nhắn)</span>
+              <span class="settings-desc">Vị trí và hiển thị dock soạn thảo bên dưới khung chat (Ctrl+Alt+O)</span>
+            </div>
+            <button type="button" class="button" id="settings-toggle-dock">Đổi Dock</button>
+          </div>
+        </section>
+
+        <!-- Section: Âm thanh & Thông báo -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Âm thanh & Thông báo</h3>
+          <div class="settings-row">
+            <div class="settings-label-wrap">
+              <span class="settings-label">Âm thanh tin nhắn (Sound FX)</span>
+              <span class="settings-desc">Phát âm thanh nhẹ khi có tin nhắn mới hoặc thông báo hệ thống</span>
+            </div>
+            <button type="button" class="button" id="settings-toggle-sound">Bật/tắt âm</button>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label-wrap">
+              <span class="settings-label">Thông báo Desktop (Web Notifications)</span>
+              <span class="settings-desc">Hiển thị thông báo trình duyệt khi cửa sổ đang ở chế độ nền</span>
+            </div>
+            <button type="button" class="button" id="settings-toggle-notify">Cấp quyền / Bật</button>
+          </div>
+        </section>
+
+        <!-- Section: Cỡ chữ & Thu phóng -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Cỡ chữ & Thu phóng (Zoom)</h3>
+          <div class="settings-row">
+            <div class="settings-label-wrap">
+              <span class="settings-label">Thu phóng khung log chat</span>
+              <span class="settings-desc" id="settings-zoom-label">Cỡ log hiện tại: 100%</span>
+            </div>
+            <div class="settings-btn-group">
+              <button type="button" class="button" id="settings-zoom-out" title="Thu nhỏ (Ctrl+Shift+,)">A−</button>
+              <button type="button" class="button" id="settings-zoom-in" title="Phóng to (Ctrl+Shift+.)">A+</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section: Tài khoản cá nhân -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Tài khoản & Hồ sơ</h3>
+          <div class="settings-row">
+            <div class="settings-label-wrap">
+              <span class="settings-label">Tên hiển thị (Nickname)</span>
+              <span class="settings-desc" id="settings-nick-desc">Nickname hiện tại: Chưa đặt</span>
+            </div>
+            <button type="button" class="button button--primary" id="settings-change-nick">Đổi tên</button>
+          </div>
+        </section>
+      </div>
+
+      <div class="dialog-actions settings-actions">
+        <button type="button" class="button button--primary" id="settings-close">Đóng</button>
       </div>
     </dialog>
 
