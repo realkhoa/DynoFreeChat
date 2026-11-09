@@ -10,3 +10,5 @@ coverage/
 .DS_Store
 Thumbs.db
 .shots/
+.cdp-profile/
+scripts/scratch/.cdp-profile/

@@ -35,7 +35,7 @@ import { icon, setIconButton } from "./ui/icons";
 import { LogView } from "./ui/log-view";
 import { mountMenubar, type MenuAction } from "./ui/menubar";
 import { NickDialog } from "./ui/nick-dialog";
-import { defaultRibbonSpec, Ribbon } from "./ui/ribbon";
+import { defaultToolbarSpec, StandardToolbar } from "./ui/toolbar";
 import { RoomDialog } from "./ui/room-dialog";
 import { ChatPicker } from "./ui/chat-picker";
 import { Sidebar } from "./ui/sidebar";
@@ -239,9 +239,10 @@ const composer = new Composer({
 });
 
 const menubar = mountMenubar(menubarEl, handleMenuAction);
-const ribbon = new Ribbon(byId<HTMLElement>("ribbon"), defaultRibbonSpec(), handleMenuAction, () =>
-  toggleRibbon(),
-);
+const toolbarEl = document.getElementById("toolbar-standard");
+const toolbar = toolbarEl
+  ? new StandardToolbar(toolbarEl, defaultToolbarSpec(), handleMenuAction)
+  : null;
 
 /**
  * Notifications carry a room label and a count — never message text, never a
@@ -278,13 +279,13 @@ function render(): void {
   statusbar.setNick(identity.nick);
   menubar.setEnabled("copy-url", current !== null);
   menubar.setEnabled("forget-pass", current !== null && vault.has(current.slug));
-  ribbon.setEnabled("forget-pass", current !== null && vault.has(current.slug));
-  ribbon.setEnabled("copy-url", current !== null);
+  toolbar?.setEnabled("forget-pass", current !== null && vault.has(current.slug));
+  toolbar?.setEnabled("copy-url", current !== null);
 }
 
 function setFollow(following: boolean): void {
   logView.follow = following;
-  ribbon.setChecked("follow", following);
+  toolbar?.setChecked("follow", following);
   if (following) newChip.hidden = true;
 }
 
@@ -785,10 +786,35 @@ function clearLog(): void {
   render();
 }
 
+const findBar = document.getElementById("editor-find-bar");
+const findClose = document.getElementById("find-close");
+
+function updateFindCount(): void {
+  const countEl = document.getElementById("find-count");
+  if (!countEl) return;
+  countEl.textContent = filterInput.value ? `${logView.visibleCount}/${store.length}` : "";
+}
+
+function openFind(): void {
+  if (findBar) findBar.hidden = false;
+  filterInput.focus();
+  filterInput.select();
+  updateFindCount();
+}
+
+function closeFind(): void {
+  if (findBar) findBar.hidden = true;
+  if (filterInput.value) {
+    filterInput.value = "";
+    applyFilter(store.kindFilter, "");
+  }
+}
+
 function applyFilter(kind: KindFilter, query = filterInput.value): void {
   store.setFilter(query, kind);
   kindSelect.value = kind;
   render();
+  updateFindCount();
 }
 
 async function changeNickname(): Promise<void> {
@@ -887,8 +913,7 @@ function handleMenuAction(action: MenuAction): void {
       clearLog();
       break;
     case "find":
-      filterInput.focus();
-      filterInput.select();
+      openFind();
       break;
     case "follow":
       setFollow(!logView.follow);
@@ -980,8 +1005,8 @@ function decorateChrome(): void {
 
 function wire(): void {
   logView.onFollowChange = (following) => {
-  ribbon.setChecked("follow", following);
-  if (following) newChip.hidden = true;
+    toolbar?.setChecked("follow", following);
+    if (following) newChip.hidden = true;
   };
 
 
@@ -1030,6 +1055,15 @@ function wire(): void {
   zoomSelect?.addEventListener("change", () => {
     const next = Number(zoomSelect.value);
     if (Number.isFinite(next)) changeZoom(next as Zoom);
+  });
+
+  findClose?.addEventListener("click", () => closeFind());
+  filterInput.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeFind();
+      logEl.focus();
+    }
   });
 
   filterInput.addEventListener("input", () => {
@@ -1135,8 +1169,13 @@ function wire(): void {
     }
     if (key === "f") {
       event.preventDefault();
-      filterInput.focus();
-      filterInput.select();
+      openFind();
+      return;
+    }
+    if (key === "k" || key === "q") {
+      event.preventDefault();
+      roomSearch.focus();
+      roomSearch.select();
       return;
     }
     if (key === "l") {
