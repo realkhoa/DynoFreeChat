@@ -94,7 +94,7 @@ describe("GameCoordinator local and AI", () => {
     const { coordinator, state } = makeCoordinator();
     coordinator.startLocalGame();
     expect(state.turn).toBe("X");
-    expect(state.status).toBe("Lượt người chơi X");
+    expect(state.status).toBe("dual-thread session active - thread X begins");
 
     coordinator.handleCellClick(0);
     expect(state.board?.[0]).toBe("X");

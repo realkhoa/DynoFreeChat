@@ -1916,437 +1916,31 @@ button:disabled {
   display: none;
 }
 
-/* ---------------------------------------------------- Tic-Tac-Toe Game Dialog */
-
-.game-dialog {
-  --ttt-cell: clamp(44px, min(18vw, 11.5dvh), 72px);
-  width: min(440px, calc(100vw - 16px));
-  max-width: calc(100vw - 16px);
-  min-width: 0;
-  max-height: calc(100dvh - 12px);
-  margin: auto;
-  overflow: hidden;
-}
-
-/* The board is anchored: the grid never shrinks below a comfortable target and
-   the surrounding chrome absorbs the squeeze instead of the layout overflowing. */
-.game-dialog .game-body {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.game-dialog .game-board-view {
-  display: flex;
-  flex-direction: column;
-  gap: inherit;
-  min-height: 0;
-}
-
-.game-dialog-mark {
-  color: var(--accent);
-  font-weight: 700;
-  margin-right: 6px;
-  font-family: var(--font-mono);
-}
-
-.game-dialog-title {
-  flex: 1;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fg);
-}
-
-.game-body {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.game-section-title {
-  margin: 0 0 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg);
-}
-
-.game-section-desc {
-  margin: 0 0 10px;
-  font-size: 11.5px;
-  color: var(--fg-dim);
-}
-
-.game-join-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.game-code-input {
-  flex: 1;
-  height: 26px;
-  padding: 0 8px;
-  background: var(--editor);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--fg);
-  font: 13px/1 var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.game-code-input:focus {
-  border-color: var(--accent);
-}
-
-.game-sep {
-  height: 1px;
-  background: var(--border-subtle);
-  margin: 4px 0;
-}
-
-.game-quick-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.game-quick-buttons .button {
-  flex: 1;
-  padding: 6px 10px;
-  font-size: 12px;
-  text-align: center;
-}
-
-/* Board View */
-
-.game-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  background: var(--chrome);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-}
-
-.game-chip {
-  padding: 2px 6px;
-  background: var(--editor);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font: 11px/1.3 var(--font-mono);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.game-turn-badge {
-  font: 11.5px/1.3 var(--font-ui);
-  color: var(--fg-dim);
-}
-
-.game-toolbar-spacer {
-  flex: 1;
-}
-
-.game-tool-btn {
-  padding: 2px 8px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--fg-muted);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.game-tool-btn:hover {
-  background: var(--hover-chrome);
-  color: var(--fg);
-}
-
-.game-status-banner {
-  padding: 8px 10px;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 600;
-  background: var(--editor);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  color: var(--fg);
-}
-
-.game-scoreboard {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px;
-}
-
-.score-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 6px;
-  background: var(--chrome);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-}
-
-.score-card--x .score-val {
-  color: var(--accent);
-}
-
-.score-card--o .score-val {
-  color: var(--warn);
-}
-
-.score-label {
-  font-size: 10.5px;
-  color: var(--fg-dim);
-}
-
-.score-val {
-  font: 18px/1.2 var(--font-mono);
-  font-weight: 700;
-}
-
-.game-grid-wrapper {
-  display: flex;
-  justify-content: center;
-  padding: 6px 0;
-}
-
-.game-grid {
-  display: grid;
-  grid-template-columns: repeat(3, var(--ttt-cell, clamp(44px, 18vw, 72px)));
-  grid-template-rows: repeat(3, var(--ttt-cell, clamp(44px, 18vw, 72px)));
-  gap: 4px;
-  background: var(--border);
-  padding: 4px;
-  border-radius: var(--radius);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-}
-
-.game-cell {
-  width: var(--ttt-cell, clamp(44px, 18vw, 72px));
-  height: var(--ttt-cell, clamp(44px, 18vw, 72px));
-  min-width: 44px;
-  min-height: 44px;
-  display: grid;
-  place-items: center;
-  background: var(--editor);
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  font: clamp(22px, 8vw, 36px)/1 var(--font-mono);
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, transform 0.08s;
-  user-select: none;
-  position: relative;
-}
-
-.game-cell:hover:not(:disabled) {
-  background: var(--hover-row);
-  border-color: var(--accent);
-}
-
-.game-cell:active:not(:disabled) {
-  transform: scale(0.96);
-}
-
-.game-cell.cell-x {
-  color: var(--accent);
-}
-
-.game-cell.cell-o {
-  color: var(--warn);
-}
+/* ---------------------------------------------- Collab document (DiagnosticMatrix.cs) */
 
 /*
- * A won cell is a static highlight plus one compositor-only fade-in. It used to
- * be an infinite `filter: brightness()` animation, which forced the enclosing
- * `.is-stealth` blur layer to be recomputed on every frame, forever.
+ * The collab session is an open C# document, never a game window: one panel that
+ * lives in the editor area, renders the buffer as char literals and reports state
+ * through comments and the editor status bar. Timings are fixed so the gutter,
+ * the code and the matrix rows all share one line box.
  */
-.game-cell.cell-win {
-  background: var(--sel);
-  border-color: var(--warn);
-  box-shadow: inset 0 0 10px rgba(215, 186, 125, 0.4);
-}
-
-.game-cell.cell-win::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: radial-gradient(circle, rgba(215, 186, 125, 0.55), transparent 70%);
-  opacity: 0;
-  animation: cellWinFade 0.5s ease-out forwards;
-}
-
-@keyframes cellWinFade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 0.55;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .game-cell.cell-win::after {
-    animation: none;
-    opacity: 0.55;
-  }
-}
-
-.game-board-actions {
-  display: flex;
-  justify-content: center;
-  margin-top: 4px;
-}
-
-.game-rematch-btn {
-  min-width: 120px;
-}
-
-/* ---------------------------------------------------- Ultra-Compact WebView Mode */
-
-@media (max-width: 440px) {
-  .game-dialog {
-    width: calc(100vw - 8px);
-    max-width: calc(100vw - 8px);
-  }
-
-  .game-body {
-    padding: 10px 8px;
-    gap: 10px;
-  }
-
-  .game-join-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .game-quick-buttons {
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .game-toolbar {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  .game-status-banner {
-    padding: 6px 8px;
-    font-size: 11.5px;
-  }
-
-  .score-val {
-    font-size: 15px;
-  }
-
-  .tab {
-    min-width: 80px;
-    padding: 0 4px 0 6px;
-  }
-
-  .tab-label {
-    font-size: 11px;
-  }
-
-  .titlebar-center {
-    display: none;
-  }
-}
-
-@media (max-height: 680px) {
-  .game-dialog {
-    --ttt-cell: clamp(44px, 12.5dvh, 56px);
-  }
-
-  .game-body {
-    padding: 8px 10px;
-    gap: 8px;
-  }
-
-  .game-scoreboard {
-    gap: 4px;
-  }
-
-  .score-card {
-    padding: 2px 4px;
-  }
-
-  .score-val {
-    font-size: 14px;
-  }
-
-  .score-label {
-    display: none;
-  }
-
-  .game-grid-wrapper {
-    padding: 2px 0;
-  }
-
-  .game-cell {
-    font-size: clamp(18px, 6vh, 26px);
-  }
-}
-
-/* ------------------------------------------------ Visual Studio Native Disguise & Stealth */
-
-:root {
-  --stealth-opacity: 0.35;
-  --stealth-blur: 2px;
-}
-
-/*
- * Stealth is applied in two layers. Opacity always dims the surface; the blur is
- * a separate class the dialog removes while a round is on screen, because a
- * blurred board cannot be played and an animated layer inside a blur is
- * recomputed every frame.
- */
-.is-stealth {
-  opacity: var(--stealth-opacity);
-  transition: opacity 0.15s ease;
-  will-change: opacity;
-}
-
-.is-stealth--blur {
-  filter: blur(var(--stealth-blur));
-}
-
-.is-stealth:hover,
-.is-stealth:focus-within {
-  opacity: 0.98;
-}
-
-.is-stealth--blur:hover,
-.is-stealth--blur:focus-within {
-  filter: none;
-}
-
-.tab--game .tab-icon {
-  color: #388a34;
-}
 
 .game-editor-panel {
+  --code-line-height: 19px;
+  --code-font: 12.5px/var(--code-line-height) var(--font-mono);
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
   background: var(--editor);
   color: var(--fg);
-  font: 12.5px/1.4 var(--font-mono);
+  font: var(--code-font);
   overflow: hidden;
   user-select: text;
   contain: layout style;
 }
 
-.game-editor-panel[hidden] {
-  display: none !important;
-}
-
+.game-editor-panel[hidden],
 .logwrap[hidden] {
   display: none !important;
 }
@@ -2363,17 +1957,18 @@ button:disabled {
 }
 
 .game-code-file {
-  font-weight: 600;
-  color: var(--fg);
-  font-size: 11.5px;
   display: flex;
   align-items: center;
   gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--fg);
 }
 
 .game-code-chip {
   color: #6a9955;
-  font-size: 11px;
+  font: 11px/1 var(--font-mono);
+  white-space: nowrap;
 }
 
 .game-code-spacer {
@@ -2404,9 +1999,16 @@ button:disabled {
   color: #ffffff;
 }
 
+/* Detaching is only meaningful while the document sits in the tab; the frame
+   carries its own Dock command. */
+.game-editor-panel.is-detached #game-code-detach-btn {
+  display: none;
+}
+
 .game-code-body {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 
@@ -2417,25 +2019,30 @@ button:disabled {
   background: var(--editor);
   border-right: 1px solid var(--border-subtle);
   color: #858585;
-  font: 12px/1.55 var(--font-mono);
+  font: var(--code-font);
   text-align: right;
   user-select: none;
   flex: none;
+}
+
+.game-code-gutter span {
+  height: var(--code-line-height);
 }
 
 .game-code-content {
   flex: 1;
   padding: 8px 12px;
   overflow-x: auto;
-  font: 12.5px/1.55 var(--font-mono);
+  font: var(--code-font);
 }
 
 .code-line {
   white-space: pre;
+  height: var(--code-line-height);
 }
 
 .code-line.empty {
-  height: 8px;
+  height: var(--code-line-height);
 }
 
 .code-line.indent1 {
@@ -2470,71 +2077,228 @@ button:disabled {
   color: #b5cea8;
 }
 
+.code-line .str {
+  color: #ce9178;
+}
+
+/* Buffer slots render as char literals inside the initializer: text only, no
+   chip box, so the buffer reads as data and not as a clickable grid. */
 .matrix-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin: 2px 0;
+  margin: 0;
 }
 
-.code-inline-btn {
-  padding: 1px 6px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  color: var(--fg-dim);
-  font: 11px/1 var(--font-mono);
+.matrix-row .game-cell {
+  display: inline;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+  line-height: inherit;
+  color: #858585;
   cursor: pointer;
+  box-shadow: none;
+  vertical-align: baseline;
 }
 
-.code-inline-btn:hover {
-  background: var(--hover-chrome);
-  border-color: var(--border-subtle);
+.matrix-row .game-cell:hover:not(:disabled) {
+  background: rgba(86, 156, 214, 0.18);
   color: var(--fg);
 }
 
-/* Code Mode Cell Disguise: docked code view only. The float dialog is a real
-   board and keeps a comfortable >=44px target. */
-
-.game-editor-panel.game-code-mode .game-cell {
-  width: 38px;
-  height: 30px;
-  min-width: 38px;
-  min-height: 30px;
-  border-radius: 2px;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  background: var(--chrome);
-  border: 1px solid var(--border-subtle);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  box-shadow: none;
+.matrix-row .game-cell:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
-.game-editor-panel.game-code-mode .game-cell.cell-x {
-  color: #569cd6;
-  background: rgba(86, 156, 214, 0.12);
-}
-
-.game-editor-panel.game-code-mode .game-cell.cell-o {
-  color: #ce9178;
-  background: rgba(206, 145, 120, 0.12);
-}
-
-.game-editor-panel.game-code-mode .game-cell.cell-empty {
+.matrix-row .game-cell.cell-empty {
   color: #6a9955;
 }
 
-.game-editor-panel.game-code-mode .game-cell.cell-win {
-  border-color: #569cd6;
-  background: rgba(86, 156, 214, 0.28);
-  box-shadow: none;
+.matrix-row .game-cell.cell-x {
+  color: #569cd6;
+  font-weight: 600;
 }
 
-.game-editor-panel.game-code-mode .game-cell.cell-win::after {
-  animation: none;
-  opacity: 0;
+.matrix-row .game-cell.cell-o {
+  color: #ce9178;
+  font-weight: 600;
+}
+
+.matrix-row .game-cell.cell-win {
+  background: rgba(86, 156, 214, 0.28);
+  color: #dcdcaa;
+  font-weight: 700;
+}
+
+.matrix-row .game-cell:disabled {
+  cursor: default;
+}
+
+/* Inline targets read like editor commands, not buttons. */
+.code-actions-row {
+  display: block;
+}
+
+.code-inline-btn {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--fg-dim);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.code-inline-btn:hover {
+  color: var(--fg);
+  background: var(--hover-chrome);
+}
+
+.code-inline-btn:focus-visible {
+  outline: 1px solid var(--accent);
+}
+
+/* The session id is edited in place, as if it were a string literal. */
+.code-literal {
+  width: 7ch;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px dashed var(--border);
+  color: #ce9178;
+  font: inherit;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.code-literal::placeholder {
+  color: #6a9955;
+}
+
+.code-literal:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------- status bar */
+
+.game-code-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 22px;
+  flex: none;
+  padding: 0 4px;
+  background: var(--chrome);
+  border-top: 1px solid var(--border);
+  color: var(--fg-dim);
+  font: 11px/1 var(--font-ui);
+  user-select: none;
+  overflow: hidden;
+}
+
+.game-code-statusbar .sb-item {
+  padding: 0 8px;
+  white-space: nowrap;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.game-code-statusbar .sb-item:last-child {
+  border-right: 0;
+}
+
+.game-code-statusbar .sb-spacer {
+  flex: 1;
+}
+
+.game-code-statusbar #game-code-thread {
+  color: var(--accent);
+}
+
+.game-code-statusbar #game-code-session {
+  color: #6a9955;
+}
+
+/* --------------------------------------------------------------- detach frame */
+
+.game-dialog {
+  width: min(860px, 94vw);
+  max-width: 94vw;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--fg);
+  overflow: hidden;
+}
+
+.game-dialog .dialog-head {
+  height: 28px;
+  padding: 0 8px 0 10px;
+  gap: 8px;
+}
+
+.game-dialog-mark {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.game-dialog-title {
+  flex: 1;
+  font: 12px/1 var(--font-mono);
+  color: var(--fg);
+}
+
+.game-detach-body {
+  height: min(600px, 78dvh);
+  display: flex;
+  min-height: 0;
+  background: var(--editor);
+}
+
+.game-detach-body .game-editor-panel {
+  flex: 1;
+  height: 100%;
+}
+
+.game-tool-btn {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.game-tool-btn:hover {
+  background: var(--hover-chrome);
+  color: var(--fg);
+}
+
+/* Stealth is a property of the document, not of a round: an idle file may dim,
+   but a running session stays fully legible. */
+.is-stealth {
+  opacity: var(--stealth-opacity, 0.35);
+  transition: opacity 0.18s ease, filter 0.18s ease;
+}
+
+.is-stealth--blur {
+  filter: blur(2px);
+}
+
+.is-stealth:hover,
+.is-stealth:focus-within {
+  opacity: 0.98;
+  filter: blur(0);
 }

@@ -1,191 +1,193 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import { GameDialog } from "../src/ui/game-dialog";
+import { GameDialog, type GameDialogOptions } from "../src/ui/game-dialog";
 
-function createMockDialogHtml(): HTMLDialogElement {
-  const dialog = document.createElement("dialog");
-  dialog.className = "modal-dialog modal-dialog--game";
-  dialog.id = "game-dialog";
-  dialog.innerHTML = `
-    <div class="modal-dialog-head">
-      <span class="modal-dialog-mark" aria-hidden="true">#</span>
-      <h2 class="modal-dialog-title">Tic-Tac-Toe - Visual Studio Live Game</h2>
-      <button type="button" class="modal-dialog-close" id="game-dialog-close">×</button>
-    </div>
-    <div class="modal-dialog-body">
-      <div id="game-lobby-view">
-        <input type="text" id="game-code-input" />
-        <button id="game-join-btn">Join</button>
-        <button id="game-create-btn">Create</button>
-        <button id="game-ai-btn">AI</button>
-        <button id="game-local-btn">Local</button>
+interface Harness {
+  dialog: HTMLDialogElement;
+  panel: HTMLElement;
+  gameDialog: GameDialog;
+  tabOpen: number;
+  tabHide: number;
+  tabClose: number;
+}
+
+/** The document panel plus the floating frame that can host it. */
+function mountDocument(): { dialog: HTMLDialogElement; panel: HTMLElement } {
+  document.body.replaceChildren();
+
+  const editor = document.createElement("main");
+  editor.id = "editor";
+  document.body.append(editor);
+
+  const panel = document.createElement("div");
+  panel.id = "game-editor-panel";
+  panel.hidden = true;
+  panel.innerHTML = `
+    <div id="game-code-content">
+      <div class="code-line comment" id="game-code-status-line">// idle</div>
+      <div class="code-line comment" id="game-code-score-line">// scores</div>
+      <div class="code-line matrix-row">
+        ${[0, 1, 2].map((i) => `<button class="game-cell" id="editor-cell-${i}" data-cell="${i}"></button>`).join(", ")}
       </div>
-      <div id="game-board-view" hidden>
-        <div id="game-room-code-badge"></div>
-        <div id="game-status-banner"></div>
-        <div id="game-turn-indicator"></div>
-        <span id="game-score-x">0</span>
-        <span id="game-score-o">0</span>
-        <span id="game-score-draws">0</span>
-        <div class="game-grid">
-          <button class="game-cell" id="game-cell-0"></button>
-          <button class="game-cell" id="game-cell-1"></button>
-          <button class="game-cell" id="game-cell-2"></button>
-          <button class="game-cell" id="game-cell-3"></button>
-          <button class="game-cell" id="game-cell-4"></button>
-          <button class="game-cell" id="game-cell-5"></button>
-          <button class="game-cell" id="game-cell-6"></button>
-          <button class="game-cell" id="game-cell-7"></button>
-          <button class="game-cell" id="game-cell-8"></button>
-        </div>
-        <button id="game-rematch-btn">Rematch</button>
-        <button id="game-copy-code-btn">Copy</button>
-        <button id="game-exit-btn">Exit</button>
+      <div class="code-line matrix-row">
+        ${[3, 4, 5].map((i) => `<button class="game-cell" id="editor-cell-${i}" data-cell="${i}"></button>`).join(", ")}
+      </div>
+      <div class="code-line matrix-row">
+        ${[6, 7, 8].map((i) => `<button class="game-cell" id="editor-cell-${i}" data-cell="${i}"></button>`).join(", ")}
       </div>
     </div>
+    <div id="game-code-gutter"></div>
+    <span id="game-code-room-badge"></span>
+    <span id="game-code-ln"></span>
+    <span id="game-code-thread"></span>
+    <span id="game-code-session"></span>
+    <span id="game-code-state"></span>
+    <span id="game-code-diag"></span>
+    <input id="game-code-input" />
+    <button id="game-code-attach-btn"></button>
+    <button id="game-code-new-btn"></button>
+    <button id="game-code-local-btn"></button>
+    <button id="game-code-ai-btn"></button>
+    <button id="game-code-rematch-btn"></button>
+    <button id="game-code-copy-btn"></button>
+    <button id="game-code-close-btn"></button>
+    <button id="game-code-detach-btn"></button>
+    <button id="game-dialog-dock-btn"></button>
+    <button id="game-code-stealth-btn"></button>
   `;
-  document.body.append(dialog);
-  // jsdom doesn't fully implement showModal
+  editor.append(panel);
+
+  // The dialog markup normally held the lobby; now it only hosts the panel.
+  const html = document.createElement("div");
+  html.innerHTML = `
+    <dialog id="game-dialog">
+      <button id="game-dialog-close"></button>
+      <div id="game-detach-body"></div>
+    </dialog>
+  `;
+  document.body.append(...Array.from(html.childNodes));
+  const dialog = document.querySelector<HTMLDialogElement>("#game-dialog")!;
+  // jsdom has no modal stack; a flag is enough to observe attach/detach.
   dialog.showModal = function () {
     this.open = true;
   };
   dialog.close = function () {
     this.open = false;
   };
-  return dialog;
+
+  return { dialog, panel };
 }
 
-describe("GameDialog component", () => {
-  let dialogEl: HTMLDialogElement;
-  let gameDialog: GameDialog;
+function makeGameDialog(extra: Partial<GameDialogOptions> = {}): Harness {
+  const { dialog, panel } = mountDocument();
+  const state: Harness = {
+    dialog,
+    panel,
+    gameDialog: undefined as unknown as GameDialog,
+    tabOpen: 0,
+    tabHide: 0,
+    tabClose: 0,
+  };
+
+  state.gameDialog = new GameDialog({
+    dialog,
+    editorPanel: panel,
+    wsUrl: "wss://fake/ws",
+    apiBase: "https://fake",
+    getIdentity: () => ({ nick: "DevUser", color: "hsl(200 50% 50%)" }),
+    onTabOpen: () => {
+      state.tabOpen += 1;
+    },
+    onTabHide: () => {
+      state.tabHide += 1;
+    },
+    onTabClose: () => {
+      state.tabClose += 1;
+      state.gameDialog.close();
+    },
+    ...extra,
+  });
+
+  return state;
+}
+
+describe("GameDialog", () => {
+  let h: Harness;
 
   beforeEach(() => {
-    document.body.replaceChildren();
-    dialogEl = createMockDialogHtml();
-    gameDialog = new GameDialog({
-      dialog: dialogEl,
-      wsUrl: "wss://fake/ws",
-      apiBase: "https://fake",
-      getIdentity: () => ({ nick: "DevUser", color: "hsl(200 50% 50%)" }),
-    });
+    h = makeGameDialog();
   });
 
-  it("initializes with lobby view visible and board view hidden", () => {
-    const lobby = dialogEl.querySelector("#game-lobby-view");
-    const board = dialogEl.querySelector("#game-board-view");
-    expect(lobby?.hasAttribute("hidden")).toBe(false);
-    expect(board?.hasAttribute("hidden")).toBe(true);
+  it("opens the document in the editor tab, not in a modal", () => {
+    h.gameDialog.open();
+    expect(h.tabOpen).toBe(1);
+    expect(h.dialog.open).toBe(false);
+    expect(h.panel.parentElement?.id).toBe("editor");
+    expect(h.panel.hidden).toBe(false);
   });
 
-  it("starts a local 2-player game and alternates turns", () => {
-    gameDialog.startLocalGame();
+  it("starts a local session and writes the literals into the buffer", () => {
+    h.gameDialog.open();
+    h.gameDialog.startLocalGame();
 
-    const lobby = dialogEl.querySelector("#game-lobby-view");
-    const board = dialogEl.querySelector("#game-board-view");
-    expect(lobby?.hasAttribute("hidden")).toBe(true);
-    expect(board?.hasAttribute("hidden")).toBe(false);
-
-    const cell0 = dialogEl.querySelector<HTMLButtonElement>("#game-cell-0")!;
-    const cell1 = dialogEl.querySelector<HTMLButtonElement>("#game-cell-1")!;
-
+    const cell0 = h.panel.querySelector<HTMLButtonElement>("#editor-cell-0")!;
+    const cell1 = h.panel.querySelector<HTMLButtonElement>("#editor-cell-1")!;
     cell0.click();
-    expect(cell0.textContent).toBe("X");
-
+    expect(cell0.textContent).toBe("'X'");
     cell1.click();
-    expect(cell1.textContent).toBe("O");
+    expect(cell1.textContent).toBe("'O'");
   });
 
-  it("starts AI game and handles human move", () => {
-    gameDialog.startAiGame();
+  it("keeps a live document legible and dims only when idle", () => {
+    expect(h.panel.classList.contains("is-stealth")).toBe(true);
 
-    const cell4 = dialogEl.querySelector<HTMLButtonElement>("#game-cell-4")!;
-    cell4.click();
-    expect(cell4.textContent).toBe("X");
+    h.gameDialog.startLocalGame();
+    expect(h.panel.classList.contains("is-stealth")).toBe(false);
+
+    h.gameDialog.close();
+    expect(h.panel.classList.contains("is-stealth")).toBe(true);
   });
 
-  it("closes when close button is clicked", () => {
-    gameDialog.open();
-    expect(dialogEl.open).toBe(true);
+  it("detaches the same document into the frame and docks it back", () => {
+    h.gameDialog.open();
+    h.gameDialog.startLocalGame();
 
-    const closeBtn = dialogEl.querySelector<HTMLButtonElement>("#game-dialog-close")!;
-    closeBtn.click();
-    expect(dialogEl.open).toBe(false);
+    h.gameDialog.detach();
+    expect(h.tabHide).toBe(1);
+    expect(h.dialog.open).toBe(true);
+    expect(h.panel.parentElement?.id).toBe("game-detach-body");
+    // Detaching must not end the session or hide the document.
+    expect(h.panel.hidden).toBe(false);
+    expect(h.panel.classList.contains("is-stealth")).toBe(false);
+
+    h.gameDialog.dockToTab();
+    expect(h.dialog.open).toBe(false);
+    expect(h.panel.parentElement?.id).toBe("editor");
+    expect(h.tabOpen).toBe(2);
+  });
+
+  it("returns the document to the tab when the frame is cancelled", () => {
+    h.gameDialog.open();
+    h.gameDialog.detach();
+    h.dialog.dispatchEvent(new Event("cancel"));
+    expect(h.dialog.open).toBe(false);
+    expect(h.panel.parentElement?.id).toBe("editor");
   });
 
   it("tears down once when the host tab handler closes it again", () => {
-    let tabCloseCalls = 0;
-    const loops = new GameDialog({
-      dialog: dialogEl,
-      wsUrl: "wss://fake/ws",
-      apiBase: "https://fake",
-      getIdentity: () => ({ nick: "DevUser", color: "hsl(200 50% 50%)" }),
-      // Mirrors main.ts `closeGameTab`: it hides the tab and closes the dialog,
-      // which used to call straight back into this handler forever.
-      onTabClose: () => {
-        tabCloseCalls += 1;
-        loops.close();
-      },
-    });
-
-    loops.close();
-    expect(tabCloseCalls).toBe(1);
-    expect(dialogEl.open).toBe(false);
+    h.gameDialog.close();
+    expect(h.tabClose).toBe(1);
+    expect(h.dialog.open).toBe(false);
   });
 
-  it("floats into a dialog even when closing the tab closes the dialog", () => {
-    let tabCloseCalls = 0;
-    const floaty = new GameDialog({
-      dialog: dialogEl,
-      wsUrl: "wss://fake/ws",
-      apiBase: "https://fake",
-      getIdentity: () => ({ nick: "DevUser", color: "hsl(200 50% 50%)" }),
-      onTabClose: () => {
-        tabCloseCalls += 1;
-        floaty.close();
-      },
-    });
+  it("releases the session when the document is closed", () => {
+    h.gameDialog.open();
+    h.gameDialog.startLocalGame();
+    h.gameDialog.close();
 
-    floaty.openFloating();
-    expect(tabCloseCalls).toBe(1);
-    expect(dialogEl.open).toBe(true);
-    expect(dialogEl.querySelector<HTMLElement>("#game-lobby-view")?.hasAttribute("hidden")).toBe(false);
-    expect(dialogEl.querySelector<HTMLElement>("#game-board-view")?.hasAttribute("hidden")).toBe(true);
-  });
-
-  it("does not dim or blur a live board", () => {
-    // Defaults are stealth on, so the lobby starts disguised.
-    expect(dialogEl.classList.contains("is-stealth")).toBe(true);
-    expect(dialogEl.classList.contains("is-stealth--blur")).toBe(true);
-
-    gameDialog.startLocalGame();
-    expect(dialogEl.classList.contains("is-stealth")).toBe(false);
-    expect(dialogEl.classList.contains("is-stealth--blur")).toBe(false);
-
-    // Leaving the round restores the disguise.
-    gameDialog.openFloating();
-    expect(dialogEl.classList.contains("is-stealth")).toBe(true);
-  });
-
-  it("applies stealth opacity to editorPanel without applying performance-degrading blur", () => {
-    const editorPanelEl = document.createElement("div");
-    editorPanelEl.id = "game-editor-panel";
-    document.body.append(editorPanelEl);
-
-    const dialogWithEditor = new GameDialog({
-      dialog: dialogEl,
-      editorPanel: editorPanelEl,
-      wsUrl: "wss://fake/ws",
-      apiBase: "https://fake",
-      getIdentity: () => ({ nick: "DevUser", color: "hsl(200 50% 50%)" }),
-    });
-
-    // Stealth is enabled by default in lobby
-    expect(editorPanelEl.classList.contains("is-stealth")).toBe(true);
-    expect(editorPanelEl.classList.contains("is-stealth--blur")).toBe(false);
-
-    // Starting local game removes stealth
-    dialogWithEditor.startLocalGame();
-    expect(editorPanelEl.classList.contains("is-stealth")).toBe(false);
-    expect(editorPanelEl.classList.contains("is-stealth--blur")).toBe(false);
+    expect(h.tabClose).toBe(1);
+    expect(h.panel.parentElement?.id).toBe("editor");
+    expect(h.panel.hidden).toBe(true);
+    expect(h.panel.querySelector<HTMLInputElement>("#game-code-input")?.value).toBe("");
   });
 });

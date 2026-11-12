@@ -89,14 +89,14 @@ export class GameCoordinator {
    * @brief Resets state and prepares an AI single-player game.
    */
   startAiGame(): void {
-    this.activate("ai", "X", "AI Eval Bot", "Lượt của bạn (X) - Hãy chọn một ô!");
+    this.activate("ai", "X", "simulation", "local simulation attached - dispatch pointer to begin");
   }
 
   /**
    * @brief Resets state and prepares a 2-player local pass-and-play game.
    */
   startLocalGame(): void {
-    this.activate("local", null, "Local Dual-Thread", "Lượt người chơi X");
+    this.activate("local", null, "local", "dual-thread session active - thread X begins");
   }
 
   /**
@@ -107,8 +107,9 @@ export class GameCoordinator {
   async startOnlineGame(code: string, asHost: boolean): Promise<void> {
     this.roomCode = code.trim().toUpperCase();
     const role: PlayerMark = asHost ? "X" : "O";
-    const badge = `${this.roomCode} (${role})`;
-    const status = asHost ? `Mã [${this.roomCode}]. Đang chờ đối thủ...` : `Đang kết nối [${this.roomCode}]...`;
+    const badge = `${this.roomCode} (${role})`;    const status = asHost
+      ? `session ${this.roomCode} created - awaiting remote attach`
+      : `attaching to session ${this.roomCode}...`;
     this.activate("online", role, badge, status);
 
     const session = new OnlineGameSession({
@@ -181,16 +182,16 @@ export class GameCoordinator {
     if (this.mode === "online") {
       this.sync();
       if (!this.canPlayOnline()) {
-        this.options.callbacks.onStatus(`Ván mới! Đang chờ đối thủ...`);
+        this.options.callbacks.onStatus("buffer reset - awaiting remote attach");
         return;
       }
       this.session?.send({ k: "rematch", starter: nextStarter });
-      this.options.callbacks.onStatus(`Ván mới bắt đầu! Lượt của ${this.turn}`);
+      this.options.callbacks.onStatus(`buffer reset - thread ${this.turn} begins`);
       return;
     }
 
     this.sync();
-    this.options.callbacks.onStatus(`Ván mới bắt đầu! Lượt của ${this.turn}`);
+    this.options.callbacks.onStatus(`buffer reset - thread ${this.turn} begins`);
     if (this.mode === "ai" && this.turn === "O") this.scheduleAiMove();
   }
 
@@ -200,12 +201,12 @@ export class GameCoordinator {
    */
   async copyInviteInfo(): Promise<string> {
     const inviteUrl = `${window.location.origin}${window.location.pathname}#ttt=${this.roomCode}`;
-    const text = `Chơi TicTacToe cùng tôi trên DynoFreeChat! Mã phòng: ${this.roomCode}\nLink tham gia: ${inviteUrl}`;
+    const text = `Mở DynoFreeChat, tab Collab, session: ${this.roomCode}\nLink: ${inviteUrl}`;
     try {
       await navigator.clipboard.writeText(text);
-      this.options.callbacks.onStatus(`Đã copy mã [${this.roomCode}] và link vào clipboard!`);
+      this.options.callbacks.onStatus(`session ${this.roomCode} copied to clipboard`);
     } catch {
-      this.options.callbacks.onStatus(`Mã phòng: ${this.roomCode}`);
+      this.options.callbacks.onStatus(`session ${this.roomCode}`);
     }
     return text;
   }
@@ -253,8 +254,8 @@ export class GameCoordinator {
     this.peerOnline = online;
     if (this.mode !== "online") return;
 
-    if (online >= 2 && !hadPeer) this.options.callbacks.onStatus("Đối thủ đã vào phòng!");
-    else if (online < 2) this.options.callbacks.onStatus(`Mã [${this.roomCode}]. Đang chờ đối thủ...`);
+    if (online >= 2 && !hadPeer) this.options.callbacks.onStatus("remote session attached");
+    else if (online < 2) this.options.callbacks.onStatus(`session ${this.roomCode} ready - awaiting remote attach`);
     this.sync();
   }
 
@@ -279,7 +280,7 @@ export class GameCoordinator {
           this.myRole = resolved;
           this.session?.setRole(resolved);
           this.options.callbacks.onRoomBadge(`${this.roomCode} (${resolved})`);
-          this.options.callbacks.onStatus(`Bạn là ${resolved} (${peerNick} là ${otherMark(resolved)}).`);
+          this.options.callbacks.onStatus(`thread ${resolved} assigned (${peerNick} is ${otherMark(resolved)})`);
           this.sync();
         }
       }
@@ -348,7 +349,7 @@ export class GameCoordinator {
     this.cancelAiMove();
     this.resetBoard(starter);
     this.sync();
-    this.options.callbacks.onStatus(`Ván mới bắt đầu! Lượt của ${this.turn}`);
+    this.options.callbacks.onStatus(`buffer reset - thread ${this.turn} begins`);
   }
 
   /**
@@ -411,12 +412,12 @@ export class GameCoordinator {
     if (winner === "X" || winner === "O") {
       if (winner === "X") this.scores.x += 1;
       else this.scores.o += 1;
-      this.options.callbacks.onStatus(`🎉 Người chơi ${winner} chiến thắng!`);
+      this.options.callbacks.onStatus(`Trace.Assert passed - pattern matched (thread ${winner})`);
       return;
     }
     if (winner === "draw") {
       this.scores.draws += 1;
-      this.options.callbacks.onStatus("Trận đấu Hoà!");
+      this.options.callbacks.onStatus("Trace.Assert passed - buffer full, no pattern");
       return;
     }
     this.reportTurnStatus();
@@ -427,9 +428,9 @@ export class GameCoordinator {
     const message =
       this.mode === "online"
         ? this.turn === this.myRole
-          ? `Lượt của bạn (${this.myRole})!`
-          : `Đang chờ đối phương (${this.turn})...`
-        : `Lượt người chơi ${this.turn}`;
+          ? `thread ${this.myRole} active - dispatch pointer`
+          : `awaiting remote dispatch (thread ${this.turn})`
+        : `thread ${this.turn} active - dispatch pointer`;
     this.options.callbacks.onStatus(message);
   }
 

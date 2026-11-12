@@ -292,6 +292,23 @@ function closeGameTab(): void {
   gameDialog.close();
 }
 
+/**
+ * @brief Hides the collab tab while its document lives in the floating frame.
+ * @details Same chrome switch as {@link selectRoomTab} minus the panel hide: the
+ * panel is inside the modal at this point and must keep its state.
+ */
+function hideGameTab(): void {
+  tabGame.hidden = true;
+  tabGame.setAttribute("aria-selected", "false");
+  tabRoom.setAttribute("aria-selected", "true");
+  const logwrapEl = document.querySelector<HTMLElement>(".logwrap");
+  const startviewEl = document.getElementById("startview");
+  if (logwrapEl) logwrapEl.hidden = editorEl.dataset.mode === "start";
+  if (startviewEl) startviewEl.hidden = editorEl.dataset.mode !== "start";
+  updateChrome();
+  render();
+}
+
 const gameDialog = new GameDialog({
   dialog: byId<HTMLDialogElement>("game-dialog"),
   wsUrl,
@@ -301,6 +318,7 @@ const gameDialog = new GameDialog({
   storage,
   editorPanel: gameEditorPanel,
   onTabOpen: () => selectGameTab(),
+  onTabHide: () => hideGameTab(),
   onTabClose: () => closeGameTab(),
 });
 
@@ -1106,11 +1124,14 @@ function wire(): void {
   });
 
   window.addEventListener("keydown", (e: KeyboardEvent) => {
+    // A modal (detached document, settings, …) owns Escape while it is open.
+    const modalOpen = document.querySelector("dialog[open]") !== null;
     if (e.ctrlKey && e.key.toLowerCase() === "b") {
       e.preventDefault();
-      if (tabGame.getAttribute("aria-selected") === "true") selectRoomTab();
+      if (tabGame.hidden) gameDialog.open();
+      else if (tabGame.getAttribute("aria-selected") === "true") selectRoomTab();
       else selectGameTab();
-    } else if (e.key === "Escape" && tabGame.getAttribute("aria-selected") === "true") {
+    } else if (!modalOpen && e.key === "Escape" && tabGame.getAttribute("aria-selected") === "true") {
       selectRoomTab();
     }
   });
@@ -1123,7 +1144,8 @@ function wire(): void {
   byId<HTMLButtonElement>("start-refresh").addEventListener("click", () => void refreshRooms());
 
   document.getElementById("btn-hub-chat")?.addEventListener("click", () => openChatPicker());
-  document.getElementById("btn-hub-collab")?.addEventListener("click", () => gameDialog.openFloating());
+  // The collab entry point opens the document itself, never a game lobby.
+  document.getElementById("btn-hub-collab")?.addEventListener("click", () => gameDialog.open());
   document.getElementById("btn-hub-setting")?.addEventListener("click", () => {
     settingsDialog.open({
       theme,

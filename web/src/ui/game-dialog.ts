@@ -1,6 +1,9 @@
 /**
  * @file game-dialog.ts
- * @brief Visual Studio styled modal dialog and editor tab component for Tic-Tac-Toe games.
+ * @brief Hosts the collab document in the editor tab, and in a floating frame when detached.
+ * @details There is one surface: the DiagnosticMatrix.cs panel. It normally lives in the
+ * editor area; detaching moves that very element into a modal, so the disguise, the
+ * running session and the scroll position all survive the move.
  */
 
 import { generateRoomCode, type GameMode } from "../game/tictactoe";
@@ -13,7 +16,7 @@ import type { Identity } from "../lib/identity";
  * @brief Configuration dependencies for creating a GameDialog instance.
  */
 export interface GameDialogOptions {
-  /** Root dialog element */
+  /** Floating frame element */
   dialog: HTMLDialogElement;
   /** WebSocket server base URL */
   wsUrl: string;
@@ -25,43 +28,50 @@ export interface GameDialogOptions {
   createRoomImpl?: (apiBase: string, body: { slug: string; pass?: string }) => Promise<{ ok: boolean; code?: string }>;
   /** Optional persistence storage */
   storage?: Storage | null;
-  /** Optional embedded editor panel */
+  /** The document panel that holds the session */
   editorPanel?: HTMLElement | null;
-  /** Callback to open game as document tab in tabstrip */
+  /** Callback to select the document tab in the tabstrip */
   onTabOpen?: () => void;
-  /** Callback to close game document tab */
+  /** Callback to hide the document tab without ending the session */
+  onTabHide?: () => void;
+  /** Callback to close the document tab and release the session */
   onTabClose?: () => void;
 }
 
 /**
- * @brief Manages the Visual Studio IDE styled Tic-Tac-Toe modal dialog and editor tab.
+ * @brief Manages the collab document, its session and its floating frame.
  */
 export class GameDialog {
   private readonly dialog: HTMLDialogElement;
   private readonly storage: Storage | null;
-  private readonly editorPanel: HTMLElement | null;
+  private readonly panel: HTMLElement | null;
   private readonly onTabOpen?: () => void;
+  private readonly onTabHide?: () => void;
   private readonly onTabClose?: () => void;
 
   private readonly coordinator: GameCoordinator;
   private stealthPref: StealthPref;
   /** Guards the tab-close ↔ dialog-close cycle. */
   private closing = false;
+  /** True while the document is hosted by the floating frame. */
+  private detached = false;
+  /** True while a session is attached, which suspends the idle disguise. */
+  private active = false;
 
-  private lobbyView!: HTMLElement;
-  private boardViewEl!: HTMLElement;
   private boardView!: GameBoardView;
-  private codeInput!: HTMLInputElement;
+  private detachBody!: HTMLElement;
+  private sessionInput!: HTMLInputElement;
 
   /**
-   * @brief Initializes the GameDialog and binds event listeners.
+   * @brief Initializes the document controller and binds its commands.
    * @param options Dependency options.
    */
   constructor(options: GameDialogOptions) {
     this.dialog = options.dialog;
     this.storage = options.storage ?? null;
-    this.editorPanel = options.editorPanel ?? null;
+    this.panel = options.editorPanel ?? null;
     this.onTabOpen = options.onTabOpen;
+    this.onTabHide = options.onTabHide;
     this.onTabClose = options.onTabClose;
     this.stealthPref = loadStealthPref(this.storage);
 
@@ -84,49 +94,50 @@ export class GameDialog {
   }
 
   /**
-   * @brief Binds existing DOM elements and click listeners.
+   * @brief Binds document elements and the commands painted inside it.
    */
   private bindDom(): void {
-    this.lobbyView = this.dialog.querySelector<HTMLElement>("#game-lobby-view")!;
-    this.boardViewEl = this.dialog.querySelector<HTMLElement>("#game-board-view")!;
-    this.codeInput = this.dialog.querySelector<HTMLInputElement>("#game-code-input")!;
+    this.detachBody = this.dialog.querySelector<HTMLElement>("#game-detach-body")!;
+    this.sessionInput = document.querySelector<HTMLInputElement>("#game-code-input")!;
 
-    const rootScope = document.body ?? this.dialog;
-    this.boardView = new GameBoardView(rootScope, (i) => this.coordinator.handleCellClick(i));
+    this.boardView = new GameBoardView(document.body, (i) => this.coordinator.handleCellClick(i));
 
     const on = (sel: string, cb: () => void) => {
       document.querySelectorAll(sel).forEach((el) => el.addEventListener("click", cb));
     };
 
-    const joinCode = () => {
-      const code = this.codeInput.value.trim().toUpperCase();
+    const attach = () => {
+      const code = this.sessionInput.value.trim().toUpperCase();
       if (code.length > 0) void this.startOnlineGame(code, false);
     };
 
-    on("#game-dialog-close, #game-code-exit-btn", () => this.close());
-    on("#game-exit-btn, #game-code-lobby-btn", () => this.showLobby());
-    on("#game-create-btn", () => void this.startOnlineGame(generateRoomCode(), true));
-    on("#game-ai-btn, #game-code-ai-btn", () => this.startAiGame());
-    on("#game-local-btn, #game-code-local-btn", () => this.startLocalGame());
-    on("#game-rematch-btn, #game-code-rematch-btn", () => this.coordinator.rematch());
-    on("#game-copy-code-btn, #game-code-copy-btn", () => void this.coordinator.copyInviteInfo());
-    on("#game-join-btn", joinCode);
-
-    on("#game-dialog-stealth-btn, #game-code-stealth-btn", () => this.toggleStealth());
-    on("#game-dialog-mode-btn, #game-code-mode-btn", () => this.toggleCodeMode());
+    on("#game-code-attach-btn", attach);
+    on("#game-code-new-btn", () => void this.startOnlineGame(generateRoomCode(), true));
+    on("#game-code-local-btn", () => this.startLocalGame());
+    on("#game-code-ai-btn", () => this.startAiGame());
+    on("#game-code-rematch-btn", () => this.coordinator.rematch());
+    on("#game-code-copy-btn", () => void this.coordinator.copyInviteInfo());
+    on("#game-code-close-btn, #game-dialog-close", () => this.close());
+    on("#game-code-detach-btn", () => this.detach());
     on("#game-dialog-dock-btn", () => this.dockToTab());
-    on("#game-code-float-btn", () => this.openFloating());
+    on("#game-code-stealth-btn", () => this.toggleStealth());
 
-    this.codeInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        joinCode();
-      }
+    this.sessionInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      attach();
+    });
+
+    // Escape on the floating frame returns the document to the tab instead of
+    // leaving a live session hidden behind a closed modal.
+    this.dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.dockToTab();
     });
   }
 
   /**
-   * @brief Toggles stealth mode (idle blur and dimming).
+   * @brief Toggles the idle disguise (dim + blur while no session runs).
    */
   toggleStealth(): void {
     this.stealthPref.stealth = !this.stealthPref.stealth;
@@ -135,92 +146,89 @@ export class GameDialog {
   }
 
   /**
-   * @brief Toggles C# code syntax disguise mode.
+   * @brief Applies the idle disguise.
+   * @details The file is only dimmed while idle. A running session stays fully
+   * legible, and detaching keeps the frame crisp so the document can be played.
    */
-  toggleCodeMode(): void {
-    this.stealthPref.codeMode = !this.stealthPref.codeMode;
-    saveStealthPref(this.storage, this.stealthPref);
+  private applyStealthDom(): void {
+    const disguise = this.stealthPref.stealth && !this.active && !this.detached;
+    for (const el of [this.dialog, this.panel]) {
+      if (el === null) continue;
+      el.classList.toggle("is-stealth", disguise);
+      el.classList.toggle("is-stealth--blur", disguise);
+      el.style.setProperty("--stealth-opacity", String(this.stealthPref.opacity));
+    }
+
+    const stealthBtn = document.querySelector("#game-code-stealth-btn");
+    stealthBtn?.classList.toggle("is-active", this.stealthPref.stealth);
+  }
+
+  /**
+   * @brief Opens the collab document in the editor tab.
+   * @param mode Optional session to start immediately.
+   * @param code Optional session id to attach to.
+   */
+  open(mode?: GameMode, code?: string): void {
+    this.dockToTab(false);
+    this.onTabOpen?.();
+    if (this.panel !== null) this.panel.hidden = false;
+    this.applyStealthDom();
+
+    if (code !== undefined && code.length > 0) {
+      this.sessionInput.value = code.toUpperCase();
+      return void this.startOnlineGame(code.toUpperCase(), false);
+    }
+    if (mode === "ai") return this.startAiGame();
+    if (mode === "online") return void this.startOnlineGame(generateRoomCode(), true);
+    this.sessionInput.focus();
+  }
+
+  /**
+   * @brief Moves the document into the floating frame without ending the session.
+   */
+  detach(): void {
+    if (this.panel === null || this.detached) return;
+    this.detached = true;
+    this.detachBody.append(this.panel);
+    this.panel.hidden = false;
+    this.panel.classList.add("is-detached");
+    this.onTabHide?.();
+    if (!this.dialog.open) this.dialog.showModal();
     this.applyStealthDom();
   }
 
   /**
-   * @brief Applies active stealth and code styling classes to DOM elements.
-   * @details The blur and the dimming are what make the disguise convincing, but a
-   * dimmed, blurred board cannot be read or hit. Both are suspended while a round
-   * is on screen and return as soon as the lobby is back.
+   * @brief Returns the document to the editor tab and hides the frame.
+   * @param notifyTab Whether to (re)select the document tab.
    */
-  private applyStealthDom(): void {
-    const playing = this.boardViewEl.hidden === false;
-    const stealthOff = this.stealthPref.stealth && !playing;
-
-    this.dialog.classList.toggle("is-stealth", stealthOff);
-    this.dialog.classList.toggle("is-stealth--blur", stealthOff);
-    this.dialog.classList.toggle("game-code-mode", this.stealthPref.codeMode);
-    this.dialog.style.setProperty("--stealth-opacity", String(this.stealthPref.opacity));
-
-    if (this.editorPanel !== null) {
-      this.editorPanel.classList.toggle("game-code-mode", this.stealthPref.codeMode);
-      this.editorPanel.classList.toggle("is-stealth", stealthOff);
-      this.editorPanel.classList.remove("is-stealth--blur");
-      this.editorPanel.style.setProperty("--stealth-opacity", String(this.stealthPref.opacity));
+  dockToTab(notifyTab = true): void {
+    if (this.detached) {
+      this.detached = false;
+      const editor = document.getElementById("editor");
+      if (editor !== null && this.panel !== null) editor.append(this.panel);
+      if (this.panel !== null) {
+        this.panel.hidden = true;
+        this.panel.classList.remove("is-detached");
+      }
     }
-
-    this.boardView.setCodeMode(this.stealthPref.codeMode);
-
-    const stealthBtns = document.querySelectorAll("#game-dialog-stealth-btn, #game-code-stealth-btn");
-    stealthBtns.forEach((b) => b.classList.toggle("is-active", this.stealthPref.stealth));
-
-    const modeBtns = document.querySelectorAll("#game-dialog-mode-btn, #game-code-mode-btn");
-    modeBtns.forEach((b) => b.classList.toggle("is-active", this.stealthPref.codeMode));
+    if (this.dialog.open) this.dialog.close();
+    if (notifyTab) this.onTabOpen?.();
+    this.applyStealthDom();
   }
 
   /**
-   * @brief Docks the game view into the editor document tab.
-   */
-  dockToTab(): void {
-    this.dialog.close();
-    this.onTabOpen?.();
-  }
-
-  /**
-   * @brief Opens the game view as a floating dialog modal.
-   * @details Uses {@link close} rather than the host callback directly, so the tab
-   * is torn down exactly once and the modal is only raised afterwards.
-   */
-  openFloating(): void {
-    this.close();
-    if (!this.dialog.open) this.dialog.showModal();
-    this.showLobby();
-  }
-
-  /**
-   * @brief Opens the Game dialog or tab in lobby or targeted mode.
-   * @param mode Optional initial mode.
-   * @param code Optional room code for direct join.
-   */
-  open(mode?: GameMode, code?: string): void {
-    if (this.onTabOpen !== undefined) this.onTabOpen();
-    else this.dialog.showModal();
-
-    if (code !== undefined && code.length > 0) return void this.startOnlineGame(code.toUpperCase(), false);
-    if (mode === "ai") return this.startAiGame();
-    if (mode === "online") return void this.startOnlineGame(generateRoomCode(), true);
-    this.showLobby();
-    this.codeInput.focus();
-  }
-
-  /**
-   * @brief Closes the dialog or document tab and cleans up network connections.
-   * @details `onTabClose` calls back into the host, whose tab-close handler calls
-   * this method again. A re-entrant call performs the teardown but does not
-   * re-notify, so the cycle terminates after exactly one host notification.
+   * @brief Closes the document, releases the session and resets the tab.
    */
   close(): void {
     const reentrant = this.closing;
+    this.active = false;
+    this.boardView.setActive(false);
     this.coordinator.cleanup();
-    this.dialog.close();
-    if (reentrant) return;
+    this.dockToTab(false);
+    if (this.panel !== null) this.panel.hidden = true;
+    this.sessionInput.value = "";
 
+    if (reentrant) return;
     this.closing = true;
     try {
       this.onTabClose?.();
@@ -230,45 +238,38 @@ export class GameDialog {
   }
 
   /**
-   * @brief Displays the lobby view and resets any active game session.
-   */
-  private showLobby(): void {
-    this.coordinator.cleanup();
-    this.lobbyView.hidden = false;
-    this.boardViewEl.hidden = true;
-    this.codeInput.value = "";
-    this.applyStealthDom();
-  }
-
-  /**
-   * @brief Starts an offline single-player game against the AI.
+   * @brief Starts an offline single-player simulation.
    */
   startAiGame(): void {
-    this.showBoardView();
+    this.beginSession();
     this.coordinator.startAiGame();
   }
 
   /**
-   * @brief Starts a 2-player local pass-and-play game on the same device.
+   * @brief Starts a two-player local session in the same document.
    */
   startLocalGame(): void {
-    this.showBoardView();
+    this.beginSession();
     this.coordinator.startLocalGame();
   }
 
   /**
-   * @brief Starts or joins an online multiplayer game room.
-   * @param code The 4-character room code.
-   * @param asHost True if creating the room, false if joining existing.
+   * @brief Attaches to an online collab session.
+   * @param code Session id.
+   * @param asHost True to create the session.
    */
   async startOnlineGame(code: string, asHost: boolean): Promise<void> {
-    this.showBoardView();
+    this.beginSession();
+    this.sessionInput.value = code.toUpperCase();
     await this.coordinator.startOnlineGame(code, asHost);
   }
 
-  private showBoardView(): void {
-    this.lobbyView.hidden = true;
-    this.boardViewEl.hidden = false;
+  /**
+   * @brief Marks the document as holding a live session.
+   */
+  private beginSession(): void {
+    this.active = true;
+    this.boardView.setActive(true);
     this.applyStealthDom();
   }
 }
