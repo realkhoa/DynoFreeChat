@@ -208,11 +208,13 @@ class Browser {
 
 const boardState = `(() => {
   const cells = [...document.querySelectorAll("#editor-cell-0,#editor-cell-1,#editor-cell-2,#editor-cell-3,#editor-cell-4,#editor-cell-5,#editor-cell-6,#editor-cell-7,#editor-cell-8")];
+  const literal = (cell) => cell.textContent.replace(/'/g, "");
   return {
-    board: cells.map((cell) => (cell.textContent === "·" ? "." : cell.textContent)).join(""),
+    board: cells.map((cell) => (literal(cell) === "·" ? "." : literal(cell))).join(""),
     enabled: cells.filter((cell) => !cell.disabled).length,
-    turn: document.querySelector("#game-turn-indicator")?.textContent,
+    turn: document.querySelector("#game-code-thread")?.textContent,
     badge: document.querySelector("#game-code-room-badge")?.textContent,
+    session: document.querySelector("#game-code-session")?.textContent,
     status: document.querySelector("#game-code-status-line")?.textContent,
     score: document.querySelector("#game-code-score-line")?.textContent,
     legacyRows: document.querySelectorAll('.log-row[data-legacy="1"]').length,
@@ -220,11 +222,10 @@ const boardState = `(() => {
   };
 })()`;
 
+/** Opens the collab document (the tab, not a game window). */
 async function openGame(browser) {
-  await browser.click('[data-action="tictactoe"]');
-  await sleep(400);
-  await browser.click("#game-code-lobby-btn");
-  await sleep(300);
+  await browser.click("#btn-hub-collab");
+  await sleep(500);
 }
 
 /**
@@ -236,8 +237,9 @@ async function waitForLive(browser, label, timeoutMs = 25000) {
   for (;;) {
     const state = await browser.evaluate(boardState);
     const status = state.status ?? "";
-    const settled =
-      !status.includes("Đang kết nối") && !status.includes("chờ đối thủ") && !status.includes("Không ");
+    // The document reports its own state as code comments, so "settled" means the
+    // attach/awaiting wording is gone and the buffer is ready to be written.
+    const settled = !/attaching to session|awaiting remote attach|not found|throttling/i.test(status);
     if (settled) return { label, waitedMs: Date.now() - started, ...state };
     if (Date.now() - started > timeoutMs) return { label, waitedMs: -1, ...state };
     await sleep(250);
@@ -279,18 +281,18 @@ async function main() {
 
     if (code === null) {
       await openGame(alice);
-      findings.push({ step: "create", click: await alice.click("#game-create-btn") });
-      await sleep(1200);
+      findings.push({ step: "create", click: await alice.click("#game-code-new-btn") });
+      await sleep(1500);
       const hosted = await alice.evaluate(boardState);
       findings.push({ step: "hosted", hosted });
-      code = /Session:\s*([A-Z0-9]{4})/.exec(hosted.badge ?? "")?.[1] ?? null;
-      if (code === null) throw new Error(`could not read the room code from ${JSON.stringify(hosted.badge)}`);
-      findings.push({ step: "room code", code });
+      code = /session:\s*([A-Z0-9]{4,6})/i.exec(hosted.badge ?? "")?.[1] ?? null;
+      if (code === null) throw new Error(`could not read the session id from ${JSON.stringify(hosted.badge)}`);
+      findings.push({ step: "session id", code });
     } else {
-      findings.push({ step: "preset room code", code });
+      findings.push({ step: "preset session id", code });
     }
 
-    // ---- both players enter the room; the preset path also joins as host side
+    // ---- both players enter the session; the preset path also joins as host side
     const joinByCode = async (browser) => {
       await openGame(browser);
       await browser.evaluate(`(() => {
@@ -299,7 +301,7 @@ async function main() {
         input.dispatchEvent(new Event("input", { bubbles: true }));
         return input.value;
       })()`);
-      await browser.click("#game-join-btn");
+      await browser.click("#game-code-attach-btn");
     };
 
     if (code === presetCode) await joinByCode(alice);
@@ -312,9 +314,11 @@ async function main() {
     // Diagnostics also ride on the room, so a stuck run still shows why.
     findings.push({ step: "socket probes", alice: await alice.probeSockets(), bob: await bob.probeSockets() });
 
-    // Whoever ended up as X opens, which can be either browser when both typed
-    // the same code and the role tiebreak switched one of them.
-    const roleOf = (state) => (/(?:\(|\s)([XO])\)?\s*$/.exec(state.badge ?? "")?.[1] ?? null);
+    // Whoever ended up as X opens; the document names the role as a thread marker.
+    const roleOf = (state) => {
+      const match = /thread ([XO])/i.exec(state.badge ?? "");
+      return match?.[1]?.toUpperCase() ?? null;
+    };
     const aliceRole = roleOf(await alice.evaluate(boardState));
     const bobRole = roleOf(await bob.evaluate(boardState));
     findings.push({ step: "roles", aliceRole, bobRole });

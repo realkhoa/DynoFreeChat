@@ -69,15 +69,15 @@ export interface OnlineGameSessionOptions {
 export function createFailureText(roomCode: string, code: string | undefined): string {
   switch (code) {
     case "TRY_LATER":
-      return `Máy chủ đang giới hạn tạo phòng. Thử lại sau vài phút, hoặc vào phòng có sẵn bằng mã.`;
+      return `session service is throttling - retry shortly or attach an existing session`;
     case "TOO_MANY_ROOMS":
-      return `Lobby đã đủ phòng, không tạo thêm được. Hãy vào phòng có sẵn bằng mã.`;
+      return `session limit reached - attach an existing session`;
     case "BAD_SLUG":
-      return `Mã phòng [${roomCode}] không hợp lệ.`;
+      return `invalid session id "${roomCode}"`;
     case "NETWORK":
-      return `Không gọi được máy chủ để tạo phòng [${roomCode}]. Kiểm tra kết nối mạng.`;
+      return `session service unreachable - check the connection`;
     default:
-      return `Không tạo được phòng [${roomCode}]${code === undefined ? "" : ` (${code})`}. Thử lại sau.`;
+      return `could not create session ${roomCode}${code === undefined ? "" : ` (${code})`} - retry later`;
   }
 }
 
@@ -162,10 +162,10 @@ export class OnlineGameSession {
         // Authenticate the socket first; `welcome` is what releases the handshake.
         sock.send({ t: "join", nick: this.options.identity.nick, color: this.options.identity.color });
       } else if (state === "connecting" || state === "reconnecting") {
-        this.options.onStatusText(`Đang kết nối phòng [${this.options.roomCode}]...`);
+        this.options.onStatusText(`attaching to session ${this.options.roomCode}...`);
       } else if (state === "closed") {
         this.options.onPeerCount(0);
-        this.options.onStatusText(`Đã rời phòng [${this.options.roomCode}]`);
+        this.options.onStatusText(`session ${this.options.roomCode} detached`);
       }
     });
 
@@ -179,8 +179,8 @@ export class OnlineGameSession {
           this.options.onPeerCount(frame.online);
           this.options.onStatusText(
             frame.online >= 2
-              ? "Đối thủ đã có trong phòng!"
-              : `Mã phòng: ${this.options.roomCode} - Chia sẻ mã để bạn bè vào chơi!`,
+              ? "remote session attached"
+              : `session ${this.options.roomCode} ready - awaiting remote attach`,
           );
           break;
 
@@ -199,8 +199,8 @@ export class OnlineGameSession {
           if (frame.code === "ROOM_NOT_FOUND" || frame.code === "BAD_PASS") {
             this.options.onStatusText(
               frame.code === "ROOM_NOT_FOUND"
-                ? `Không tìm thấy phòng [${this.options.roomCode}]. Kiểm tra lại mã.`
-                : "Phòng này có mật khẩu, không vào được.",
+                ? `session ${this.options.roomCode} not found - check the id`
+                : `session ${this.options.roomCode} is locked`,
             );
           }
           break;

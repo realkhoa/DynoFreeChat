@@ -95,11 +95,13 @@ export class GameBoardView {
   /**
    * @brief Sets the session id shown in the toolbar and status bar.
    * @param code Room code, or empty when no session is attached.
+   * @param role Role this client plays, when the session is online.
    */
-  setSession(code: string): void {
+  setSession(code: string, role: PlayerMark | null = null): void {
     this.sessionCode = code;
-    const badge = code.length > 0 ? `// session: ${code}` : "// session: (none)";
-    for (const el of this.badgeElements) el.textContent = badge;
+    const label =
+      code.length === 0 ? "(none)" : role === null ? code : `${code} (thread ${role.toLowerCase()})`;
+    for (const el of this.badgeElements) el.textContent = `// session: ${label}`;
     if (this.sessionEl !== null) {
       this.sessionEl.textContent = code.length > 0 ? `session ${code}` : "session -";
     }
@@ -116,13 +118,18 @@ export class GameBoardView {
 
   /**
    * @brief Sets the session badge from the runner's label.
-   * @details Online sessions report `<code> (<role>)`; local modes report a plain
-   * label such as `local` or `simulation`. Only the first token is the session id.
+   * @details Online sessions report `<CODE> (<role>)`; local modes report a plain
+   * label such as `local` or `simulation`. The role is kept because it tells the
+   * player which thread they drive — phrased as a comment, never as "you are X".
    * @param text Badge label.
    */
   setRoomBadge(text: string): void {
-    const label = text.split(/[\s(]/)[0] ?? "";
-    this.setSession(/^[A-Z0-9]{4,6}$/.test(label) ? label : label.toLowerCase());
+    const online = /^([A-Z0-9]{4,6})(?:\s*\(([XO])\))?/.exec(text);
+    if (online !== null) {
+      this.setSession(online[1] ?? "", (online[2] as PlayerMark | undefined) ?? null);
+      return;
+    }
+    this.setSession((text.split(/\s/)[0] ?? "").toLowerCase());
   }
 
   /**

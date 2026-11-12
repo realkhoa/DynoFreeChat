@@ -221,7 +221,7 @@ describe("OnlineGameSession", () => {
     await h.session.connect();
     h.socket.open();
     h.socket.receive({ t: "error", code: "ROOM_NOT_FOUND" });
-    expect(h.statuses.some((text) => text.includes("Không tìm thấy phòng"))).toBe(true);
+    expect(h.statuses.some((text) => text.includes("not found"))).toBe(true);
   });
 
   it("explains a refused room creation instead of dialling a room that cannot exist", async () => {
@@ -230,7 +230,7 @@ describe("OnlineGameSession", () => {
 
     expect(h.createCalls).toBe(1);
     expect(h.url).toBe("");
-    expect(h.statuses.some((text) => text.includes("giới hạn tạo phòng"))).toBe(true);
+    expect(h.statuses.some((text) => text.includes("throttling"))).toBe(true);
     expect(h.connected).toEqual([false]);
   });
 

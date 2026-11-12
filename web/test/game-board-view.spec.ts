@@ -72,8 +72,12 @@ describe("GameBoardView", () => {
 
   it("writes the session id into the toolbar and status bar", () => {
     view.setRoomBadge("9B2X (X)");
-    expect(root.querySelector("#game-code-room-badge")?.textContent).toBe("// session: 9B2X");
+    expect(root.querySelector("#game-code-room-badge")?.textContent).toBe("// session: 9B2X (thread x)");
     expect(root.querySelector("#game-code-session")?.textContent).toBe("session 9B2X");
+
+    // Local modes report a plain label, not a session id.
+    view.setRoomBadge("local");
+    expect(root.querySelector("#game-code-room-badge")?.textContent).toBe("// session: local");
 
     view.setSession("");
     expect(root.querySelector("#game-code-room-badge")?.textContent).toBe("// session: (none)");
