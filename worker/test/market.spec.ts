@@ -259,12 +259,14 @@ describe("market routes", () => {
   });
 
   it("429s a client over the rate limit", async () => {
+    // The limiter runs before validation, so a request without symbols consumes a
+    // token and answers 400 without ever touching an upstream.
     const ip = uniqueIp();
     const headers = { origin: ORIGIN, "cf-connecting-ip": ip };
     for (let index = 0; index < RATE_CAPACITY; index += 1) {
-      await SELF.fetch(`${BASE}/api/market/indices`, { headers });
+      await SELF.fetch(`${BASE}/api/market/quotes`, { headers });
     }
-    const response = await SELF.fetch(`${BASE}/api/market/indices`, { headers });
+    const response = await SELF.fetch(`${BASE}/api/market/quotes`, { headers });
     expect(response.status).toBe(429);
     expect(response.headers.get("retry-after")).toBe("10");
   });
