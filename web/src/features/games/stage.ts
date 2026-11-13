@@ -67,7 +67,15 @@ export class GameStage {
 
     const mount = factory();
     this.elements.host.replaceChildren();
-    mount.mount(this.elements.host);
+
+    // The game renders inside a code frame so the board reads as a data
+    // initializer in the open document instead of as a game screen.
+    const frame = document.createElement("div");
+    frame.className = "stage-code-frame";
+    frame.dataset.game = title.replace(/\.(cs|cpp)$/i, "");
+    this.elements.host.append(frame);
+
+    mount.mount(frame);
     this.active = { id, mount };
     return true;
   }

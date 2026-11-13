@@ -130,4 +130,21 @@ describe("DocTabs", () => {
     settingsTab?.click();
     expect(h.tabs.activeId).toBe("settings");
   });
+
+  it("renames a tab and refreshes the active label for the host", () => {
+    h.tabs.open({ id: "game-stage", label: "Game.cs", panel: h.settingsPanel });
+    h.tabs.setLabel("game-stage", "Caro.cs");
+
+    const tab = h.strip.querySelector<HTMLElement>('[data-doc-id="game-stage"]');
+    expect(tab?.dataset.label).toBe("Caro.cs");
+    expect(tab?.querySelector(".tab-label")?.textContent).toBe("Caro.cs");
+    expect(h.tabs.activeLabel).toBe("Caro.cs");
+    // The host re-renders the breadcrumb from the activation hook.
+    expect(h.activated).toEqual(["game-stage", "game-stage"]);
+  });
+
+  it("ignores a rename for an unknown tab", () => {
+    expect(() => h.tabs.setLabel("nope", "Nope.cs")).not.toThrow();
+    expect(h.tabs.activeId).toBeNull();
+  });
 });

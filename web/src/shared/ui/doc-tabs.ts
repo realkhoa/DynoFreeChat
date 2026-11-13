@@ -128,6 +128,10 @@ export class DocTabs {
     entry.tab.dataset.label = label;
     const labelEl = entry.tab.querySelector<HTMLElement>(".tab-label");
     if (labelEl !== null) labelEl.textContent = label;
+
+    // The breadcrumb derives from the active label, so renaming the active tab
+    // has to re-run the host's activation hook.
+    if (this.active === id) this.handlers.onActivate(id, label);
   }
 
   /**

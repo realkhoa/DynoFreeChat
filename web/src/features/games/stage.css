@@ -1,5 +1,10 @@
 /* Shared game stage: the chrome is the code editor, the board is the game. Every
-   game module reuses these classes so a new game ships without new CSS. */
+   game module reuses these classes so a new game ships without new CSS.
+
+   The visual rule is the one tic-tac-toe follows: a board is a data initializer
+   inside the open document, not a game screen. Cells are flat monospace glyphs on
+   a thin editor grid; the HUD and status read as comment lines. Clickability
+   comes from the 44px cell size, never from button chrome. */
 
 .game-stage-panel {
   --code-line-height: 19px;
@@ -11,48 +16,79 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 18px;
+  padding: 10px 14px;
   background: var(--editor);
   overflow: auto;
+}
+
+/* The frame prints the opening and closing lines of the initializer around
+   whatever the game renders, so the board is syntactically part of the file. */
+.stage-code-frame {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 auto;
+  width: min(100%, 860px);
+}
+
+.stage-code-frame::before {
+  content: "// " attr(data-game) " - interactive board (click a cell)";
+  color: #6a9955;
+  font: var(--code-font);
+  white-space: pre;
+}
+
+.stage-code-frame::after {
+  content: "};";
+  color: #d4d4d4;
+  font: var(--code-font);
+  white-space: pre;
 }
 
 /* Toolbar-ish row above the board: counters, level picker, difficulty. */
 .stage-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
-  font: 11.5px/1.4 var(--font-mono);
-  color: var(--fg-dim);
+  color: #6a9955;
+  font: var(--code-font);
 }
 
-.stage-bar .stage-btn {
-  height: 22px;
+.stage-bar::before {
+  content: "// ";
+  color: #6a9955;
 }
 
 .stage-hud {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   flex-wrap: wrap;
-  font: 12px/1.4 var(--font-mono);
-  color: var(--fg-muted);
+  color: #6a9955;
+  font: var(--code-font);
+}
+
+.stage-hud::before {
+  content: "// ";
+  color: #6a9955;
 }
 
 .stage-hud b {
-  color: var(--fg);
+  color: #dcdcaa;
   font-weight: 600;
 }
 
 .stage-btn {
-  height: 24px;
-  padding: 0 10px;
+  height: 20px;
+  padding: 0 6px;
   background: transparent;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
+  border-radius: 2px;
   color: var(--fg-muted);
-  font: 11.5px/1 var(--font-mono);
+  font: 11px/1 var(--font-mono);
   cursor: pointer;
 }
 
@@ -69,20 +105,23 @@
 }
 
 .stage-status {
-  color: var(--fg-dim);
-  font: 12px/1.5 var(--font-mono);
-  min-height: 18px;
+  color: #6a9955;
+  font: var(--code-font);
+  min-height: var(--code-line-height);
+  white-space: pre-wrap;
 }
 
-/* Grid boards (tic-tac-toe, caro, minesweeper, sudoku, 2048, sokoban, …).
-   Cell size is fixed and touch friendly: the board never grows past the point
-   where a cell becomes hard to press. */
+/* Grid boards (caro, battleship, chess, minesweeper, sudoku, 2048, sokoban, …).
+   Cells share hairlines so the board reads as one literal, and stay 44px so they
+   remain easy to press. */
 .stage-board {
   display: grid;
-  gap: 4px;
+  gap: 0;
   margin: 0 auto;
   width: max-content;
   max-width: 100%;
+  background: var(--editor);
+  border: 1px solid var(--border-subtle);
 }
 
 .stage-cell {
@@ -92,11 +131,13 @@
   min-width: 44px;
   min-height: 44px;
   padding: 0;
-  background: var(--panel);
-  border: 1px solid var(--border-subtle);
-  border-radius: 2px;
-  color: var(--fg);
-  font: 600 15px/1 var(--font-mono);
+  background: transparent;
+  border: 0;
+  border-right: 1px solid #232323;
+  border-bottom: 1px solid #232323;
+  border-radius: 0;
+  color: #d4d4d4;
+  font: 600 14px/1 var(--font-mono);
   text-align: center;
   cursor: pointer;
   user-select: none;
@@ -104,7 +145,7 @@
 
 .stage-cell:hover {
   background: var(--hover-row);
-  border-color: var(--border);
+  color: #ffffff;
 }
 
 .stage-cell:focus-visible {
@@ -119,22 +160,21 @@
 
 .stage-cell.is-primary {
   color: #4ec9b0;
-  border-color: #2f6f63;
 }
 
 .stage-cell.is-warn {
   color: #f48771;
-  border-color: #7a3a30;
+  background: rgba(244, 135, 113, 0.08);
 }
 
 .stage-cell.is-good {
   color: #dcdcaa;
-  border-color: #6b6b3a;
+  background: rgba(220, 220, 170, 0.07);
 }
 
 .stage-cell.is-muted {
   background: transparent;
-  border-color: transparent;
+  color: #4b4b4b;
   cursor: default;
 }
 
@@ -142,19 +182,31 @@
   color: transparent;
 }
 
+/* Empty cells print a dot, the same way the tic-tac-toe buffer prints '·': the
+   grid then reads as a char matrix instead of an empty box. */
+.stage-cell:empty::before {
+  content: "·";
+  color: #3d3d3d;
+}
+
+.stage-cell.is-hidden:empty::before {
+  color: transparent;
+}
+
 /* Row based layouts (card hands, queue lists, word grids). */
 .stage-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   margin: 0 auto;
   max-width: 100%;
+  font: var(--code-font);
 }
 
 .stage-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
 }
 
@@ -162,14 +214,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 34px;
-  min-height: 46px;
-  padding: 0 4px;
-  background: var(--panel);
+  min-width: 30px;
+  min-height: 42px;
+  padding: 0 3px;
+  background: transparent;
   border: 1px solid var(--border-subtle);
-  border-radius: 3px;
-  color: var(--fg);
-  font: 600 13px/1 var(--font-mono);
+  border-radius: 2px;
+  color: #ce9178;
+  font: 600 12.5px/1 var(--font-mono);
   cursor: pointer;
   user-select: none;
 }
@@ -177,10 +229,12 @@
 .stage-card.is-selected {
   border-color: var(--accent);
   background: var(--sel);
+  color: #ffffff;
 }
 
 .stage-card.is-playable {
-  border-color: #2f6f63;
+  border-color: #3a5a52;
+  color: #4ec9b0;
 }
 
 .stage-canvas {
@@ -195,18 +249,19 @@
 
 .stage-input {
   width: 130px;
-  height: 24px;
+  height: 22px;
   padding: 0 8px;
-  background: var(--editor);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--fg);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 2px;
+  color: #ce9178;
   font: 12px/1 var(--font-mono);
 }
 
 .stage-empty {
   margin: 0 auto;
-  color: var(--fg-dim);
-  font: 12px/1.6 var(--font-mono);
+  color: #6a9955;
+  font: var(--code-font);
   text-align: center;
+  white-space: pre-wrap;
 }
