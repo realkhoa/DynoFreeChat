@@ -12,7 +12,15 @@
  * which is what you get by extracting the 7z, then the zip inside it.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 const args = process.argv.slice(2);

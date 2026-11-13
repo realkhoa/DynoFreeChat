@@ -65,6 +65,7 @@
           <button type="button" class="menubar-btn" id="btn-hub-chat" title="Chat Hub & danh sách phòng (Ctrl+K / Ctrl+N)">Chat</button>
           <button type="button" class="menubar-btn" id="btn-hub-collab" title="Collab modules (Ctrl+B)">Collab</button>
           <button type="button" class="menubar-btn" id="btn-hub-setting" title="Cài đặt hệ thống (Settings)">Setting</button>
+          <button type="button" class="menubar-btn" id="btn-hub-market" title="Market data feed (Ctrl+M)">Feed</button>
         </div>
 
         <span class="menubar-spacer"></span>
@@ -300,6 +301,49 @@
         <span class="sb-item" id="games-session">session -</span>
         <span class="sb-spacer"></span>
         <span class="sb-item" id="games-state">Ready</span>
+      </div>
+    </section>
+
+    <!-- Market feed document: proxied quotes and index levels rendered as a C++ file -->
+    <section class="doc-panel market-panel game-code-mode" id="market-view" hidden>
+      <div class="game-code-toolbar">
+        <span class="game-code-file"
+          ><span class="game-code-icon" id="market-code-icon" aria-hidden="true"></span>MarketFeed.cpp</span
+        >
+        <span class="game-code-chip" id="market-chip">// watchlist: 0 symbols</span>
+        <span class="game-code-spacer"></span>
+        <label class="market-add" for="market-search">
+          <span class="market-add-label">ticker =</span>
+          <input
+            id="market-search"
+            class="code-literal market-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="12"
+            placeholder="FPT"
+            aria-label="Thêm mã vào watchlist"
+          />
+        </label>
+        <button type="button" class="game-code-tool-btn" id="market-add-btn" title="Thêm mã (Enter)">Add</button>
+      </div>
+
+      <div class="game-code-body">
+        <div class="game-code-gutter" id="market-gutter" aria-hidden="true"></div>
+        <div class="game-code-content" id="market-content"></div>
+      </div>
+
+      <div class="market-error-line" id="market-error" role="status" aria-live="polite"></div>
+
+      <div class="game-code-statusbar">
+        <span class="sb-item">Ln 1, Col 1</span>
+        <span class="sb-item">Spaces: 4</span>
+        <span class="sb-item">UTF-8</span>
+        <span class="sb-item">CRLF</span>
+        <span class="sb-item" id="market-count">0 symbols</span>
+        <span class="sb-item" id="market-clock">--:--:--</span>
+        <span class="sb-spacer"></span>
+        <span class="sb-item market-state--live" id="market-state">Loading</span>
       </div>
     </section>
 

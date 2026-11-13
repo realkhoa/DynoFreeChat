@@ -7,3 +7,6 @@ coverage/
 package-lock.json
 *.md
 web/index.html
+# Generated fixtures: prettier would rewrite their exact bytes on every run.
+web/public/workspace/
+web/test/fixtures/games/

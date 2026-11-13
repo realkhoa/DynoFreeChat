@@ -1,6 +1,7 @@
 import { sanitizeSlug } from "@dyno/shared/protocol";
 import type { Env } from "./env";
 import { json } from "./http";
+import { indicesResponse, marketDeps, quotesResponse, takeRate } from "./market";
 import { Registry } from "./registry";
 import { ChatRoom } from "./room";
 
@@ -62,6 +63,26 @@ export default {
           "access-control-max-age": "600",
         },
       });
+    }
+
+    // Market feed proxy. Read-only, rate limited per IP, and never cached by the
+    // browser: the Worker owns the three second freshness window.
+    if (url.pathname === "/api/market/quotes" || url.pathname === "/api/market/indices") {
+      if (request.method !== "GET") return withCors(json({ code: "METHOD_NOT_ALLOWED" }, 405), origin);
+
+      const ip = request.headers.get("cf-connecting-ip") ?? "local";
+      if (!takeRate(ip, Date.now())) {
+        return withCors(json({ code: "RATE_LIMITED" }, 429, { "retry-after": "10" }), origin);
+      }
+
+      const deps = marketDeps();
+      const response =
+        url.pathname === "/api/market/quotes"
+          ? await quotesResponse(url.searchParams.get("symbols"), deps)
+          : await indicesResponse(deps);
+      const out = withCors(response, origin);
+      out.headers.set("cache-control", "no-store");
+      return out;
     }
 
     const registry = () => env.REGISTRY.get(env.REGISTRY.idFromName("registry"));

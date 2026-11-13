@@ -11,6 +11,10 @@
     "./ratelimit": {
       "types": "./src/ratelimit.ts",
       "import": "./src/ratelimit.ts"
+    },
+    "./market": {
+      "types": "./src/market.ts",
+      "import": "./src/market.ts"
     }
   },
   "scripts": {

@@ -1,0 +1,94 @@
+/* Market feed document: quotes and index levels rendered as a C++ file. The
+   code chrome (toolbar, gutter, syntax colors, status bar) is shared with the
+   collab editor; this file only adds the market-specific bits. */
+
+.market-panel {
+  --code-line-height: 19px;
+  --code-font: 12.5px/var(--code-line-height) var(--font-mono);
+}
+
+.market-panel .game-code-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The ticker box reads as an assignment in the toolbar instead of a search
+   field, so the document keeps its file-editor illusion. */
+.market-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 11px/1 var(--font-mono);
+  color: var(--fg-dim);
+}
+
+.market-add-label {
+  color: #9cdcfe;
+  white-space: nowrap;
+}
+
+.market-panel .market-input {
+  width: 96px;
+  height: 20px;
+  padding: 0 6px;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* A ticker in the watchlist declaration is the remove control. It stays inline
+   so the line still parses as an initializer list. */
+.market-ticker {
+  margin: 0;
+  padding: 0 1px;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  color: #ce9178;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.market-ticker:hover {
+  background: var(--hover-row);
+  color: #ffffff;
+}
+
+.market-ticker:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 0;
+}
+
+.market-up {
+  color: #4ec9b0;
+}
+
+.market-down {
+  color: #f48771;
+}
+
+.market-flat {
+  color: var(--fg-dim);
+}
+
+/* Footer line for input errors; keeps its height so the layout never jumps. */
+.market-panel #market-error {
+  min-height: var(--code-line-height);
+  color: #f48771;
+  font: var(--code-font);
+  white-space: pre;
+  padding: 0 12px;
+}
+
+.market-panel .market-state--live {
+  color: #4ec9b0;
+}
+
+.market-panel .market-state--stale {
+  color: #dcdcaa;
+}
+
+.market-panel .market-state--offline {
+  color: #f48771;
+}

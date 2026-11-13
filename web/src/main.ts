@@ -47,6 +47,8 @@ import { SettingsView } from "@/features/settings/settings-view";
 import { DocTabs } from "@/shared/ui/doc-tabs";
 import { GamesHubView } from "@/features/games/hub-view";
 import { GAMES, findGame } from "@/features/games/registry";
+import { MarketApi } from "@/features/market/api";
+import { MarketBoard } from "@/features/market/board";
 import { Sidebar } from "@/features/chat/components/sidebar";
 import { StatusBar } from "@/shared/ui/statusbar";
 
@@ -124,6 +126,7 @@ const gamesViewEl = byId<HTMLElement>("games-view");
 const gamesListEl = byId<HTMLElement>("games-list");
 const gamesGutterEl = byId<HTMLElement>("games-gutter");
 const gamesChipEl = byId<HTMLElement>("games-code-chip");
+const marketViewEl = byId<HTMLElement>("market-view");
 const tabstripEl = byId<HTMLElement>("tabstrip");
 
 // ------------------------------------------------------------------ instances
@@ -256,6 +259,22 @@ const gamesHub = new GamesHubView(
   },
 );
 gamesHub.setGames(GAMES);
+
+const marketBoard = new MarketBoard(
+  {
+    panel: marketViewEl,
+    content: byId<HTMLElement>("market-content"),
+    gutter: byId<HTMLElement>("market-gutter"),
+    chip: byId<HTMLElement>("market-chip"),
+    search: byId<HTMLInputElement>("market-search"),
+    addButton: byId<HTMLButtonElement>("market-add-btn"),
+    count: byId<HTMLElement>("market-count"),
+    clock: byId<HTMLElement>("market-clock"),
+    state: byId<HTMLElement>("market-state"),
+    error: byId<HTMLElement>("market-error"),
+  },
+  { api: new MarketApi(apiBase), storage },
+);
 
 const docTabs = new DocTabs(tabstripEl, editorEl, tabNew, {
   onActivate: (_id, label) => showDocView(label),
@@ -678,6 +697,14 @@ function openRoomsTab(): void {
 function openGamesTab(): void {
   docTabs.open({ id: "games", label: "Games.cs", panel: gamesViewEl, icon: "file" });
   gamesHub.focusFirst();
+}
+
+/**
+ * @brief Opens the market feed document.
+ */
+function openMarketTab(): void {
+  docTabs.open({ id: "market", label: "MarketFeed.cpp", panel: marketViewEl, icon: "chart" });
+  marketBoard.start();
 }
 
 /**
@@ -1184,7 +1211,10 @@ function wire(): void {
   window.addEventListener("keydown", (e: KeyboardEvent) => {
     // A modal (detached document, settings, …) owns Escape while it is open.
     const modalOpen = document.querySelector("dialog[open]") !== null;
-    if (e.ctrlKey && e.key.toLowerCase() === "b") {
+    if (e.ctrlKey && e.key.toLowerCase() === "m") {
+      e.preventDefault();
+      openMarketTab();
+    } else if (e.ctrlKey && e.key.toLowerCase() === "b") {
       e.preventDefault();
       if (tabGame.hidden) gameDialog.open();
       else if (tabGame.getAttribute("aria-selected") === "true") selectRoomTab();
@@ -1207,6 +1237,7 @@ function wire(): void {
   document.getElementById("btn-hub-setting")?.addEventListener("click", () => {
     openSettingsTab();
   });
+  document.getElementById("btn-hub-market")?.addEventListener("click", () => openMarketTab());
 
   for (const input of [roomSearch, treeSearch]) {
     input.addEventListener("input", () => setRoomQuery(input.value));

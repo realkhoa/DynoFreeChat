@@ -33,6 +33,7 @@ export type IconName =
   | "sound"
   | "theme"
   | "info"
+  | "chart"
   | "dot";
 
 const PATHS: Record<IconName, string> = {
@@ -67,6 +68,8 @@ const PATHS: Record<IconName, string> = {
   theme:
     '<circle cx="8" cy="8" r="4.8"/><path d="M8 3.2v9.6" /><path d="M8 3.2a4.8 4.8 0 0 1 0 9.6Z" fill="currentColor" stroke="none"/>',
   info: '<circle cx="8" cy="8" r="5"/><path d="M8 7.2v3.4"/><circle cx="8" cy="5.4" r="0.6" fill="currentColor" stroke="none"/>',
+  chart:
+    '<path d="M2.8 12.6h10.4"/><path d="M4.2 10.6V7.4"/><path d="M7 10.6V4.6"/><path d="M9.8 10.6V6.2"/><path d="M12.4 10.6V3.4"/>',
   dot: '<circle cx="8" cy="8" r="3.2" fill="currentColor" stroke="none"/>',
 };
 
