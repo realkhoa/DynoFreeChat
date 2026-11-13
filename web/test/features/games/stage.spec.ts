@@ -119,6 +119,39 @@ describe("GameStage", () => {
     expect(viewport?.dataset.view).toBe("game");
   });
 
+  it("only shows the fake source once the pointer leaves the editor region", async () => {
+    const elements = makeElements();
+    const editor = document.createElement("div");
+    editor.className = "editor";
+    editor.append(elements.panel);
+    document.body.append(editor);
+    editor.getBoundingClientRect = () =>
+      ({ left: 100, top: 100, right: 900, bottom: 800, width: 800, height: 700 }) as DOMRect;
+
+    const stage = makeStage(elements, { demo: () => fakeGame() });
+    stage.open("demo", "Demo.cs", "local simulation");
+    const viewport = elements.host.querySelector<HTMLElement>(".stage-viewport");
+    await vi.waitFor(() => expect(viewport?.dataset.view).toBe("code"));
+
+    // Header / sidebar: outside the editor, so the fake source stays.
+    document.dispatchEvent(new MouseEvent("pointermove", { clientX: 50, clientY: 50, bubbles: true }));
+    expect(viewport?.dataset.view).toBe("code");
+
+    // Inside the editor: the board comes back.
+    document.dispatchEvent(new MouseEvent("pointermove", { clientX: 400, clientY: 400, bubbles: true }));
+    expect(viewport?.dataset.view).toBe("game");
+
+    // Moving to the header / sidebar hands the screen back to the fake source.
+    editor.dispatchEvent(new MouseEvent("mouseleave"));
+    await vi.waitFor(() => expect(viewport?.dataset.view).toBe("code"));
+
+    // Leaving the browser window is the strongest away signal.
+    editor.dispatchEvent(new MouseEvent("mouseenter"));
+    expect(viewport?.dataset.view).toBe("game");
+    document.dispatchEvent(new MouseEvent("mouseleave"));
+    await vi.waitFor(() => expect(viewport?.dataset.view).toBe("code"));
+  });
+
   it("turns the idle code view off and remembers it", () => {
     const store = new Map<string, string>();
     const storage = {

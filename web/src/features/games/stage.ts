@@ -324,9 +324,13 @@ export class GameStage {
 
   /**
    * @brief Wires hover and keyboard focus to the two views.
-   * @param frame Code frame that owns the pointer events.
+   * @details The trigger is the editor region, not the board: while the pointer
+   * is anywhere inside the code editor the game stays visible, and moving to the
+   * header, the sidebar, the dock or out of the window shows the fake source.
+   * @param frame Code frame, used to find the enclosing editor area.
    */
   private wireUnfocus(frame: HTMLElement): void {
+    const editor = frame.closest<HTMLElement>(".editor") ?? frame;
     const enter = (): void => this.showGame();
     const leave = (): void => {
       if (this.unfocusEnabled) void this.showCode();
@@ -334,16 +338,16 @@ export class GameStage {
     const focusIn = (): void => this.showGame();
     const focusOut = (event: FocusEvent): void => {
       const next = event.relatedTarget;
-      if (next instanceof Node && frame.contains(next)) return;
+      if (next instanceof Node && editor.contains(next)) return;
       leave();
     };
 
-    // The idle document is full-screen, so it sits on top of the frame and
-    // swallows mouseenter. Pointer position over the frame's slot still means
-    // "play": crossing that slot brings the board back.
+    // The idle document is full-screen and swallows mouseenter, so the reveal is
+    // driven by pointer position: entering the editor region brings the board
+    // back, staying in the header or the sidebar keeps the fake source.
     const trackPointer = (event: PointerEvent): void => {
       if (this.viewport === null || this.viewport.dataset.view !== "code") return;
-      const rect = frame.getBoundingClientRect();
+      const rect = editor.getBoundingClientRect();
       const inside =
         event.clientX >= rect.left &&
         event.clientX <= rect.right &&
@@ -352,17 +356,20 @@ export class GameStage {
       if (inside) this.showGame();
     };
 
-    frame.addEventListener("mouseenter", enter);
-    frame.addEventListener("mouseleave", leave);
-    frame.addEventListener("focusin", focusIn);
-    frame.addEventListener("focusout", focusOut);
+    editor.addEventListener("mouseenter", enter);
+    editor.addEventListener("mouseleave", leave);
+    editor.addEventListener("focusin", focusIn);
+    editor.addEventListener("focusout", focusOut);
     document.addEventListener("pointermove", trackPointer, { passive: true });
+    // Leaving the browser window is the strongest "away" signal of all.
+    document.addEventListener("mouseleave", leave);
     this.cleanups.push(
-      () => frame.removeEventListener("mouseenter", enter),
-      () => frame.removeEventListener("mouseleave", leave),
-      () => frame.removeEventListener("focusin", focusIn),
-      () => frame.removeEventListener("focusout", focusOut),
+      () => editor.removeEventListener("mouseenter", enter),
+      () => editor.removeEventListener("mouseleave", leave),
+      () => editor.removeEventListener("focusin", focusIn),
+      () => editor.removeEventListener("focusout", focusOut),
       () => document.removeEventListener("pointermove", trackPointer),
+      () => document.removeEventListener("mouseleave", leave),
     );
   }
 
