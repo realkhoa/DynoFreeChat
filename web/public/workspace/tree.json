@@ -1,0 +1,1329 @@
+{
+  "name": "vinabim_workspace",
+  "type": "folder",
+  "path": ".",
+  "children": [
+    {
+      "name": "VinaBIM",
+      "type": "folder",
+      "path": "VinaBIM",
+      "children": [
+        {
+          "name": "Core",
+          "type": "folder",
+          "path": "VinaBIM/Core",
+          "children": [
+            {
+              "name": "contracts",
+              "type": "folder",
+              "path": "VinaBIM/Core/contracts",
+              "children": [
+                {
+                  "name": "clash",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/clash",
+                  "children": [
+                    {
+                      "name": "FederatedClashModels.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/clash/FederatedClashModels.h"
+                    },
+                    {
+                      "name": "FederatedClashPlanner.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/clash/FederatedClashPlanner.h"
+                    },
+                    {
+                      "name": "IClashDetectionCapability.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/clash/IClashDetectionCapability.h"
+                    },
+                    {
+                      "name": "IClashRunCapability.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/clash/IClashRunCapability.h"
+                    },
+                    {
+                      "name": "Workspace",
+                      "type": "folder",
+                      "path": "VinaBIM/Core/contracts/clash/Workspace",
+                      "children": [
+                        {
+                          "name": "ClashWorkspaceModels.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/Core/contracts/clash/Workspace/ClashWorkspaceModels.h"
+                        },
+                        {
+                          "name": "IClashWorkspacePackageRepository.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/Core/contracts/clash/Workspace/IClashWorkspacePackageRepository.h"
+                        },
+                        {
+                          "name": "IClashWorkspaceWorkerCapability.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/Core/contracts/clash/Workspace/IClashWorkspaceWorkerCapability.h"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "cloud",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/cloud",
+                  "children": [
+                    {
+                      "name": "ICloudFileService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/cloud/ICloudFileService.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "common",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/common",
+                  "children": [
+                    {
+                      "name": "ProgressCancelCallbacks.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/common/ProgressCancelCallbacks.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "dimension",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/dimension",
+                  "children": [
+                    {
+                      "name": "TemporaryDimensionTypes.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/dimension/TemporaryDimensionTypes.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "editor",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/editor",
+                  "children": [
+                    {
+                      "name": "ICommandExecutor.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/editor/ICommandExecutor.h"
+                    },
+                    {
+                      "name": "IEditorCoordinateService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/editor/IEditorCoordinateService.h"
+                    },
+                    {
+                      "name": "IEditorDocumentQueryService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/editor/IEditorDocumentQueryService.h"
+                    },
+                    {
+                      "name": "IEditorHostServices.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/editor/IEditorHostServices.h"
+                    },
+                    {
+                      "name": "IEditorShellService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/editor/IEditorShellService.h"
+                    },
+                    {
+                      "name": "IEditorUiPolicy.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/editor/IEditorUiPolicy.h"
+                    },
+                    {
+                      "name": "IRegenService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/editor/IRegenService.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "family",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/family",
+                  "children": [
+                    {
+                      "name": "EditFamilyException.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/family/EditFamilyException.h"
+                    },
+                    {
+                      "name": "IEditFamilyCapability.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/family/IEditFamilyCapability.h"
+                    },
+                    {
+                      "name": "IEditFamilyTypesController.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/family/IEditFamilyTypesController.h"
+                    },
+                    {
+                      "name": "IFamilyEditDocumentToken.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/family/IFamilyEditDocumentToken.h"
+                    },
+                    {
+                      "name": "IFamilyTypesController.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/family/IFamilyTypesController.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "file",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/file",
+                  "children": [
+                    {
+                      "name": "IModelSaveService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/file/IModelSaveService.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "geometry",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/geometry",
+                  "children": [
+                    {
+                      "name": "CreateLineElementTypes.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/geometry/CreateLineElementTypes.h"
+                    },
+                    {
+                      "name": "IBimLineElementWriter.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/geometry/IBimLineElementWriter.h"
+                    },
+                    {
+                      "name": "LineElementWriterFactory.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/geometry/LineElementWriterFactory.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "manage_links",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/manage_links",
+                  "children": [
+                    {
+                      "name": "ManageLinkModels.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/manage_links/ManageLinkModels.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "move",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/move",
+                  "children": [
+                    {
+                      "name": "MoveInteractionGeometry.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/move/MoveInteractionGeometry.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "parameter",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/parameter",
+                  "children": [
+                    {
+                      "name": "IParameterProvider.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/parameter/IParameterProvider.h"
+                    },
+                    {
+                      "name": "IParameterWriter.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/parameter/IParameterWriter.h"
+                    },
+                    {
+                      "name": "VbParamDraftId.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/parameter/VbParamDraftId.h"
+                    },
+                    {
+                      "name": "VbParameterIdentity.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/parameter/VbParameterIdentity.h"
+                    },
+                    {
+                      "name": "VbParameterTypes.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/parameter/VbParameterTypes.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "preview",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/preview",
+                  "children": [
+                    {
+                      "name": "IPreviewModel.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/preview/IPreviewModel.h"
+                    },
+                    {
+                      "name": "PreviewTypes.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/preview/PreviewTypes.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "rotate",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/rotate",
+                  "children": [
+                    {
+                      "name": "RotateInteractionGeometry.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/rotate/RotateInteractionGeometry.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "selection",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/selection",
+                  "children": [
+                    {
+                      "name": "IEditorSelectionProvider.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/selection/IEditorSelectionProvider.h"
+                    },
+                    {
+                      "name": "ISelectionService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/selection/ISelectionService.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "session",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/session",
+                  "children": [
+                    {
+                      "name": "IDatabaseSessionState.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/session/IDatabaseSessionState.h"
+                    },
+                    {
+                      "name": "IFamilyEditSession.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/session/IFamilyEditSession.h"
+                    },
+                    {
+                      "name": "ISelectionEraseHide.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/session/ISelectionEraseHide.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "snap",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/snap",
+                  "children": [
+                    {
+                      "name": "ISnapService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/snap/ISnapService.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "ui",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/ui",
+                  "children": [
+                    {
+                      "name": "IDialogService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/ui/IDialogService.h"
+                    },
+                    {
+                      "name": "IFileDialogService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/ui/IFileDialogService.h"
+                    },
+                    {
+                      "name": "INotifyUser.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/ui/INotifyUser.h"
+                    },
+                    {
+                      "name": "IPropertiesPanelHost.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/ui/IPropertiesPanelHost.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "undo",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/undo",
+                  "children": [
+                    {
+                      "name": "IUndoRedoManager.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/undo/IUndoRedoManager.h"
+                    },
+                    {
+                      "name": "IUndoableAction.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/undo/IUndoableAction.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "view",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/view",
+                  "children": [
+                    {
+                      "name": "IVisibilityGraphicsPort.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/view/IVisibilityGraphicsPort.h"
+                    },
+                    {
+                      "name": "VisibilityGraphicsDtos.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/view/VisibilityGraphicsDtos.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "visualize",
+                  "type": "folder",
+                  "path": "VinaBIM/Core/contracts/visualize",
+                  "children": [
+                    {
+                      "name": "ClashReview",
+                      "type": "folder",
+                      "path": "VinaBIM/Core/contracts/visualize/ClashReview",
+                      "children": [
+                        {
+                          "name": "IVisualizeClashReviewCapability.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/Core/contracts/visualize/ClashReview/IVisualizeClashReviewCapability.h"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "IVisualizeExportCapability.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/visualize/IVisualizeExportCapability.h"
+                    },
+                    {
+                      "name": "IVisualizeReviewCapability.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/Core/contracts/visualize/IVisualizeReviewCapability.h"
+                    },
+                    {
+                      "name": "ModelExplode",
+                      "type": "folder",
+                      "path": "VinaBIM/Core/contracts/visualize/ModelExplode",
+                      "children": [
+                        {
+                          "name": "IModelExplodeCapability.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/Core/contracts/visualize/ModelExplode/IModelExplodeCapability.h"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Scene",
+                      "type": "folder",
+                      "path": "VinaBIM/Core/contracts/visualize/Scene",
+                      "children": [
+                        {
+                          "name": "IVisualizeSceneCapability.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/Core/contracts/visualize/Scene/IVisualizeSceneCapability.h"
+                        },
+                        {
+                          "name": "IVisualizeSceneNavigationCapability.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/Core/contracts/visualize/Scene/IVisualizeSceneNavigationCapability.h"
+                        },
+                        {
+                          "name": "IVisualizeSceneSelectionCapability.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/Core/contracts/visualize/Scene/IVisualizeSceneSelectionCapability.h"
+                        },
+                        {
+                          "name": "IVisualizeSectionBoxCapability.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/Core/contracts/visualize/Scene/IVisualizeSectionBoxCapability.h"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Walker",
+                      "type": "folder",
+                      "path": "VinaBIM/Core/contracts/visualize/Walker",
+                      "children": [
+                        {
+                          "name": "IGroundedWalkCapability.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/Core/contracts/visualize/Walker/IGroundedWalkCapability.h"
+                        },
+                        {
+                          "name": "IWalkerCapability.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/Core/contracts/visualize/Walker/IWalkerCapability.h"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "ledger",
+              "type": "folder",
+              "path": "VinaBIM/Core/ledger",
+              "children": [
+                {
+                  "name": "ModelLedger.cpp",
+                  "type": "file",
+                  "ext": ".cpp",
+                  "path": "VinaBIM/Core/ledger/ModelLedger.cpp"
+                },
+                {
+                  "name": "ModelLedger.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/Core/ledger/ModelLedger.h"
+                },
+                {
+                  "name": "ModelLedgerRecord.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/Core/ledger/ModelLedgerRecord.h"
+                }
+              ]
+            },
+            {
+              "name": "walk",
+              "type": "folder",
+              "path": "VinaBIM/Core/walk",
+              "children": [
+                {
+                  "name": "GroundedWalkSolver.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/Core/walk/GroundedWalkSolver.h"
+                },
+                {
+                  "name": "WalkContainment.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/Core/walk/WalkContainment.h"
+                },
+                {
+                  "name": "WalkPolygonTriangulator.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/Core/walk/WalkPolygonTriangulator.h"
+                },
+                {
+                  "name": "WalkTransform.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/Core/walk/WalkTransform.h"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "cpp.hint",
+          "type": "file",
+          "ext": ".hint",
+          "path": "VinaBIM/cpp.hint"
+        },
+        {
+          "name": "domain",
+          "type": "folder",
+          "path": "VinaBIM/domain",
+          "children": [
+            {
+              "name": "public_api",
+              "type": "folder",
+              "path": "VinaBIM/domain/public_api",
+              "children": [
+                {
+                  "name": "VBimSdk.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/domain/public_api/VBimSdk.h"
+                },
+                {
+                  "name": "VinaBIMApiExport.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/domain/public_api/VinaBIMApiExport.h"
+                },
+                {
+                  "name": "app",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/app",
+                  "children": [
+                    {
+                      "name": "VBimUIApplication.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/app/VBimUIApplication.cpp"
+                    },
+                    {
+                      "name": "VBimUIApplication.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/app/VBimUIApplication.h"
+                    },
+                    {
+                      "name": "VBimUIDocument.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/app/VBimUIDocument.cpp"
+                    },
+                    {
+                      "name": "VBimUIDocument.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/app/VBimUIDocument.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "command",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/command",
+                  "children": [
+                    {
+                      "name": "Availability",
+                      "type": "folder",
+                      "path": "VinaBIM/domain/public_api/command/Availability",
+                      "children": [
+                        {
+                          "name": "IVBimCommandAvailability.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/command/Availability/IVBimCommandAvailability.h"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "VBimCommand.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/command/VBimCommand.cpp"
+                    },
+                    {
+                      "name": "VBimCommand.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/command/VBimCommand.h"
+                    },
+                    {
+                      "name": "internal",
+                      "type": "folder",
+                      "path": "VinaBIM/domain/public_api/command/internal",
+                      "children": [
+                        {
+                          "name": "VBimDeferredUndo.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/command/internal/VBimDeferredUndo.h"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "project",
+                      "type": "folder",
+                      "path": "VinaBIM/domain/public_api/command/project",
+                      "children": [
+                        {
+                          "name": "VBimProjectCommand.cpp",
+                          "type": "file",
+                          "ext": ".cpp",
+                          "path": "VinaBIM/domain/public_api/command/project/VBimProjectCommand.cpp"
+                        },
+                        {
+                          "name": "VBimProjectCommand.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/command/project/VBimProjectCommand.h"
+                        },
+                        {
+                          "name": "VBimProjectExecutionContext.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/command/project/VBimProjectExecutionContext.h"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "editor",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/editor",
+                  "children": [
+                    {
+                      "name": "VBimDimInteraction.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/editor/VBimDimInteraction.cpp"
+                    },
+                    {
+                      "name": "VBimDimInteraction.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/editor/VBimDimInteraction.h"
+                    },
+                    {
+                      "name": "VBimEditorApi.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/editor/VBimEditorApi.h"
+                    },
+                    {
+                      "name": "VBimPlacementPreview.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/editor/VBimPlacementPreview.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "events",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/events",
+                  "children": [
+                    {
+                      "name": "ExternalEvent",
+                      "type": "folder",
+                      "path": "VinaBIM/domain/public_api/events/ExternalEvent",
+                      "children": [
+                        {
+                          "name": "VBimExternalEvent.cpp",
+                          "type": "file",
+                          "ext": ".cpp",
+                          "path": "VinaBIM/domain/public_api/events/ExternalEvent/VBimExternalEvent.cpp"
+                        },
+                        {
+                          "name": "VBimExternalEvent.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/events/ExternalEvent/VBimExternalEvent.h"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "VBimEventManager.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/events/VBimEventManager.cpp"
+                    },
+                    {
+                      "name": "VBimEventManager.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/events/VBimEventManager.h"
+                    },
+                    {
+                      "name": "internal",
+                      "type": "folder",
+                      "path": "VinaBIM/domain/public_api/events/internal",
+                      "children": [
+                        {
+                          "name": "VBimEventBridge.cpp",
+                          "type": "file",
+                          "ext": ".cpp",
+                          "path": "VinaBIM/domain/public_api/events/internal/VBimEventBridge.cpp"
+                        },
+                        {
+                          "name": "VBimEventBridge.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/events/internal/VBimEventBridge.h"
+                        },
+                        {
+                          "name": "VBimEventDispatch.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/events/internal/VBimEventDispatch.h"
+                        },
+                        {
+                          "name": "VBimViewBuilder.cpp",
+                          "type": "file",
+                          "ext": ".cpp",
+                          "path": "VinaBIM/domain/public_api/events/internal/VBimViewBuilder.cpp"
+                        },
+                        {
+                          "name": "VBimViewBuilder.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/events/internal/VBimViewBuilder.h"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "json",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/json",
+                  "children": [
+                    {
+                      "name": "VBimJson.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/json/VBimJson.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "net",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/net",
+                  "children": [
+                    {
+                      "name": "VBimHttp.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/net/VBimHttp.h"
+                    },
+                    {
+                      "name": "VBimNetworkHelper.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/net/VBimNetworkHelper.cpp"
+                    },
+                    {
+                      "name": "VBimNetworkHelper.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/net/VBimNetworkHelper.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "optionbar",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/optionbar",
+                  "children": [
+                    {
+                      "name": "OptionBarTypes.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/optionbar/OptionBarTypes.h"
+                    },
+                    {
+                      "name": "VBimOptionBarScope.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/optionbar/VBimOptionBarScope.cpp"
+                    },
+                    {
+                      "name": "VBimOptionBarScope.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/optionbar/VBimOptionBarScope.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "properties",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/properties",
+                  "children": [
+                    {
+                      "name": "VBimElementProperties.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/properties/VBimElementProperties.cpp"
+                    },
+                    {
+                      "name": "VBimElementProperties.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/properties/VBimElementProperties.h"
+                    },
+                    {
+                      "name": "VBimProjectProperties.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/properties/VBimProjectProperties.cpp"
+                    },
+                    {
+                      "name": "VBimProjectProperties.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/properties/VBimProjectProperties.h"
+                    },
+                    {
+                      "name": "VBimProjectProperty.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/properties/VBimProjectProperty.h"
+                    },
+                    {
+                      "name": "VBimPropertiesPaneScope.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/properties/VBimPropertiesPaneScope.cpp"
+                    },
+                    {
+                      "name": "VBimPropertiesPaneScope.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/properties/VBimPropertiesPaneScope.h"
+                    },
+                    {
+                      "name": "internal",
+                      "type": "folder",
+                      "path": "VinaBIM/domain/public_api/properties/internal",
+                      "children": [
+                        {
+                          "name": "VBimPropertyValueParser.cpp",
+                          "type": "file",
+                          "ext": ".cpp",
+                          "path": "VinaBIM/domain/public_api/properties/internal/VBimPropertyValueParser.cpp"
+                        },
+                        {
+                          "name": "VBimPropertyValueParser.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/properties/internal/VBimPropertyValueParser.h"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "ribbon",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/ribbon",
+                  "children": [
+                    {
+                      "name": "RibbonControl.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/ribbon/RibbonControl.cpp"
+                    },
+                    {
+                      "name": "RibbonControl.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/ribbon/RibbonControl.h"
+                    },
+                    {
+                      "name": "VBimContextualTabScope.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/ribbon/VBimContextualTabScope.cpp"
+                    },
+                    {
+                      "name": "VBimContextualTabScope.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/ribbon/VBimContextualTabScope.h"
+                    },
+                    {
+                      "name": "VBimRibbonConstants.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/ribbon/VBimRibbonConstants.h"
+                    },
+                    {
+                      "name": "VBimRibbonGdi.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/ribbon/VBimRibbonGdi.h"
+                    },
+                    {
+                      "name": "VBimRibbonPluginApi.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/ribbon/VBimRibbonPluginApi.h"
+                    },
+                    {
+                      "name": "VBimRibbonTypes.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/ribbon/VBimRibbonTypes.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "selection",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/selection",
+                  "children": [
+                    {
+                      "name": "IVBimPickerService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/selection/IVBimPickerService.h"
+                    },
+                    {
+                      "name": "IVBimSelectionFilter.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/selection/IVBimSelectionFilter.h"
+                    },
+                    {
+                      "name": "VBimReferenceExtractor.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/selection/VBimReferenceExtractor.h"
+                    },
+                    {
+                      "name": "VBimSelection.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/selection/VBimSelection.cpp"
+                    },
+                    {
+                      "name": "VBimSelection.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/selection/VBimSelection.h"
+                    },
+                    {
+                      "name": "VBimSelectionService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/selection/VBimSelectionService.h"
+                    },
+                    {
+                      "name": "VBimSelectionTypes.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/selection/VBimSelectionTypes.h"
+                    }
+                  ]
+                },
+                {
+                  "name": "ui",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/ui",
+                  "children": [
+                    {
+                      "name": "AdvancedDialog",
+                      "type": "folder",
+                      "path": "VinaBIM/domain/public_api/ui/AdvancedDialog",
+                      "children": [
+                        {
+                          "name": "VBimTaskDialogOptions.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/ui/AdvancedDialog/VBimTaskDialogOptions.h"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "DockablePaneState",
+                      "type": "folder",
+                      "path": "VinaBIM/domain/public_api/ui/DockablePaneState",
+                      "children": [
+                        {
+                          "name": "VBimPaneState.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/ui/DockablePaneState/VBimPaneState.h"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "VBimDockablePaneRegistry.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/ui/VBimDockablePaneRegistry.cpp"
+                    },
+                    {
+                      "name": "VBimDockablePaneRegistry.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/ui/VBimDockablePaneRegistry.h"
+                    },
+                    {
+                      "name": "VBimProgressService.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/ui/VBimProgressService.cpp"
+                    },
+                    {
+                      "name": "VBimProgressService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/ui/VBimProgressService.h"
+                    },
+                    {
+                      "name": "VBimResizableDialog.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/ui/VBimResizableDialog.cpp"
+                    },
+                    {
+                      "name": "VBimResizableDialog.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/ui/VBimResizableDialog.h"
+                    },
+                    {
+                      "name": "VBimTaskDialogService.cpp",
+                      "type": "file",
+                      "ext": ".cpp",
+                      "path": "VinaBIM/domain/public_api/ui/VBimTaskDialogService.cpp"
+                    },
+                    {
+                      "name": "VBimTaskDialogService.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/ui/VBimTaskDialogService.h"
+                    },
+                    {
+                      "name": "internal",
+                      "type": "folder",
+                      "path": "VinaBIM/domain/public_api/ui/internal",
+                      "children": [
+                        {
+                          "name": "VBimDockablePaneBridge.cpp",
+                          "type": "file",
+                          "ext": ".cpp",
+                          "path": "VinaBIM/domain/public_api/ui/internal/VBimDockablePaneBridge.cpp"
+                        },
+                        {
+                          "name": "VBimDockablePaneBridge.h",
+                          "type": "file",
+                          "ext": ".h",
+                          "path": "VinaBIM/domain/public_api/ui/internal/VBimDockablePaneBridge.h"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "undo",
+                  "type": "folder",
+                  "path": "VinaBIM/domain/public_api/undo",
+                  "children": [
+                    {
+                      "name": "VBimUndoApi.h",
+                      "type": "file",
+                      "ext": ".h",
+                      "path": "VinaBIM/domain/public_api/undo/VBimUndoApi.h"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "sdk_samples",
+              "type": "folder",
+              "path": "VinaBIM/domain/sdk_samples",
+              "children": [
+                {
+                  "name": "VBimSdkSampleCommand.cpp",
+                  "type": "file",
+                  "ext": ".cpp",
+                  "path": "VinaBIM/domain/sdk_samples/VBimSdkSampleCommand.cpp"
+                },
+                {
+                  "name": "VBimSdkSampleCommand.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/domain/sdk_samples/VBimSdkSampleCommand.h"
+                }
+              ]
+            },
+            {
+              "name": "selection",
+              "type": "folder",
+              "path": "VinaBIM/domain/selection",
+              "children": [
+                {
+                  "name": "VBimPickBBoxDrawable.cpp",
+                  "type": "file",
+                  "ext": ".cpp",
+                  "path": "VinaBIM/domain/selection/VBimPickBBoxDrawable.cpp"
+                },
+                {
+                  "name": "VBimPickBBoxDrawable.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/domain/selection/VBimPickBBoxDrawable.h"
+                },
+                {
+                  "name": "VBimPickTracker.cpp",
+                  "type": "file",
+                  "ext": ".cpp",
+                  "path": "VinaBIM/domain/selection/VBimPickTracker.cpp"
+                },
+                {
+                  "name": "VBimPickTracker.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/domain/selection/VBimPickTracker.h"
+                },
+                {
+                  "name": "VBimPickerService.cpp",
+                  "type": "file",
+                  "ext": ".cpp",
+                  "path": "VinaBIM/domain/selection/VBimPickerService.cpp"
+                },
+                {
+                  "name": "VBimPickerService.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/domain/selection/VBimPickerService.h"
+                },
+                {
+                  "name": "VBimReferenceExtractor.cpp",
+                  "type": "file",
+                  "ext": ".cpp",
+                  "path": "VinaBIM/domain/selection/VBimReferenceExtractor.cpp"
+                }
+              ]
+            },
+            {
+              "name": "vinaBIMCore",
+              "type": "folder",
+              "path": "VinaBIM/domain/vinaBIMCore",
+              "children": [
+                {
+                  "name": "DbJigImpl.cpp",
+                  "type": "file",
+                  "ext": ".cpp",
+                  "path": "VinaBIM/domain/vinaBIMCore/DbJigImpl.cpp"
+                },
+                {
+                  "name": "Dbjig.cpp",
+                  "type": "file",
+                  "ext": ".cpp",
+                  "path": "VinaBIM/domain/vinaBIMCore/Dbjig.cpp"
+                },
+                {
+                  "name": "Dbjig.h",
+                  "type": "file",
+                  "ext": ".h",
+                  "path": "VinaBIM/domain/vinaBIMCore/Dbjig.h"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "VinaBIM.sln",
+      "type": "file",
+      "ext": ".sln",
+      "path": "VinaBIM.sln"
+    },
+    {
+      "name": "build_errors.log",
+      "type": "file",
+      "ext": ".log",
+      "path": "build_errors.log"
+    },
+    {
+      "name": "file_list_24.12_FileConverter.txt",
+      "type": "file",
+      "ext": ".txt",
+      "path": "file_list_24.12_FileConverter.txt"
+    },
+    {
+      "name": "file_list_25.12_FileConverter.txt",
+      "type": "file",
+      "ext": ".txt",
+      "path": "file_list_25.12_FileConverter.txt"
+    },
+    {
+      "name": "file_list_26.12_FileConverter.txt",
+      "type": "file",
+      "ext": ".txt",
+      "path": "file_list_26.12_FileConverter.txt"
+    }
+  ]
+}

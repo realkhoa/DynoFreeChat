@@ -1,0 +1,14 @@
+{
+  "source": "C:\\Users\\khoan\\AppData\\Local\\Temp\\vn_stock_monitor_clean\\inner",
+  "output": "E:\\sourcecode\\DynoFreeChat\\web\\public\\workspace",
+  "treeFiles": 155,
+  "copied": 155,
+  "missing": [],
+  "extras": 4,
+  "fixtures": [
+    "caro.json",
+    "chess.json",
+    "gunny.json"
+  ],
+  "bytes": 1409603
+}
