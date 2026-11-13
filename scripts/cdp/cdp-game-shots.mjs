@@ -126,6 +126,13 @@ for (const id of GAMES) {
     text: await evaluate(`document.querySelector("#game-stage-host")?.textContent.slice(0, 90) ?? null`),
   };
   await shot(`game-${id}`);
+  if (id === "caro" || id === "chess") {
+    await click("#game-stage-focus");
+    await sleep(300);
+    await shot(`game-${id}-focus`);
+    await click("#game-stage-focus");
+    await sleep(200);
+  }
 }
 
 console.log(JSON.stringify(report, null, 2));

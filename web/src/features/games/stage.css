@@ -33,52 +33,67 @@
   width: min(100%, 860px);
 }
 
-.stage-code-frame::before {
-  content: "// " attr(data-game) " - interactive board (click a cell)";
-  color: #6a9955;
+/* Real code lines above and below the board literal. */
+.stage-code {
+  display: block;
+  flex: none;
   font: var(--code-font);
-  white-space: pre;
-}
-
-.stage-code-frame::after {
-  content: "};";
   color: #d4d4d4;
-  font: var(--code-font);
-  white-space: pre;
 }
 
-/* Toolbar-ish row above the board: counters, level picker, difficulty. */
-.stage-bar {
+.stage-code-line {
+  white-space: pre;
+  min-height: var(--code-line-height);
+}
+
+.stage-code-line.is-comment {
+  color: #6a9955;
+}
+
+.stage-code-line.is-pre {
+  color: #c586c0;
+}
+
+/* The mounted game is dimmed like generated data, and brightens on hover or
+   focus so it stays comfortable to actually play. */
+.stage-game-host {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0.78;
+  transition: opacity 120ms ease;
+}
+
+.stage-game-host:hover,
+.stage-game-host:focus-within {
+  opacity: 1;
+}
+
+.game-stage-host[data-focus="on"] .stage-game-host {
+  opacity: 0.55;
+}
+
+/* The bar, HUD and status are printed as file comments: quiet, monospace, and
+   prefixed with `//` so nothing reads as game chrome at a glance. */
+.stage-bar,
+.stage-hud {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   color: #6a9955;
-  font: var(--code-font);
+  font: 11.5px/1.5 var(--font-mono);
 }
 
-.stage-bar::before {
-  content: "// ";
-  color: #6a9955;
-}
-
-.stage-hud {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  color: #6a9955;
-  font: var(--code-font);
-}
-
+.stage-bar::before,
 .stage-hud::before {
   content: "// ";
   color: #6a9955;
 }
 
 .stage-hud b {
-  color: #dcdcaa;
-  font-weight: 600;
+  color: #9cdcfe;
+  font-weight: 500;
 }
 
 .stage-btn {
@@ -114,33 +129,40 @@
 /* Grid boards (caro, battleship, chess, minesweeper, sudoku, 2048, sokoban, …).
    Cells share hairlines so the board reads as one literal, and stay 44px so they
    remain easy to press. */
+/* The board is a generated data literal: no card, no grid lines, no centred game
+   screen. Cells flow on the editor grid as comma separated glyphs, exactly the
+   way an initializer list would print. */
 .stage-board {
   display: grid;
   gap: 0;
-  margin: 0 auto;
+  margin: 0 0 2px 14px;
   width: max-content;
   max-width: 100%;
-  background: var(--editor);
-  border: 1px solid var(--border-subtle);
+  background: transparent;
+  border: 0;
 }
 
 .stage-cell {
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
+  justify-content: flex-start;
+  min-width: 34px;
+  min-height: 30px;
+  padding: 0 2px;
   background: transparent;
   border: 0;
-  border-right: 1px solid #232323;
-  border-bottom: 1px solid #232323;
   border-radius: 0;
   color: #d4d4d4;
-  font: 600 14px/1 var(--font-mono);
-  text-align: center;
+  font: 500 13.5px/1.6 var(--font-mono);
+  text-align: left;
   cursor: pointer;
   user-select: none;
+}
+
+/* Every token ends with a comma so the board parses as a literal list. */
+.stage-cell::after {
+  content: ",";
+  color: #4b4b4b;
 }
 
 .stage-cell:hover {
@@ -195,35 +217,33 @@
 
 /* Row based layouts (card hands, queue lists, word grids). */
 .stage-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0 auto;
+  display: block;
+  margin: 0 0 2px 14px;
   max-width: 100%;
-  font: var(--code-font);
+  font: 13px/1.9 var(--font-mono);
 }
 
 .stage-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
+  display: inline;
 }
 
 .stage-card {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 30px;
-  min-height: 42px;
-  padding: 0 3px;
+  display: inline-block;
+  min-width: 0;
+  min-height: 0;
+  padding: 2px 3px;
   background: transparent;
-  border: 1px solid var(--border-subtle);
+  border: 0;
   border-radius: 2px;
   color: #ce9178;
-  font: 600 12.5px/1 var(--font-mono);
+  font: inherit;
   cursor: pointer;
   user-select: none;
+}
+
+.stage-card::after {
+  content: ",";
+  color: #4b4b4b;
 }
 
 .stage-card.is-selected {
@@ -264,4 +284,12 @@
   font: var(--code-font);
   text-align: center;
   white-space: pre-wrap;
+}
+
+/* Focus mode: hide every game comment and counter so the document is only the
+   generated data literal. Toggled from the toolbar or Ctrl+Shift+H. */
+.game-stage-host[data-focus="on"] .stage-bar,
+.game-stage-host[data-focus="on"] .stage-hud,
+.game-stage-host[data-focus="on"] .stage-status {
+  display: none;
 }

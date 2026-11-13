@@ -328,8 +328,10 @@ const gameStage = new GameStage(
     chip: byId<HTMLElement>("game-stage-chip"),
     status: byId<HTMLElement>("game-stage-status"),
     restart: byId<HTMLButtonElement>("game-stage-restart"),
+    focus: byId<HTMLButtonElement>("game-stage-focus"),
   },
   GAME_FACTORIES,
+  storage,
 );
 
 const matchView = new MatchView(
@@ -1498,6 +1500,9 @@ function wire(): void {
     } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "e") {
       e.preventDefault();
       openWorkspaceTab();
+    } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "h") {
+      e.preventDefault();
+      if (docTabs.activeId === "game-stage") gameStage.toggleFocus();
     } else if (!modalOpen && e.key === "F7") {
       e.preventDefault();
       openQuotesTab();

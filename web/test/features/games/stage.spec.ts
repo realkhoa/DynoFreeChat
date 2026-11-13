@@ -34,7 +34,8 @@ function makeElements(): StageElements {
     <span id="game-stage-chip"></span>
     <div id="game-stage-host"></div>
     <span id="game-stage-status"></span>
-    <button id="game-stage-restart"></button>`;
+    <button id="game-stage-restart"></button>
+    <button id="game-stage-focus"></button>`;
   document.body.append(panel);
 
   return {
@@ -44,10 +45,40 @@ function makeElements(): StageElements {
     chip: panel.querySelector<HTMLElement>("#game-stage-chip")!,
     status: panel.querySelector<HTMLElement>("#game-stage-status")!,
     restart: panel.querySelector<HTMLButtonElement>("#game-stage-restart")!,
+    focus: panel.querySelector<HTMLButtonElement>("#game-stage-focus")!,
   };
 }
 
 describe("GameStage", () => {
+  it("dims the board and hides the comments when Focus is on", () => {
+    const elements = makeElements();
+    const stage = new GameStage(elements, { demo: () => fakeGame() });
+    stage.open("demo", "Demo.cs", "local simulation");
+
+    expect(elements.host.dataset.focus).toBe("off");
+    expect(stage.toggleFocus()).toBe(true);
+    expect(elements.host.dataset.focus).toBe("on");
+    expect(elements.focus.getAttribute("aria-pressed")).toBe("true");
+    expect(stage.toggleFocus()).toBe(false);
+    expect(elements.host.dataset.focus).toBe("off");
+  });
+
+  it("remembers the Focus preference in storage", () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value),
+    } as unknown as Storage;
+
+    const first = new GameStage(makeElements(), { demo: () => fakeGame() }, storage);
+    first.toggleFocus();
+
+    const elements = makeElements();
+    const second = new GameStage(elements, { demo: () => fakeGame() }, storage);
+    expect(second.isFocused).toBe(true);
+    expect(elements.host.dataset.focus).toBe("on");
+  });
+
   it("mounts the requested game and paints the tab chrome", () => {
     const elements = makeElements();
     const game = fakeGame();
@@ -56,9 +87,13 @@ describe("GameStage", () => {
     expect(stage.open("demo", "Demo.cs", "local simulation")).toBe(true);
     expect(stage.activeId).toBe("demo");
     expect(game.mounts).toBe(1);
-    expect(elements.host.textContent).toBe("board");
+    expect(elements.host.querySelector(".stage-game-host")?.textContent).toBe("board");
+    // Real code lines surround the board literal so it reads as part of a file.
+    expect(elements.host.textContent).toContain("static const BoardCell g_Board[] = {");
+    expect(elements.host.textContent).toContain('#include "dynofreechat/board.h"');
+    expect(elements.host.textContent).toContain("} // namespace DynoFreeChat::Games");
     expect(elements.title.textContent).toBe("Demo.cs");
-    expect(elements.chip.textContent).toBe("// local simulation");
+    expect(elements.chip.textContent).toBe("// generated · read-only");
   });
 
   it("unmounts the previous game before mounting the next one", () => {
