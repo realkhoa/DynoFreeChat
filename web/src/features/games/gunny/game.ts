@@ -1,12 +1,15 @@
 /**
  * @file game.ts
- * @brief Gunny game module: a turn-based artillery duel against an AI on a canvas.
+ * @brief Gunny game module: a turn-based artillery duel against the AI or online.
  * @details Terrain, ballistics, damage and the AI aim are pure functions, so the
  * duel is testable without a canvas. The factory owns inputs, the flight loop,
- * the alternating turns and the AI timer.
+ * the alternating turns and the AI timer. Online the seed drives the terrain and
+ * the wind for every round; each shot is simulated to impact synchronously and
+ * relayed as its angle and power, so both clients apply identical damage.
  */
 
-import type { GameMount } from "../mount";
+import type { GameContext, GameMount } from "../mount";
+import type { OnlineBridge } from "../online/bridge";
 
 /** @brief Playfield width in logical pixels. */
 export const GUNNY_WIDTH = 900;
@@ -41,6 +44,8 @@ const POWER_MIN = 10;
 const POWER_MAX = 100;
 const AI_ANGLE_ERROR = 3.2;
 const AI_POWER_ERROR = 0.07;
+/** Safety bound for the synchronous online shot simulation (about 100 seconds). */
+const MAX_SHOT_STEPS = 6000;
 
 /** @brief Ballistic projectile advanced by {@link stepProjectile}. */
 export interface GunnyProjectile {
@@ -178,6 +183,81 @@ export function terrainHeightAt(terrain: readonly number[], x: number): number {
   if (terrain.length === 0) return GUNNY_HEIGHT;
   const index = Math.round(clamp(x, 0, terrain.length - 1));
   return terrain[index] ?? GUNNY_HEIGHT;
+}
+
+/** @brief Where an online shot landed and how much damage it dealt. */
+export interface GunnyShotResult {
+  /** Impact horizontal position in world pixels. */
+  x: number;
+  /** Impact vertical position in world pixels. */
+  y: number;
+  /** Whole damage dealt to the target tank. */
+  damage: number;
+}
+
+/**
+ * @brief Derives the wind acceleration for one online round from the match seed.
+ * @details A dedicated generator is advanced once per round, so both clients
+ * compute the same wind without exchanging any extra message.
+ * @param seed Shared seed chosen by the host.
+ * @param round Round counter starting at 1.
+ * @return Wind acceleration in pixels per second squared, -6 to 6.
+ */
+export function windForRound(seed: number, round: number): number {
+  const steps = Math.max(1, Math.floor(round));
+  const rng = createRng((seed ^ 0x9e3779b9) >>> 0);
+  let value = 0;
+  for (let index = 0; index < steps; index += 1) value = rng();
+  return round1(value * 12 - 6);
+}
+
+/**
+ * @brief Runs one shot to impact on a shared world, without animation.
+ * @details Seat 1 always fires from the left and seat 2 from the right, so the
+ * same angle, power and wind produce the same impact on both clients. The step
+ * order mirrors the local flight loop: advance, test the tank, test the ground.
+ * @param terrain Heightmap both clients generated from the shared seed.
+ * @param shooterSeat Seat that fired: 1 fires right, 2 fires left.
+ * @param angle Barrel angle in degrees, clamped to 10..80.
+ * @param power Power setting, clamped to 10..100.
+ * @param wind Wind acceleration for the round.
+ * @return The impact point and the whole damage dealt to the target tank.
+ */
+export function simulateShot(
+  terrain: readonly number[],
+  shooterSeat: 1 | 2,
+  angle: number,
+  power: number,
+  wind: number,
+): GunnyShotResult {
+  const facing: 1 | -1 = shooterSeat === 1 ? 1 : -1;
+  const startX = shooterSeat === 1 ? GUNNY_PLAYER_X : GUNNY_ENEMY_X;
+  const targetX = shooterSeat === 1 ? GUNNY_ENEMY_X : GUNNY_PLAYER_X;
+  const targetY = tankTop(terrain, targetX);
+  let projectile = launchProjectile(startX, tankTop(terrain, startX), angle, power, wind, facing);
+
+  for (let step = 0; step < MAX_SHOT_STEPS; step += 1) {
+    projectile = stepProjectile(projectile);
+    const distance = Math.hypot(projectile.x - targetX, projectile.y - targetY);
+    if (distance <= GUNNY_TANK_WIDTH / 2) {
+      return { x: projectile.x, y: projectile.y, damage: computeDamage(distance, GUNNY_BLAST_RADIUS) };
+    }
+    const ground = terrainHeightAt(terrain, projectile.x);
+    if (
+      projectile.x <= 0 ||
+      projectile.x >= GUNNY_WIDTH ||
+      projectile.y >= ground ||
+      projectile.y > GUNNY_HEIGHT
+    ) {
+      const x = clamp(projectile.x, 0, GUNNY_WIDTH);
+      const y = Math.min(projectile.y, GUNNY_HEIGHT);
+      return { x, y, damage: computeDamage(Math.hypot(x - targetX, y - targetY), GUNNY_BLAST_RADIUS) };
+    }
+  }
+
+  const x = clamp(projectile.x, 0, GUNNY_WIDTH);
+  const y = Math.min(projectile.y, GUNNY_HEIGHT);
+  return { x, y, damage: computeDamage(Math.hypot(x - targetX, y - targetY), GUNNY_BLAST_RADIUS) };
 }
 
 /**
@@ -387,6 +467,17 @@ export function createGunnyGame(): GameMount {
   let turnValue: HTMLElement | null = null;
   let statusLine: HTMLElement | null = null;
   let fireButton: HTMLButtonElement | null = null;
+  let online: OnlineBridge | null = null;
+  let onlineLocalSeat: 1 | 2 = 1;
+  let onlineSeed = 0;
+  let onlineTurn: 1 | 2 = 1;
+  let onlineShots = 0;
+  let peerLeft = false;
+  let onlineCtx: CanvasRenderingContext2D | null = null;
+  let onlineAngleField: HTMLInputElement | null = null;
+  let onlinePowerField: HTMLInputElement | null = null;
+  let unsubscribeMove: (() => void) | null = null;
+  let unsubscribePeer: (() => void) | null = null;
 
   /** @brief Builds a duel: fresh terrain, full tanks and a random wind. */
   function createSession(source: () => number): GunnySession {
@@ -449,6 +540,15 @@ export function createGunnyGame(): GameMount {
     }
     for (const dispose of cleanups) dispose();
     cleanups.length = 0;
+    unsubscribeMove?.();
+    unsubscribePeer?.();
+    unsubscribeMove = null;
+    unsubscribePeer = null;
+    online = null;
+    peerLeft = false;
+    onlineCtx = null;
+    onlineAngleField = null;
+    onlinePowerField = null;
     playerHpValue = null;
     enemyHpValue = null;
     windValue = null;
@@ -459,10 +559,14 @@ export function createGunnyGame(): GameMount {
     host = null;
   };
 
-  const mount = (nextHost: HTMLElement): void => {
+  const mount = (nextHost: HTMLElement, context?: GameContext): void => {
     unmount();
     mounted = true;
     host = nextHost;
+    if (context?.online !== undefined) {
+      mountOnline(nextHost, context.online);
+      return;
+    }
     rng = createRng(Date.now() >>> 0);
     session = createSession(rng);
     host.replaceChildren();
@@ -704,6 +808,242 @@ export function createGunnyGame(): GameMount {
     drawScene(ctx, session);
     frameId = requestAnimationFrame(frame);
   };
+
+  /** @brief Builds the online duel state from the shared seed. */
+  function createOnlineSession(seed: number, localSeat: 1 | 2): GunnySession {
+    const wind = windForRound(seed, 1);
+    return {
+      terrain: generateTerrain(seed, GUNNY_WIDTH),
+      playerHp: 100,
+      enemyHp: 100,
+      wind,
+      round: 1,
+      turn: localSeat === 1 ? "player" : "ai",
+      angle: 45,
+      power: 60,
+      aiAngle: 45,
+      projectile: null,
+      trail: [],
+      boom: null,
+      shooter: "player",
+      message: `Round 1 — wind ${describeWind(wind)}. ${
+        localSeat === 1 ? "Seat 1 fires first — you lead." : "Seat 1 fires first — opponent leads."
+      }`,
+      over: false,
+    };
+  }
+
+  /** @brief Status line for the online duel, from the local seat's perspective. */
+  function onlineStatusText(): string {
+    if (peerLeft) return "Opponent left the match.";
+    if (session.over) return session.message;
+    const turn = onlineTurn === onlineLocalSeat ? "your turn" : "opponent's turn";
+    return `${session.message} You are seat ${onlineLocalSeat} — ${turn}.`;
+  }
+
+  /** @brief Repaints the online HUD, the status line and the battlefield. */
+  function syncOnlineHud(): void {
+    const localHp = onlineLocalSeat === 1 ? session.playerHp : session.enemyHp;
+    const foeHp = onlineLocalSeat === 1 ? session.enemyHp : session.playerHp;
+    if (playerHpValue !== null) playerHpValue.textContent = String(Math.round(localHp));
+    if (enemyHpValue !== null) enemyHpValue.textContent = String(Math.round(foeHp));
+    if (windValue !== null) {
+      windValue.textContent = `${session.wind >= 0 ? "→" : "←"} ${Math.abs(session.wind).toFixed(1)}`;
+    }
+    if (roundValue !== null) roundValue.textContent = String(session.round);
+    if (turnValue !== null) {
+      turnValue.textContent = session.over ? "over" : onlineTurn === onlineLocalSeat ? "you" : "opponent";
+    }
+    if (fireButton !== null) {
+      fireButton.disabled = session.over || peerLeft || onlineTurn !== onlineLocalSeat;
+    }
+    if (statusLine !== null) statusLine.textContent = onlineStatusText();
+    if (onlineCtx !== null) drawScene(onlineCtx, session);
+  }
+
+  /**
+   * @brief Applies one resolved online shot to the shared world.
+   * @param shooterSeat Seat that fired: 1 is the left tank, 2 the right tank.
+   * @param angle Validated barrel angle in degrees.
+   * @param power Validated power setting.
+   */
+  function applyOnlineShot(shooterSeat: 1 | 2, angle: number, power: number): void {
+    const result = simulateShot(session.terrain, shooterSeat, angle, power, session.wind);
+    const targetSeat: 1 | 2 = shooterSeat === 1 ? 2 : 1;
+    const localShot = shooterSeat === onlineLocalSeat;
+    session.projectile = null;
+    session.trail = [];
+    session.boom = { x: result.x, y: result.y, alpha: 1 };
+    if (targetSeat === 1) session.playerHp = Math.max(0, session.playerHp - result.damage);
+    else session.enemyHp = Math.max(0, session.enemyHp - result.damage);
+    session.shooter = localShot ? "player" : "ai";
+    const shot = `${angle}° at power ${power}`;
+    if (result.damage > 0) {
+      session.message = localShot
+        ? `You fire ${shot} — hit for ${result.damage}.`
+        : `Opponent fires ${shot} — you take ${result.damage}.`;
+    } else {
+      session.message = localShot ? `You fire ${shot} — miss.` : `Opponent fires ${shot} — no damage.`;
+    }
+
+    const targetHp = targetSeat === 1 ? session.playerHp : session.enemyHp;
+    if (targetHp <= 0) {
+      const winnerSeat: 1 | 2 = targetSeat === 1 ? 2 : 1;
+      session.over = true;
+      session.message +=
+        winnerSeat === onlineLocalSeat
+          ? " Opponent tank destroyed — you win."
+          : " Your tank is scrap — opponent wins.";
+      syncOnlineHud();
+      return;
+    }
+
+    onlineShots += 1;
+    if (onlineShots >= 2) {
+      onlineShots = 0;
+      session.round += 1;
+      session.wind = windForRound(onlineSeed, session.round);
+      session.message += ` Round ${session.round} — wind ${describeWind(session.wind)}.`;
+    }
+    onlineTurn = targetSeat;
+    session.turn = onlineTurn === onlineLocalSeat ? "player" : "ai";
+    syncOnlineHud();
+  }
+
+  /** @brief Resolves and relays one local shot. */
+  function fireOnline(): void {
+    if (online === null || session.over || peerLeft || onlineTurn !== onlineLocalSeat) return;
+    if (onlineAngleField === null || onlinePowerField === null) return;
+    const rawAngle = Number(onlineAngleField.value);
+    const rawPower = Number(onlinePowerField.value);
+    const angle = Math.round(clamp(Number.isFinite(rawAngle) ? rawAngle : 45, ANGLE_MIN, ANGLE_MAX));
+    const power = Math.round(clamp(Number.isFinite(rawPower) ? rawPower : 60, POWER_MIN, POWER_MAX));
+    onlineAngleField.value = String(angle);
+    onlinePowerField.value = String(power);
+    session.angle = angle;
+    session.power = power;
+    applyOnlineShot(onlineLocalSeat, angle, power);
+    online.sendMove({ kind: "shot", angle, power });
+  }
+
+  /** @brief Applies one validated opponent shot. */
+  function handleOnlineShot(payload: unknown): void {
+    if (online === null || session.over || peerLeft) return;
+    if (payload === null || typeof payload !== "object") return;
+    const data = payload as { kind?: unknown; angle?: unknown; power?: unknown };
+    if (data.kind !== "shot") return;
+    const { angle, power } = data;
+    if (typeof angle !== "number" || !Number.isFinite(angle)) return;
+    if (typeof power !== "number" || !Number.isFinite(power)) return;
+    if (angle < ANGLE_MIN || angle > ANGLE_MAX) return;
+    if (power < POWER_MIN || power > POWER_MAX) return;
+    const remoteSeat: 1 | 2 = onlineLocalSeat === 1 ? 2 : 1;
+    if (onlineTurn !== remoteSeat) return;
+    applyOnlineShot(remoteSeat, angle, power);
+  }
+
+  /**
+   * @brief Builds the online duel and wires the bridge.
+   * @param target Host element owned by the stage.
+   * @param bridge Live online match handle.
+   */
+  function mountOnline(target: HTMLElement, bridge: OnlineBridge): void {
+    online = bridge;
+    onlineLocalSeat = bridge.seat;
+    onlineSeed = bridge.seed;
+    onlineTurn = 1;
+    onlineShots = 0;
+    peerLeft = false;
+    onlineCtx = null;
+    session = createOnlineSession(bridge.seed, bridge.seat);
+    target.replaceChildren();
+
+    unsubscribeMove = bridge.onMove(handleOnlineShot);
+    unsubscribePeer = bridge.onPeerLeft(() => {
+      peerLeft = true;
+      syncOnlineHud();
+    });
+
+    const hud = document.createElement("div");
+    hud.className = "stage-hud";
+    const addStat = (label: string, initial: string): HTMLElement => {
+      const wrapper = document.createElement("span");
+      wrapper.append(`${label} `);
+      const value = document.createElement("b");
+      value.textContent = initial;
+      wrapper.append(value);
+      hud.append(wrapper);
+      return value;
+    };
+    playerHpValue = addStat("you", "100");
+    enemyHpValue = addStat("opponent", "100");
+    windValue = addStat("wind", "→ 0.0");
+    roundValue = addStat("round", "1");
+    turnValue = addStat("turn", "you");
+
+    const canvas = document.createElement("canvas");
+    canvas.className = "stage-canvas";
+    canvas.width = GUNNY_WIDTH;
+    canvas.height = GUNNY_HEIGHT;
+    canvas.setAttribute("aria-label", "Gunny battlefield");
+    canvas.style.maxWidth = `${GUNNY_WIDTH}px`;
+
+    const bar = document.createElement("div");
+    bar.className = "stage-bar";
+    const label = (text: string): HTMLElement => {
+      const span = document.createElement("span");
+      span.textContent = text;
+      return span;
+    };
+    const numberInput = (min: number, max: number, value: number, name: string): HTMLInputElement => {
+      const input = document.createElement("input");
+      input.type = "number";
+      input.className = "stage-input";
+      input.min = String(min);
+      input.max = String(max);
+      input.step = "1";
+      input.value = String(value);
+      input.setAttribute("aria-label", name);
+      input.style.width = "72px";
+      return input;
+    };
+    const angleField = numberInput(ANGLE_MIN, ANGLE_MAX, session.angle, "Barrel angle in degrees");
+    const powerField = numberInput(POWER_MIN, POWER_MAX, session.power, "Shot power");
+    onlineAngleField = angleField;
+    onlinePowerField = powerField;
+
+    const makeButton = (text: string, onClick: () => void): HTMLButtonElement => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "stage-btn";
+      button.textContent = text;
+      addListener<MouseEvent>(button, "click", onClick);
+      return button;
+    };
+    const fire = makeButton("Fire", fireOnline);
+    fireButton = fire;
+    const restart = makeButton("New round", () => undefined);
+    restart.disabled = true;
+    bar.append(label("angle"), angleField, label("power"), powerField, fire, restart);
+    addListener<KeyboardEvent>(angleField, "keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      fireOnline();
+    });
+    addListener<KeyboardEvent>(powerField, "keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      fireOnline();
+    });
+
+    const status = document.createElement("p");
+    status.className = "stage-status";
+    statusLine = status;
+    target.append(hud, canvas, bar, status);
+
+    onlineCtx = canvas.getContext("2d");
+    syncOnlineHud();
+  }
 
   return { mount, unmount };
 }

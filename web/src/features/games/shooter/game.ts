@@ -6,7 +6,8 @@
  * canvas. The factory only wires input, a fixed-timestep loop and painting.
  */
 
-import type { GameMount } from "../mount";
+import type { GameContext, GameMount } from "../mount";
+import type { OnlineBridge } from "../online/bridge";
 
 /** @brief Playfield width in logical pixels. */
 export const SHOOTER_WIDTH = 640;
@@ -365,8 +366,17 @@ export function createShooterGame(): GameMount {
   let scoreValue: HTMLElement | null = null;
   let livesValue: HTMLElement | null = null;
   let waveValue: HTMLElement | null = null;
+  let rivalValue: HTMLElement | null = null;
   let statusLine: HTMLElement | null = null;
   let pauseButton: HTMLButtonElement | null = null;
+  let online: OnlineBridge | null = null;
+  let rivalWave = 0;
+  let rivalScore = 0;
+  let rivalDead = false;
+  let selfDead = false;
+  let lastRelayed = "";
+  let unsubscribeMove: (() => void) | null = null;
+  let unsubscribePeer: (() => void) | null = null;
 
   const addListener = <E extends Event>(
     target: EventTarget,
@@ -379,21 +389,40 @@ export function createShooterGame(): GameMount {
   };
 
   const hintFor = (): string => {
+    if (online !== null) {
+      if (selfDead) return `You are down — rival wins. Score ${state.score} vs ${rivalScore}.`;
+      if (rivalDead) return `Rival is down — you win! Score ${state.score} vs ${rivalScore}.`;
+      if (state.status === "paused") return "Paused — press P to resume.";
+      return `Race: you wave ${state.wave} · rival wave ${rivalWave} · arrows move, space fires`;
+    }
     if (state.status === "over") return `Game over — score ${state.score}. Press R or Restart.`;
     if (state.status === "paused") return "Paused — press P to resume.";
     return "Arrows / A-D or drag to move · Space or click to fire · P pauses";
+  };
+
+  /** @brief Relays wave/death progress to the rival, at most once per change. */
+  const relayProgress = (): void => {
+    if (online === null) return;
+    const dead = state.status === "over";
+    const key = `${state.wave}:${dead ? 1 : 0}`;
+    if (key === lastRelayed) return;
+    lastRelayed = key;
+    if (dead) selfDead = true;
+    online.sendMove({ kind: "progress", wave: state.wave, score: state.score, dead });
   };
 
   const syncHud = (): void => {
     if (scoreValue !== null) scoreValue.textContent = String(state.score);
     if (livesValue !== null) livesValue.textContent = String(state.lives);
     if (waveValue !== null) waveValue.textContent = String(state.wave);
+    if (rivalValue !== null) rivalValue.textContent = String(rivalWave);
     if (statusLine !== null) statusLine.textContent = hintFor();
     if (pauseButton !== null) {
       const paused = state.status === "paused";
       pauseButton.classList.toggle("is-active", paused);
       pauseButton.textContent = paused ? "Resume" : "Pause";
     }
+    relayProgress();
   };
 
   const unmount = (): void => {
@@ -406,18 +435,30 @@ export function createShooterGame(): GameMount {
     cleanups.length = 0;
     held.clear();
     pointerDown = false;
+    unsubscribeMove?.();
+    unsubscribePeer?.();
+    unsubscribeMove = null;
+    unsubscribePeer = null;
+    online = null;
+    rivalWave = 0;
+    rivalScore = 0;
+    rivalDead = false;
+    selfDead = false;
+    lastRelayed = "";
     scoreValue = null;
     livesValue = null;
     waveValue = null;
+    rivalValue = null;
     statusLine = null;
     pauseButton = null;
     host = null;
   };
 
-  const mount = (nextHost: HTMLElement): void => {
+  const mount = (nextHost: HTMLElement, context?: GameContext): void => {
     unmount();
     mounted = true;
     host = nextHost;
+    online = context?.online ?? null;
     state = createShooterState();
     host.replaceChildren();
 
@@ -435,6 +476,26 @@ export function createShooterGame(): GameMount {
     scoreValue = addStat("score");
     livesValue = addStat("lives");
     waveValue = addStat("wave");
+    if (online !== null) {
+      rivalValue = addStat("rival wave");
+      const bridge = online;
+      unsubscribeMove = bridge.onMove((payload) => {
+        const message = payload as { kind?: unknown; wave?: unknown; score?: unknown; dead?: unknown } | null;
+        if (message?.kind !== "progress") return;
+        if (typeof message.wave === "number" && Number.isFinite(message.wave)) {
+          rivalWave = Math.max(0, Math.floor(message.wave));
+        }
+        if (typeof message.score === "number" && Number.isFinite(message.score)) {
+          rivalScore = Math.max(0, Math.floor(message.score));
+        }
+        if (message.dead === true) rivalDead = true;
+        syncHud();
+      });
+      unsubscribePeer = bridge.onPeerLeft(() => {
+        if (statusLine !== null)
+          statusLine.textContent = "opponent left — press Leave, then start a new match";
+      });
+    }
 
     const canvas = document.createElement("canvas");
     canvas.className = "stage-canvas";
@@ -462,6 +523,8 @@ export function createShooterGame(): GameMount {
     };
 
     const restart = (): void => {
+      // An online race is a single shared run; restarting locally would desync it.
+      if (online !== null) return;
       state = createShooterState();
       held.clear();
       pointerDown = false;

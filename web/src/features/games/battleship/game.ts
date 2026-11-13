@@ -3,10 +3,13 @@
  * @brief 10x10 Battleship against a hunt/target AI.
  * @details The module keeps a pure fleet/shot engine ({@link placeFleet},
  * {@link fire}, {@link aiNextShot}) next to the vanilla DOM view. Mutable view
- * state lives in the {@link createBattleshipGame} closure.
+ * state lives in the {@link createBattleshipGame} closure. When an online bridge
+ * is supplied the hunt/target AI is switched off: both sides exchange their
+ * fleet cells, then alternate shots, and every result is recomputed locally.
  */
 
-import type { GameMount } from "../mount";
+import type { GameContext, GameMount } from "../mount";
+import type { OnlineBridge } from "../online/bridge";
 
 /** @brief Board edge length. */
 export const BATTLESHIP_SIZE = 10;
@@ -359,6 +362,106 @@ export function mulberry32(seed: number): () => number {
 /** Deployment phase, live battle, or finished game. */
 type Phase = "place" | "battle" | "over";
 
+/** Number of cells the standard fleet occupies, i.e. the fleet payload length. */
+const FLEET_CELLS = FLEET_SPEC.reduce((total, spec) => total + spec.length, 0);
+
+/**
+ * @brief Narrows an untrusted payload to a plain object.
+ * @param value Value received from the bridge.
+ * @return The object, or null for primitives and null.
+ */
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+/**
+ * @brief Tests whether a value is a usable board index.
+ * @param value Candidate value.
+ * @return True for integers inside 0..99.
+ */
+function isBoardIndex(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value < BATTLESHIP_SIZE * BATTLESHIP_SIZE
+  );
+}
+
+/**
+ * @brief Rebuilds the fleet an opponent described by its occupied cells only.
+ * @details The wire format sends cells, not ships, so the module splits them back
+ * into the standard 5,4,3,3,2 shapes with a bounded deterministic search. Every
+ * covered cell is used exactly once, which is what the hit/sunk and win checks
+ * need; the exact grouping only affects the sunk-ship captions.
+ * @param cells Occupied board indices, already validated for range and uniqueness.
+ * @return Ships in a valid partition, or null when no partition exists.
+ */
+function splitFleet(cells: readonly number[]): Ship[] | null {
+  const remaining = new Set<number>(cells);
+  const available = [...FLEET_SPEC];
+  const placed: Ship[] = [];
+
+  /**
+   * @brief Finds the lowest still-unclaimed cell.
+   * @details The lowest index of a straight ship is always its top or left end,
+   * so anchoring there keeps the search complete.
+   * @return Board index, or -1 when nothing is left.
+   */
+  const anchor = (): number => {
+    for (let index = 0; index < BATTLESHIP_SIZE * BATTLESHIP_SIZE; index++) {
+      if (remaining.has(index)) return index;
+    }
+    return -1;
+  };
+
+  /** @brief Backtracking exact cover over the remaining cells. */
+  const solve = (): boolean => {
+    if (remaining.size === 0) return true;
+    const start = anchor();
+    if (start < 0) return false;
+    for (let slot = 0; slot < available.length; slot++) {
+      const spec = available[slot];
+      if (spec === undefined) continue;
+      for (const orientation of ["h", "v"] as const) {
+        const candidate = shipCells(coordOf(start), spec.length, orientation);
+        if (candidate === null) continue;
+        const indices = candidate.map(indexOf);
+        if (!indices.every((index) => remaining.has(index))) continue;
+        for (const index of indices) remaining.delete(index);
+        available.splice(slot, 1);
+        placed.push(makeShip(spec, candidate));
+        if (solve()) return true;
+        placed.pop();
+        available.splice(slot, 0, spec);
+        for (const index of indices) remaining.add(index);
+      }
+    }
+    return false;
+  };
+
+  return solve() ? placed : null;
+}
+
+/**
+ * @brief Decodes the cell list of a relayed fleet payload.
+ * @param record Untrusted payload object.
+ * @return Unique, in-range indices, or null when the payload is malformed.
+ */
+function decodeFleetCells(record: Record<string, unknown>): number[] | null {
+  const raw = record.cells;
+  if (!Array.isArray(raw)) return null;
+  const list: readonly unknown[] = raw;
+  if (list.length !== FLEET_CELLS) return null;
+  const cells: number[] = [];
+  for (const entry of list) {
+    if (!isBoardIndex(entry)) return null;
+    if (cells.includes(entry)) return null;
+    cells.push(entry);
+  }
+  return cells;
+}
+
 /** DOM references rebuilt by {@link createBattleshipGame} on every mount. */
 interface Refs {
   hud: HTMLElement;
@@ -366,6 +469,8 @@ interface Refs {
   status: HTMLElement;
   rotate: HTMLButtonElement;
   random: HTMLButtonElement;
+  /** Ready button; null against the AI where the fleet starts the battle. */
+  ready: HTMLButtonElement | null;
 }
 
 /** Rotates the seed of the next game so consecutive games differ. */
@@ -385,6 +490,14 @@ export function createBattleshipGame(): GameMount {
   let turn: "player" | "ai" = "player";
   let message = "";
   let timer: number | null = null;
+  let online: OnlineBridge | null = null;
+  let peerLeft = false;
+  /** True once the local fleet was sent and may no longer be edited. */
+  let localReady = false;
+  /** Opponent fleet rebuilt from the relayed cell list, once it arrives. */
+  let remoteFleet: Ship[] | null = null;
+  let unsubscribeMove: (() => void) | null = null;
+  let unsubscribePeer: (() => void) | null = null;
   let refs: Refs | null = null;
 
   /** @brief Cancels the pending AI shot timer. */
@@ -448,12 +561,128 @@ export function createBattleshipGame(): GameMount {
     seedCursor = (seedCursor + 0x9e3779b9) >>> 0;
     rng = mulberry32(seedCursor);
     playerBoard = boardWith([]);
-    enemyBoard = boardWith(placeFleet(rng));
+    // Online the opponent fleet arrives over the bridge, so nothing is hidden here.
+    enemyBoard = online === null ? boardWith(placeFleet(rng)) : boardWith([]);
     placement = [];
     orientation = "h";
     phase = "place";
     turn = "player";
-    message = "Deploy your fleet: click a start cell, or press Random placement.";
+    message =
+      online === null
+        ? "Deploy your fleet: click a start cell, or press Random placement."
+        : "Deploy your fleet, then press Ready to share it with the opponent.";
+  }
+
+  /**
+   * @brief Whose turn the HUD should name.
+   * @return "you" / "opponent" online, "player" / "ai" locally.
+   */
+  function turnText(): string {
+    if (online === null) return turn;
+    return turn === "player" ? "you" : "opponent";
+  }
+
+  /**
+   * @brief Status line for the shooting phase.
+   * @return Local-perspective turn text.
+   */
+  function turnStatus(): string {
+    return turn === "player"
+      ? "Both fleets ready — your turn. Fire at enemy waters."
+      : "Both fleets ready — waiting for the opponent's shot.";
+  }
+
+  /**
+   * @brief Tests whether the local fleet is complete.
+   * @return True when every ship of {@link FLEET_SPEC} is placed.
+   */
+  function fleetComplete(): boolean {
+    return placement.length === FLEET_SPEC.length;
+  }
+
+  /**
+   * @brief Enters the shooting phase once both fleets are known.
+   * @return Nothing; leaves the placement phase untouched until then.
+   */
+  function startBattle(): void {
+    if (phase !== "place" || !localReady || remoteFleet === null) return;
+    phase = "battle";
+    // Seat 1 fires first, so seat 2 waits for the opening shot.
+    turn = online !== null && online.seat === 2 ? "ai" : "player";
+    message = turnStatus();
+  }
+
+  /** @brief Sends the local fleet and waits for the opponent's. */
+  function ready(): void {
+    const bridge = online;
+    if (bridge === null || phase !== "place" || localReady) return;
+    if (!fleetComplete()) {
+      message = "Deploy the whole fleet before pressing Ready.";
+      render();
+      return;
+    }
+    localReady = true;
+    bridge.sendMove({ kind: "fleet", cells: placement.flatMap((ship) => ship.cells.map(indexOf)) });
+    if (remoteFleet === null) message = "Fleet sent — waiting for the opponent's fleet…";
+    startBattle();
+    render();
+  }
+
+  /**
+   * @brief Handles the opponent's fleet payload.
+   * @param record Untrusted payload object.
+   */
+  function receiveFleet(record: Record<string, unknown>): void {
+    if (remoteFleet !== null || phase !== "place") return;
+    const cells = decodeFleetCells(record);
+    if (cells === null) return;
+    const ships = splitFleet(cells);
+    if (ships === null) return;
+    remoteFleet = ships;
+    enemyBoard = boardWith(ships);
+    if (localReady) startBattle();
+    else message = "Opponent fleet received — deploy yours, then press Ready.";
+    render();
+  }
+
+  /**
+   * @brief Handles one opponent shot against the local fleet.
+   * @param record Untrusted payload object.
+   */
+  function receiveShot(record: Record<string, unknown>): void {
+    if (phase !== "battle" || turn !== "ai" || peerLeft) return;
+    const index = record.index;
+    if (!isBoardIndex(index)) return;
+    if ((playerBoard.shots[index] ?? "") !== "") return;
+
+    const coord = coordOf(index);
+    const result = fire(playerBoard, coord);
+    playerBoard = result.state;
+    if (result.won) {
+      phase = "over";
+      message = `Opponent sank your fleet — last hit at ${coordName(coord)}. Opponent wins.`;
+    } else {
+      const detail =
+        result.result === "sunk" ? `your ${result.sunkShip?.name ?? "ship"} sunk` : result.result;
+      message = `Opponent fired at ${coordName(coord)}: ${detail}.`;
+      turn = "player";
+    }
+    render();
+  }
+
+  /**
+   * @brief Dispatches one payload received from the opponent.
+   * @param payload Untrusted payload from the bridge.
+   */
+  function handleRemote(payload: unknown): void {
+    if (online === null || peerLeft) return;
+    const record = asRecord(payload);
+    if (record === null) return;
+    if (record.kind === "fleet") {
+      receiveFleet(record);
+      return;
+    }
+    if (record.kind === "shot") receiveShot(record);
   }
 
   /**
@@ -461,7 +690,7 @@ export function createBattleshipGame(): GameMount {
    * @param coord Start cell of the ship being placed.
    */
   function placeAt(coord: Coord): void {
-    if (phase !== "place") return;
+    if (phase !== "place" || localReady) return;
     const spec = FLEET_SPEC[placement.length];
     if (spec === undefined) return;
 
@@ -481,8 +710,12 @@ export function createBattleshipGame(): GameMount {
     playerBoard = boardWith(placement);
     const nextSpec = FLEET_SPEC[placement.length];
     if (nextSpec === undefined) {
-      phase = "battle";
-      message = "Fleet ready. Click enemy waters to fire.";
+      if (online === null) {
+        phase = "battle";
+        message = "Fleet ready. Click enemy waters to fire.";
+      } else {
+        message = "Fleet ready. Press Ready to send it to the opponent.";
+      }
     } else {
       message = `${spec.name} placed. Next: ${nextSpec.name} (${nextSpec.length} cells).`;
     }
@@ -491,27 +724,31 @@ export function createBattleshipGame(): GameMount {
 
   /** @brief Replaces the placed fleet with a random valid one and starts. */
   function randomise(): void {
-    if (phase !== "place") return;
+    if (phase !== "place" || localReady) return;
     placement = placeFleet(rng);
     playerBoard = boardWith(placement);
-    phase = "battle";
-    turn = "player";
-    message = "Fleet deployed at random. Click enemy waters to fire.";
+    if (online === null) {
+      phase = "battle";
+      turn = "player";
+      message = "Fleet deployed at random. Click enemy waters to fire.";
+    } else {
+      message = "Fleet deployed at random. Press Ready to send it to the opponent.";
+    }
     render();
   }
 
   /** @brief Flips the placement orientation. */
   function rotate(): void {
-    if (phase !== "place") return;
+    if (phase !== "place" || localReady) return;
     orientation = orientation === "h" ? "v" : "h";
     message = `Orientation: ${orientation === "h" ? "horizontal" : "vertical"}.`;
     render();
   }
 
-  /** @brief Takes one player shot at the enemy board. */
+  /** @brief Takes one AI shot at the player board; never runs during a match. */
   function aiTurn(): void {
     timer = null;
-    if (phase !== "battle") return;
+    if (online !== null || phase !== "battle") return;
     const coord = aiNextShot(playerBoard, rng);
     const result = fire(playerBoard, coord);
     playerBoard = result.state;
@@ -534,10 +771,26 @@ export function createBattleshipGame(): GameMount {
   }
 
   /**
+   * @brief Builds the local-perspective caption for one shot.
+   * @param coord Target cell.
+   * @param result Outcome from the engine.
+   * @return Caption text.
+   */
+  function localShotCaption(coord: Coord, result: FireResult): string {
+    return result.result === "sunk"
+      ? `${coordName(coord)}: enemy ${result.sunkShip?.name ?? "ship"} sunk!`
+      : `${coordName(coord)}: ${result.result}.`;
+  }
+
+  /**
    * @brief Handles a player shot on the enemy grid.
    * @param coord Target cell.
    */
   function shoot(coord: Coord): void {
+    if (online !== null) {
+      shootOnline(coord);
+      return;
+    }
     if (phase !== "battle" || turn !== "player") return;
     if ((enemyBoard.shots[indexOf(coord)] ?? "") !== "") return;
 
@@ -549,14 +802,35 @@ export function createBattleshipGame(): GameMount {
       render();
       return;
     }
-    message =
-      result.result === "sunk"
-        ? `${coordName(coord)}: enemy ${result.sunkShip?.name ?? "ship"} sunk!`
-        : `${coordName(coord)}: ${result.result}.`;
+    message = localShotCaption(coord, result);
     turn = "ai";
     render();
     clearTimer();
     timer = window.setTimeout(aiTurn, 220);
+  }
+
+  /**
+   * @brief Handles a local shot in an online match, applying and relaying it.
+   * @param coord Target cell on the opponent board.
+   */
+  function shootOnline(coord: Coord): void {
+    const bridge = online;
+    if (bridge === null || phase !== "battle" || turn !== "player" || peerLeft) return;
+    const index = indexOf(coord);
+    if ((enemyBoard.shots[index] ?? "") !== "") return;
+
+    const result = fire(enemyBoard, coord);
+    enemyBoard = result.state;
+    if (result.won) {
+      phase = "over";
+      message = `You sank the enemy fleet — last hit at ${coordName(coord)}. You win.`;
+    } else {
+      message = localShotCaption(coord, result);
+      turn = "ai";
+    }
+    // The winning shot still goes out so the opponent learns the result.
+    bridge.sendMove({ kind: "shot", index });
+    render();
   }
 
   /**
@@ -614,15 +888,18 @@ export function createBattleshipGame(): GameMount {
 
     const enemySunk = enemyBoard.ships.filter((ship) => isShipSunk(enemyBoard, ship)).length;
     const ownSunk = playerBoard.ships.filter((ship) => isShipSunk(playerBoard, ship)).length;
+    // Before the opponent's fleet arrives the standard fleet size is the only count we know.
+    const enemyTotal = online !== null && remoteFleet === null ? FLEET_SPEC.length : enemyBoard.ships.length;
     view.hud.replaceChildren(
       label(`phase: ${phase === "place" ? "deploy" : phase === "battle" ? "battle" : "over"}`),
       label(`fleet: ${placement.length}/${FLEET_SPEC.length}`),
-      label(`enemy sunk: ${enemySunk}/${enemyBoard.ships.length}`),
+      label(`enemy sunk: ${enemySunk}/${enemyTotal}`),
       label(`own sunk: ${ownSunk}/${playerBoard.ships.length}`),
-      label(`turn: ${turn}`),
+      label(`turn: ${turnText()}`),
     );
-    view.rotate.disabled = phase !== "place";
-    view.random.disabled = phase !== "place";
+    view.rotate.disabled = phase !== "place" || localReady;
+    view.random.disabled = phase !== "place" || localReady;
+    if (view.ready !== null) view.ready.disabled = phase !== "place" || localReady;
 
     view.board.replaceChildren();
     if (phase === "place") {
@@ -631,9 +908,11 @@ export function createBattleshipGame(): GameMount {
       column.className = "stage-rows";
       column.append(
         caption(
-          next === undefined
-            ? "Deploy your fleet"
-            : `Place ${next.name} (${next.length} cells) — ${orientation === "h" ? "horizontal" : "vertical"}`,
+          localReady
+            ? "Fleet sent — waiting for the opponent's fleet…"
+            : next === undefined
+              ? "Deploy your fleet"
+              : `Place ${next.name} (${next.length} cells) — ${orientation === "h" ? "horizontal" : "vertical"}`,
         ),
         buildGrid("player"),
       );
@@ -656,23 +935,41 @@ export function createBattleshipGame(): GameMount {
   /**
    * @brief Mounts the game, resetting any previous state.
    * @param host Host element owned by the game stage.
+   * @param context Optional mount context; an online bridge switches to PvP.
    */
-  function mount(host: HTMLElement): void {
+  function mount(host: HTMLElement, context?: GameContext): void {
     clearTimer();
+    unsubscribeMove?.();
+    unsubscribePeer?.();
+    unsubscribeMove = null;
+    unsubscribePeer = null;
+    online = context?.online ?? null;
+    peerLeft = false;
+    localReady = false;
+    remoteFleet = null;
     reset();
     host.replaceChildren();
 
     const bar = document.createElement("div");
     bar.className = "stage-bar";
     const restart = button("Restart", () => {
+      if (online !== null) return;
       reset();
       render();
     });
+    restart.disabled = online !== null;
     const rotateBtn = button("Rotate", rotate);
     const randomBtn = button("Random placement", randomise);
-    const hint = label("sink 5 ships · 10x10");
+    const readyBtn = online === null ? null : button("Ready", ready);
+    const hint = label(
+      online === null
+        ? "sink 5 ships · 10x10"
+        : `online · ${online.peerNick ?? "opponent"} · you are seat ${online.seat}`,
+    );
     hint.className = "stage-empty";
-    bar.append(restart, rotateBtn, randomBtn, hint);
+    bar.append(restart, rotateBtn, randomBtn);
+    if (readyBtn !== null) bar.append(readyBtn);
+    bar.append(hint);
 
     const hud = document.createElement("div");
     hud.className = "stage-hud";
@@ -681,14 +978,32 @@ export function createBattleshipGame(): GameMount {
     const status = document.createElement("div");
     status.className = "stage-status";
 
-    refs = { hud, board, status, rotate: rotateBtn, random: randomBtn };
+    refs = { hud, board, status, rotate: rotateBtn, random: randomBtn, ready: readyBtn };
     host.append(bar, hud, status, board);
+
+    if (online !== null) {
+      const bridge = online;
+      unsubscribeMove = bridge.onMove((payload) => handleRemote(payload));
+      unsubscribePeer = bridge.onPeerLeft(() => {
+        peerLeft = true;
+        message = "Opponent left the match.";
+        render();
+      });
+    }
     render();
   }
 
-  /** @brief Releases the timer and drops DOM references. */
+  /** @brief Releases the timer, the bridge subscriptions and DOM references. */
   function unmount(): void {
     clearTimer();
+    unsubscribeMove?.();
+    unsubscribePeer?.();
+    unsubscribeMove = null;
+    unsubscribePeer = null;
+    online = null;
+    peerLeft = false;
+    localReady = false;
+    remoteFleet = null;
     refs = null;
   }
 

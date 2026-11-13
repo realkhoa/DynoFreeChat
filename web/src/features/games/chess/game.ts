@@ -4,9 +4,13 @@
  * @details Pure engine (move generation, legality, check/mate detection, SAN,
  * alpha-beta search with material and piece-square evaluation) plus the vanilla
  * DOM view. Mutable view state lives in the {@link createChessGame} closure.
+ * When an online bridge is supplied the search AI is switched off: the local
+ * seat plays White or Black and the opponent's moves arrive as validated
+ * `{ from, to, promotion? }` payloads.
  */
 
-import type { GameMount } from "../mount";
+import type { GameContext, GameMount } from "../mount";
+import type { OnlineBridge } from "../online/bridge";
 
 /** @brief Side to move. */
 export type Color = "w" | "b";
@@ -586,6 +590,60 @@ const AI_DEPTH = 3;
 /** Game result, or null while the game is still running. */
 type Outcome = "win" | "lose" | "draw";
 
+/** One move request as relayed through the online bridge. */
+interface MoveRequest {
+  /** Source square index 0..63. */
+  from: number;
+  /** Target square index 0..63. */
+  to: number;
+  /** Promotion piece; present only when the move promotes. */
+  promotion?: PieceType;
+}
+
+/**
+ * @brief Narrows an untrusted payload to a plain object.
+ * @param value Value received from the bridge.
+ * @return The object, or null for primitives and null.
+ */
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+/**
+ * @brief Tests whether a value is a usable square index.
+ * @param value Candidate value.
+ * @return True for integers inside 0..63.
+ */
+function isSquareIndex(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value < 64;
+}
+
+/**
+ * @brief Tests whether a value is a promotion piece the engine understands.
+ * @param value Candidate value.
+ * @return True for "q", "r", "b" or "n".
+ */
+function isPromotion(value: unknown): value is PieceType {
+  return value === "q" || value === "r" || value === "b" || value === "n";
+}
+
+/**
+ * @brief Decodes one relayed move payload, rejecting anything malformed.
+ * @param payload Untrusted payload from the opponent.
+ * @return The request, or null when the payload is not a move.
+ */
+function decodeMoveRequest(payload: unknown): MoveRequest | null {
+  const record = asRecord(payload);
+  if (record === null) return null;
+  const from = record.from;
+  const to = record.to;
+  if (!isSquareIndex(from) || !isSquareIndex(to)) return null;
+  const promotion = record.promotion;
+  if (promotion === undefined) return { from, to };
+  if (!isPromotion(promotion)) return null;
+  return { from, to, promotion };
+}
+
 /** Formats the SAN history as numbered move pairs, keeping the tail. */
 function formatMoves(san: readonly string[]): string {
   const pairs: string[] = [];
@@ -614,7 +672,38 @@ export function createChessGame(): GameMount {
   let thinking = false;
   let note = "";
   let timer: number | null = null;
+  let online: OnlineBridge | null = null;
+  let peerLeft = false;
+  let unsubscribeMove: (() => void) | null = null;
+  let unsubscribePeer: (() => void) | null = null;
   let refs: { hud: HTMLElement; promo: HTMLElement; board: HTMLElement; status: HTMLElement } | null = null;
+
+  /**
+   * @brief Colour the local player owns; White against the AI.
+   * @return "w" for seat 1 and for the local game, "b" for seat 2.
+   */
+  function localColor(): Color {
+    return online !== null && online.seat === 2 ? "b" : "w";
+  }
+
+  /**
+   * @brief Who played the last move, for the status note.
+   * @param byPlayer True when the local player made the move.
+   * @return "You", "Opponent" or "AI".
+   */
+  function actorName(byPlayer: boolean): string {
+    if (byPlayer) return "You";
+    return online !== null ? "Opponent" : "AI";
+  }
+
+  /**
+   * @brief Maps a finished game onto the local perspective.
+   * @param stuck Colour that has no legal move left.
+   * @return "lose" when the local side is stuck, otherwise "win".
+   */
+  function outcomeFor(stuck: Color): Outcome {
+    return stuck === localColor() ? "lose" : "win";
+  }
 
   function clearTimer(): void {
     if (timer !== null) {
@@ -639,11 +728,23 @@ export function createChessGame(): GameMount {
     return isInCheck(position, position.turn) ? " Check." : "";
   }
   function statusText(): string {
-    if (over === "win") return "Checkmate — you win. Press Restart for a new game.";
-    if (over === "lose") return "Checkmate — the AI wins. Undo or Restart.";
-    if (over === "draw") return "Stalemate — draw. Press Restart for a new game.";
+    if (over === "win") {
+      return online === null ? "Checkmate — you win. Press Restart for a new game." : "Checkmate — you win.";
+    }
+    if (over === "lose") {
+      return online === null ? "Checkmate — the AI wins. Undo or Restart." : "Checkmate — the opponent wins.";
+    }
+    if (over === "draw") {
+      return online === null ? "Stalemate — draw. Press Restart for a new game." : "Stalemate — draw.";
+    }
+    if (peerLeft) return "Opponent left the match.";
     if (promotion !== null) return "Promote your pawn: choose queen, rook, bishop or knight.";
     if (thinking) return `AI thinking…${checkSuffix()}`;
+    if (online !== null) {
+      const colour = localColor() === "w" ? "White" : "Black";
+      const whose = position.turn === localColor() ? "Your move" : "Opponent's move";
+      return `${whose} — you are ${colour}.${checkSuffix()}`;
+    }
     const turnInfo = position.turn === "w" ? "Your move." : "AI to move.";
     if (note !== "") return `${note} ${turnInfo}${checkSuffix()}`;
     return `Your move — you are White.${checkSuffix()}`;
@@ -659,14 +760,66 @@ export function createChessGame(): GameMount {
     selected = null;
     selectedMoves = [];
     promotion = null;
-    note = `${byPlayer ? "You" : "AI"} played ${san}.`;
+    note = `${actorName(byPlayer)} played ${san}.`;
     settleTurn();
+  }
+
+  /**
+   * @brief Builds the wire payload for one move.
+   * @param move Move to relay.
+   * @return `{ from, to }` plus `promotion` when the move promotes.
+   */
+  function movePayload(move: Move): MoveRequest {
+    return move.promo === undefined
+      ? { from: move.from, to: move.to }
+      : { from: move.from, to: move.to, promotion: move.promo };
+  }
+
+  /**
+   * @brief Commits one move and repaints, relaying it when the local player made it.
+   * @param move Move to commit.
+   * @param byPlayer True when the local player made the move.
+   */
+  function playMove(move: Move, byPlayer: boolean): void {
+    commit(move, byPlayer);
+    render();
+    if (byPlayer && online !== null) online.sendMove(movePayload(move));
+  }
+
+  /**
+   * @brief Applies one opponent move received from the bridge.
+   * @param payload Untrusted payload from the opponent.
+   */
+  function applyRemote(payload: unknown): void {
+    if (online === null || peerLeft || over !== null || promotion !== null) return;
+    const foe = opposite(localColor());
+    if (position.turn !== foe) return;
+
+    const request = decodeMoveRequest(payload);
+    if (request === null) return;
+    const piece = boardAt(position.board, request.from);
+    if (piece === null || colorOf(piece) !== foe) return;
+
+    const candidates = legalMoves(position, request.from).filter((move) => move.to === request.to);
+    if (candidates.length === 0) return;
+    const move =
+      request.promotion === undefined
+        ? candidates[0]
+        : candidates.find((candidate) => candidate.promo === request.promotion);
+    if (move === undefined) return;
+
+    commit(move, false);
+    render();
   }
 
   function settleTurn(): void {
     const moves = allLegalMoves(position);
     if (moves.length === 0) {
-      over = isInCheck(position, position.turn) ? (position.turn === "w" ? "lose" : "win") : "draw";
+      over = isInCheck(position, position.turn) ? outcomeFor(position.turn) : "draw";
+      thinking = false;
+      return;
+    }
+    if (online !== null) {
       thinking = false;
       return;
     }
@@ -681,10 +834,10 @@ export function createChessGame(): GameMount {
 
   function aiTurn(): void {
     timer = null;
-    if (over !== null) return;
+    if (online !== null || over !== null) return;
     const move = bestMove(position, AI_DEPTH);
     if (move === null) {
-      over = isInCheck(position, position.turn) ? (position.turn === "w" ? "lose" : "win") : "draw";
+      over = isInCheck(position, position.turn) ? outcomeFor(position.turn) : "draw";
       thinking = false;
       render();
       return;
@@ -695,7 +848,9 @@ export function createChessGame(): GameMount {
   }
 
   function onCellClick(index: number): void {
-    if (over !== null || thinking || promotion !== null || position.turn !== "w") return;
+    if (over !== null || thinking || promotion !== null || peerLeft) return;
+    const mine = localColor();
+    if (position.turn !== mine) return;
     const piece = boardAt(position.board, index);
     const candidates = selectedMoves.filter((move) => move.to === index);
     if (selected !== null && candidates.length > 0) {
@@ -705,13 +860,10 @@ export function createChessGame(): GameMount {
         return;
       }
       const move = candidates[0];
-      if (move !== undefined) {
-        commit(move, true);
-        render();
-      }
+      if (move !== undefined) playMove(move, true);
       return;
     }
-    if (piece !== null && colorOf(piece) === "w") {
+    if (piece !== null && colorOf(piece) === mine) {
       selected = index;
       selectedMoves = legalMoves(position, index);
       note = selectedMoves.length === 0 ? `${PIECE_NAMES[typeOf(piece)]} has no legal moves.` : "";
@@ -724,6 +876,7 @@ export function createChessGame(): GameMount {
   }
 
   function undo(): void {
+    if (online !== null) return;
     clearTimer();
     if (pastPositions.length === 0) {
       note = "Nothing to undo.";
@@ -748,7 +901,8 @@ export function createChessGame(): GameMount {
     render();
   }
 
-  function restart(): void {
+  /** @brief Clears every mutable field back to the starting position. */
+  function resetState(): void {
     clearTimer();
     position = createInitialPosition();
     selected = null;
@@ -761,6 +915,12 @@ export function createChessGame(): GameMount {
     over = null;
     thinking = false;
     note = "";
+  }
+
+  /** @brief Restarts the local game; a no-op while an online match is attached. */
+  function restart(): void {
+    if (online !== null) return;
+    resetState();
     render();
   }
 
@@ -816,8 +976,7 @@ export function createChessGame(): GameMount {
         if (move === undefined) continue;
         view.promo.append(
           button(`${PIECE_NAMES[kind]} (${kind.toUpperCase()})`, () => {
-            commit(move, true);
-            render();
+            playMove(move, true);
           }),
         );
       }
@@ -829,14 +988,32 @@ export function createChessGame(): GameMount {
   /**
    * @brief Mounts the game, resetting any previous state.
    * @param host Host element owned by the game stage.
+   * @param context Optional mount context; an online bridge switches to PvP.
    */
-  function mount(host: HTMLElement): void {
+  function mount(host: HTMLElement, context?: GameContext): void {
     clearTimer();
-    restart();
+    unsubscribeMove?.();
+    unsubscribePeer?.();
+    unsubscribeMove = null;
+    unsubscribePeer = null;
+    online = context?.online ?? null;
+    peerLeft = false;
+    resetState();
     host.replaceChildren();
+
     const bar = document.createElement("div");
     bar.className = "stage-bar";
-    bar.append(button("Restart", restart), button("Undo", undo), label("you: white · ai: black"));
+    const restartBtn = button("Restart", restart);
+    const undoBtn = button("Undo", undo);
+    restartBtn.disabled = online !== null;
+    undoBtn.disabled = online !== null;
+    const hint = label(
+      online === null
+        ? "you: white · ai: black"
+        : `online · ${online.peerNick ?? "opponent"} · you are ${localColor() === "w" ? "white" : "black"}`,
+    );
+    bar.append(restartBtn, undoBtn, hint);
+
     const hud = document.createElement("div");
     hud.className = "stage-hud";
     const promo = document.createElement("div");
@@ -846,12 +1023,27 @@ export function createChessGame(): GameMount {
     status.className = "stage-status";
     refs = { hud, promo, board, status };
     host.append(bar, hud, promo, status, board);
+
+    if (online !== null) {
+      const bridge = online;
+      unsubscribeMove = bridge.onMove((payload) => applyRemote(payload));
+      unsubscribePeer = bridge.onPeerLeft(() => {
+        peerLeft = true;
+        render();
+      });
+    }
     render();
   }
 
-  /** @brief Releases the timer and drops DOM references. */
+  /** @brief Releases the timer, the bridge subscriptions and DOM references. */
   function unmount(): void {
     clearTimer();
+    unsubscribeMove?.();
+    unsubscribePeer?.();
+    unsubscribeMove = null;
+    unsubscribePeer = null;
+    online = null;
+    peerLeft = false;
     refs = null;
   }
 

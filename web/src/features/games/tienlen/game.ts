@@ -1,12 +1,15 @@
 /**
  * @file game.ts
- * @brief Tiến Lên game module: a 52-card shedding game against two AI players.
+ * @brief Tiến Lên game module: a 52-card shedding game against two AI players or online.
  * @details Card rules, trick bookkeeping and the AI heuristic are pure functions,
  * so every rule is testable without a DOM. The factory renders the hand as
- * buttons and schedules the AI turns with cancellable timers.
+ * buttons and schedules the AI turns with cancellable timers. When an online
+ * bridge is supplied the deal comes from the shared seed, the AI seats collapse
+ * to a single opponent and every local play is relayed through the bridge.
  */
 
-import type { GameMount } from "../mount";
+import type { GameContext, GameMount } from "../mount";
+import type { OnlineBridge } from "../online/bridge";
 
 /** @brief The four card suits, ordered spade < club < diamond < heart. */
 export type TienLenSuit = "spade" | "club" | "diamond" | "heart";
@@ -68,6 +71,36 @@ export interface TienLenState {
   /** One line describing the last event. */
   lastAction: string;
 }
+
+/** @brief Seat in the online two-player variant: 0 is local, 1 is the opponent. */
+export type TienLenDuoSeat = 0 | 1;
+
+/** @brief The two online hands, indexed by local-perspective seat. */
+export type TienLenDuoHands = [TienLenCard[], TienLenCard[]];
+
+/** @brief Complete state of one online two-player deal. */
+export interface TienLenDuoState {
+  /** Cards left for the local seat and the opponent. */
+  hands: TienLenDuoHands;
+  /** Seat that must act next (0 local, 1 opponent). */
+  turn: TienLenDuoSeat;
+  /** Combination that must be beaten, or null on a free lead. */
+  previous: TienLenCombination | null;
+  /** Seat that played {@link previous}. */
+  previousSeat: TienLenDuoSeat | null;
+  /** Passes since the last play; a single pass resets the trick online. */
+  passes: number;
+  /** Trick counter, starting at 1. */
+  trick: number;
+  /** Deal outcome from the local perspective. */
+  status: TienLenStatus;
+  /** Seat that emptied its hand, once the deal is over. */
+  winner: TienLenDuoSeat | null;
+  /** One line describing the last event. */
+  lastAction: string;
+}
+
+const DUO_SEAT_NAMES: Record<TienLenDuoSeat, string> = { 0: "You", 1: "Opponent" };
 
 const SUIT_ORDER: Record<TienLenSuit, number> = { spade: 0, club: 1, diamond: 2, heart: 3 };
 
@@ -438,6 +471,108 @@ export function applyPass(state: TienLenState, seat: TienLenSeat): TienLenState 
 }
 
 /**
+ * @brief Creates the two-player online deal from the match seed.
+ * @details Both clients shuffle the same deck with the same generator, then take
+ * the first 13 cards as the local hand and the next 13 as the opponent's. Card
+ * ids keep the engine format `${suit}-${rank}` (for example `spade-3`), which is
+ * also the wire format relayed in a play payload.
+ * @param seed Shared seed chosen by the host.
+ * @param localLeads True when the local seat is seat 1 and opens the trick.
+ * @return A fresh two-player state with 13 cards per side.
+ */
+export function createTwoPlayerState(seed: number, localLeads = true): TienLenDuoState {
+  const deck = shuffle(createDeck(), createRng(seed));
+  const hands: TienLenDuoHands = [deck.slice(0, 13), deck.slice(13, 26)];
+  for (const hand of hands) hand.sort(compareAscending);
+  return {
+    hands,
+    turn: localLeads ? 0 : 1,
+    previous: null,
+    previousSeat: null,
+    passes: 0,
+    trick: 1,
+    status: "playing",
+    winner: null,
+    lastAction: localLeads ? "New deal — you lead." : "New deal — opponent leads.",
+  };
+}
+
+/**
+ * @brief Applies a play to the two-player online state.
+ * @details Mirrors {@link applyPlay}, but the turn alternates between exactly two
+ * seats. Invalid, foreign or out-of-turn plays return the same state.
+ * @param state Current two-player deal.
+ * @param seat Seat making the play.
+ * @param cards Cards to play.
+ * @return The next state, or the same state when the play is illegal.
+ */
+export function applyDuoPlay(
+  state: TienLenDuoState,
+  seat: TienLenDuoSeat,
+  cards: readonly TienLenCard[],
+): TienLenDuoState {
+  if (state.status !== "playing" || state.turn !== seat || cards.length === 0) return state;
+  const combination = classify(cards);
+  if (combination === null || !canBeat(cards, state.previous)) return state;
+
+  const hand = state.hands[seat];
+  const ids = new Set(cards.map((card) => card.id));
+  if (ids.size !== cards.length) return state;
+  if (!cards.every((card) => hand.some((held) => held.id === card.id))) return state;
+
+  const remaining = hand.filter((card) => !ids.has(card.id));
+  const hands: TienLenDuoHands = [state.hands[0], state.hands[1]];
+  hands[seat] = remaining;
+  const played = `${DUO_SEAT_NAMES[seat]} played ${describeCombination(combination)}`;
+  const other: TienLenDuoSeat = seat === 0 ? 1 : 0;
+
+  if (remaining.length === 0) {
+    return {
+      ...state,
+      hands,
+      previous: combination,
+      previousSeat: seat,
+      passes: 0,
+      status: seat === 0 ? "won" : "lost",
+      winner: seat,
+      lastAction: `${played} and is out of cards.`,
+    };
+  }
+  return {
+    ...state,
+    hands,
+    turn: other,
+    previous: combination,
+    previousSeat: seat,
+    passes: 0,
+    lastAction: `${played}.`,
+  };
+}
+
+/**
+ * @brief Applies a pass to the two-player online state.
+ * @details The two-player rule clears the trick after a single pass, so the
+ * player who last played leads any combination.
+ * @param state Current two-player deal.
+ * @param seat Seat that passes.
+ * @return The next state, or the same state when passing is illegal.
+ */
+export function applyDuoPass(state: TienLenDuoState, seat: TienLenDuoSeat): TienLenDuoState {
+  if (state.status !== "playing" || state.turn !== seat || state.previous === null) return state;
+  const other: TienLenDuoSeat = seat === 0 ? 1 : 0;
+  const leader = state.previousSeat ?? other;
+  return {
+    ...state,
+    previous: null,
+    previousSeat: null,
+    passes: 0,
+    trick: state.trick + 1,
+    turn: leader,
+    lastAction: `${DUO_SEAT_NAMES[seat]} passed — new trick, ${DUO_SEAT_NAMES[leader]} leads.`,
+  };
+}
+
+/**
  * @brief Creates one Tiến Lên game instance.
  * @details State, timers and DOM references all live in this closure.
  * @return A mountable game module.
@@ -459,6 +594,11 @@ export function createTienLenGame(): GameMount {
   let statusLine: HTMLElement | null = null;
   let playButton: HTMLButtonElement | null = null;
   let passButton: HTMLButtonElement | null = null;
+  let online: OnlineBridge | null = null;
+  let duo: TienLenDuoState | null = null;
+  let peerLeft = false;
+  let unsubscribeMove: (() => void) | null = null;
+  let unsubscribePeer: (() => void) | null = null;
 
   const addListener = <E extends Event>(
     target: EventTarget,
@@ -676,12 +816,241 @@ export function createTienLenGame(): GameMount {
     target.replaceChildren(hud, rows, bar, status);
   };
 
+  /** @brief Status line for the online two-player match. */
+  const onlineStatusText = (): string => {
+    if (online === null || duo === null) return message;
+    if (peerLeft) return "Opponent left the match.";
+    if (duo.status !== "playing") {
+      return duo.winner === 0
+        ? `${duo.lastAction} You win the deal.`
+        : `${duo.lastAction} Opponent wins the deal.`;
+    }
+    const turn = duo.turn === 0 ? "your turn" : "opponent's turn";
+    return `${message} You are seat ${online.seat} — ${turn}.`;
+  };
+
+  /** @brief Enables the online controls only on the local seat's turn. */
+  const syncOnlineControls = (): void => {
+    const mine = duo !== null && duo.status === "playing" && !peerLeft && duo.turn === 0;
+    if (playButton !== null) playButton.disabled = !mine;
+    if (passButton !== null) passButton.disabled = !mine || duo === null || duo.previous === null;
+  };
+
+  /** @brief Repaints the online table, the local hand and the status line. */
+  const renderOnline = (): void => {
+    if (duo === null || lastRow === null || handRow === null) return;
+    const [mine, theirs] = duo.hands;
+    const youValue = countValues[0];
+    const foeValue = countValues[1];
+    if (youValue !== undefined) youValue.textContent = String(mine.length);
+    if (foeValue !== undefined) foeValue.textContent = String(theirs.length);
+    if (trickValue !== null) trickValue.textContent = String(duo.trick);
+    if (turnValue !== null) {
+      turnValue.textContent = duo.status === "playing" ? (duo.turn === 0 ? "you" : "opponent") : "—";
+    }
+
+    lastRow.replaceChildren();
+    const lead = document.createElement("span");
+    if (duo.previous === null) {
+      lead.textContent = "lead:";
+      lastRow.append(lead);
+      const free = document.createElement("span");
+      free.textContent = "free trick — any valid combination";
+      lastRow.append(free);
+    } else {
+      const owner = duo.previousSeat === 0 ? "You" : "Opponent";
+      lead.textContent = `${owner} played:${describeCombination(duo.previous)}`;
+      lastRow.append(lead);
+      for (const card of duo.previous.cards) lastRow.append(chip(card));
+    }
+
+    handRow.replaceChildren();
+    const playable = new Set<string>();
+    for (const play of findPlays(mine, duo.previous)) {
+      for (const card of play) playable.add(card.id);
+    }
+    const canAct = duo.status === "playing" && !peerLeft && duo.turn === 0;
+    for (const card of [...mine].sort(compareAscending)) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "stage-card";
+      button.textContent = cardLabel(card);
+      button.dataset.cardId = card.id;
+      button.setAttribute("aria-pressed", selected.has(card.id) ? "true" : "false");
+      if (playable.has(card.id)) button.classList.add("is-playable");
+      if (selected.has(card.id)) button.classList.add("is-selected");
+      button.addEventListener("click", () => {
+        if (!canAct) return;
+        if (selected.has(card.id)) selected.delete(card.id);
+        else selected.add(card.id);
+        renderOnline();
+      });
+      handRow.append(button);
+    }
+    if (mine.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "stage-empty";
+      empty.textContent = "hand empty";
+      handRow.append(empty);
+    }
+
+    if (statusLine !== null) statusLine.textContent = onlineStatusText();
+    syncOnlineControls();
+  };
+
+  /** @brief Applies and relays the selected local cards. */
+  const playSelectedOnline = (): void => {
+    if (online === null || duo === null || peerLeft || duo.status !== "playing" || duo.turn !== 0) return;
+    const cards = duo.hands[0].filter((card) => selected.has(card.id));
+    if (cards.length === 0) {
+      message = "Select at least one card first.";
+      renderOnline();
+      return;
+    }
+    const next = applyDuoPlay(duo, 0, cards);
+    if (next === duo) {
+      message = "That play is not allowed.";
+      renderOnline();
+      return;
+    }
+    duo = next;
+    selected = new Set<string>();
+    message = duo.lastAction;
+    renderOnline();
+    online.sendMove({ kind: "play", cards: cards.map((card) => card.id) });
+  };
+
+  /** @brief Applies and relays a local pass, resetting the trick. */
+  const passTurnOnline = (): void => {
+    if (online === null || duo === null || peerLeft || duo.status !== "playing" || duo.turn !== 0) return;
+    if (duo.previous === null) {
+      message = "You cannot pass while leading the trick.";
+      renderOnline();
+      return;
+    }
+    const next = applyDuoPass(duo, 0);
+    if (next === duo) return;
+    duo = next;
+    selected = new Set<string>();
+    message = duo.lastAction;
+    renderOnline();
+    online.sendMove({ kind: "pass" });
+  };
+
+  /**
+   * @brief Applies one opponent payload.
+   * @param payload Untrusted bridge payload: `{ kind: "play", cards: string[] }`
+   * or `{ kind: "pass" }`. Malformed, foreign and out-of-turn payloads are ignored.
+   */
+  const handleOnlineMove = (payload: unknown): void => {
+    if (online === null || duo === null || peerLeft || duo.status !== "playing" || duo.turn !== 1) return;
+    if (payload === null || typeof payload !== "object") return;
+    const data = payload as { kind?: unknown; cards?: unknown };
+    if (data.kind === "pass") {
+      const next = applyDuoPass(duo, 1);
+      if (next === duo) return;
+      duo = next;
+      selected = new Set<string>();
+      message = duo.lastAction;
+      renderOnline();
+      return;
+    }
+    if (data.kind !== "play" || !Array.isArray(data.cards)) return;
+    const ids: string[] = [];
+    for (const value of data.cards) {
+      if (typeof value !== "string") return;
+      ids.push(value);
+    }
+    if (ids.length === 0 || new Set(ids).size !== ids.length) return;
+    const cards = duo.hands[1].filter((card) => ids.includes(card.id));
+    if (cards.length !== ids.length) return;
+    const next = applyDuoPlay(duo, 1, cards);
+    if (next === duo) return;
+    duo = next;
+    selected = new Set<string>();
+    message = duo.lastAction;
+    renderOnline();
+  };
+
+  /**
+   * @brief Builds the online DOM and wires the bridge.
+   * @param target Host element owned by the stage.
+   * @param bridge Live online match handle.
+   */
+  const startOnline = (target: HTMLElement, bridge: OnlineBridge): void => {
+    online = bridge;
+    peerLeft = false;
+    duo = createTwoPlayerState(bridge.seed, bridge.seat === 1);
+    selected = new Set<string>();
+    message = duo.lastAction;
+
+    unsubscribeMove = bridge.onMove(handleOnlineMove);
+    unsubscribePeer = bridge.onPeerLeft(() => {
+      peerLeft = true;
+      renderOnline();
+    });
+
+    const hud = document.createElement("div");
+    hud.className = "stage-hud";
+    const addStat = (label: string): HTMLElement => {
+      const wrapper = document.createElement("span");
+      wrapper.append(`${label} `);
+      const value = document.createElement("b");
+      value.textContent = "0";
+      wrapper.append(value);
+      hud.append(wrapper);
+      return value;
+    };
+    countValues = [addStat("you"), addStat("opponent")];
+    trickValue = addStat("trick");
+    turnValue = addStat("turn");
+
+    const rows = document.createElement("div");
+    rows.className = "stage-rows";
+    lastRow = document.createElement("div");
+    lastRow.className = "stage-row";
+    handRow = document.createElement("div");
+    handRow.className = "stage-row";
+    rows.append(lastRow, handRow);
+
+    const bar = document.createElement("div");
+    bar.className = "stage-bar";
+    const makeButton = (text: string, onClick: () => void): HTMLButtonElement => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "stage-btn";
+      button.textContent = text;
+      addListener<MouseEvent>(button, "click", onClick);
+      return button;
+    };
+    const play = makeButton("Play", playSelectedOnline);
+    playButton = play;
+    const pass = makeButton("Pass", passTurnOnline);
+    passButton = pass;
+    const restart = makeButton("New deal", () => undefined);
+    restart.disabled = true;
+    bar.append(play, pass, restart);
+
+    const status = document.createElement("p");
+    status.className = "stage-status";
+    statusLine = status;
+    target.replaceChildren(hud, rows, bar, status);
+    renderOnline();
+  };
+
   const unmount = (): void => {
     mounted = false;
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;
     }
+    unsubscribeMove?.();
+    unsubscribePeer?.();
+    unsubscribeMove = null;
+    unsubscribePeer = null;
+    online = null;
+    duo = null;
+    peerLeft = false;
     for (const dispose of cleanups) dispose();
     cleanups.length = 0;
     if (host !== null) host.replaceChildren();
@@ -697,10 +1066,14 @@ export function createTienLenGame(): GameMount {
     passButton = null;
   };
 
-  const mount = (nextHost: HTMLElement): void => {
+  const mount = (nextHost: HTMLElement, context?: GameContext): void => {
     unmount();
     mounted = true;
     host = nextHost;
+    if (context?.online !== undefined) {
+      startOnline(nextHost, context.online);
+      return;
+    }
     rng = createRng(Date.now() >>> 0);
     buildDom(nextHost);
     startDeal();
