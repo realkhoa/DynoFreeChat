@@ -205,6 +205,7 @@ src/
                           state/store.ts · chat.css · sidebar.css · start-view.css
     collab/               engine/ (tictactoe, protocol, coordinator, session)
                           document/ (view, frame, prefs) · collab.css
+    games/                hub-view.ts (module registry rendered as a .cs file) · games.css
     settings/             settings-dialog · theme · minimal · zoom · dockpref · settings.css
   shared/
     ui/                   icons · toolbar · statusbar · menubar · dialogs.css · notifications.css

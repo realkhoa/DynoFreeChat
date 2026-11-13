@@ -1,75 +1,119 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GamesHubView, type GameEntry } from "@/features/games/hub-view";
+import { GamesHubView, type GameEntry, type GamesHubElements } from "@/features/games/hub-view";
 
 const ENTRIES: GameEntry[] = [
   {
     id: "tictactoe",
-    title: "Cờ Caro (Tic-Tac-Toe)",
-    subtitle: "Đấu online, với máy, 2 người trên cùng máy.",
-    icon: "hash",
-    shortcut: "↵ mở",
+    module: "MatrixInspector",
+    summary: "3x3 pointer buffer - remote attach | local simulation | dual-thread",
+    hotkey: "F6",
   },
   {
     id: "caro5",
-    title: "Caro 5",
-    subtitle: "Bàn 10x10, thắng 5 liên tiếp.",
-    icon: "solution",
-    shortcut: "↵ mở",
+    module: "LinearPatternProbe",
+    summary: "5x5 pattern buffer - remote attach | local simulation",
+    hotkey: "F7",
   },
 ];
 
+interface Harness {
+  view: GamesHubView;
+  elements: GamesHubElements;
+  onOpen: (id: string) => void;
+  content: HTMLElement;
+}
+
+function makeHarness(): Harness {
+  document.body.replaceChildren();
+
+  const content = document.createElement("div");
+  content.id = "games-content";
+  content.innerHTML = `
+    <div class="code-line comment">// header</div>
+    <div class="code-line empty"></div>
+    <div class="code-line">namespace X;</div>
+    <div class="code-line empty"></div>
+    <div class="code-line comment">// analyzer modules</div>
+    <div class="code-line empty"></div>
+    <div class="games-list" id="games-list"></div>
+    <div class="code-line comment">// footer</div>
+  `;
+  const gutter = document.createElement("div");
+  gutter.id = "games-gutter";
+  const chip = document.createElement("span");
+  document.body.append(content, gutter, chip);
+
+  const elements: GamesHubElements = {
+    list: content.querySelector<HTMLElement>("#games-list")!,
+    gutter,
+    chip,
+  };
+  const onOpen = vi.fn<(id: string) => void>();
+  const view = new GamesHubView(elements, { onOpen });
+
+  return { view, elements, onOpen, content };
+}
+
 describe("GamesHubView", () => {
-  let list: HTMLElement;
-  let onOpen: (id: string) => void;
-  let hub: GamesHubView;
+  let h: Harness;
 
   beforeEach(() => {
-    document.body.replaceChildren();
-    list = document.createElement("div");
-    document.body.append(list);
-    onOpen = vi.fn<(id: string) => void>();
-    hub = new GamesHubView(list, { onOpen });
-    hub.setGames(ENTRIES);
+    h = makeHarness();
+    h.view.setGames(ENTRIES);
   });
 
-  it("renders one large button per game with a clear title and description", () => {
-    const cards = list.querySelectorAll<HTMLButtonElement>(".game-card");
-    expect(cards).toHaveLength(2);
-    expect(cards[0]?.dataset.gameId).toBe("tictactoe");
-    expect(cards[0]?.querySelector(".game-card-title")?.textContent).toBe("Cờ Caro (Tic-Tac-Toe)");
-    expect(cards[0]?.querySelector(".game-card-subtitle")?.textContent).toContain("online");
-    expect(cards[0]?.querySelector(".game-card-hint")?.textContent).toBe("↵ mở");
-    expect(cards[0]?.getAttribute("aria-label")).toContain("Cờ Caro");
+  it("renders each module as a C# class block, not a game card", () => {
+    const blocks = h.elements.list.querySelectorAll<HTMLButtonElement>(".module-row");
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.dataset.gameId).toBe("tictactoe");
+    expect(blocks[0]?.querySelector(".module-lens")?.textContent).toContain("run");
+    expect(blocks[0]?.querySelector(".module-lens")?.textContent).toContain("F6");
+    expect(blocks[0]?.textContent).toContain("public sealed class MatrixInspector : IGameModule");
+    expect(blocks[0]?.textContent).toContain("3x3 pointer buffer");
+    expect(blocks[0]?.textContent).not.toContain("Cờ Caro");
   });
 
-  it("opens the game when its entry is clicked", () => {
-    list.querySelector<HTMLButtonElement>('[data-game-id="caro5"]')?.click();
-    expect(onOpen).toHaveBeenCalledWith("caro5");
+  it("gives every module exactly three rendered code lines", () => {
+    for (const block of h.elements.list.querySelectorAll(".module-row")) {
+      expect(block.querySelectorAll(".code-line")).toHaveLength(3);
+    }
   });
 
-  it("opens the game with Enter or Space", () => {
-    const card = list.querySelector<HTMLButtonElement>('[data-game-id="tictactoe"]');
-    card?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
-    expect(onOpen).toHaveBeenCalledWith("tictactoe");
-
-    card?.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
-    expect(onOpen).toHaveBeenCalledTimes(2);
+  it("numbers the gutter from the static lines plus the module blocks", () => {
+    // seven static lines in the fixture plus three lines per module
+    expect(h.elements.gutter.querySelectorAll("span")).toHaveLength(7 + 2 * 3);
+    expect(h.elements.gutter.lastElementChild?.textContent).toBe("13");
   });
 
-  it("focuses the first game when the tab activates", () => {
-    hub.focusFirst();
-    expect(document.activeElement).toBe(list.querySelector(".game-card"));
+  it("reports the module count in the toolbar chip", () => {
+    expect(h.elements.chip?.textContent).toBe("// registry: 2 modules");
+    h.view.setGames(ENTRIES.slice(0, 1));
+    expect(h.elements.chip?.textContent).toBe("// registry: 1 module");
   });
 
-  it("re-renders without duplicating entries", () => {
-    hub.setGames(ENTRIES);
-    expect(list.querySelectorAll(".game-card")).toHaveLength(2);
-    expect(hub.games).toHaveLength(2);
+  it("runs the module when its class block is clicked", () => {
+    h.elements.list.querySelector<HTMLButtonElement>('[data-game-id="caro5"]')?.click();
+    expect(h.onOpen).toHaveBeenCalledWith("caro5");
   });
 
-  it("renders an empty list when no games are registered", () => {
-    hub.setGames([]);
-    expect(list.querySelectorAll(".game-card")).toHaveLength(0);
+  it("runs the module with Enter or Space", () => {
+    const block = h.elements.list.querySelector<HTMLButtonElement>('[data-game-id="tictactoe"]');
+    block?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    expect(h.onOpen).toHaveBeenCalledWith("tictactoe");
+
+    block?.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+    expect(h.onOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it("focuses the first module when the tab activates", () => {
+    h.view.focusFirst();
+    expect(document.activeElement).toBe(h.elements.list.querySelector(".module-row"));
+  });
+
+  it("re-renders without duplicating modules", () => {
+    h.view.setGames(ENTRIES);
+    expect(h.elements.list.querySelectorAll(".module-row")).toHaveLength(2);
+    expect(h.view.games).toHaveLength(2);
   });
 });

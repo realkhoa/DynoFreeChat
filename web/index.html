@@ -63,7 +63,7 @@
       <nav class="menubar" id="menubar" aria-label="Thanh menu">
         <div class="menubar-buttons">
           <button type="button" class="menubar-btn" id="btn-hub-chat" title="Chat Hub & danh sách phòng (Ctrl+K / Ctrl+N)">Chat</button>
-          <button type="button" class="menubar-btn" id="btn-hub-collab" title="Collab Hub & Tic-Tac-Toe (Ctrl+B)">Collab</button>
+          <button type="button" class="menubar-btn" id="btn-hub-collab" title="Collab modules (Ctrl+B)">Collab</button>
           <button type="button" class="menubar-btn" id="btn-hub-setting" title="Cài đặt hệ thống (Settings)">Setting</button>
         </div>
 
@@ -262,14 +262,44 @@
       </form>
     </dialog>
 
-    <!-- Collab launcher: one large entry per game; each opens its own tab -->
-    <section class="doc-panel games-panel" id="games-view" hidden>
-      <div class="doc-panel-head">
-        <span class="doc-panel-title">Games</span>
-        <span class="doc-panel-hint">Chọn một game để mở tab riêng. Mỗi game chạy độc lập.</span>
+    <!-- Collab module registry: renders as a plain C# file, one class per module -->
+    <section class="doc-panel games-panel game-code-mode" id="games-view" hidden>
+      <div class="game-code-toolbar">
+        <span class="game-code-file"
+          ><span class="game-code-icon" id="games-code-icon" aria-hidden="true"></span>DiagnosticModules.cs</span
+        >
+        <span class="game-code-chip" id="games-code-chip">// registry: 0 modules</span>
+        <span class="game-code-spacer"></span>
+        <button type="button" class="game-code-tool-btn" id="games-rebuild-btn" title="Rebuild module index (F5)">
+          Rebuild
+        </button>
       </div>
-      <div class="doc-panel-body">
-        <div class="games-list" id="games-list" role="list" aria-label="Danh sách game"></div>
+
+      <div class="game-code-body">
+        <div class="game-code-gutter" id="games-gutter" aria-hidden="true"></div>
+        <div class="game-code-content" id="games-content">
+          <div class="code-line comment">// &lt;auto-generated&gt; DynoFreeChat Diagnostic Tools - module registry (rev 4)</div>
+          <div class="code-line comment">//   profile: managed | runtime: net9.0 | host: DiagnosticMatrix</div>
+          <div class="code-line empty"></div>
+          <div class="code-line"><span class="kw">namespace</span> <span class="ident">DynoFreeChat.Collab.Diagnostics</span>;</div>
+          <div class="code-line empty"></div>
+          <div class="code-line comment">// analyzer modules - select a class to attach its buffer inspector</div>
+          <div class="code-line empty"></div>
+          <div class="games-list" id="games-list" role="list" aria-label="Diagnostic modules"></div>
+          <div class="code-line empty"></div>
+          <div class="code-line comment">// [ F5 ] rebuild index   |   [ F6 ] run selected module</div>
+        </div>
+      </div>
+
+      <div class="game-code-statusbar">
+        <span class="sb-item" id="games-ln">Ln 1, Col 1</span>
+        <span class="sb-item">Spaces: 4</span>
+        <span class="sb-item">UTF-8</span>
+        <span class="sb-item">CRLF</span>
+        <span class="sb-item" id="games-diag">0 errors</span>
+        <span class="sb-item" id="games-session">session -</span>
+        <span class="sb-spacer"></span>
+        <span class="sb-item" id="games-state">Ready</span>
       </div>
     </section>
 

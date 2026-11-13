@@ -121,6 +121,8 @@ const settingsViewEl = byId<HTMLElement>("settings-view");
 const roomsViewEl = byId<HTMLElement>("rooms-view");
 const gamesViewEl = byId<HTMLElement>("games-view");
 const gamesListEl = byId<HTMLElement>("games-list");
+const gamesGutterEl = byId<HTMLElement>("games-gutter");
+const gamesChipEl = byId<HTMLElement>("games-code-chip");
 const tabstripEl = byId<HTMLElement>("tabstrip");
 
 // ------------------------------------------------------------------ instances
@@ -240,23 +242,26 @@ const settingsView = new SettingsView(
 );
 
 /**
- * @brief Every game the Collab hub offers. One entry = one function + one tab.
+ * @brief Modules the Collab registry offers. One entry = one function + one tab.
+ * @details Names are the class the module exposes, so the file reads as diagnostics.
  */
 const GAME_ENTRIES: GameEntry[] = [
   {
     id: "tictactoe",
-    title: "Cờ Caro (Tic-Tac-Toe)",
-    subtitle: "Đấu online bằng mã phòng, đấu với máy, hoặc 2 người trên cùng máy.",
-    icon: "hash",
-    shortcut: "↵ mở",
+    module: "MatrixInspector",
+    summary: "3x3 pointer buffer - remote attach | local simulation | dual-thread",
+    hotkey: "F6",
   },
 ];
 
-const gamesHub = new GamesHubView(gamesListEl, {
-  onOpen: (id) => {
-    if (id === "tictactoe") gameDialog.open();
+const gamesHub = new GamesHubView(
+  { list: gamesListEl, gutter: gamesGutterEl, chip: gamesChipEl },
+  {
+    onOpen: (id) => {
+      if (id === "tictactoe") gameDialog.open();
+    },
   },
-});
+);
 gamesHub.setGames(GAME_ENTRIES);
 
 const docTabs = new DocTabs(tabstripEl, editorEl, tabNew, {
@@ -678,7 +683,7 @@ function openRoomsTab(): void {
  * @brief Opens the Collab games hub document.
  */
 function openGamesTab(): void {
-  docTabs.open({ id: "games", label: "Games", panel: gamesViewEl, icon: "solution" });
+  docTabs.open({ id: "games", label: "DiagnosticModules.cs", panel: gamesViewEl, icon: "file" });
   gamesHub.focusFirst();
 }
 
@@ -1150,6 +1155,7 @@ function decorateChrome(): void {
   byId<HTMLElement>("tab-icon").append(icon("folder", 14));
   byId<HTMLElement>("tab-game-icon").append(icon("file", 14));
   byId<HTMLElement>("game-code-icon").append(icon("file", 12));
+  byId<HTMLElement>("games-code-icon").append(icon("file", 12));
   byId<HTMLElement>("filter-icon").append(icon("search", 12));
   byId<HTMLElement>("menu-search-icon").append(icon("search", 12));
   byId<HTMLElement>("tree-search-icon").append(icon("search", 12));

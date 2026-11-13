@@ -1,115 +1,158 @@
 /**
  * @file hub-view.ts
- * @brief Games hub document: one large, clearly labelled entry per game.
- * @details The Collab tab is a launcher, not a game: each entry is a whole-row button
- * with a title, a one-line description and a hint, so it is obvious what it opens and
- * easy to hit. Adding a game means adding one entry plus its open handler.
+ * @brief Collab module registry, rendered as a plain C# file.
+ * @details The launcher must read as another source file: every game is a class
+ * declaration with a code lens line you can click, so the only thing on screen is a
+ * module index. Adding a game is one entry plus its open handler.
  */
 
 import { icon, type IconName } from "@/shared/ui/icons";
 
-/** One game offered by the hub. */
+/** One module (game) offered by the registry. */
 export interface GameEntry {
   /** Stable id used by the open handler. */
   id: string;
-  /** Human title, e.g. "Cờ Caro". */
-  title: string;
-  /** One line describing modes, e.g. "online, với máy, 2 người". */
-  subtitle: string;
-  /** Icon shown on the left. */
-  icon: IconName;
-  /** Keyboard shortcut hint shown on the right. */
-  shortcut: string;
+  /** Class name shown in the declaration, e.g. "MatrixInspector". */
+  module: string;
+  /** Comment describing the module's modes in technical wording. */
+  summary: string;
+  /** Function key shown in the lens line. */
+  hotkey: string;
 }
 
-/** Callbacks for the hub. */
+/** Callbacks for the registry. */
 export interface GamesHubHandlers {
   /**
-   * Opens a game.
-   * @param id Game id from {@link GameEntry}.
+   * Runs a module.
+   * @param id Module id from {@link GameEntry}.
    */
   onOpen: (id: string) => void;
 }
 
+/** DOM hosts owned by the registry document. */
+export interface GamesHubElements {
+  /** Container that receives the class blocks. */
+  list: HTMLElement;
+  /** Gutter that receives one number per rendered code line. */
+  gutter: HTMLElement;
+  /** Toolbar chip showing the module count. */
+  chip: HTMLElement | null;
+}
+
 /**
- * @brief Renders the game launcher list.
+ * @brief Renders and updates the module registry.
  */
 export class GamesHubView {
   private entries: GameEntry[] = [];
 
   /**
-   * @brief Stores the list container and the open callback.
-   * @param list Container receiving one button per game.
-   * @param handlers Hub callbacks.
+   * @brief Stores the document hosts and callbacks.
+   * @param elements Registry DOM hosts.
+   * @param handlers Registry callbacks.
    */
   constructor(
-    private readonly list: HTMLElement,
+    private readonly elements: GamesHubElements,
     private readonly handlers: GamesHubHandlers,
   ) {}
 
   /**
-   * @brief Renders the entries exactly once per call; safe to call again.
-   * @param entries Games to offer.
+   * @brief Renders one clickable class block per module and renumbers the gutter.
+   * @param entries Modules to offer.
    */
   setGames(entries: GameEntry[]): void {
     this.entries = entries;
     const fragment = document.createDocumentFragment();
 
     for (const entry of entries) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "game-card";
-      card.dataset.gameId = entry.id;
-      card.setAttribute("aria-label", `${entry.title} — ${entry.subtitle}`);
+      const block = document.createElement("button");
+      block.type = "button";
+      block.className = "module-row";
+      block.dataset.gameId = entry.id;
+      block.setAttribute("aria-label", `Run ${entry.module} — ${entry.summary}`);
 
-      const iconWrap = document.createElement("span");
-      iconWrap.className = "game-card-icon";
-      iconWrap.setAttribute("aria-hidden", "true");
-      iconWrap.append(icon(entry.icon, 20));
+      // VS CodeLens style: the action line sits above the declaration.
+      const lens = document.createElement("span");
+      lens.className = "code-line indent1 module-lens";
+      lens.append(text("// ▶ run ", "comment"));
+      lens.append(text(`[ ${entry.hotkey} ]`, "kw"));
 
-      const body = document.createElement("span");
-      body.className = "game-card-body";
+      const declaration = document.createElement("span");
+      declaration.className = "code-line indent1";
+      declaration.append(text("public sealed class ", "kw"));
+      declaration.append(text(entry.module, "type"));
+      declaration.append(text(" : ", "ident"));
+      declaration.append(text("IGameModule", "type"));
 
-      const title = document.createElement("span");
-      title.className = "game-card-title";
-      title.textContent = entry.title;
+      const summary = document.createElement("span");
+      summary.className = "code-line indent2 comment";
+      summary.textContent = `// ${entry.summary}`;
 
-      const subtitle = document.createElement("span");
-      subtitle.className = "game-card-subtitle";
-      subtitle.textContent = entry.subtitle;
-
-      body.append(title, subtitle);
-
-      const hint = document.createElement("span");
-      hint.className = "game-card-hint";
-      hint.textContent = entry.shortcut;
-
-      card.append(iconWrap, body, hint);
-      card.addEventListener("click", () => this.handlers.onOpen(entry.id));
-      card.addEventListener("keydown", (event) => {
+      block.append(lens, declaration, summary);
+      block.addEventListener("click", () => this.handlers.onOpen(entry.id));
+      block.addEventListener("keydown", (event) => {
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         this.handlers.onOpen(entry.id);
       });
 
-      fragment.append(card);
+      fragment.append(block);
     }
 
-    this.list.replaceChildren(fragment);
+    this.elements.list.replaceChildren(fragment);
+    this.paintGutter(entries.length);
+    if (this.elements.chip !== null) {
+      this.elements.chip.textContent = `// registry: ${entries.length} module${entries.length === 1 ? "" : "s"}`;
+    }
   }
 
   /**
-   * @brief Puts keyboard focus on the first game, for tab activation.
+   * @brief Focuses the first module, for tab activation.
    */
   focusFirst(): void {
-    this.list.querySelector<HTMLButtonElement>(".game-card")?.focus();
+    this.elements.list.querySelector<HTMLButtonElement>(".module-row")?.focus();
   }
 
   /**
-   * @brief Currently offered games, for tests and diagnostics.
+   * @brief Currently offered modules, for tests and diagnostics.
    * @return Copy of the entry list.
    */
   get games(): GameEntry[] {
     return [...this.entries];
   }
+
+  /**
+   * @brief Renumbers the gutter from the static lines plus three lines per module.
+   * @param moduleCount Number of rendered module blocks.
+   * @details The gutter must match the rendered file or the disguise breaks, so it is
+   * derived instead of hand-maintained.
+   */
+  private paintGutter(moduleCount: number): void {
+    const content = this.elements.list.parentElement;
+    const staticLines = content === null ? 0 : content.querySelectorAll(":scope > .code-line").length;
+    const total = staticLines + moduleCount * 3;
+
+    const fragment = document.createDocumentFragment();
+    for (let line = 1; line <= total; line++) {
+      const span = document.createElement("span");
+      span.textContent = String(line).padStart(2, "0");
+      fragment.append(span);
+    }
+    this.elements.gutter.replaceChildren(fragment);
+  }
 }
+
+/**
+ * @brief Builds a syntax-coloured text node holder.
+ * @param value Text content.
+ * @param className Syntax class from the code document styles.
+ * @return Span element.
+ */
+function text(value: string, className: string): HTMLSpanElement {
+  const span = document.createElement("span");
+  span.className = className;
+  span.textContent = value;
+  return span;
+}
+
+/** Re-exported so callers do not import the icon module just for the type. */
+export type { IconName };

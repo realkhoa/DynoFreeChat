@@ -119,18 +119,24 @@ await sleep(500);
 
 report.hub = await evaluate(`(() => {
   const panel = document.querySelector("#games-view");
-  const cards = [...document.querySelectorAll(".game-card")];
-  const first = cards[0]?.getBoundingClientRect();
+  const rows = [...document.querySelectorAll(".module-row")];
+  const first = rows[0]?.getBoundingClientRect();
+  const text = panel?.innerText ?? "";
   return {
     tabSelected: document.querySelector('[data-doc-id="games"]')?.getAttribute("aria-selected"),
+    tabLabel: document.querySelector('[data-doc-id="games"] .tab-label')?.textContent,
     panelVisible: panel !== null && panel.offsetHeight > 0,
     crumb: document.querySelector("#crumb-room")?.textContent,
-    cardCount: cards.length,
-    firstTitle: cards[0]?.querySelector(".game-card-title")?.textContent,
-    firstSubtitle: cards[0]?.querySelector(".game-card-subtitle")?.textContent,
-    firstAria: cards[0]?.getAttribute("aria-label"),
+    rowCount: rows.length,
+    firstText: rows[0]?.innerText?.replace(/\\n+/g, " | "),
+    declaredClass: rows[0]?.querySelector(".type")?.textContent,
     hitW: first === undefined ? null : Math.round(first.width),
     hitH: first === undefined ? null : Math.round(first.height),
+    gutter: document.querySelectorAll("#games-gutter span").length,
+    renderedLines:
+      document.querySelectorAll("#games-content > .code-line").length +
+      rows.length * 3,
+    exposed: ["Cờ Caro", "Tic-Tac-Toe", "Chơi", "Games"].some((word) => text.includes(word)),
     opensModal: [...document.querySelectorAll("dialog[open]")].length > 0,
   };
 })()`);
