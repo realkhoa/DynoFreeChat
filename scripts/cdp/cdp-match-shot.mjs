@@ -117,6 +117,13 @@ const report = await evaluate(`(() => ({
   status: document.querySelector("#match-status")?.textContent ?? null,
 }))()`);
 
+await click("#btn-hub-chat");
+await sleep(1000);
+report.chatPicker = await evaluate(`(() => ({
+  text: (document.querySelector("#picker-list")?.textContent ?? "").replace(/\\s+/g, " ").trim().slice(0, 220),
+  rows: document.querySelectorAll("#picker-list .picker-row, #picker-list li, #picker-list button").length,
+}))()`);
+
 const { data } = await send("Page.captureScreenshot", { format: "png" });
 writeFileSync(path.join(OUT, "match-lobby.png"), Buffer.from(data, "base64"));
 console.log(JSON.stringify(report, null, 2));
