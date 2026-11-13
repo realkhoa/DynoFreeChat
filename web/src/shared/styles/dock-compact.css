@@ -38,12 +38,10 @@
 }
 
 :root[data-minimal="on"][data-dock="closed"] .ide {
-  grid-template-areas:
-    "content";
+  grid-template-areas: "content";
   grid-template-rows: minmax(0, 1fr);
 }
 
 :root[data-dock="closed"] .dock {
   display: none;
 }
-

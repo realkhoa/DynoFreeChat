@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_THEME, applyTheme, isTheme, loadTheme, otherTheme, saveTheme } from "@/features/settings/theme";
+import {
+  DEFAULT_THEME,
+  applyTheme,
+  isTheme,
+  loadTheme,
+  otherTheme,
+  saveTheme,
+} from "@/features/settings/theme";
 
 function fakeStorage(seed: Record<string, string> = {}): Storage {
   const map = new Map(Object.entries(seed));

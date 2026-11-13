@@ -6,3 +6,4 @@ coverage/
 .shots/
 package-lock.json
 *.md
+web/index.html

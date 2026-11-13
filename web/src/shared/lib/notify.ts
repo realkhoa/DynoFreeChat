@@ -72,7 +72,9 @@ export class Notifier {
     const interval = this.deps.minIntervalMs ?? 5_000;
     if (now - this.lastShownAt < interval) return;
     this.lastShownAt = now;
-    const body = mention ? `${this.unreadTotal} tin nhắn mới · có nhắc bạn` : `${this.unreadTotal} tin nhắn mới`;
+    const body = mention
+      ? `${this.unreadTotal} tin nhắn mới · có nhắc bạn`
+      : `${this.unreadTotal} tin nhắn mới`;
     this.deps.show(`#${room}`, body, `room:${room}`);
   }
 

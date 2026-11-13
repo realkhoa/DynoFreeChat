@@ -57,7 +57,10 @@ await send("Runtime.enable");
 await send("Page.navigate", { url });
 await sleep(4000);
 
-console.log("STATUS:", await evaluate("document.querySelector('#statusbar')?.innerText.replace(/\\n/g, ' | ')"));
+console.log(
+  "STATUS:",
+  await evaluate("document.querySelector('#statusbar')?.innerText.replace(/\\n/g, ' | ')"),
+);
 console.log("LOG:", JSON.stringify(await evaluate("document.querySelector('#log')?.innerText")));
 
 if (message) {
@@ -72,7 +75,9 @@ if (message) {
 }
 
 if (shotPath) {
-  const [width, height] = (args.find((arg) => arg.startsWith("--size="))?.slice("--size=".length) ?? "1440x900")
+  const [width, height] = (
+    args.find((arg) => arg.startsWith("--size="))?.slice("--size=".length) ?? "1440x900"
+  )
     .split("x")
     .map(Number);
   await send("Emulation.setDeviceMetricsOverride", {

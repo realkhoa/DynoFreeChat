@@ -133,7 +133,10 @@ class Browser {
   once(method) {
     return new Promise((resolve) => {
       const handler = (params) => {
-        this.events.set(method, (this.events.get(method) ?? []).filter((fn) => fn !== handler));
+        this.events.set(
+          method,
+          (this.events.get(method) ?? []).filter((fn) => fn !== handler),
+        );
         resolve(params);
       };
       this.events.set(method, [...(this.events.get(method) ?? []), handler]);
@@ -182,7 +185,9 @@ class Browser {
   probeSockets() {
     return {
       wsUrls: this.trace.filter((entry) => entry.wsCreated !== undefined).map((entry) => entry.wsCreated),
-      wsHandshake: this.trace.filter((entry) => entry.wsHandshake !== undefined).map((entry) => entry.wsHandshake),
+      wsHandshake: this.trace
+        .filter((entry) => entry.wsHandshake !== undefined)
+        .map((entry) => entry.wsHandshake),
       received: this.trace.filter((entry) => entry.frame !== undefined).map((entry) => entry.frame),
       sent: this.trace.filter((entry) => entry.sent !== undefined).map((entry) => entry.sent),
       errors: this.trace.filter((entry) => entry.error !== undefined),
@@ -286,7 +291,8 @@ async function main() {
       const hosted = await alice.evaluate(boardState);
       findings.push({ step: "hosted", hosted });
       code = /session:\s*([A-Z0-9]{4,6})/i.exec(hosted.badge ?? "")?.[1] ?? null;
-      if (code === null) throw new Error(`could not read the session id from ${JSON.stringify(hosted.badge)}`);
+      if (code === null)
+        throw new Error(`could not read the session id from ${JSON.stringify(hosted.badge)}`);
       findings.push({ step: "session id", code });
     } else {
       findings.push({ step: "preset session id", code });
@@ -309,10 +315,18 @@ async function main() {
 
     findings.push({ step: "alice live", ...(await waitForLive(alice, "alice")) });
     findings.push({ step: "bob live", ...(await waitForLive(bob, "bob")) });
-    findings.push({ step: "after join", alice: await alice.evaluate(boardState), bob: await bob.evaluate(boardState) });
+    findings.push({
+      step: "after join",
+      alice: await alice.evaluate(boardState),
+      bob: await bob.evaluate(boardState),
+    });
 
     // Diagnostics also ride on the room, so a stuck run still shows why.
-    findings.push({ step: "socket probes", alice: await alice.probeSockets(), bob: await bob.probeSockets() });
+    findings.push({
+      step: "socket probes",
+      alice: await alice.probeSockets(),
+      bob: await bob.probeSockets(),
+    });
 
     // Whoever ended up as X opens; the document names the role as a thread marker.
     const roleOf = (state) => {

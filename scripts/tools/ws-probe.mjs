@@ -1,7 +1,11 @@
 import WebSocket from "ws";
 
 const url = process.argv[2] ?? "wss://dynofreechat-api.nbk2124-z.workers.dev/ws?r=demo";
-const ws = new WebSocket(url, { origin: "https://realkhoa.github.io", handshakeTimeout: 5000, perMessageDeflate: false });
+const ws = new WebSocket(url, {
+  origin: "https://realkhoa.github.io",
+  handshakeTimeout: 5000,
+  perMessageDeflate: false,
+});
 
 ws.on("open", () => {
   console.log("OPEN");
@@ -16,5 +20,7 @@ ws.on("unexpected-response", (_req, res) => {
   res.on("data", (chunk) => console.log("BODY", String(chunk).slice(0, 200)));
 });
 ws.on("error", (error) => console.log("ERR", error.message));
-ws.on("close", (code, reason, wasClean) => console.log("CLOSE", code, String(reason).slice(0, 80), "clean=" + wasClean));
+ws.on("close", (code, reason, wasClean) =>
+  console.log("CLOSE", code, String(reason).slice(0, 80), "clean=" + wasClean),
+);
 setTimeout(() => process.exit(0), 7000);

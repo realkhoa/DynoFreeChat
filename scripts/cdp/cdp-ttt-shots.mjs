@@ -59,7 +59,7 @@ ws.on("message", (raw) => {
   if (m.id !== undefined) {
     const entry = pending.get(m.id);
     pending.delete(m.id);
-    if (entry) (m.error ? entry.reject(new Error(JSON.stringify(m.error))) : entry.resolve(m.result));
+    if (entry) m.error ? entry.reject(new Error(JSON.stringify(m.error))) : entry.resolve(m.result);
     return;
   }
   for (const fn of events.get(m.method) ?? []) fn(m.params);
@@ -73,7 +73,10 @@ const send = (method, params = {}) =>
 const once = (method) =>
   new Promise((resolve) => {
     const fn = (params) => {
-      events.set(method, (events.get(method) ?? []).filter((f) => f !== fn));
+      events.set(
+        method,
+        (events.get(method) ?? []).filter((f) => f !== fn),
+      );
       resolve(params);
     };
     events.set(method, [...(events.get(method) ?? []), fn]);
@@ -81,7 +84,12 @@ const once = (method) =>
 
 await send("Page.enable");
 await send("Runtime.enable");
-await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+await send("Emulation.setDeviceMetricsOverride", {
+  width: 1440,
+  height: 900,
+  deviceScaleFactor: 1,
+  mobile: false,
+});
 
 const loaded = once("Page.loadEventFired");
 await send("Page.navigate", { url: APP_URL });
@@ -94,7 +102,9 @@ const evaluate = async (expression) => {
   return r.result.value;
 };
 const click = (selector) =>
-  evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return "missing"; el.click(); return "ok"; })()`);
+  evaluate(
+    `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return "missing"; el.click(); return "ok"; })()`,
+  );
 const shot = async (name) => {
   const { data } = await send("Page.captureScreenshot", { format: "png" });
   const file = path.join(OUT, `${name}.png`);

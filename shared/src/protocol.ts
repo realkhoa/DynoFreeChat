@@ -297,9 +297,7 @@ export function mentionsNick(text: string, nick: string): boolean {
   return extractMentions(text).some((mention) => mention.toLowerCase() === target);
 }
 
-export type TextSegment =
-  | { kind: "text"; value: string }
-  | { kind: "mention"; value: string; nick: string };
+export type TextSegment = { kind: "text"; value: string } | { kind: "mention"; value: string; nick: string };
 
 /** Splits a message into plain runs and `@mention` runs for rendering. */
 export function segmentText(text: string): TextSegment[] {

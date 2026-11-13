@@ -168,7 +168,9 @@ describe("ChatSocket", () => {
     socket.onFrame((frame) => received.push(frame));
     socket.connect();
     fakes[0]!.serverClose.toString(); // keep the fake warm
-    (fakes[0] as unknown as { emit: (type: string, event: unknown) => void }).emit("message", { data: "<<<" });
+    (fakes[0] as unknown as { emit: (type: string, event: unknown) => void }).emit("message", {
+      data: "<<<",
+    });
 
     expect(received).toHaveLength(0);
   });

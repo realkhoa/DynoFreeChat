@@ -35,7 +35,10 @@ export interface OnlineGameSessionOptions {
   /** Current user identity */
   identity: Identity;
   /** Optional function to register the room on first creation */
-  createRoomImpl?: (apiBase: string, body: { slug: string; pass?: string }) => Promise<{ ok: boolean; code?: string }>;
+  createRoomImpl?: (
+    apiBase: string,
+    body: { slug: string; pass?: string },
+  ) => Promise<{ ok: boolean; code?: string }>;
   /** Initial role; may be revised by the handshake */
   role: PlayerMark;
   /** Stable id for this session, used to break role ties deterministically */

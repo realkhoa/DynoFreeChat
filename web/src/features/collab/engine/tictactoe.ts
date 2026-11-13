@@ -293,7 +293,10 @@ export function generateRoomCode(rand: () => number = Math.random): string {
  * @return Lowercase valid slug prefixed with 'ttt-', e.g. 'ttt-k9x2'.
  */
 export function roomSlugFromCode(code: string): string {
-  const cleaned = code.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const cleaned = code
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
   return `ttt-${cleaned || "game"}`;
 }
 

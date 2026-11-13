@@ -142,8 +142,7 @@ export class SettingsDialog {
   update(state: SettingsState): void {
     this.elements.nickDesc.textContent = `Nickname hiện tại: ${state.nick}`;
     this.elements.zoomLabel.textContent = `Cỡ log hiện tại: ${state.zoomPercent}%`;
-    this.elements.toggleTheme.textContent =
-      state.theme === "dark" ? "Chuyển sang Light" : "Chuyển sang Dark";
+    this.elements.toggleTheme.textContent = state.theme === "dark" ? "Chuyển sang Light" : "Chuyển sang Dark";
     this.elements.toggleSound.textContent = state.soundEnabled ? "Tắt âm thanh" : "Bật âm thanh";
   }
 

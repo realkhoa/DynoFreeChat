@@ -70,7 +70,10 @@ function connect(url) {
   const once = (method) =>
     new Promise((resolve) => {
       const handler = (params) => {
-        events.set(method, (events.get(method) ?? []).filter((fn) => fn !== handler));
+        events.set(
+          method,
+          (events.get(method) ?? []).filter((fn) => fn !== handler),
+        );
         resolve(params);
       };
       events.set(method, [...(events.get(method) ?? []), handler]);

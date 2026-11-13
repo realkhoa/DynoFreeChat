@@ -50,7 +50,10 @@ export interface GameCoordinatorOptions {
   /** Identity getter for online sessions */
   getIdentity: () => Identity;
   /** Optional custom room creation implementation */
-  createRoomImpl?: (apiBase: string, body: { slug: string; pass?: string }) => Promise<{ ok: boolean; code?: string }>;
+  createRoomImpl?: (
+    apiBase: string,
+    body: { slug: string; pass?: string },
+  ) => Promise<{ ok: boolean; code?: string }>;
   /** Optional deterministic client id, mainly for tests */
   clientId?: string;
   /** Optional WebSocket factory, mainly for tests */
@@ -107,7 +110,8 @@ export class GameCoordinator {
   async startOnlineGame(code: string, asHost: boolean): Promise<void> {
     this.roomCode = code.trim().toUpperCase();
     const role: PlayerMark = asHost ? "X" : "O";
-    const badge = `${this.roomCode} (${role})`;    const status = asHost
+    const badge = `${this.roomCode} (${role})`;
+    const status = asHost
       ? `session ${this.roomCode} created - awaiting remote attach`
       : `attaching to session ${this.roomCode}...`;
     this.activate("online", role, badge, status);
@@ -255,7 +259,8 @@ export class GameCoordinator {
     if (this.mode !== "online") return;
 
     if (online >= 2 && !hadPeer) this.options.callbacks.onStatus("remote session attached");
-    else if (online < 2) this.options.callbacks.onStatus(`session ${this.roomCode} ready - awaiting remote attach`);
+    else if (online < 2)
+      this.options.callbacks.onStatus(`session ${this.roomCode} ready - awaiting remote attach`);
     this.sync();
   }
 
@@ -280,7 +285,9 @@ export class GameCoordinator {
           this.myRole = resolved;
           this.session?.setRole(resolved);
           this.options.callbacks.onRoomBadge(`${this.roomCode} (${resolved})`);
-          this.options.callbacks.onStatus(`thread ${resolved} assigned (${peerNick} is ${otherMark(resolved)})`);
+          this.options.callbacks.onStatus(
+            `thread ${resolved} assigned (${peerNick} is ${otherMark(resolved)})`,
+          );
           this.sync();
         }
       }

@@ -25,7 +25,10 @@ export interface GameDialogOptions {
   /** Current user identity (nick, color) */
   getIdentity: () => Identity;
   /** Optional function to create/register room */
-  createRoomImpl?: (apiBase: string, body: { slug: string; pass?: string }) => Promise<{ ok: boolean; code?: string }>;
+  createRoomImpl?: (
+    apiBase: string,
+    body: { slug: string; pass?: string },
+  ) => Promise<{ ok: boolean; code?: string }>;
   /** Optional persistence storage */
   storage?: Storage | null;
   /** The document panel that holds the session */

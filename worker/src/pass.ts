@@ -25,10 +25,7 @@ export function randomSalt(): string {
 
 /** SHA-256(salt ‖ NUL ‖ slug ‖ NUL ‖ pass), hex encoded. */
 export async function hashPass(salt: string, slug: string, pass: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    encoder.encode(`${salt}\u0000${slug}\u0000${pass}`),
-  );
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(`${salt}\u0000${slug}\u0000${pass}`));
   return toHex(new Uint8Array(digest));
 }
 

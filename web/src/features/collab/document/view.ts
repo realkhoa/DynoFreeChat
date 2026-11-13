@@ -7,7 +7,13 @@
  * file never looks stitched together.
  */
 
-import type { BoardState, GameMode, GameOutcome, GameScore, PlayerMark } from "@/features/collab/engine/tictactoe";
+import type {
+  BoardState,
+  GameMode,
+  GameOutcome,
+  GameScore,
+  PlayerMark,
+} from "@/features/collab/engine/tictactoe";
 
 /** Glyph painted inside a slot literal when the slot is empty. */
 const EMPTY_GLYPH = "\u00b7";
@@ -261,11 +267,7 @@ export class GameBoardView {
       this.threadEl.textContent = this.active ? `thread ${this.turn}` : "thread -";
     }
     if (this.stateEl !== null) {
-      this.stateEl.textContent = !this.active
-        ? "Ready"
-        : winner !== null
-          ? "Assertion passed"
-          : "Running";
+      this.stateEl.textContent = !this.active ? "Ready" : winner !== null ? "Assertion passed" : "Running";
     }
     if (this.diagEl !== null) {
       this.diagEl.textContent = winner !== null && winner !== "draw" ? "0 errors, 1 assert" : "0 errors";

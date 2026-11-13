@@ -49,7 +49,8 @@ await send("Page.navigate", { url });
 await sleep(3500);
 
 const state = await send("Runtime.evaluate", {
-  expression: "JSON.stringify({ mode: document.querySelector('#editor')?.dataset.mode, rooms: document.querySelectorAll('.tree-row').length })",
+  expression:
+    "JSON.stringify({ mode: document.querySelector('#editor')?.dataset.mode, rooms: document.querySelectorAll('.tree-row').length })",
   returnByValue: true,
 });
 console.log("STATE:", state.result?.value);

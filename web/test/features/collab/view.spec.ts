@@ -60,7 +60,14 @@ describe("GameBoardView", () => {
   });
 
   it("renders slots as char literals inside the initializer", () => {
-    view.update(["X", null, "O", null, null, null, null, null, null], "O", null, { winner: null }, SCORES, "local");
+    view.update(
+      ["X", null, "O", null, null, null, null, null, null],
+      "O",
+      null,
+      { winner: null },
+      SCORES,
+      "local",
+    );
 
     expect(cells()[0]?.textContent).toBe("'X'");
     expect(cells()[1]?.textContent).toBe("'\u00b7'");
@@ -139,7 +146,15 @@ describe("GameBoardView", () => {
     view.update(empty, "X", null, { winner: null }, SCORES, "local", true);
     expect(target.textContent).toBe("tampered");
 
-    view.update(["X", null, null, null, null, null, null, null, null], "O", null, { winner: null }, SCORES, "local", true);
+    view.update(
+      ["X", null, null, null, null, null, null, null, null],
+      "O",
+      null,
+      { winner: null },
+      SCORES,
+      "local",
+      true,
+    );
     expect(target.textContent).toBe("'X'");
   });
 });

@@ -6,9 +6,7 @@ export interface Bucket {
   last: number;
 }
 
-export type TakeResult =
-  | { ok: true; bucket: Bucket }
-  | { ok: false; bucket: Bucket; retryInMs: number };
+export type TakeResult = { ok: true; bucket: Bucket } | { ok: false; bucket: Bucket; retryInMs: number };
 
 /**
  * A fresh bucket starts full.

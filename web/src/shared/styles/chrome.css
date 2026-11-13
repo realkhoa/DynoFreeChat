@@ -54,7 +54,9 @@
   border-radius: var(--radius);
   color: var(--fg-muted);
   cursor: text;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .titlebar-search:focus-within {
@@ -131,7 +133,9 @@
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .menubar-btn:hover {
@@ -261,7 +265,10 @@
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    border-color 0.1s,
+    color 0.1s;
 }
 
 .toolbar-btn:hover:not(:disabled) {
@@ -505,7 +512,9 @@
   border-right: 1px solid var(--border-subtle);
   color: var(--fg-dim);
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 
 .tab-new:hover {
@@ -630,4 +639,3 @@
   border-top: 4px solid var(--fg-dim);
   pointer-events: none;
 }
-

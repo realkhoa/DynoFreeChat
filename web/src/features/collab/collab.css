@@ -373,7 +373,9 @@
    but a running session stays fully legible. */
 .is-stealth {
   opacity: var(--stealth-opacity, 0.35);
-  transition: opacity 0.18s ease, filter 0.18s ease;
+  transition:
+    opacity 0.18s ease,
+    filter 0.18s ease;
 }
 
 .is-stealth--blur {
@@ -385,4 +387,3 @@
   opacity: 0.98;
   filter: blur(0);
 }
-

@@ -15,7 +15,15 @@ import { apiBase, roomSocketUrl, wsUrl } from "@/env";
 import { applyBrowserBadges } from "@/shared/lib/badge";
 import { loadZoom, saveZoom, stepZoom, zoomToPixels, type Zoom } from "@/features/settings/zoom";
 import { byId } from "@/shared/lib/dom";
-import { applyDock, closeDock, loadDock, revealDock, saveDock, toggleDock, type DockState } from "@/features/settings/dockpref";
+import {
+  applyDock,
+  closeDock,
+  loadDock,
+  revealDock,
+  saveDock,
+  toggleDock,
+  type DockState,
+} from "@/features/settings/dockpref";
 import { joinPassFor } from "@/shared/lib/joinpass";
 import { applyMinimal, loadMinimal, minimalFromSearch, saveMinimal } from "@/features/settings/minimal";
 import { Outbox } from "@/shared/lib/outbox";
@@ -331,9 +339,7 @@ const composer = new Composer({
 
 const menubar = mountMenubar(menubarEl, handleMenuAction);
 const toolbarEl = document.getElementById("toolbar-standard");
-const toolbar = toolbarEl
-  ? new StandardToolbar(toolbarEl, defaultToolbarSpec(), handleMenuAction)
-  : null;
+const toolbar = toolbarEl ? new StandardToolbar(toolbarEl, defaultToolbarSpec(), handleMenuAction) : null;
 
 /**
  * Notifications carry a room label and a count — never message text, never a
@@ -678,11 +684,7 @@ function leaveRoom(updateUrl = true): void {
   void refreshRooms();
 }
 
-function handleState(
-  gen: number,
-  state: SocketState,
-  detail: { attempt: number; reason?: string },
-): void {
+function handleState(gen: number, state: SocketState, detail: { attempt: number; reason?: string }): void {
   if (gen !== generation) return;
 
   statusbar.setConnection(state, detail.attempt);
@@ -798,7 +800,6 @@ function handleServerError(gen: number, frame: Extract<ServerFrame, { t: "error"
   }
 }
 
-
 /** Sends everything typed while the socket was down, in order. */
 function flushOutbox(): void {
   if (outbox.empty) return;
@@ -838,9 +839,10 @@ function sendMessage(text: string, replyTo?: string): void {
   store.addPending(cid, trimmed, identity.nick, identity.color, quoted);
   render();
 
-  const frame: ClientFrame = quoted === undefined
-    ? { t: "msg", cid, text: trimmed }
-    : { t: "msg", cid, text: trimmed, replyTo: quoted.id };
+  const frame: ClientFrame =
+    quoted === undefined
+      ? { t: "msg", cid, text: trimmed }
+      : { t: "msg", cid, text: trimmed, replyTo: quoted.id };
 
   if (socket.send(frame)) {
     setFollow(true);
@@ -848,9 +850,7 @@ function sendMessage(text: string, replyTo?: string): void {
   }
 
   // Offline: keep the row pending and queue the frame for the next welcome.
-  outbox.queue(
-    quoted === undefined ? { cid, text: trimmed } : { cid, text: trimmed, replyTo: quoted.id },
-  );
+  outbox.queue(quoted === undefined ? { cid, text: trimmed } : { cid, text: trimmed, replyTo: quoted.id });
   if (!outboxWarned) {
     outboxWarned = true;
     store.addSystem("chưa kết nối — tin nhắn sẽ được gửi lại khi vào lại room");
@@ -1092,7 +1092,6 @@ function wire(): void {
     if (following) newChip.hidden = true;
   };
 
-
   newChip.addEventListener("click", () => {
     setFollow(true);
     logView.scrollToBottom();
@@ -1137,8 +1136,6 @@ function wire(): void {
     });
   });
 
-
-
   for (const input of [roomSearch, treeSearch]) {
     input.addEventListener("input", () => setRoomQuery(input.value));
     input.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -1171,7 +1168,6 @@ function wire(): void {
       applyFilter(store.kindFilter, filterInput.value);
     }, FILTER_DEBOUNCE_MS);
   });
-
 
   // Nickname change can also be triggered via Edit/Tools menu or status bar if present.
   nickButton?.addEventListener("click", () => void changeNickname());

@@ -56,9 +56,7 @@ export class FakeSocket {
 
   /** Payloads of the `game` frames the client sent, decoded. */
   gamePayloads<T = Record<string, unknown>>(): T[] {
-    return this.framesOfType<{ t: string; data: string }>("game").map(
-      (frame) => JSON.parse(frame.data) as T,
-    );
+    return this.framesOfType<{ t: string; data: string }>("game").map((frame) => JSON.parse(frame.data) as T);
   }
 
   private emit(type: string, event: unknown): void {

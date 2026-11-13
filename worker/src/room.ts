@@ -54,8 +54,7 @@ type ParentRow = SqlRow<{ nick: string; text: string }>;
 type CountRow = SqlRow<{ n: number }>;
 
 type VerifyResult =
-  | { ok: true; locked: boolean }
-  | { ok: false; code: "BAD_PASS" | "ROOM_NOT_FOUND" | "TRY_LATER" };
+  { ok: true; locked: boolean } | { ok: false; code: "BAD_PASS" | "ROOM_NOT_FOUND" | "TRY_LATER" };
 
 /**
  * One chat room: message history in SQLite storage plus a hibernatable
@@ -244,7 +243,10 @@ export class ChatRoom extends DurableObject<Env> {
     this.persist(message);
 
     for (const peer of this.ctx.getWebSockets()) {
-      this.send(peer, peer === ws ? { t: "append", m: message, cid: frame.cid } : { t: "append", m: message });
+      this.send(
+        peer,
+        peer === ws ? { t: "append", m: message, cid: frame.cid } : { t: "append", m: message },
+      );
     }
   }
 

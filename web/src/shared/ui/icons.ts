@@ -44,12 +44,13 @@ const PATHS: Record<IconName, string> = {
   plus: '<path d="M8 3.6v8.8M3.6 8h8.8"/>',
   close: '<path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6"/>',
   follow: '<path d="M8 3.2v7.2M5 7.6 8 10.8l3-3.2M3.4 12.6h9.2"/>',
-  clear: '<rect x="3.2" y="3.2" width="9.6" height="9.6" rx="1"/><path d="M5.6 5.6 10.4 10.4M10.4 5.6 5.6 10.4"/>',
-  solution: '<rect x="3" y="3.4" width="7.2" height="9.2" rx="0.8"/><path d="M12.4 4.6v7.2"/><path d="M10.2 6.2v3.6"/>',
+  clear:
+    '<rect x="3.2" y="3.2" width="9.6" height="9.6" rx="1"/><path d="M5.6 5.6 10.4 10.4M10.4 5.6 5.6 10.4"/>',
+  solution:
+    '<rect x="3" y="3.4" width="7.2" height="9.2" rx="0.8"/><path d="M12.4 4.6v7.2"/><path d="M10.2 6.2v3.6"/>',
   room: '<path d="M2.6 5.4h4.3l1.2 1.6h5.3v5c0 .5-.4.9-.9.9H3.5a.9.9 0 0 1-.9-.9V5.4Z"/>',
   refresh: '<path d="M12.6 8a4.6 4.6 0 1 1-1.5-3.4"/><path d="M12.8 3.4v2.4h-2.4"/>',
-  trash:
-    '<path d="M3.4 4.8h9.2M6.4 4.8V3.6h3.2v1.2M4.6 4.8l.6 8h5.6l.6-8"/><path d="M6.8 7v3.4M9.2 7v3.4"/>',
+  trash: '<path d="M3.4 4.8h9.2M6.4 4.8V3.6h3.2v1.2M4.6 4.8l.6 8h5.6l.6-8"/><path d="M6.8 7v3.4M9.2 7v3.4"/>',
   collapse: '<path d="M10.6 3.4v9.2"/><path d="M8 8H3.6"/><path d="M5.6 6 3.6 8l2 2"/>',
   folder: '<path d="M2.4 4.9h4.2l1.2 1.5h5.8v5.6c0 .5-.4.9-.9.9H3.3a.9.9 0 0 1-.9-.9V4.9Z"/>',
   file: '<path d="M4.2 2.6h5l3 3v7.8H4.2Z"/><path d="M9 2.6v3.2h3.2"/>',
@@ -63,7 +64,8 @@ const PATHS: Record<IconName, string> = {
   person: '<circle cx="8" cy="5.6" r="2.6"/><path d="M3.4 13.4c0-2.6 2.1-4.2 4.6-4.2s4.6 1.6 4.6 4.2"/>',
   play: '<path d="M5.2 3.6 12.4 8l-7.2 4.4Z"/>',
   sound: '<path d="M4.4 6.4h2.2L10 4v8L6.6 9.6H4.4Z"/><path d="M12 6.4a2.4 2.4 0 0 1 0 3.2"/>',
-  theme: '<circle cx="8" cy="8" r="4.8"/><path d="M8 3.2v9.6" /><path d="M8 3.2a4.8 4.8 0 0 1 0 9.6Z" fill="currentColor" stroke="none"/>',
+  theme:
+    '<circle cx="8" cy="8" r="4.8"/><path d="M8 3.2v9.6" /><path d="M8 3.2a4.8 4.8 0 0 1 0 9.6Z" fill="currentColor" stroke="none"/>',
   info: '<circle cx="8" cy="8" r="5"/><path d="M8 7.2v3.4"/><circle cx="8" cy="5.4" r="0.6" fill="currentColor" stroke="none"/>',
   dot: '<circle cx="8" cy="8" r="3.2" fill="currentColor" stroke="none"/>',
 };

@@ -187,10 +187,7 @@ describe("ephemeral game frames", () => {
 
     alice.game('{"k":"hello"}');
 
-    const relayed = (await bob.waitFor((frame) => frame.t === "game")) as Extract<
-      ServerFrame,
-      { t: "game" }
-    >;
+    const relayed = (await bob.waitFor((frame) => frame.t === "game")) as Extract<ServerFrame, { t: "game" }>;
     expect(relayed.data).toBe('{"k":"hello"}');
     expect(relayed.nick).toBe("alice");
 
@@ -301,9 +298,10 @@ describe("replies and mentions", () => {
     >;
 
     alice.ws.send(JSON.stringify({ t: "msg", cid: "r1", text: "trả lời", replyTo: original.m.id }));
-    const reply = (await alice.waitFor(
-      (frame) => frame.t === "append" && frame.cid === "r1",
-    )) as Extract<ServerFrame, { t: "append" }>;
+    const reply = (await alice.waitFor((frame) => frame.t === "append" && frame.cid === "r1")) as Extract<
+      ServerFrame,
+      { t: "append" }
+    >;
 
     expect(reply.m.replyTo).toEqual({ id: original.m.id, nick: "alice", text: "câu gốc" });
     alice.close();
@@ -340,9 +338,7 @@ describe("replies and mentions", () => {
     client.join("khoan");
     await client.welcome();
 
-    client.ws.send(
-      JSON.stringify({ t: "msg", cid: "r1", text: "mồ côi", replyTo: "khongtontai" }),
-    );
+    client.ws.send(JSON.stringify({ t: "msg", cid: "r1", text: "mồ côi", replyTo: "khongtontai" }));
     const frame = (await client.waitFor(
       (candidate) => candidate.t === "append" && candidate.cid === "r1",
     )) as Extract<ServerFrame, { t: "append" }>;

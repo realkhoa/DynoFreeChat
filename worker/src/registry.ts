@@ -194,9 +194,7 @@ export class Registry extends DurableObject<Env> {
     const slug = sanitizeSlug(url.searchParams.get("slug"));
     if (!slug.ok) return json({ code: "BAD_SLUG" }, 400);
 
-    const row = this.sql
-      .exec<RoomRow>("SELECT locked FROM rooms WHERE slug = ?", slug.slug)
-      .toArray()[0];
+    const row = this.sql.exec<RoomRow>("SELECT locked FROM rooms WHERE slug = ?", slug.slug).toArray()[0];
 
     if (row === undefined) return json({ code: "ROOM_NOT_FOUND" }, 404);
     return json({ slug: slug.slug, locked: row.locked === 1 }, 200);

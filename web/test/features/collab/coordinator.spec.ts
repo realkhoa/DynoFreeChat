@@ -3,7 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GameCoordinator } from "@/features/collab/engine/coordinator";
 import { FakeSocket } from "../../helpers/fake-socket";
 import type { GameMessage } from "@/features/collab/engine/protocol";
-import type { BoardState, GameMode, GameOutcome, GameScore, PlayerMark } from "@/features/collab/engine/tictactoe";
+import type {
+  BoardState,
+  GameMode,
+  GameOutcome,
+  GameScore,
+  PlayerMark,
+} from "@/features/collab/engine/tictactoe";
 
 interface Recorder {
   board: BoardState | null;
@@ -16,7 +22,11 @@ interface Recorder {
   status: string;
 }
 
-function makeCoordinator(clientId = "client-1"): { coordinator: GameCoordinator; socket: FakeSocket; state: Recorder } {
+function makeCoordinator(clientId = "client-1"): {
+  coordinator: GameCoordinator;
+  socket: FakeSocket;
+  state: Recorder;
+} {
   const socket = new FakeSocket("wss://fake/ws");
   const state: Recorder = {
     board: null,

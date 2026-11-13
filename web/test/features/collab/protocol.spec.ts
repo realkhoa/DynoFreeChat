@@ -41,9 +41,42 @@ describe("game protocol", () => {
   });
 
   it("rejects a board of the wrong shape", () => {
-    expect(decodeGameMessage(JSON.stringify({ k: "state", board: BOARD.slice(0, 8), turn: "X", starter: "X", scores: { x: 0, o: 0, draws: 0 }, seq: 0 }))).toBeNull();
-    expect(decodeGameMessage(JSON.stringify({ k: "state", board: [...BOARD.slice(0, 8), "Z"], turn: "X", starter: "X", scores: { x: 0, o: 0, draws: 0 }, seq: 0 }))).toBeNull();
-    expect(decodeGameMessage(JSON.stringify({ k: "state", board: "XO", turn: "X", starter: "X", scores: { x: 0, o: 0, draws: 0 }, seq: 0 }))).toBeNull();
+    expect(
+      decodeGameMessage(
+        JSON.stringify({
+          k: "state",
+          board: BOARD.slice(0, 8),
+          turn: "X",
+          starter: "X",
+          scores: { x: 0, o: 0, draws: 0 },
+          seq: 0,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      decodeGameMessage(
+        JSON.stringify({
+          k: "state",
+          board: [...BOARD.slice(0, 8), "Z"],
+          turn: "X",
+          starter: "X",
+          scores: { x: 0, o: 0, draws: 0 },
+          seq: 0,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      decodeGameMessage(
+        JSON.stringify({
+          k: "state",
+          board: "XO",
+          turn: "X",
+          starter: "X",
+          scores: { x: 0, o: 0, draws: 0 },
+          seq: 0,
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("rejects out-of-range cells, non-integer seq and bad marks", () => {
@@ -58,12 +91,26 @@ describe("game protocol", () => {
   it("rejects negative or fractional scores", () => {
     expect(
       decodeGameMessage(
-        JSON.stringify({ k: "state", board: BOARD, turn: "X", starter: "X", scores: { x: -1, o: 0, draws: 0 }, seq: 0 }),
+        JSON.stringify({
+          k: "state",
+          board: BOARD,
+          turn: "X",
+          starter: "X",
+          scores: { x: -1, o: 0, draws: 0 },
+          seq: 0,
+        }),
       ),
     ).toBeNull();
     expect(
       decodeGameMessage(
-        JSON.stringify({ k: "state", board: BOARD, turn: "X", starter: "X", scores: { x: 0, o: 1.5, draws: 0 }, seq: 0 }),
+        JSON.stringify({
+          k: "state",
+          board: BOARD,
+          turn: "X",
+          starter: "X",
+          scores: { x: 0, o: 1.5, draws: 0 },
+          seq: 0,
+        }),
       ),
     ).toBeNull();
   });
