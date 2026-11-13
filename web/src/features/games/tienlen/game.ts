@@ -105,10 +105,10 @@ const DUO_SEAT_NAMES: Record<TienLenDuoSeat, string> = { 0: "You", 1: "Opponent"
 const SUIT_ORDER: Record<TienLenSuit, number> = { spade: 0, club: 1, diamond: 2, heart: 3 };
 
 const SUIT_GLYPHS: Record<TienLenSuit, string> = {
-  spade: "♠",
-  club: "♣",
-  diamond: "♦",
-  heart: "♥",
+  spade: "S",
+  club: "C",
+  diamond: "D",
+  heart: "H",
 };
 
 const RANK_LABELS: Record<number, string> = {
@@ -175,7 +175,7 @@ function createRng(seed: number): () => number {
   };
 }
 
-/** @brief Renders a card as its rank plus suit glyph, e.g. `10♥`. */
+/** @brief Renders a card as its rank plus suit letter, e.g. `10H`. */
 function cardLabel(card: TienLenCard): string {
   return `${RANK_LABELS[card.rank] ?? "?"}${SUIT_GLYPHS[card.suit]}`;
 }

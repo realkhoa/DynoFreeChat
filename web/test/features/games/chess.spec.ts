@@ -271,7 +271,7 @@ describe("chess view", () => {
       const afterMove = host.querySelector(".stage-status")?.textContent ?? "";
       expect(afterMove).not.toBe(before);
       expect(afterMove).toContain("AI thinking");
-      expect(cell(host, "e4")?.textContent).toBe("♙");
+      expect(cell(host, "e4")?.textContent).toBe("P");
 
       vi.advanceTimersByTime(2000);
       expect(host.querySelector(".stage-status")?.textContent).toContain("Your move");

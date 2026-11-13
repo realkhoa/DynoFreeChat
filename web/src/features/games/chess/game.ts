@@ -562,18 +562,18 @@ export function moveToAlgebraic(position: Position, move: Move): string {
 }
 
 const GLYPHS: Readonly<Record<PieceCode, string>> = {
-  wK: "♔",
-  wQ: "♕",
-  wR: "♖",
-  wB: "♗",
-  wN: "♘",
-  wP: "♙",
-  bK: "♚",
-  bQ: "♛",
-  bR: "♜",
-  bB: "♝",
-  bN: "♞",
-  bP: "♟",
+  wK: "K",
+  wQ: "Q",
+  wR: "R",
+  wB: "B",
+  wN: "N",
+  wP: "P",
+  bK: "k",
+  bQ: "q",
+  bR: "r",
+  bB: "b",
+  bN: "n",
+  bP: "p",
 };
 const PIECE_NAMES: Readonly<Record<PieceType, string>> = {
   p: "pawn",

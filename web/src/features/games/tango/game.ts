@@ -43,7 +43,7 @@ export interface TangoRelation {
   readonly row: number;
   readonly column: number;
   readonly direction: TangoDirection;
-  /** `same` renders `=`, `different` renders `×`. */
+  /** `same` renders `==`, `different` renders `!=`. */
   readonly kind: TangoRelationKind;
 }
 
@@ -405,7 +405,7 @@ export function createTangoGame(): GameMount {
           ? `${(slotRow - 1) / 2}:${slotColumn / 2}:vertical`
           : "";
       const kind = markers.get(key);
-      const label = kind === "same" ? "=" : kind === "different" ? "×" : "";
+      const label = kind === "same" ? "==" : kind === "different" ? "!=" : "";
       const marker = makeElement("span", "stage-cell is-muted", label);
       marker.setAttribute("aria-hidden", "true");
       boardElement.append(marker);
@@ -505,7 +505,7 @@ export function createTangoGame(): GameMount {
     const next = makeButton("stage-btn", "New puzzle");
     next.dataset.action = "new";
     listen(next, "click", newPuzzle);
-    bar.append(next, makeElement("span", "", "= same"), makeElement("span", "", "× different"));
+    bar.append(next, makeElement("span", "", "== same"), makeElement("span", "", "!= different"));
 
     boardElement = makeElement("div", "stage-board");
     boardElement.setAttribute("role", "grid");

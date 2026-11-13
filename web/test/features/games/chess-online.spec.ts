@@ -92,7 +92,7 @@ describe("Chess online", () => {
     expect(cell(host, "e3")?.textContent).toBe("·");
     click(host, "e4");
 
-    expect(cell(host, "e4")?.textContent).toBe("♙");
+    expect(cell(host, "e4")?.textContent).toBe("P");
     expect(cell(host, "e2")?.textContent).toBe("");
     expect(bridge.moves).toEqual([{ from: squareIndex("e2"), to: squareIndex("e4") }]);
     expect(status(host)).toContain("Opponent's move");
@@ -107,18 +107,18 @@ describe("Chess online", () => {
     // White opens, so the guest cannot select or move anything yet.
     click(host, "e7");
     click(host, "e5");
-    expect(cell(host, "e7")?.textContent).toBe("♟");
+    expect(cell(host, "e7")?.textContent).toBe("p");
     expect(cell(host, "e5")?.textContent).toBe("");
     expect(bridge.moves).toEqual([]);
     expect(status(host)).toContain("Opponent's move");
 
     bridge.emitMove({ from: squareIndex("e2"), to: squareIndex("e4") });
-    expect(cell(host, "e4")?.textContent).toBe("♙");
+    expect(cell(host, "e4")?.textContent).toBe("P");
     expect(status(host)).toContain("Your move");
 
     click(host, "e7");
     click(host, "e5");
-    expect(cell(host, "e5")?.textContent).toBe("♟");
+    expect(cell(host, "e5")?.textContent).toBe("p");
     expect(bridge.moves).toEqual([{ from: squareIndex("e7"), to: squareIndex("e5") }]);
     game.unmount();
   });
@@ -146,7 +146,7 @@ describe("Chess online", () => {
     for (const payload of payloads) {
       expect(() => bridge.emitMove(payload)).not.toThrow();
     }
-    expect(cell(host, "e2")?.textContent).toBe("♙");
+    expect(cell(host, "e2")?.textContent).toBe("P");
     expect(cell(host, "e4")?.textContent).toBe("");
     expect(status(host)).toBe(before);
     game.unmount();
@@ -158,7 +158,7 @@ describe("Chess online", () => {
 
     // It is White's turn, so a Black move is out of turn.
     bridge.emitMove({ from: squareIndex("e7"), to: squareIndex("e5") });
-    expect(cell(host, "e7")?.textContent).toBe("♟");
+    expect(cell(host, "e7")?.textContent).toBe("p");
     expect(status(host)).toContain("Your move");
 
     click(host, "e2");
@@ -167,7 +167,7 @@ describe("Chess online", () => {
 
     // It is Black's turn now, so a second White move must not apply.
     bridge.emitMove({ from: squareIndex("d2"), to: squareIndex("d4") });
-    expect(cell(host, "d2")?.textContent).toBe("♙");
+    expect(cell(host, "d2")?.textContent).toBe("P");
     expect(bridge.moves).toHaveLength(sent);
     expect(status(host)).toContain("Opponent's move");
     game.unmount();

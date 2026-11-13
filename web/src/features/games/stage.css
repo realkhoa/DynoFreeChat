@@ -16,7 +16,7 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  padding: 4px 8px;
+  padding: 2px 6px;
   background: var(--editor);
   overflow: auto;
 }
@@ -38,12 +38,12 @@
   display: block;
   flex: none;
   color: #d4d4d4;
-  font: 10px/13px var(--font-mono);
+  font: 9px/11.5px var(--font-mono);
 }
 
 .stage-code-line {
   white-space: pre;
-  min-height: 13px;
+  min-height: 11.5px;
 }
 
 .stage-code-line.is-comment {
@@ -127,7 +127,7 @@
 
 .stage-status {
   color: #6a9955;
-  font: 10px/13px var(--font-mono);
+  font: 9px/11.5px var(--font-mono);
   min-height: var(--code-line-height);
   white-space: pre-wrap;
 }
@@ -141,7 +141,7 @@
 .stage-board {
   display: grid;
   gap: 0;
-  margin: 0 0 1px 10px;
+  margin: 0 0 1px 6px;
   width: max-content;
   max-width: 100%;
   background: transparent;
@@ -152,14 +152,14 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  min-width: 16px;
-  min-height: 15px;
+  min-width: 12px;
+  min-height: 11px;
   padding: 0;
   background: transparent;
   border: 0;
   border-radius: 0;
   color: #d4d4d4;
-  font: 500 10px/1.15 var(--font-mono);
+  font: 500 8.5px/1.05 var(--font-mono);
   text-align: left;
   cursor: pointer;
   user-select: none;
@@ -224,9 +224,9 @@
 /* Row based layouts (card hands, queue lists, word grids). */
 .stage-rows {
   display: block;
-  margin: 0 0 1px 10px;
+  margin: 0 0 1px 6px;
   max-width: 100%;
-  font: 10px/1.4 var(--font-mono);
+  font: 9px/1.25 var(--font-mono);
 }
 
 .stage-row {
@@ -266,7 +266,7 @@
 .stage-canvas {
   display: block;
   width: 100%;
-  max-width: 420px;
+  max-width: 300px;
   margin: 0 auto;
   background: #181818;
   border: 1px solid var(--border-subtle);
@@ -302,7 +302,7 @@
 
 /* Chess prints its glyphs inline at 22px; the compact document keeps them small. */
 .stage-game-host .stage-cell {
-  font-size: 10px !important;
+  font-size: 8.5px !important;
 }
 
 /* Counters, buttons and the status line only appear while the pointer is over

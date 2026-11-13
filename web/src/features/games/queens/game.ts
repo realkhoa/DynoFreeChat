@@ -270,7 +270,7 @@ export function createQueensGame(): GameMount {
       if (cell === "queen") classes.push(conflict ? "is-warn" : "is-primary");
       else if (cell === "blocked") classes.push("is-muted");
       node.className = classes.join(" ");
-      node.textContent = cell === "queen" ? "♛" : cell === "blocked" ? "✕" : "";
+      node.textContent = cell === "queen" ? "Q" : cell === "blocked" ? "x" : "";
       node.setAttribute("aria-label", `Row ${row}, column ${column}: ${describeCell(cell, conflict)}`);
     }
 

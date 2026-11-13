@@ -103,13 +103,13 @@ describe("queens view", () => {
     expect(cell).not.toBeNull();
     cell?.click();
     expect(cell?.className).toContain("is-primary");
-    expect(cell?.textContent).toBe("♛");
+    expect(cell?.textContent).toBe("Q");
 
     cell?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     expect(cell?.className).toContain("is-muted");
 
     host.querySelector<HTMLButtonElement>('[data-action="undo"]')?.click();
-    expect(cell?.textContent).toBe("♛");
+    expect(cell?.textContent).toBe("Q");
 
     host.querySelector<HTMLButtonElement>('[data-size="4"]')?.click();
     expect(host.querySelectorAll("[data-cell]")).toHaveLength(16);

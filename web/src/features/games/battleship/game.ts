@@ -859,7 +859,7 @@ export function createBattleshipGame(): GameMount {
           cell.textContent = "·";
           cell.classList.add("is-dim");
         } else if (mark === "hit") {
-          cell.textContent = "×";
+          cell.textContent = "x";
           cell.classList.add("is-warn");
         } else if (mark === "sunk") {
           cell.textContent = "▣";

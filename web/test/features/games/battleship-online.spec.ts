@@ -169,7 +169,7 @@ describe("Battleship online", () => {
 
     gridCells(host, "enemy")[REMOTE_HIT]?.click();
     expect(bridge.moves[1]).toEqual({ kind: "shot", index: REMOTE_HIT });
-    expect(gridCells(host, "enemy")[REMOTE_HIT]?.textContent).toBe("×");
+    expect(gridCells(host, "enemy")[REMOTE_HIT]?.textContent).toBe("x");
     expect(hud(host)).toContain("turn: opponent");
 
     // Local clicks are ignored while the opponent is to move.

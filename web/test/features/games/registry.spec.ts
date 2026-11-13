@@ -35,7 +35,7 @@ describe("game registry", () => {
     const game = findGame("tictactoe");
     expect(game?.name).toBe("Tic-Tac-Toe");
     expect(game?.className).toBe("TicTacToe");
-    expect(game?.documentTitle).toBe("TicTacToe.cs");
+    expect(game?.documentTitle).toBe("Board3.cs");
   });
 
   it("returns undefined for an unknown id", () => {
