@@ -1,0 +1,65 @@
+/* Access document: the unlock form rendered as a normal editor tab. */
+
+.lock-panel .doc-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 520px;
+}
+
+.lock-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: 11.5px/1.4 var(--font-mono);
+  color: var(--fg-dim);
+}
+
+.lock-field input {
+  height: 28px;
+  padding: 0 10px;
+  background: var(--editor);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font: 12px/1 var(--font-mono);
+}
+
+.lock-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.lock-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.lock-actions button {
+  height: 26px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font: 11.5px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.lock-actions button:hover {
+  background: var(--hover-chrome);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.lock-actions #lock-submit {
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.lock-status {
+  min-height: 18px;
+  color: #6a9955;
+  font: 11.5px/1.6 var(--font-mono);
+  white-space: pre-wrap;
+}

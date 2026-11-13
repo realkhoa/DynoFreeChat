@@ -102,6 +102,9 @@ export const MAX_SYMBOLS = 40;
 /** Tickers the feed can serve: short alphanumerics, already upper case. */
 export const SYMBOL_PATTERN = /^[A-Z0-9]{1,12}$/;
 
+/** Header carrying the signed access-gate session token. */
+export const LOCK_HEADER = "x-dyno-lock";
+
 /**
  * @brief Coerces an upstream value to a finite number.
  * @details Upstream mixes numbers and numeric strings (`"0.45%"`, `"---"`), so

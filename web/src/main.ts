@@ -53,6 +53,9 @@ import { ChartView } from "@/features/market/chart-view";
 import { DepthView } from "@/features/market/depth-view";
 import { FeedView } from "@/features/market/feed-view";
 import { FEED_MODULES, MarketHubView } from "@/features/market/hub";
+import { WorkspaceView } from "@/features/workspace/view";
+import { LockClient } from "@/features/lock/lock";
+import { LockView } from "@/features/lock/view";
 import { Sidebar } from "@/features/chat/components/sidebar";
 import { StatusBar } from "@/shared/ui/statusbar";
 
@@ -135,6 +138,8 @@ const marketHubViewEl = byId<HTMLElement>("market-hub-view");
 const chartViewEl = byId<HTMLElement>("chart-view");
 const feedViewEl = byId<HTMLElement>("feed-view");
 const depthViewEl = byId<HTMLElement>("depth-view");
+const workspaceViewEl = byId<HTMLElement>("workspace-view");
+const lockViewEl = byId<HTMLElement>("lock-view");
 const tabstripEl = byId<HTMLElement>("tabstrip");
 
 // ------------------------------------------------------------------ instances
@@ -268,6 +273,27 @@ const gamesHub = new GamesHubView(
 );
 gamesHub.setGames(GAMES);
 
+const lockClient = new LockClient(apiBase, storage);
+const lockView = new LockView(
+  {
+    panel: lockViewEl,
+    token: byId<HTMLInputElement>("lock-token"),
+    pin: byId<HTMLInputElement>("lock-pin"),
+    submit: byId<HTMLButtonElement>("lock-submit"),
+    clear: byId<HTMLButtonElement>("lock-clear"),
+    status: byId<HTMLElement>("lock-status"),
+  },
+  lockClient,
+  { onUnlocked: () => openMarketTab() },
+);
+
+const marketApi = new MarketApi(
+  apiBase,
+  (input, init) => fetch(input, init),
+  () => lockClient.token,
+  () => openLockTab(),
+);
+
 const marketBoard = new MarketBoard(
   {
     panel: marketViewEl,
@@ -281,10 +307,9 @@ const marketBoard = new MarketBoard(
     state: byId<HTMLElement>("market-state"),
     error: byId<HTMLElement>("market-error"),
   },
-  { api: new MarketApi(apiBase), storage },
+  { api: marketApi, storage },
 );
 
-const marketClient = new MarketApi(apiBase);
 const marketHub = new MarketHubView(
   {
     list: byId<HTMLElement>("market-hub-list"),
@@ -305,7 +330,7 @@ const chartView = new ChartView(
     state: byId<HTMLElement>("chart-state"),
     clock: byId<HTMLElement>("chart-clock"),
   },
-  marketClient,
+  marketApi,
 );
 
 const feedView = new FeedView(
@@ -321,7 +346,7 @@ const feedView = new FeedView(
     prevButton: byId<HTMLButtonElement>("feed-prev"),
     nextButton: byId<HTMLButtonElement>("feed-next"),
   },
-  marketClient,
+  marketApi,
 );
 
 const depthView = new DepthView(
@@ -335,7 +360,29 @@ const depthView = new DepthView(
     state: byId<HTMLElement>("depth-state"),
     clock: byId<HTMLElement>("depth-clock"),
   },
-  marketClient,
+  marketApi,
+);
+
+const workspaceView = new WorkspaceView(
+  {
+    panel: workspaceViewEl,
+    tree: byId<HTMLElement>("workspace-tree"),
+    filter: byId<HTMLInputElement>("workspace-filter"),
+    fileLabel: byId<HTMLElement>("workspace-file"),
+    gutter: byId<HTMLElement>("workspace-gutter"),
+    content: byId<HTMLElement>("workspace-content"),
+    outputTabs: byId<HTMLElement>("workspace-output-tabs"),
+    output: byId<HTMLElement>("workspace-output"),
+    immediate: byId<HTMLInputElement>("workspace-immediate"),
+    chip: byId<HTMLElement>("workspace-chip"),
+    state: byId<HTMLElement>("workspace-state"),
+    buildButton: byId<HTMLButtonElement>("workspace-build-btn"),
+  },
+  {
+    baseUrl: `${import.meta.env.BASE_URL}workspace/`,
+    market: marketApi,
+    onPlay: () => openGamesTab(),
+  },
 );
 
 const docTabs = new DocTabs(tabstripEl, editorEl, tabNew, {
@@ -762,6 +809,15 @@ function openGamesTab(): void {
 }
 
 /**
+ * @brief Opens the access document used to unlock the market gate.
+ */
+function openLockTab(): void {
+  docTabs.open({ id: "lock", label: "Access.cs", panel: lockViewEl, icon: "lock" });
+  lockView.start();
+  lockView.focus();
+}
+
+/**
  * @brief Opens the market hub document (the registry of feed modules).
  */
 function openMarketTab(): void {
@@ -810,6 +866,15 @@ const MARKET_OPENERS: Record<string, () => void> = {
   chart: () => openChartTab(),
   feed: () => openFeedTab(),
 };
+
+/**
+ * @brief Opens the VinaBIM workspace explorer document.
+ */
+function openWorkspaceTab(): void {
+  docTabs.open({ id: "workspace", label: "Workspace.cpp", panel: workspaceViewEl, icon: "folder" });
+  workspaceView.start();
+  workspaceView.focusFilter();
+}
 
 /**
  * @brief Opens the Settings document.
@@ -1318,6 +1383,9 @@ function wire(): void {
     if (e.ctrlKey && e.key.toLowerCase() === "m") {
       e.preventDefault();
       openMarketTab();
+    } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "e") {
+      e.preventDefault();
+      openWorkspaceTab();
     } else if (!modalOpen && e.key === "F7") {
       e.preventDefault();
       openQuotesTab();
@@ -1354,6 +1422,7 @@ function wire(): void {
     openSettingsTab();
   });
   document.getElementById("btn-hub-market")?.addEventListener("click", () => openMarketTab());
+  document.getElementById("btn-hub-workspace")?.addEventListener("click", () => openWorkspaceTab());
 
   for (const input of [roomSearch, treeSearch]) {
     input.addEventListener("input", () => setRoomQuery(input.value));

@@ -15,6 +15,7 @@ import type {
   IndicesPayload,
   QuotesPayload,
 } from "@dyno/shared/market";
+import { LOCK_HEADER } from "@dyno/shared/market";
 
 /** Error raised by the market client; `code` is stable enough to branch on. */
 export class MarketApiError extends Error {
@@ -38,10 +39,14 @@ export class MarketApi {
   /**
    * @param base Worker origin, e.g. `https://dyno.example.com`.
    * @param fetchImpl Fetch implementation; tests replace it.
+   * @param session Returns the signed access-gate token, or `null` when signed out.
+   * @param onLocked Called once when the Worker refuses a request with `LOCKED`.
    */
   constructor(
     private readonly base: string,
     private readonly fetchImpl: typeof fetch = (input, init) => fetch(input, init),
+    private readonly session: () => string | null = () => null,
+    private readonly onLocked: () => void = () => {},
   ) {}
 
   /**
@@ -148,9 +153,13 @@ export class MarketApi {
    * @throws {MarketApiError} When the request fails or the body is not JSON.
    */
   private async get(path: string): Promise<Record<string, unknown>> {
+    const token = this.session();
+    const headers: Record<string, string> = { accept: "application/json" };
+    if (token !== null && token.length > 0) headers[LOCK_HEADER] = token;
+
     let response: Response;
     try {
-      response = await this.fetchImpl(`${this.base}${path}`, { headers: { accept: "application/json" } });
+      response = await this.fetchImpl(`${this.base}${path}`, { headers });
     } catch {
       throw new MarketApiError("NETWORK", "market proxy unreachable");
     }
@@ -167,6 +176,7 @@ export class MarketApi {
         typeof body === "object" && body !== null && typeof (body as { code?: unknown }).code === "string"
           ? (body as { code: string }).code
           : `HTTP_${response.status}`;
+      if (code === "LOCKED") this.onLocked();
       throw new MarketApiError(code, `market proxy answered ${response.status}`);
     }
 

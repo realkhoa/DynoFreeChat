@@ -1,4 +1,5 @@
 import { sanitizeSlug } from "@dyno/shared/protocol";
+import { LOCK_HEADER, lockSecrets, stateResponse, verifyResponse, verifySession } from "./auth";
 import type { Env } from "./env";
 import { json } from "./http";
 import {
@@ -73,10 +74,25 @@ export default {
       });
     }
 
-    // Market feed proxy. Read-only, rate limited per IP, and never cached by the
-    // browser: the Worker owns the freshness windows.
+    // Access gate: exchange the access token or PIN for a signed session token.
+    if (url.pathname === "/api/auth/verify" && request.method === "POST") {
+      return withCors(await verifyResponse(request, env), origin);
+    }
+
+    if (url.pathname === "/api/auth/state" && request.method === "GET") {
+      return withCors(await stateResponse(request, env), origin);
+    }
+
+    // Market feed proxy. Read-only, rate limited per IP, never cached by the
+    // browser, and gated behind the access token when the Worker has one.
     if (url.pathname.startsWith("/api/market/")) {
       if (request.method !== "GET") return withCors(json({ code: "METHOD_NOT_ALLOWED" }, 405), origin);
+
+      const secrets = lockSecrets(env);
+      if (secrets !== null) {
+        const unlocked = await verifySession(secrets, request.headers.get(LOCK_HEADER), Date.now());
+        if (!unlocked) return withCors(json({ code: "LOCKED" }, 401), origin);
+      }
 
       const ip = request.headers.get("cf-connecting-ip") ?? "local";
       if (!takeRate(ip, Date.now())) {

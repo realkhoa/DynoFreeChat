@@ -1,0 +1,212 @@
+/* Shared game stage: the chrome is the code editor, the board is the game. Every
+   game module reuses these classes so a new game ships without new CSS. */
+
+.game-stage-panel {
+  --code-line-height: 19px;
+  --code-font: 12.5px/var(--code-line-height) var(--font-mono);
+}
+
+.game-stage-host {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 18px;
+  background: var(--editor);
+  overflow: auto;
+}
+
+/* Toolbar-ish row above the board: counters, level picker, difficulty. */
+.stage-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font: 11.5px/1.4 var(--font-mono);
+  color: var(--fg-dim);
+}
+
+.stage-bar .stage-btn {
+  height: 22px;
+}
+
+.stage-hud {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font: 12px/1.4 var(--font-mono);
+  color: var(--fg-muted);
+}
+
+.stage-hud b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.stage-btn {
+  height: 24px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font: 11.5px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.stage-btn:hover {
+  background: var(--hover-chrome);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.stage-btn.is-active {
+  background: var(--sel);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.stage-status {
+  color: var(--fg-dim);
+  font: 12px/1.5 var(--font-mono);
+  min-height: 18px;
+}
+
+/* Grid boards (tic-tac-toe, caro, minesweeper, sudoku, 2048, sokoban, …).
+   Cell size is fixed and touch friendly: the board never grows past the point
+   where a cell becomes hard to press. */
+.stage-board {
+  display: grid;
+  gap: 4px;
+  margin: 0 auto;
+  width: max-content;
+  max-width: 100%;
+}
+
+.stage-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 2px;
+  color: var(--fg);
+  font: 600 15px/1 var(--font-mono);
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.stage-cell:hover {
+  background: var(--hover-row);
+  border-color: var(--border);
+}
+
+.stage-cell:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.stage-cell.is-dim {
+  color: var(--fg-dim);
+  cursor: default;
+}
+
+.stage-cell.is-primary {
+  color: #4ec9b0;
+  border-color: #2f6f63;
+}
+
+.stage-cell.is-warn {
+  color: #f48771;
+  border-color: #7a3a30;
+}
+
+.stage-cell.is-good {
+  color: #dcdcaa;
+  border-color: #6b6b3a;
+}
+
+.stage-cell.is-muted {
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+}
+
+.stage-cell.is-hidden {
+  color: transparent;
+}
+
+/* Row based layouts (card hands, queue lists, word grids). */
+.stage-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 auto;
+  max-width: 100%;
+}
+
+.stage-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.stage-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 46px;
+  padding: 0 4px;
+  background: var(--panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  color: var(--fg);
+  font: 600 13px/1 var(--font-mono);
+  cursor: pointer;
+  user-select: none;
+}
+
+.stage-card.is-selected {
+  border-color: var(--accent);
+  background: var(--sel);
+}
+
+.stage-card.is-playable {
+  border-color: #2f6f63;
+}
+
+.stage-canvas {
+  display: block;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  background: #181818;
+  border: 1px solid var(--border-subtle);
+  touch-action: none;
+}
+
+.stage-input {
+  width: 130px;
+  height: 24px;
+  padding: 0 8px;
+  background: var(--editor);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font: 12px/1 var(--font-mono);
+}
+
+.stage-empty {
+  margin: 0 auto;
+  color: var(--fg-dim);
+  font: 12px/1.6 var(--font-mono);
+  text-align: center;
+}

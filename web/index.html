@@ -66,6 +66,7 @@
           <button type="button" class="menubar-btn" id="btn-hub-collab" title="Collab modules (Ctrl+B)">Collab</button>
           <button type="button" class="menubar-btn" id="btn-hub-setting" title="Cài đặt hệ thống (Settings)">Setting</button>
           <button type="button" class="menubar-btn" id="btn-hub-market" title="Market data feed (Ctrl+M)">Feed</button>
+          <button type="button" class="menubar-btn" id="btn-hub-workspace" title="VinaBIM solution workspace (Ctrl+Shift+E)">Workspace</button>
         </div>
 
         <span class="menubar-spacer"></span>
@@ -506,6 +507,108 @@
         <span class="sb-item" id="feed-clock">--:--:--</span>
         <span class="sb-spacer"></span>
         <span class="sb-item market-state--live" id="feed-state">Loading</span>
+      </div>
+    </section>
+
+    <!-- Workspace explorer: VinaBIM solution tree, file viewer and build output -->
+    <section class="doc-panel workspace-panel game-code-mode" id="workspace-view" hidden>
+      <div class="game-code-toolbar">
+        <span class="game-code-file"
+          ><span class="game-code-icon" id="workspace-code-icon" aria-hidden="true"></span>Workspace.cpp</span
+        >
+        <span class="game-code-chip" id="workspace-chip">// VinaBIM.sln | 0 files</span>
+        <span class="game-code-spacer"></span>
+        <button type="button" class="game-code-tool-btn" id="workspace-build-btn" title="Build solution">Build</button>
+      </div>
+
+      <div class="game-code-body">
+        <div class="workspace-split">
+          <div class="ws-tree-pane">
+            <input
+              id="workspace-filter"
+              class="ws-tree-filter"
+              type="search"
+              placeholder="filter files…"
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Lọc file trong workspace"
+            />
+            <div class="ws-tree" id="workspace-tree"></div>
+          </div>
+          <div class="ws-editor">
+            <div class="ws-editor-head"><span class="ws-editor-path" id="workspace-file">—</span></div>
+            <div class="ws-code">
+              <div class="ws-gutter" id="workspace-gutter" aria-hidden="true"></div>
+              <div class="ws-content" id="workspace-content"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ws-output-pane">
+        <div class="ws-output-tabs" id="workspace-output-tabs">
+          <button type="button" class="ws-output-tab is-active" data-output-tab="build">Build</button>
+          <button type="button" class="ws-output-tab" data-output-tab="errors">Errors</button>
+          <button type="button" class="ws-output-tab" data-output-tab="immediate">Immediate</button>
+        </div>
+        <div class="ws-output" id="workspace-output"></div>
+        <div class="ws-immediate">
+          <span>1&gt;</span>
+          <input
+            id="workspace-immediate"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="help"
+            aria-label="Cửa sổ Immediate"
+          />
+        </div>
+      </div>
+
+      <div class="game-code-statusbar">
+        <span class="sb-item">Ln 1, Col 1</span>
+        <span class="sb-item">UTF-8</span>
+        <span class="sb-item">CRLF</span>
+        <span class="sb-spacer"></span>
+        <span class="sb-item market-state--live" id="workspace-state">Ready</span>
+      </div>
+    </section>
+
+    <!-- Access document: unlocks the market gate without a modal -->
+    <section class="doc-panel lock-panel" id="lock-view" hidden>
+      <div class="doc-panel-head">
+        <span class="doc-panel-title">Access.cs</span>
+        <span class="doc-panel-hint">Nhập access token hoặc PIN để mở khoá dữ liệu thị trường.</span>
+      </div>
+      <div class="doc-panel-body">
+        <label class="lock-field" for="lock-token">
+          <span>// access token</span>
+          <input
+            id="lock-token"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="dán token vào đây"
+            aria-label="Access token"
+          />
+        </label>
+        <label class="lock-field" for="lock-pin">
+          <span>// hoặc PIN</span>
+          <input
+            id="lock-pin"
+            type="password"
+            inputmode="numeric"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="PIN"
+            aria-label="PIN"
+          />
+        </label>
+        <div class="lock-actions">
+          <button type="button" id="lock-submit">Unlock</button>
+          <button type="button" id="lock-clear">Sign out</button>
+        </div>
+        <div class="lock-status" id="lock-status" role="status" aria-live="polite"></div>
       </div>
     </section>
 
