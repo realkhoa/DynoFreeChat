@@ -35,16 +35,17 @@ export const PASS_ATTEMPTS = 5;
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,23}$/;
 
 /** Hard cap on rooms so storage and the lobby stay bounded. */
-export const MAX_ROOMS = 50;
+export const MAX_ROOMS = 500;
 
 /** Rooms idle for longer than this are pruned when the lobby is listed. */
 export const ROOM_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** Room creations allowed per IP per window. */
-export const CREATES_PER_WINDOW = 3;
+/** Room creations allowed per IP per window. Generous on purpose: a group
+ * behind one NAT must be able to open a room per match. */
+export const CREATES_PER_WINDOW = 30;
 
 /** Length of the creation rate-limit window. */
-export const CREATE_WINDOW_MS = 60 * 60 * 1000;
+export const CREATE_WINDOW_MS = 10 * 60 * 1000;
 
 /** Rows kept in Durable Object storage. */
 export const HISTORY_LIMIT = 500;

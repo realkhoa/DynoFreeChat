@@ -27,6 +27,13 @@ const GAMES: GameDefinition[] = [
   },
 ];
 
+/** One room summary as the Worker returns it. */
+interface RoomRow {
+  slug: string;
+  locked: boolean;
+  lastSeen: number;
+}
+
 /** Builds the lobby document hosts. */
 function makeElements(): MatchElements {
   document.body.replaceChildren();
@@ -34,25 +41,33 @@ function makeElements(): MatchElements {
   panel.id = "match-view";
   panel.innerHTML = `
     <select id="match-game"></select>
-    <input id="match-slug" />
-    <input id="match-pass" />
+    <input id="match-create-code" />
+    <input id="match-create-pass" />
     <button id="match-create"></button>
+    <input id="match-join-code" />
+    <input id="match-join-pass" />
     <button id="match-join"></button>
     <button id="match-leave"></button>
     <div id="match-status"></div>
-    <div id="match-roster"></div>`;
+    <div id="match-roster"></div>
+    <div id="match-rooms"></div>
+    <button id="match-refresh"></button>`;
   document.body.append(panel);
 
   return {
     panel,
     gameSelect: panel.querySelector<HTMLSelectElement>("#match-game")!,
-    slug: panel.querySelector<HTMLInputElement>("#match-slug")!,
-    pass: panel.querySelector<HTMLInputElement>("#match-pass")!,
+    createCode: panel.querySelector<HTMLInputElement>("#match-create-code")!,
+    createPass: panel.querySelector<HTMLInputElement>("#match-create-pass")!,
     createButton: panel.querySelector<HTMLButtonElement>("#match-create")!,
+    joinCode: panel.querySelector<HTMLInputElement>("#match-join-code")!,
+    joinPass: panel.querySelector<HTMLInputElement>("#match-join-pass")!,
     joinButton: panel.querySelector<HTMLButtonElement>("#match-join")!,
     leaveButton: panel.querySelector<HTMLButtonElement>("#match-leave")!,
     status: panel.querySelector<HTMLElement>("#match-status")!,
     roster: panel.querySelector<HTMLElement>("#match-roster")!,
+    roomList: panel.querySelector<HTMLElement>("#match-rooms")!,
+    refreshButton: panel.querySelector<HTMLButtonElement>("#match-refresh")!,
   };
 }
 
@@ -64,16 +79,18 @@ interface Harness {
   start: ReturnType<typeof vi.fn>;
   leave: ReturnType<typeof vi.fn>;
   fetchImpl: ReturnType<typeof vi.fn>;
+  rooms: RoomRow[];
 }
 
-/** Builds the lobby with a fake fetch and a fake match. */
-function makeHarness(): Harness {
+/** Builds the lobby with fake fetch, room list and match. */
+function makeHarness(rooms: RoomRow[] = []): Harness {
   const elements = makeElements();
   const onMatch = vi.fn<(game: GameDefinition, bridge: OnlineBridge) => void>();
   const options: OnlineMatchOptions[] = [];
   const start = vi.fn();
   const leave = vi.fn();
   const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ slug: "caro-test" }), { status: 201 }));
+  const state = { rooms: [...rooms] };
 
   const deps: MatchDeps = {
     wsUrl: "wss://api.example/ws",
@@ -83,13 +100,23 @@ function makeHarness(): Harness {
     games: GAMES,
     onMatch,
     fetchImpl: fetchImpl as unknown as typeof fetch,
+    listRooms: async () => [...state.rooms],
     createMatch: (matchOptions) => {
       options.push(matchOptions);
       return { start, leave } as unknown as ReturnType<NonNullable<MatchDeps["createMatch"]>>;
     },
   };
 
-  return { view: new MatchView(elements, deps), elements, onMatch, options, start, leave, fetchImpl };
+  return {
+    view: new MatchView(elements, deps),
+    elements,
+    onMatch,
+    options,
+    start,
+    leave,
+    fetchImpl,
+    rooms: state.rooms,
+  };
 }
 
 /** Minimal bridge the lobby only passes through. */
@@ -112,7 +139,10 @@ describe("MatchView", () => {
   let h: Harness;
 
   beforeEach(() => {
-    h = makeHarness();
+    h = makeHarness([
+      { slug: "caro-a1", locked: false, lastSeen: 1_700_000_000_000 },
+      { slug: "chess-b2", locked: true, lastSeen: 1_700_000_100_000 },
+    ]);
   });
 
   it("lists only games that advertise online play", () => {
@@ -122,10 +152,41 @@ describe("MatchView", () => {
     expect(h.view.currentGame?.id).toBe("caro");
   });
 
-  it("creates a room through the lobby API and connects to it", async () => {
+  it("paints the room list newest first with its lock state", async () => {
     h.view.start();
-    h.elements.slug.value = "caro-test";
-    h.elements.pass.value = "1234";
+    await vi.waitFor(() => expect(h.elements.roomList.querySelectorAll(".match-room")).toHaveLength(2));
+
+    const rows = [...h.elements.roomList.querySelectorAll<HTMLElement>(".match-room")];
+    expect(rows[0]?.dataset.room).toBe("chess-b2");
+    expect(rows[0]?.dataset.locked).toBe("true");
+    expect(rows[1]?.dataset.room).toBe("caro-a1");
+    expect(h.elements.status.textContent).toContain("2 room");
+  });
+
+  it("joins an open room when its row is clicked", async () => {
+    h.view.start();
+    await vi.waitFor(() => expect(h.elements.roomList.querySelectorAll(".match-room")).toHaveLength(2));
+
+    h.elements.roomList.querySelector<HTMLElement>('[data-room="caro-a1"]')?.click();
+    expect(h.elements.joinCode.value).toBe("caro-a1");
+    expect(h.start).toHaveBeenCalledTimes(1);
+    expect(h.options[0]?.url).toContain("r=caro-a1");
+  });
+
+  it("asks for the password instead of joining a locked room", async () => {
+    h.view.start();
+    await vi.waitFor(() => expect(h.elements.roomList.querySelectorAll(".match-room")).toHaveLength(2));
+
+    h.elements.roomList.querySelector<HTMLElement>('[data-room="chess-b2"]')?.click();
+    expect(h.elements.joinCode.value).toBe("chess-b2");
+    expect(h.start).not.toHaveBeenCalled();
+    expect(h.elements.status.textContent).toContain("locked");
+  });
+
+  it("creates a room with a code and password, then connects", async () => {
+    h.view.start();
+    h.elements.createCode.value = "caro-test";
+    h.elements.createPass.value = "1234";
 
     await h.view.createAndJoin();
 
@@ -136,39 +197,41 @@ describe("MatchView", () => {
     expect(h.start).toHaveBeenCalledTimes(1);
     expect(h.options[0]?.url).toContain("r=caro-test");
     expect(h.options[0]).toMatchObject({ game: "caro", nick: "An", pass: "1234" });
+    expect(h.elements.joinCode.value).toBe("caro-test");
     expect(h.view.isConnected).toBe(true);
   });
 
-  it("generates a slug when the box is empty", async () => {
+  it("generates a code when the create box is empty", async () => {
     h.view.start();
     await h.view.createAndJoin();
-    const slug = h.elements.slug.value;
-    expect(slug.startsWith("caro-")).toBe(true);
-    expect(h.options[0]?.url).toContain(`r=${slug}`);
+    expect(h.elements.joinCode.value.startsWith("caro-")).toBe(true);
+    expect(h.options[0]?.url).toContain(`r=${h.elements.joinCode.value}`);
   });
 
-  it("joins an existing slug without creating a room", () => {
+  it("joins by code and password without creating a room", () => {
     h.view.start();
-    h.elements.slug.value = "friend-room";
+    h.elements.joinCode.value = "friend-room";
+    h.elements.joinPass.value = "secret";
     h.view.join();
 
     expect(h.fetchImpl).not.toHaveBeenCalled();
     expect(h.start).toHaveBeenCalledTimes(1);
-    expect(h.options[0]?.url).toContain("r=friend-room");
+    expect(h.options[0]).toMatchObject({ url: expect.stringContaining("r=friend-room"), pass: "secret" });
   });
 
-  it("refuses an invalid room slug", () => {
+  it("refuses an invalid room code", () => {
     h.view.start();
-    h.elements.slug.value = "NO WAY!";
+    h.elements.joinCode.value = "NO WAY!";
     h.view.join();
 
     expect(h.start).not.toHaveBeenCalled();
-    expect(h.elements.status.textContent).toContain("slug");
+    expect(h.elements.status.textContent).toContain("code");
   });
 
   it("opens the game stage when the match starts", async () => {
     h.view.start();
-    await h.view.createAndJoin();
+    h.elements.joinCode.value = "caro-test";
+    h.view.join();
 
     const fakeBridge = bridge();
     h.options[0]?.onStart?.(fakeBridge);
@@ -176,9 +239,19 @@ describe("MatchView", () => {
     expect(h.elements.roster.textContent).toContain("you are host");
   });
 
+  it("refreshes the room list from the refresh button", async () => {
+    h.view.start();
+    await vi.waitFor(() => expect(h.elements.roomList.querySelectorAll(".match-room")).toHaveLength(2));
+
+    h.rooms.push({ slug: "caro-new", locked: false, lastSeen: 1_700_000_200_000 });
+    h.elements.refreshButton.click();
+    await vi.waitFor(() => expect(h.elements.roomList.querySelectorAll(".match-room")).toHaveLength(3));
+  });
+
   it("leaves the match on demand", async () => {
     h.view.start();
-    await h.view.createAndJoin();
+    h.elements.joinCode.value = "caro-test";
+    h.view.join();
     h.view.leave();
 
     expect(h.leave).toHaveBeenCalledTimes(1);

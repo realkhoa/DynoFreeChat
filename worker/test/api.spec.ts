@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { CREATES_PER_WINDOW } from "@dyno/shared/protocol";
 import { BASE, ORIGIN, createRoom, uniqueIp, uniqueSlug } from "./helpers";
 
 describe("worker router", () => {
@@ -80,7 +81,7 @@ describe("room api", () => {
     expect((await createRoom({ slug: "x" })).status).toBe(400);
   });
 
-  it("429s the fourth room from one ip within the window", async () => {
+  it("429s a client that opens more rooms than the window allows", async () => {
     const ip = uniqueIp();
     const post = () =>
       SELF.fetch(`${BASE}/api/rooms`, {
@@ -89,9 +90,9 @@ describe("room api", () => {
         body: JSON.stringify({ slug: uniqueSlug() }),
       });
 
-    expect((await post()).status).toBe(201);
-    expect((await post()).status).toBe(201);
-    expect((await post()).status).toBe(201);
+    for (let index = 0; index < CREATES_PER_WINDOW; index += 1) {
+      expect((await post()).status).toBe(201);
+    }
     expect((await post()).status).toBe(429);
   });
 });

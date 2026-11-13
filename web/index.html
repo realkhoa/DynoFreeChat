@@ -641,35 +641,63 @@
       </div>
     </section>
 
-    <!-- Online match lobby: create or join a room, then open the board -->
+    <!-- Online match lobby: create or join a room, with the live room list -->
     <section class="doc-panel match-panel" id="match-view" hidden>
       <div class="doc-panel-head">
         <span class="doc-panel-title">Match.cs</span>
-        <span class="doc-panel-hint">Tạo phòng hoặc vào phòng có sẵn để chơi online với bạn.</span>
+        <span class="doc-panel-hint">Tạo phòng bằng code + password, hoặc chọn phòng bên phải để vào.</span>
       </div>
-      <div class="doc-panel-body">
-        <label class="match-field" for="match-game">
-          <span>// game</span>
-          <select id="match-game" aria-label="Chọn game online"></select>
-        </label>
-        <label class="match-field" for="match-slug">
-          <span>// room slug</span>
-          <input id="match-slug" type="text" autocomplete="off" spellcheck="false" placeholder="caro-xxxx" maxlength="24" />
-        </label>
-        <label class="match-field" for="match-pass">
-          <span>// password (optional)</span>
-          <input id="match-pass" type="password" autocomplete="off" spellcheck="false" />
-        </label>
-        <div class="match-actions">
-          <button type="button" id="match-create">Create &amp; join</button>
-          <button type="button" id="match-join">Join</button>
-          <button type="button" id="match-leave" disabled>Leave</button>
+      <div class="match-split">
+        <div class="match-left">
+          <label class="match-field" for="match-game">
+            <span>// game</span>
+            <select id="match-game" aria-label="Chọn game online"></select>
+          </label>
+
+          <div class="match-block">
+            <div class="match-block-title">// create room</div>
+            <div class="match-row">
+              <label class="match-field match-field--code" for="match-create-code">
+                <span>code</span>
+                <input id="match-create-code" type="text" autocomplete="off" spellcheck="false" placeholder="caro-xxxx" maxlength="24" />
+              </label>
+              <label class="match-field match-field--pass" for="match-create-pass">
+                <span>password (optional)</span>
+                <input id="match-create-pass" type="password" autocomplete="off" spellcheck="false" />
+              </label>
+              <button type="button" id="match-create">Create &amp; join</button>
+            </div>
+          </div>
+
+          <div class="match-block">
+            <div class="match-block-title">// join room</div>
+            <div class="match-row">
+              <label class="match-field match-field--code" for="match-join-code">
+                <span>code</span>
+                <input id="match-join-code" type="text" autocomplete="off" spellcheck="false" placeholder="room code" maxlength="24" />
+              </label>
+              <label class="match-field match-field--pass" for="match-join-pass">
+                <span>password</span>
+                <input id="match-join-pass" type="password" autocomplete="off" spellcheck="false" />
+              </label>
+              <button type="button" id="match-join">Join</button>
+              <button type="button" id="match-leave" disabled>Leave</button>
+            </div>
+          </div>
+
+          <div class="match-status" id="match-status" role="status" aria-live="polite"></div>
+          <div class="match-roster" id="match-roster"></div>
         </div>
-        <div class="match-status" id="match-status" role="status" aria-live="polite"></div>
-        <div class="match-roster" id="match-roster"></div>
+
+        <aside class="match-right">
+          <div class="match-right-head">
+            <span>// rooms</span>
+            <button type="button" id="match-refresh">Refresh</button>
+          </div>
+          <div class="match-rooms" id="match-rooms" role="list" aria-label="Danh sách phòng"></div>
+        </aside>
       </div>
     </section>
-
     <!-- Chat Rooms document: the picker and the create form live in a tab -->
     <section class="doc-panel rooms-panel" id="rooms-view" hidden>
       <div class="doc-panel-head">

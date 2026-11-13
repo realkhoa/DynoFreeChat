@@ -1,11 +1,112 @@
-/* Match.cs document: the online lobby rendered as a small settings file. */
+/* Match.cs document: left pane creates or joins a room, right pane lists rooms.
+   Two columns so the room list reads like a solution explorer next to the form. */
 
-.match-panel .doc-panel-body {
+.match-split {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 620px;
+  flex: 1;
+  min-height: 0;
 }
+
+.match-left {
+  display: flex;
+  flex: 1 1 58%;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px 18px;
+  overflow: auto;
+}
+
+.match-right {
+  display: flex;
+  flex: 0 0 300px;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--editor);
+}
+
+.match-right-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--chrome);
+  color: #6a9955;
+  font: 11px/1 var(--font-mono);
+}
+
+.match-right-head button {
+  height: 18px;
+  padding: 0 7px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 2px;
+  color: var(--fg-muted);
+  font: 10.5px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.match-right-head button:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--border);
+}
+
+.match-rooms {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.match-room {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 10px;
+  background: transparent;
+  border: 0;
+  color: var(--fg-muted);
+  font: 11.5px/1.7 var(--font-mono);
+  text-align: left;
+  cursor: pointer;
+}
+
+.match-room:hover {
+  background: var(--hover-row);
+}
+
+.match-room-lock {
+  flex: none;
+  width: 14px;
+  color: #dcdcaa;
+}
+
+.match-room-code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #9cdcfe;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-room-meta {
+  flex: none;
+  color: var(--fg-dim);
+}
+
+.match-room-empty {
+  padding: 8px 10px;
+  color: var(--fg-dim);
+  font: 11px/1.6 var(--font-mono);
+}
+
+/* ------------------------------------------------------------------- form */
 
 .match-field {
   display: flex;
@@ -32,12 +133,36 @@
   border-color: var(--accent);
 }
 
-.match-actions {
-  display: flex;
-  gap: 8px;
+.match-field--code {
+  flex: 0 0 200px;
 }
 
-.match-actions button {
+.match-field--pass {
+  flex: 0 0 180px;
+}
+
+.match-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.match-block-title {
+  color: #6a9955;
+  font: 11.5px/1.4 var(--font-mono);
+}
+
+.match-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.match-row button {
   height: 26px;
   padding: 0 12px;
   background: transparent;
@@ -48,18 +173,18 @@
   cursor: pointer;
 }
 
-.match-actions button:hover:not(:disabled) {
+.match-row button:hover:not(:disabled) {
   background: var(--hover-chrome);
   border-color: var(--border);
   color: var(--fg);
 }
 
-.match-actions button:disabled {
+.match-row button:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
-.match-actions #match-create {
+.match-row #match-create {
   border-color: var(--accent);
   color: #ffffff;
 }

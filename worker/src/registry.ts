@@ -87,7 +87,8 @@ export class Registry extends DurableObject<Env> {
     return this.sql.exec<RoomRow>("SELECT slug FROM rooms WHERE slug = ?", slug).toArray().length > 0;
   }
 
-  /** 3 rooms per IP per hour. Keeps a bot from filling the lobby with junk. */
+  /** `CREATES_PER_WINDOW` rooms per IP per window. Keeps a bot from filling the
+   * lobby with junk while still letting a group behind one NAT open rooms. */
   private allowCreate(ip: string, now: number): boolean {
     const row = this.sql
       .exec<CreateRow>("SELECT windowStart, count FROM creates WHERE ip = ?", ip)

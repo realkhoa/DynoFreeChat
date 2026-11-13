@@ -185,7 +185,7 @@ report.hostCreate = await a.evaluate(`(() => ({
   createVisible: document.querySelector("#match-create") !== null,
 }))()`);
 await a.setValue("#match-game", "chess");
-await a.setValue("#match-slug", slug);
+await a.setValue(LOCAL ? "#match-join-code" : "#match-create-code", slug);
 if (LOCAL) await a.click("#match-join");
 else await a.click("#match-create");
 await sleep(2500);
@@ -200,7 +200,7 @@ if (!LOCAL && (report.hostLobby ?? "").includes("429")) {
   const room = (rooms.rooms ?? []).find((entry) => entry.locked !== true);
   if (room !== undefined) {
     report.slug = room.slug;
-    await a.setValue("#match-slug", room.slug);
+    await a.setValue("#match-join-code", room.slug);
     await a.click("#match-join");
     await sleep(2500);
     report.hostLobby = await a.evaluate(`document.querySelector("#match-status")?.textContent ?? null`);
@@ -209,7 +209,7 @@ if (!LOCAL && (report.hostLobby ?? "").includes("429")) {
 
 await openLobby(b);
 await b.setValue("#match-game", "chess");
-await b.setValue("#match-slug", report.slug);
+await b.setValue("#match-join-code", report.slug);
 await b.click("#match-join");
 await sleep(3000);
 report.guestLobby = await b.evaluate(`(() => ({

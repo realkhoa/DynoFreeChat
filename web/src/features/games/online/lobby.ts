@@ -1,14 +1,16 @@
 /**
  * @file lobby.ts
- * @brief Match.cs document: create or join a room, then start the online game.
- * @details The lobby lists the games that advertise online play, lets the player
- * create a room (the Worker lobby API) or join an existing slug, and hands the
- * ready bridge to the host so the game stage can open the board. It never owns
+ * @brief Match.cs document: create or join an online room, with the room list.
+ * @details Two panes, like a solution explorer next to an editor: the left pane
+ * creates a room (game, code, password) or joins one by code, and the right pane
+ * lists the rooms the Worker currently knows, newest first. The lobby never owns
  * game rules; the match protocol does.
  */
 
+import { createRoom, listRooms } from "@/api";
 import { roomSocketUrl } from "@/env";
 import type { GameDefinition } from "@/features/games/registry";
+import { formatAge } from "@/shared/lib/format";
 import type { OnlineBridge, OnlinePhase } from "./bridge";
 import { OnlineMatch, type OnlineMatchOptions } from "./match";
 
@@ -16,20 +18,29 @@ import { OnlineMatch, type OnlineMatchOptions } from "./match";
 export interface MatchElements {
   panel: HTMLElement;
   gameSelect: HTMLSelectElement;
-  slug: HTMLInputElement;
-  pass: HTMLInputElement;
+  /** Room code typed in the create block. */
+  createCode: HTMLInputElement;
+  /** Optional password typed in the create block. */
+  createPass: HTMLInputElement;
   createButton: HTMLButtonElement;
+  /** Room code typed in the join block. */
+  joinCode: HTMLInputElement;
+  /** Password typed in the join block. */
+  joinPass: HTMLInputElement;
   joinButton: HTMLButtonElement;
   leaveButton: HTMLButtonElement;
   status: HTMLElement;
   roster: HTMLElement;
+  /** Right pane that receives the room rows. */
+  roomList: HTMLElement;
+  refreshButton: HTMLButtonElement;
 }
 
 /** Collaborators the lobby needs from the app shell. */
 export interface MatchDeps {
   /** Worker socket base URL, e.g. `wss://…/ws`. */
   wsUrl: string;
-  /** Worker HTTP base URL, for creating rooms. */
+  /** Worker HTTP base URL, for the room API. */
   apiBase: string;
   /** Current nickname. */
   nick: () => string;
@@ -43,10 +54,15 @@ export interface MatchDeps {
   fetchImpl?: typeof fetch;
   /** Match factory; tests replace it. */
   createMatch?: (options: OnlineMatchOptions) => OnlineMatch;
+  /** Room listing seam; tests replace it. */
+  listRooms?: (
+    apiBase: string,
+    fetchImpl: typeof fetch,
+  ) => Promise<Array<{ slug: string; locked: boolean; lastSeen: number }>>;
 }
 
-/** Room slug shape accepted by the Worker lobby. */
-const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,23}$/;
+/** Room code shape accepted by the Worker lobby. */
+const CODE_PATTERN = /^[a-z0-9][a-z0-9-]{1,23}$/;
 
 /**
  * @brief Owns the Match.cs document.
@@ -67,7 +83,25 @@ export class MatchView {
     elements.createButton.addEventListener("click", () => void this.createAndJoin());
     elements.joinButton.addEventListener("click", () => this.join());
     elements.leaveButton.addEventListener("click", () => this.leave());
+    elements.refreshButton.addEventListener("click", () => void this.refreshRooms());
     elements.gameSelect.addEventListener("change", () => this.syncSelection());
+    elements.joinCode.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      this.join();
+    });
+    elements.joinPass.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      this.join();
+    });
+    elements.roomList.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const row = target.closest<HTMLElement>("[data-room]");
+      const code = row?.dataset.room;
+      if (code !== undefined) this.pickRoom(code, row?.dataset.locked === "true");
+    });
   }
 
   /** Game currently selected in the lobby, if any. */
@@ -80,7 +114,7 @@ export class MatchView {
     return this.match !== null;
   }
 
-  /** @brief Fills the game list and paints the idle state. */
+  /** @brief Fills the game list, then loads the room list. */
   start(): void {
     const games = this.deps.games.filter((game) => game.online === true);
     this.elements.gameSelect.replaceChildren();
@@ -95,13 +129,40 @@ export class MatchView {
     this.elements.joinButton.disabled = games.length === 0;
     this.elements.leaveButton.disabled = this.match === null;
     this.setStatus(
-      games.length === 0 ? "// no online games in this build" : "// pick a game, then create or join a room",
+      games.length === 0 ? "// no online games in this build" : "// create a room or join one by code",
     );
     this.paintRoster([]);
+    void this.refreshRooms();
+  }
+
+  /** @brief Loads and paints the room list in the right pane. */
+  async refreshRooms(): Promise<void> {
+    const list = this.elements.roomList;
+    this.elements.refreshButton.disabled = true;
+    this.setStatus("// loading rooms…");
+
+    try {
+      const listRoomsImpl = this.deps.listRooms ?? listRooms;
+      const fetchImpl = this.deps.fetchImpl ?? ((input, init) => fetch(input, init));
+      const rooms = await listRoomsImpl(this.deps.apiBase, fetchImpl);
+      this.paintRooms(rooms);
+      this.setStatus(
+        rooms.length === 0 ? "// no rooms yet - create the first one" : `// ${rooms.length} room(s)`,
+      );
+    } catch {
+      list.replaceChildren();
+      const error = document.createElement("div");
+      error.className = "match-room-empty";
+      error.textContent = "// cannot list rooms";
+      list.append(error);
+      this.setStatus("// cannot list rooms - worker unreachable");
+    } finally {
+      this.elements.refreshButton.disabled = false;
+    }
   }
 
   /**
-   * @brief Creates a room through the Worker lobby API and joins it.
+   * @brief Creates a room from the create block and joins it.
    * @return Resolves when the socket started connecting.
    */
   async createAndJoin(): Promise<void> {
@@ -112,24 +173,22 @@ export class MatchView {
     this.busy = true;
     this.setStatus("// creating room…");
     try {
-      const slug = this.roomSlug(game);
-      const pass = this.elements.pass.value.trim();
-      const body: Record<string, string> = { slug };
+      const code = this.createCode(game);
+      const pass = this.elements.createPass.value.trim();
+      const body: { slug: string; pass?: string } = { slug: code };
       if (pass.length > 0) body.pass = pass;
 
       const fetchImpl = this.deps.fetchImpl ?? ((input, init) => fetch(input, init));
-      const response = await fetchImpl(`${this.deps.apiBase}/api/rooms`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        this.setStatus(`// cannot create room (${response.status})`);
+      const result = await createRoom(this.deps.apiBase, body, fetchImpl);
+      if (!result.ok) {
+        this.setStatus(`// cannot create room (${result.code})`);
         return;
       }
 
-      this.elements.slug.value = slug;
-      this.connect(game, slug, pass);
+      this.elements.joinCode.value = code;
+      this.elements.joinPass.value = pass;
+      this.connect(game, code, pass);
+      void this.refreshRooms();
     } catch {
       this.setStatus("// cannot create room - worker unreachable");
     } finally {
@@ -137,17 +196,17 @@ export class MatchView {
     }
   }
 
-  /** @brief Joins the room slug typed in the box. */
+  /** @brief Joins the room code typed in the join block. */
   join(): void {
     const game = this.requireGame();
     if (game === null) return;
 
-    const slug = this.elements.slug.value.trim().toLowerCase();
-    if (!SLUG_PATTERN.test(slug)) {
-      this.setStatus("// room slug must be 2-24 chars: a-z, 0-9, dash");
+    const code = this.elements.joinCode.value.trim().toLowerCase();
+    if (!CODE_PATTERN.test(code)) {
+      this.setStatus("// room code must be 2-24 chars: a-z, 0-9, dash");
       return;
     }
-    this.connect(game, slug, this.elements.pass.value.trim());
+    this.connect(game, code, this.elements.joinPass.value.trim());
   }
 
   /** @brief Leaves the current match, if any. */
@@ -160,16 +219,32 @@ export class MatchView {
   }
 
   /**
+   * @brief Picks one room from the list: joins it, or asks for its password.
+   * @param code Room code.
+   * @param locked Whether the room is password protected.
+   */
+  private pickRoom(code: string, locked: boolean): void {
+    this.elements.joinCode.value = code;
+    if (locked) {
+      this.setStatus(`// ${code} is locked - type its password, then Join`);
+      this.elements.joinPass.focus();
+      return;
+    }
+    this.elements.joinPass.value = "";
+    this.join();
+  }
+
+  /**
    * @brief Opens the socket and wires the match callbacks.
    * @param game Selected game.
-   * @param slug Room slug.
+   * @param code Room code.
    * @param pass Room password, empty when open.
    */
-  private connect(game: GameDefinition, slug: string, pass: string): void {
+  private connect(game: GameDefinition, code: string, pass: string): void {
     this.match?.leave();
 
     const options: OnlineMatchOptions = {
-      url: roomSocketUrl(this.deps.wsUrl, slug),
+      url: roomSocketUrl(this.deps.wsUrl, code),
       nick: this.deps.nick(),
       color: this.deps.color(),
       game: game.id,
@@ -191,7 +266,7 @@ export class MatchView {
     this.match = createMatch(options);
     this.match.start();
     this.elements.leaveButton.disabled = false;
-    this.setStatus(`// joining ${slug} as ${game.name}…`);
+    this.setStatus(`// joining ${code} as ${game.name}…`);
   }
 
   /**
@@ -207,13 +282,13 @@ export class MatchView {
   }
 
   /**
-   * @brief Derives the room slug to create.
+   * @brief Derives the room code to create.
    * @param game Selected game.
-   * @return The typed slug when valid, otherwise a generated one.
+   * @return The typed code when valid, otherwise a generated one.
    */
-  private roomSlug(game: GameDefinition): string {
-    const typed = this.elements.slug.value.trim().toLowerCase();
-    if (SLUG_PATTERN.test(typed)) return typed;
+  private createCode(game: GameDefinition): string {
+    const typed = this.elements.createCode.value.trim().toLowerCase();
+    if (CODE_PATTERN.test(typed)) return typed;
     const suffix = Math.random().toString(36).slice(2, 6);
     return `${game.id}-${suffix}`.slice(0, 24);
   }
@@ -222,6 +297,48 @@ export class MatchView {
   private syncSelection(): void {
     const id = this.elements.gameSelect.value;
     this.selected = this.deps.games.find((entry) => entry.id === id) ?? null;
+  }
+
+  /**
+   * @brief Paints the room rows, newest first.
+   * @param rooms Room summaries from the Worker.
+   */
+  private paintRooms(rooms: Array<{ slug: string; locked: boolean; lastSeen: number }>): void {
+    const list = this.elements.roomList;
+    list.replaceChildren();
+
+    if (rooms.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "match-room-empty";
+      empty.textContent = "// no rooms yet - create the first one";
+      list.append(empty);
+      return;
+    }
+
+    const sorted = [...rooms].sort((left, right) => right.lastSeen - left.lastSeen);
+    for (const room of sorted) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "match-room";
+      row.dataset.room = room.slug;
+      row.dataset.locked = String(room.locked);
+      row.setAttribute("role", "listitem");
+
+      const lock = document.createElement("span");
+      lock.className = "match-room-lock";
+      lock.textContent = room.locked ? "🔒" : "·";
+
+      const code = document.createElement("span");
+      code.className = "match-room-code";
+      code.textContent = room.slug;
+
+      const meta = document.createElement("span");
+      meta.className = "match-room-meta";
+      meta.textContent = formatAge(room.lastSeen);
+
+      row.append(lock, code, meta);
+      list.append(row);
+    }
   }
 
   /**
