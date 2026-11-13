@@ -122,6 +122,106 @@
   text-align: center;
 }
 
+/* ------------------------------------------------ presence (online threads) */
+
+.titlebar-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font: 11px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.titlebar-presence:hover,
+.titlebar-presence[aria-expanded="true"] {
+  background: var(--panel);
+  border-color: var(--border);
+}
+
+.presence-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6cc644;
+  box-shadow: 0 0 4px #6cc64488;
+}
+
+.titlebar-presence[data-away="true"] .presence-dot {
+  background: #d7ba7d;
+  box-shadow: none;
+}
+
+.presence-panel {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 8px;
+  z-index: 70;
+  width: 260px;
+  background: var(--menu);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px #00000045;
+}
+
+.presence-hint {
+  color: var(--fg-faint);
+  font: 10px var(--font-mono);
+}
+
+.presence-list {
+  margin: 0;
+  padding: 2px;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.presence-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  color: var(--fg);
+  font: 11px/1.5 var(--font-mono);
+}
+
+.presence-row + .presence-row {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.presence-swatch {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.presence-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.presence-tag {
+  margin-left: auto;
+  color: var(--fg-faint);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.presence-row[data-state="away"] .presence-name {
+  color: var(--fg-dim);
+}
+
+.presence-row[data-unfocus="true"] .presence-tag {
+  color: var(--accent);
+}
+
 /* VS-style zoom control for the chat pane only (bottom-left of the editor) */
 .statusitem--zoom {
   padding: 0 6px;

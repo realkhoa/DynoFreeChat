@@ -53,12 +53,14 @@ interface Harness {
   socket: ChatSocket;
   fakes: FakeSocket[];
   timers: Array<{ run: () => void; ms: number }>;
+  intervals: Array<{ run: () => void; ms: number }>;
   states: SocketState[];
 }
 
 function harness(): Harness {
   const fakes: FakeSocket[] = [];
   const timers: Array<{ run: () => void; ms: number }> = [];
+  const intervals: Array<{ run: () => void; ms: number }> = [];
   const states: SocketState[] = [];
 
   const socket = new ChatSocket({
@@ -74,10 +76,15 @@ function harness(): Harness {
       return timers.length;
     },
     clearTimeoutImpl: () => {},
+    setIntervalImpl: (handler, ms) => {
+      intervals.push({ run: handler, ms });
+      return intervals.length;
+    },
+    clearIntervalImpl: () => {},
   });
 
   socket.onState((state) => states.push(state));
-  return { socket, fakes, timers, states };
+  return { socket, fakes, timers, intervals, states };
 }
 
 describe("ChatSocket", () => {
@@ -91,6 +98,49 @@ describe("ChatSocket", () => {
     fakes[0]!.open();
     expect(socket.state).toBe("open");
     expect(states).toEqual(["connecting", "open"]);
+  });
+
+  it("sends a heartbeat while the socket is open", () => {
+    const { socket, fakes, intervals } = harness();
+    socket.connect();
+    fakes[0]!.open();
+
+    expect(intervals).toHaveLength(1);
+    expect(intervals[0]!.ms).toBe(10_000);
+    intervals[0]!.run();
+    expect(JSON.parse(fakes[0]!.sent[0]!)).toEqual({ t: "ping", state: "active", unfocus: false });
+
+    socket.close();
+  });
+
+  it("announces a presence change immediately and only once", () => {
+    const { socket, fakes } = harness();
+    socket.connect();
+    fakes[0]!.open();
+
+    socket.setPresence({ state: "away" });
+    expect(JSON.parse(fakes[0]!.sent.at(-1)!)).toEqual({ t: "ping", state: "away", unfocus: false });
+
+    const sent = fakes[0]!.sent.length;
+    socket.setPresence({ state: "away" });
+    expect(fakes[0]!.sent).toHaveLength(sent);
+
+    socket.setPresence({ unfocus: true });
+    expect(JSON.parse(fakes[0]!.sent.at(-1)!)).toEqual({ t: "ping", state: "away", unfocus: true });
+
+    socket.close();
+  });
+
+  it("keeps the latest presence in later heartbeats", () => {
+    const { socket, fakes, intervals } = harness();
+    socket.connect();
+    fakes[0]!.open();
+
+    socket.setPresence({ state: "away", unfocus: true });
+    intervals[0]!.run();
+    expect(JSON.parse(fakes[0]!.sent.at(-1)!)).toEqual({ t: "ping", state: "away", unfocus: true });
+
+    socket.close();
   });
 
   it("only sends while open", () => {
@@ -157,9 +207,9 @@ describe("ChatSocket", () => {
     const received: ServerFrame[] = [];
     socket.onFrame((frame) => received.push(frame));
     socket.connect();
-    fakes[0]!.receive({ t: "presence", online: 3 });
+    fakes[0]!.receive({ t: "presence", online: 3, users: [] });
 
-    expect(received).toEqual([{ t: "presence", online: 3 }]);
+    expect(received).toEqual([{ t: "presence", online: 3, users: [] }]);
   });
 
   it("ignores unparseable frames", () => {

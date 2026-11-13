@@ -62,6 +62,14 @@ export class Client {
     this.send({ t: "game", data });
   }
 
+  /** Sends one heartbeat, optionally carrying the presence event. */
+  ping(state?: "active" | "away", unfocus?: boolean): void {
+    const frame: Record<string, unknown> = { t: "ping" };
+    if (state !== undefined) frame.state = state;
+    if (unfocus !== undefined) frame.unfocus = unfocus;
+    this.send(frame);
+  }
+
   async waitFor(match: (frame: ServerFrame) => boolean, timeoutMs = 3000): Promise<ServerFrame> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {

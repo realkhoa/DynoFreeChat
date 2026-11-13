@@ -45,11 +45,23 @@
           </label>
         </div>
         <span class="titlebar-right">
+          <button type="button" class="titlebar-presence" id="presence-chip" aria-expanded="false" aria-label="Người đang online" title="Người đang online" hidden>
+            <span class="presence-dot" id="presence-dot" aria-hidden="true"></span>
+            <span class="presence-count" id="presence-count">0</span>
+          </button>
           <button type="button" class="titlebar-bell" id="notify-bell" aria-expanded="false" aria-label="Thông báo" title="Thông báo">
             <span class="bell-count" id="bell-count" hidden>0</span>
           </button>
           <span class="titlebar-room" id="titlebar-room">no room</span>
         </span>
+        <div class="presence-panel" id="presence-panel" role="dialog" aria-label="Người đang online" hidden>
+          <div class="notify-head">
+            <span>Threads</span>
+            <span class="presence-hint" id="presence-hint">heartbeat 10s</span>
+          </div>
+          <ul class="presence-list" id="presence-list"></ul>
+          <p class="notify-empty" id="presence-empty">chưa có ai online</p>
+        </div>
         <div class="notify-panel" id="notify-panel" role="dialog" aria-label="Thông báo" hidden>
           <div class="notify-head">
             <span>Notifications</span>

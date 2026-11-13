@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   DEFAULT_COLOR,
+  HEARTBEAT_INTERVAL_MS,
+  heartbeatExpired,
   GAME_CAPACITY,
   GAME_REFILL_MS,
   HISTORY_LIMIT,
@@ -18,6 +20,8 @@ import {
   type ChatMessage,
   type ClientFrame,
   type ErrorCode,
+  type PresenceState,
+  type PresenceUser,
   type ServerFrame,
 } from "@dyno/shared/protocol";
 import { newBucket, take, type Bucket } from "@dyno/shared/ratelimit";
@@ -36,6 +40,12 @@ interface Conn {
   authed: boolean;
   locked: boolean;
   attempts: number;
+  /** Epoch milliseconds of the last frame received from this socket. */
+  lastHeartbeat: number;
+  /** Whether the user is watching the page or away from the tab. */
+  state: PresenceState;
+  /** Whether the user is in the game stage's unfocus (code-on-idle) mode. */
+  unfocus: boolean;
 }
 
 type MessageRow = SqlRow<{
@@ -97,12 +107,16 @@ export class ChatRoom extends DurableObject<Env> {
       nick: "",
       color: DEFAULT_COLOR,
       bucket: newBucket(Date.now()),
+      lastHeartbeat: Date.now(),
+      state: "active",
+      unfocus: false,
       gameBucket: newBucket(Date.now(), GAME_CAPACITY),
       authed: false,
       locked: false,
       attempts: 0,
     };
     server.serializeAttachment(conn);
+    void this.scheduleHeartbeat();
 
     try {
       this.ensureReady();
@@ -112,12 +126,56 @@ export class ChatRoom extends DurableObject<Env> {
     return new Response(null, { status: 101, webSocket: client });
   }
 
+  /**
+   * @brief Ensures the heartbeat sweep alarm is armed.
+   * @return Resolves once the alarm is set.
+   */
+  private async scheduleHeartbeat(): Promise<void> {
+    try {
+      const current = await this.ctx.storage.getAlarm();
+      if (current === null) await this.ctx.storage.setAlarm(Date.now() + HEARTBEAT_INTERVAL_MS);
+    } catch {
+      // Alarms are an optimisation; a missing one only delays the sweep.
+    }
+  }
+
+  /**
+   * @brief Closes sockets that stopped sending heartbeats, then reschedules.
+   * @return Resolves once the sweep is done.
+   */
+  override async alarm(): Promise<void> {
+    const now = Date.now();
+    for (const ws of this.ctx.getWebSockets()) {
+      const conn = this.readConn(ws);
+      if (!heartbeatExpired(conn.lastHeartbeat, now)) continue;
+      try {
+        ws.close(4408, "heartbeat timeout");
+      } catch {
+        // A dead socket is fine; presence and cleanup run from the close path.
+      }
+    }
+
+    if (this.ctx.getWebSockets().length > 0) {
+      await this.ctx.storage.setAlarm(now + HEARTBEAT_INTERVAL_MS);
+    }
+  }
+
   override async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
     if (typeof raw !== "string") return;
 
     const parsed = parseClientFrame(raw);
     if (!parsed.ok) {
       this.sendError(ws, "BAD_FRAME");
+      return;
+    }
+
+    const conn = this.readConn(ws);
+    conn.lastHeartbeat = Date.now();
+    ws.serializeAttachment(conn);
+
+    if (parsed.frame.t === "ping") {
+      this.applyPresence(ws, conn, parsed.frame);
+      this.send(ws, { t: "pong" });
       return;
     }
 
@@ -205,16 +263,38 @@ export class ChatRoom extends DurableObject<Env> {
     conn.color = sanitizeColor(frame.color);
     ws.serializeAttachment(conn);
 
+    const users = this.presenceUsers();
     this.send(ws, {
       t: "welcome",
       you: { nick: conn.nick, color: conn.color },
       room: { slug: conn.slug, locked: conn.locked },
       history: this.history(HISTORY_REPLAY),
-      online: this.authedSockets().length,
+      online: users.length,
+      users,
       serverTs: Date.now(),
     });
 
     this.broadcastPresence();
+  }
+
+  /**
+   * @brief Applies the presence fields carried by one heartbeat.
+   * @details Heartbeats double as presence events: a tab switch or the unfocus
+   * toggle sends an immediate ping, and only a real change costs a broadcast.
+   * @param ws Socket the heartbeat came from.
+   * @param conn Its decoded attachment.
+   * @param frame The parsed ping frame.
+   * @return void
+   */
+  private applyPresence(ws: WebSocket, conn: Conn, frame: Extract<ClientFrame, { t: "ping" }>): void {
+    const state = frame.state ?? conn.state;
+    const unfocus = frame.unfocus ?? conn.unfocus;
+    if (state === conn.state && unfocus === conn.unfocus) return;
+
+    conn.state = state;
+    conn.unfocus = unfocus;
+    ws.serializeAttachment(conn);
+    if (conn.authed) this.broadcastPresence();
   }
 
   private handleMessage(ws: WebSocket, frame: Extract<ClientFrame, { t: "msg" }>): void {
@@ -446,6 +526,9 @@ export class ChatRoom extends DurableObject<Env> {
       nick: "",
       color: DEFAULT_COLOR,
       bucket: newBucket(now),
+      lastHeartbeat: now,
+      state: "active",
+      unfocus: false,
       gameBucket: newBucket(now, GAME_CAPACITY),
       authed: false,
       locked: false,
@@ -462,6 +545,9 @@ export class ChatRoom extends DurableObject<Env> {
       nick: typeof partial.nick === "string" ? partial.nick : blank.nick,
       color: typeof partial.color === "string" ? partial.color : blank.color,
       bucket: partial.bucket ?? blank.bucket,
+      lastHeartbeat: typeof partial.lastHeartbeat === "number" ? partial.lastHeartbeat : blank.lastHeartbeat,
+      state: partial.state === "active" || partial.state === "away" ? partial.state : blank.state,
+      unfocus: partial.unfocus === true,
       gameBucket: partial.gameBucket ?? blank.gameBucket,
       authed: partial.authed === true,
       locked: partial.locked === true,
@@ -482,8 +568,22 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   private broadcastPresence(excluded?: WebSocket): void {
-    const peers = this.authedSockets(excluded);
-    const frame: ServerFrame = { t: "presence", online: peers.length };
-    for (const peer of peers) this.send(peer, frame);
+    const users = this.presenceUsers(excluded);
+    const frame: ServerFrame = { t: "presence", online: users.length, users };
+    for (const peer of this.authedSockets(excluded)) this.send(peer, frame);
+  }
+
+  /**
+   * @brief Snapshots the room's joined users for a presence frame.
+   * @param excluded Socket to leave out, e.g. the one that just closed.
+   * @return Users sorted by nickname so every client renders the same order.
+   */
+  private presenceUsers(excluded?: WebSocket): PresenceUser[] {
+    return this.authedSockets(excluded)
+      .map((peer) => {
+        const conn = this.readConn(peer);
+        return { nick: conn.nick, color: conn.color, state: conn.state, unfocus: conn.unfocus };
+      })
+      .sort((a, b) => a.nick.localeCompare(b.nick));
   }
 }

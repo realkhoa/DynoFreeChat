@@ -10,7 +10,10 @@ import {
   makeMessageId,
   mentionsNick,
   parseClientFrame,
+  parsePresenceState,
   parseRoomKind,
+  heartbeatExpired,
+  HEARTBEAT_TIMEOUT_MS,
   sanitizeColor,
   sanitizeNick,
   sanitizeText,
@@ -223,5 +226,31 @@ describe("parseRoomKind", () => {
     expect(parseRoomKind("")).toBeNull();
     expect(parseRoomKind(null)).toBeNull();
     expect(parseRoomKind(42)).toBeNull();
+  });
+});
+
+describe("heartbeat", () => {
+  it("parses a ping frame", () => {
+    expect(parseClientFrame(JSON.stringify({ t: "ping" }))).toEqual({ ok: true, frame: { t: "ping" } });
+  });
+
+  it("carries the presence event on a ping", () => {
+    expect(parseClientFrame(JSON.stringify({ t: "ping", state: "away", unfocus: true }))).toEqual({
+      ok: true,
+      frame: { t: "ping", state: "away", unfocus: true },
+    });
+  });
+
+  it("treats an unknown presence state as away", () => {
+    expect(parsePresenceState("active")).toBe("active");
+    expect(parsePresenceState("away")).toBe("away");
+    expect(parsePresenceState("online")).toBe("away");
+    expect(parsePresenceState(undefined)).toBe("away");
+  });
+
+  it("expires a connection only after the timeout", () => {
+    const last = 1_000;
+    expect(heartbeatExpired(last, last + HEARTBEAT_TIMEOUT_MS)).toBe(false);
+    expect(heartbeatExpired(last, last + HEARTBEAT_TIMEOUT_MS + 1)).toBe(true);
   });
 });

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { MAX_GAME_PAYLOAD, RATE_CAPACITY, type ServerFrame } from "@dyno/shared/protocol";
-import { SELF } from "cloudflare:test";
+import { SELF, env, runInDurableObject } from "cloudflare:test";
+import type { Env } from "../src/env";
+import type { ChatRoom } from "../src/room";
 import { BASE, ORIGIN, connect, createRoom, makeRoom, uniqueSlug } from "./helpers";
 
 describe("chat room", () => {
@@ -399,5 +401,76 @@ describe("room cleanup", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 400));
     expect(await listed("chat")).toContain(slug);
+  });
+});
+
+describe("heartbeat", () => {
+  it("welcomes with the online user list and their presence state", async () => {
+    const slug = await makeRoom();
+    const alice = await connect(slug);
+    alice.join("alice");
+    await alice.welcome();
+
+    const bob = await connect(slug);
+    bob.join("bob");
+    const welcome = await bob.welcome();
+
+    expect(welcome.users.map((user) => user.nick)).toEqual(["alice", "bob"]);
+    expect(welcome.users.find((user) => user.nick === "alice")).toMatchObject({
+      state: "active",
+      unfocus: false,
+    });
+
+    alice.close();
+    bob.close();
+  });
+
+  it("broadcasts presence when a heartbeat carries a state change", async () => {
+    const slug = await makeRoom();
+    const alice = await connect(slug);
+    alice.join("alice");
+    await alice.welcome();
+
+    const bob = await connect(slug);
+    bob.join("bob");
+    await bob.welcome();
+
+    bob.ping("away", true);
+    const frame = await alice.waitFor(
+      (candidate) =>
+        candidate.t === "presence" &&
+        candidate.users.some((user) => user.nick === "bob" && user.state === "away"),
+    );
+    const bobState = frame.t === "presence" ? frame.users.find((user) => user.nick === "bob") : undefined;
+    expect(bobState).toMatchObject({ state: "away", unfocus: true });
+    expect(frame.t === "presence" && frame.online).toBe(2);
+
+    alice.close();
+    bob.close();
+  });
+
+  it("closes a socket that stops heartbeating", async () => {
+    const slug = await makeRoom();
+    const client = await connect(slug);
+    client.join("khoan");
+    await client.welcome();
+
+    const closed = new Promise<CloseEvent>((resolve) => {
+      client.ws.addEventListener("close", (event) => resolve(event as CloseEvent));
+    });
+
+    const workerEnv = env as unknown as Env;
+    const stub = workerEnv.CHAT_ROOM.get(workerEnv.CHAT_ROOM.idFromName(slug));
+    await runInDurableObject(stub, async (instance: ChatRoom, state: DurableObjectState) => {
+      for (const ws of state.getWebSockets()) {
+        const conn = ws.deserializeAttachment() as Record<string, unknown>;
+        conn.lastHeartbeat = Date.now() - 60_000;
+        ws.serializeAttachment(conn);
+      }
+      await instance.alarm();
+    });
+
+    const event = await closed;
+    expect(event.code).toBe(4408);
   });
 });

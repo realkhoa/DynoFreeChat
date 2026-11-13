@@ -147,12 +147,15 @@ export class GameStage {
    * @param factories Lazily created game modules keyed by registry id.
    * @param storage Storage for the Focus preference, or `null`.
    * @param codeFeed Random source of the idle code view.
+   * @param onUnfocusChange Called when the unfocus toggle changes, so the app can
+   * announce the new presence state to the room.
    */
   constructor(
     private readonly elements: StageElements,
     private readonly factories: Record<string, GameFactory>,
     private readonly storage: Storage | null = null,
     private readonly codeFeed: RandomCodeFeed = new RandomCodeFeed(),
+    private readonly onUnfocusChange: (enabled: boolean) => void = () => {},
   ) {
     elements.restart.addEventListener("click", () => {
       const id = this.active?.id;
@@ -204,6 +207,7 @@ export class GameStage {
       if (this.unfocusEnabled) void this.showCode();
       else this.showGame();
     }
+    this.onUnfocusChange(this.unfocusEnabled);
     return this.unfocusEnabled;
   }
 

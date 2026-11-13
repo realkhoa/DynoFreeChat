@@ -6,6 +6,7 @@ import {
   makeExcerpt,
   mentionsNick,
   type ClientFrame,
+  type PresenceUser,
   type ReplyRef,
   type RoomInfo,
   type ServerFrame,
@@ -35,6 +36,7 @@ import { PassVault } from "@/shared/lib/passvault";
 import { applyTheme, loadTheme, otherTheme, saveTheme, type Theme } from "@/features/settings/theme";
 import { Store, type KindFilter } from "@/features/chat/state/store";
 import { ChatSocket, type SocketState } from "@/shared/net/socket";
+import { readPresenceState, watchPresence } from "@/shared/net/presence";
 import { Composer } from "@/features/chat/components/composer";
 import { GameDialog } from "@/features/collab/document/frame";
 import { icon, setIconButton } from "@/shared/ui/icons";
@@ -130,6 +132,13 @@ const notifyPanel = byId<HTMLElement>("notify-panel");
 const notifyList = byId<HTMLElement>("notify-list");
 const notifyEmpty = byId<HTMLElement>("notify-empty");
 const notifyClear = byId<HTMLButtonElement>("notify-clear");
+const presenceChip = byId<HTMLButtonElement>("presence-chip");
+const presenceDot = byId<HTMLElement>("presence-dot");
+const presenceCount = byId<HTMLElement>("presence-count");
+const presencePanel = byId<HTMLElement>("presence-panel");
+const presenceList = byId<HTMLElement>("presence-list");
+const presenceEmpty = byId<HTMLElement>("presence-empty");
+const presenceHint = byId<HTMLElement>("presence-hint");
 const dialogEl = byId<HTMLDialogElement>("room-dialog");
 const settingsViewEl = byId<HTMLElement>("settings-view");
 const roomsViewEl = byId<HTMLElement>("rooms-view");
@@ -171,6 +180,8 @@ let generation = 0;
 let lastRowCount = 0;
 let filterTimer: number | null = null;
 let suppressDisconnectNotice = false;
+/** Latest presence snapshot, kept so a panel opened later paints immediately. */
+let presenceUsers: PresenceUser[] = [];
 
 const logView = new LogView(logEl, {
   onReply: (row) => composer.setReply({ id: row.id, nick: row.nick, text: makeExcerpt(row.text) }),
@@ -333,6 +344,8 @@ const gameStage = new GameStage(
   },
   GAME_FACTORIES,
   storage,
+  undefined,
+  () => syncPresence(),
 );
 
 const matchView = new MatchView(
@@ -484,9 +497,15 @@ const workspaceView = new WorkspaceView(
 );
 
 const docTabs = new DocTabs(tabstripEl, editorEl, tabNew, {
-  onActivate: (_id, label) => showDocView(label),
-  onDeactivate: () => {},
-  onClose: () => selectRoomTab(),
+  onActivate: (_id, label) => {
+    showDocView(label);
+    syncPresence();
+  },
+  onDeactivate: () => syncPresence(),
+  onClose: () => {
+    selectRoomTab();
+    syncPresence();
+  },
 });
 
 function syncSettingsView(): void {
@@ -777,6 +796,89 @@ function toggleNotificationsPanel(): void {
   else closeNotifications();
 }
 
+// ------------------------------------------------------------------ presence
+
+/**
+ * @brief Whether this client is currently in the game stage's unfocus mode.
+ * @details The mode only matters while the game document is the active tab: a
+ * user reading chat with the toggle still on is not "in unfocus".
+ * @return True when the code-on-idle view is in charge.
+ */
+function selfUnfocus(): boolean {
+  return docTabs.activeId === "game-stage" && gameStage.activeId !== null && gameStage.isUnfocused;
+}
+
+/**
+ * @brief Announces this client's presence on the next heartbeat and right away.
+ * @details Visibility, focus and the unfocus toggle all funnel through here so
+ * the room's list reflects a tab switch immediately instead of up to 10s later.
+ * @return void
+ */
+function syncPresence(): void {
+  socket?.setPresence({ state: readPresenceState(), unfocus: selfUnfocus() });
+}
+
+/**
+ * @brief Paints the online list chip and panel from the latest presence frame.
+ * @return void
+ */
+function renderPresence(): void {
+  const inRoom = current !== null;
+  presenceChip.hidden = !inRoom;
+  if (!inRoom) {
+    closePresence();
+    return;
+  }
+
+  presenceCount.textContent = String(presenceUsers.length);
+  const self = presenceUsers.find((user) => user.nick === identity.nick);
+  presenceChip.dataset.away = String(self?.state === "away");
+  presenceChip.title =
+    presenceUsers.length === 0 ? "chưa có ai online" : `${presenceUsers.length} người đang online`;
+  presenceHint.textContent = selfUnfocus() ? "heartbeat 10s · unfocus" : "heartbeat 10s";
+
+  const rows = presenceUsers.map((user) => {
+    const row = document.createElement("li");
+    row.className = "presence-row";
+    row.dataset.state = user.state;
+    row.dataset.unfocus = String(user.unfocus);
+
+    const swatch = document.createElement("span");
+    swatch.className = "presence-swatch";
+    swatch.style.background = user.color;
+
+    const name = document.createElement("span");
+    name.className = "presence-name";
+    name.textContent = user.nick === identity.nick ? `${user.nick} (you)` : user.nick;
+
+    const tag = document.createElement("span");
+    tag.className = "presence-tag";
+    const state = user.state === "active" ? "web" : "away";
+    tag.textContent = user.unfocus ? `${state} ·u` : state;
+
+    row.append(swatch, name, tag);
+    return row;
+  });
+
+  presenceList.replaceChildren(...rows);
+  presenceEmpty.hidden = rows.length > 0;
+}
+
+function openPresence(): void {
+  presencePanel.hidden = false;
+  presenceChip.setAttribute("aria-expanded", "true");
+}
+
+function closePresence(): void {
+  presencePanel.hidden = true;
+  presenceChip.setAttribute("aria-expanded", "false");
+}
+
+function togglePresencePanel(): void {
+  if (presencePanel.hidden) openPresence();
+  else closePresence();
+}
+
 /** Drops the socket and rejoins the current room, reusing a remembered password. */
 function reconnect(): void {
   if (current === null) {
@@ -1037,6 +1139,9 @@ function enterRoom(slug: string, pass?: string): void {
   socket = created;
   created.onState((state, detail) => handleState(gen, state, detail));
   created.onFrame((frame) => handleFrame(gen, frame));
+  // The socket stores presence before it opens, so the first heartbeat already
+  // tells the room whether this tab is in the foreground.
+  syncPresence();
   created.connect();
   composer.setEnabled(false);
 
@@ -1059,6 +1164,8 @@ function leaveRoom(updateUrl = true): void {
   setMode("start");
   statusbar.setLocked(false);
   statusbar.setOnline(0);
+  presenceUsers = [];
+  renderPresence();
   store.addSystem("đã rời room");
   notifier.reset();
   updateChrome();
@@ -1131,6 +1238,9 @@ function handleFrame(gen: number, frame: ServerFrame): void {
       composer.focus();
       statusbar.setOnline(frame.online);
       statusbar.setLocked(frame.room.locked);
+      presenceUsers = frame.users;
+      renderPresence();
+      syncPresence();
       notifier.resetRoom(frame.room.slug);
       renderNotifications();
       updateChrome();
@@ -1156,6 +1266,8 @@ function handleFrame(gen: number, frame: ServerFrame): void {
 
     case "presence":
       statusbar.setOnline(frame.online);
+      presenceUsers = frame.users;
+      renderPresence();
       break;
 
     case "error":
@@ -1600,6 +1712,15 @@ function wire(): void {
     toggleNotificationsPanel();
   });
 
+  presenceChip.addEventListener("click", (event) => {
+    event.stopPropagation();
+    togglePresencePanel();
+  });
+
+  // Presence is event driven: a tab switch or a window focus change is
+  // announced to the room immediately, not on the next 10s heartbeat.
+  watchPresence((state) => socket?.setPresence({ state }));
+
   notifyClear.addEventListener("click", () => {
     notifier.reset();
     renderNotifications();
@@ -1608,13 +1729,19 @@ function wire(): void {
 
   document.addEventListener("click", (event) => {
     const target = event.target as Node | null;
-    if (target === null || notifyPanel.hidden) return;
+    if (target === null) return;
+    if (!presencePanel.hidden && !presencePanel.contains(target) && !presenceChip.contains(target)) {
+      closePresence();
+    }
+    if (notifyPanel.hidden) return;
     if (notifyPanel.contains(target) || notifyBell.contains(target)) return;
     closeNotifications();
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !notifyPanel.hidden) closeNotifications();
+    if (event.key !== "Escape") return;
+    if (!notifyPanel.hidden) closeNotifications();
+    if (!presencePanel.hidden) closePresence();
   });
 
   tabClose.addEventListener("click", () => leaveRoom());
@@ -1722,6 +1849,7 @@ function boot(): void {
   statusbar.setNick(identity.nick);
   statusbar.setConnection("idle");
   statusbar.setOnline(0);
+  renderPresence();
   setFollow(true);
   syncNotifyMenu();
   renderNotifications();

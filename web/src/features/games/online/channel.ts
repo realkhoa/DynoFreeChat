@@ -7,7 +7,8 @@
  * frames between joined sockets, so nothing extra is required server side.
  */
 
-import type { ServerFrame } from "@dyno/shared/protocol";
+import { HEARTBEAT_INTERVAL_MS, type ServerFrame } from "@dyno/shared/protocol";
+import { readPresenceState, watchPresence } from "@/shared/net/presence";
 
 /** Options for one room connection. */
 export interface RoomChannelOptions {
@@ -45,6 +46,8 @@ export class RoomChannel {
   private socket: WebSocket | null = null;
   private online = 0;
   private closed = false;
+  private pingTimer: number | null = null;
+  private unwatchPresence: (() => void) | null = null;
 
   /**
    * @param handlers Channel callbacks.
@@ -80,6 +83,9 @@ export class RoomChannel {
       const join: Record<string, string> = { t: "join", nick: options.nick, color: options.color };
       if (options.pass !== undefined && options.pass.length > 0) join.pass = options.pass;
       socket.send(JSON.stringify(join));
+      this.pingTimer = window.setInterval(() => this.sendPing(), HEARTBEAT_INTERVAL_MS);
+      // A tab switch is a presence event, not something to discover 10s later.
+      this.unwatchPresence = watchPresence(() => this.sendPing());
     });
 
     socket.addEventListener("message", (event: MessageEvent) => {
@@ -108,6 +114,7 @@ export class RoomChannel {
     socket.addEventListener("close", () => {
       this.closed = true;
       this.socket = null;
+      this.stopPing();
       this.handlers.onClose();
     });
 
@@ -131,8 +138,31 @@ export class RoomChannel {
     }
   }
 
+  /** @brief Sends one heartbeat frame carrying the current presence state. */
+  private sendPing(): void {
+    if (this.socket === null || this.closed) return;
+    try {
+      this.socket.send(JSON.stringify({ t: "ping", state: readPresenceState(), unfocus: false }));
+    } catch {
+      // The close handler will clean up a dead socket.
+    }
+  }
+
+  /** @brief Stops the heartbeat interval and presence watcher. */
+  private stopPing(): void {
+    if (this.pingTimer !== null) {
+      window.clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+    if (this.unwatchPresence !== null) {
+      this.unwatchPresence();
+      this.unwatchPresence = null;
+    }
+  }
+
   /** @brief Closes the socket without notifying the handlers. */
   close(): void {
+    this.stopPing();
     if (this.socket === null) return;
     this.closed = true;
     try {

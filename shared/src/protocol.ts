@@ -31,6 +31,22 @@ export const MAX_PASS = 64;
 /** Wrong password attempts before the connection is closed. */
 export const PASS_ATTEMPTS = 5;
 
+/** Clients send one heartbeat this often. */
+export const HEARTBEAT_INTERVAL_MS = 10_000;
+
+/** A connection silent for longer than this is dropped. */
+export const HEARTBEAT_TIMEOUT_MS = 30_000;
+
+/**
+ * @brief Whether a connection missed too many heartbeats.
+ * @param lastHeartbeat Epoch milliseconds of the last frame received.
+ * @param now Current epoch milliseconds.
+ * @return True when the connection should be closed.
+ */
+export function heartbeatExpired(lastHeartbeat: number, now: number): boolean {
+  return now - lastHeartbeat > HEARTBEAT_TIMEOUT_MS;
+}
+
 /** Room slugs are lowercase, dash separated, 2..24 characters. */
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,23}$/;
 
@@ -83,6 +99,31 @@ export const MAX_GAME_PAYLOAD = 2048;
 /** Colour assigned when a client sends something unparseable. */
 export const DEFAULT_COLOR = "hsl(210 40% 70%)";
 
+/** Whether a user is actively watching the app or away from the tab. */
+export type PresenceState = "active" | "away";
+
+/** One user shown in the room's online list. */
+export interface PresenceUser {
+  nick: string;
+  /** `hsl(<hue> <sat>% <light>%)`. */
+  color: string;
+  /** `active` while the page is visible and focused, `away` otherwise. */
+  state: PresenceState;
+  /** True while the game stage runs in unfocus (code-on-idle) mode. */
+  unfocus: boolean;
+}
+
+/**
+ * @brief Parses a presence state from untrusted input.
+ * @details Anything that is not the literal `active` means `away`: an unknown
+ * state must never be reported as "the user is looking at the screen".
+ * @param raw Raw value, e.g. a heartbeat field.
+ * @return The state.
+ */
+export function parsePresenceState(raw: unknown): PresenceState {
+  return raw === "active" ? "active" : "away";
+}
+
 /** One line in the log. */
 export interface ChatMessage {
   /** Server minted, `<ts base36>-<seq base36>`. */
@@ -128,7 +169,8 @@ export function parseRoomKind(raw: unknown): RoomKind | null {
 export type ClientFrame =
   | { t: "join"; nick: string; color: string; pass?: string }
   | { t: "msg"; cid: string; text: string; replyTo?: string }
-  | { t: "game"; data: string };
+  | { t: "game"; data: string }
+  | { t: "ping"; state?: PresenceState; unfocus?: boolean };
 
 export type ErrorCode =
   | "BAD_NICK"
@@ -153,11 +195,14 @@ export type ServerFrame =
       room: { slug: string; locked: boolean };
       history: ChatMessage[];
       online: number;
+      /** Everyone already connected, so the list paints before the first heartbeat. */
+      users: PresenceUser[];
       serverTs: number;
     }
   | { t: "append"; m: ChatMessage; cid?: string }
   | { t: "game"; data: string; nick: string }
-  | { t: "presence"; online: number }
+  | { t: "presence"; online: number; users: PresenceUser[] }
+  | { t: "pong" }
   | { t: "error"; code: ErrorCode; cid?: string; detail?: string };
 
 export type NickResult = { ok: true; nick: string } | { ok: false; code: "BAD_NICK" };
@@ -266,6 +311,13 @@ export function parseClientFrame(raw: string): FrameResult {
     if (record.data.length === 0) return BAD_FRAME;
     if (codePointLength(record.data) > MAX_GAME_PAYLOAD) return BAD_FRAME;
     return { ok: true, frame: { t: "game", data: record.data } };
+  }
+
+  if (record.t === "ping") {
+    const frame: Extract<ClientFrame, { t: "ping" }> = { t: "ping" };
+    if (record.state !== undefined) frame.state = parsePresenceState(record.state);
+    if (record.unfocus !== undefined) frame.unfocus = record.unfocus === true;
+    return { ok: true, frame };
   }
 
   return BAD_FRAME;
