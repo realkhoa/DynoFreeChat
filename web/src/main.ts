@@ -45,6 +45,7 @@ import { RoomDialog } from "@/features/chat/components/room-dialog";
 import { RoomsView } from "@/features/chat/components/rooms-view";
 import { SettingsView } from "@/features/settings/settings-view";
 import { DocTabs } from "@/shared/ui/doc-tabs";
+import { GamesHubView, type GameEntry } from "@/features/games/hub-view";
 import { Sidebar } from "@/features/chat/components/sidebar";
 import { StatusBar } from "@/shared/ui/statusbar";
 
@@ -118,6 +119,8 @@ const notifyClear = byId<HTMLButtonElement>("notify-clear");
 const dialogEl = byId<HTMLDialogElement>("room-dialog");
 const settingsViewEl = byId<HTMLElement>("settings-view");
 const roomsViewEl = byId<HTMLElement>("rooms-view");
+const gamesViewEl = byId<HTMLElement>("games-view");
+const gamesListEl = byId<HTMLElement>("games-list");
 const tabstripEl = byId<HTMLElement>("tabstrip");
 
 // ------------------------------------------------------------------ instances
@@ -235,6 +238,26 @@ const settingsView = new SettingsView(
     onChangeNick: (nick) => applyNickname(nick),
   },
 );
+
+/**
+ * @brief Every game the Collab hub offers. One entry = one function + one tab.
+ */
+const GAME_ENTRIES: GameEntry[] = [
+  {
+    id: "tictactoe",
+    title: "Cờ Caro (Tic-Tac-Toe)",
+    subtitle: "Đấu online bằng mã phòng, đấu với máy, hoặc 2 người trên cùng máy.",
+    icon: "hash",
+    shortcut: "↵ mở",
+  },
+];
+
+const gamesHub = new GamesHubView(gamesListEl, {
+  onOpen: (id) => {
+    if (id === "tictactoe") gameDialog.open();
+  },
+});
+gamesHub.setGames(GAME_ENTRIES);
 
 const docTabs = new DocTabs(tabstripEl, editorEl, tabNew, {
   onActivate: (_id, label) => showDocView(label),
@@ -649,6 +672,14 @@ function openRoomsTab(): void {
   docTabs.open({ id: "rooms", label: "Chat Rooms", panel: roomsViewEl, icon: "hash" });
   roomsView.show(rooms, current?.slug ?? null);
   void refreshRooms().then(() => roomsView.updateRooms(rooms, current?.slug ?? null));
+}
+
+/**
+ * @brief Opens the Collab games hub document.
+ */
+function openGamesTab(): void {
+  docTabs.open({ id: "games", label: "Games", panel: gamesViewEl, icon: "solution" });
+  gamesHub.focusFirst();
 }
 
 /**
@@ -1172,7 +1203,7 @@ function wire(): void {
 
   document.getElementById("btn-hub-chat")?.addEventListener("click", () => openRoomsTab());
   // The collab entry point opens the document itself, never a game lobby.
-  document.getElementById("btn-hub-collab")?.addEventListener("click", () => gameDialog.open());
+  document.getElementById("btn-hub-collab")?.addEventListener("click", () => openGamesTab());
   document.getElementById("btn-hub-setting")?.addEventListener("click", () => {
     openSettingsTab();
   });
