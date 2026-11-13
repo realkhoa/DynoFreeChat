@@ -10,6 +10,7 @@ import type { RandomCodeFeed } from "@/features/games/unfocus";
 function fakeFeed(): RandomCodeFeed & { next: ReturnType<typeof vi.fn> } {
   const next = vi.fn(async () => ({
     path: "VinaBIM/Core/Demo.cpp",
+    start: 40,
     lines: ["// generated demo", "int main() {"],
   }));
   return { next } as unknown as RandomCodeFeed & { next: ReturnType<typeof vi.fn> };
@@ -89,6 +90,33 @@ describe("GameStage", () => {
     frame?.dispatchEvent(new MouseEvent("mouseleave"));
     await vi.waitFor(() => expect(feed.next).toHaveBeenCalledTimes(2));
     expect(viewport?.dataset.view).toBe("code");
+  });
+
+  it("paints the idle view as a full editor document with a gutter and status bar", async () => {
+    const elements = makeElements();
+    const stage = makeStage(elements, { demo: () => fakeGame() });
+
+    stage.open("demo", "Demo.cs", "local simulation");
+    const layer = elements.host.querySelector<HTMLElement>(".stage-code-layer");
+    await vi.waitFor(() => expect(layer?.querySelectorAll(".code-line").length).toBe(2));
+
+    expect(layer?.querySelector(".game-code-toolbar")?.textContent).toContain("Demo.cpp");
+    expect(layer?.querySelector(".game-code-toolbar")?.textContent).toContain("VinaBIM/Core/Demo.cpp");
+    expect(layer?.querySelector(".game-code-gutter")?.textContent).toBe("4041");
+    expect(layer?.querySelector(".game-code-statusbar")?.textContent).toContain("Ln 40, Col 1");
+  });
+
+  it("reveals the board when the pointer crosses the game slot under the overlay", async () => {
+    const elements = makeElements();
+    const stage = makeStage(elements, { demo: () => fakeGame() });
+
+    stage.open("demo", "Demo.cs", "local simulation");
+    const viewport = elements.host.querySelector<HTMLElement>(".stage-viewport");
+    await vi.waitFor(() => expect(viewport?.dataset.view).toBe("code"));
+
+    // The overlay is full-screen; a pointer over the frame's slot still means play.
+    document.dispatchEvent(new MouseEvent("pointermove", { clientX: 0, clientY: 0, bubbles: true }));
+    expect(viewport?.dataset.view).toBe("game");
   });
 
   it("turns the idle code view off and remembers it", () => {

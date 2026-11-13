@@ -367,9 +367,10 @@
   opacity: 1;
 }
 
-/* Unfocus mode: the idle source view and the game share one slot and crossfade.
-   Leaving the pointer shows a freshly randomised VinaBIM file; hovering shows the
-   real board, so the screen never rests on something game-like. */
+/* Unfocus mode: the idle source view is a full-screen editor document that sits
+   above the whole IDE, while the game keeps its normal slot underneath. Crossing
+   the game slot brings the board back, so the screen never rests on something
+   game-like. */
 .stage-viewport {
   position: relative;
   display: grid;
@@ -390,11 +391,28 @@
     transform 220ms ease;
 }
 
+/* Same chrome as the TicTacToe collab document: file toolbar, gutter, code and
+   status bar. Fixed so the disguise fills the window instead of one pane. */
 .stage-code-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   background: var(--editor);
-  font: 10px/13px var(--font-mono);
   opacity: 1;
+}
+
+.stage-code-layer .game-code-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.stage-code-layer .stage-code-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .stage-viewport[data-view="code"] .stage-code-layer {

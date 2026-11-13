@@ -17,6 +17,9 @@ export const FOCUS_STORAGE_KEY = "dyno.game.focus";
 /** Storage key remembering the unfocus (code-on-idle) preference. */
 export const UNFOCUS_STORAGE_KEY = "dyno.game.unfocus";
 
+/** How often the idle document switches to another random file. */
+const CODE_ROTATE_MS = 30_000;
+
 /** Trailing code printed after the generated board literal. */
 const FOOTER_LINES = [
   "};",
@@ -97,6 +100,72 @@ function codeBlock(lines: string[]): HTMLElement {
 }
 
 /**
+ * @brief Renders the idle view as a complete editor document.
+ * @details Mirrors the TicTacToe collab panel: toolbar, gutter, coloured code
+ * and a status bar. The file is random VinaBIM source, so a passer-by sees a
+ * normal source window that changes every time the pointer leaves the board.
+ * @param layer Host that receives the document.
+ * @param view Code view to paint.
+ */
+function renderCodeDocument(layer: HTMLElement, view: CodeView): void {
+  const toolbar = document.createElement("div");
+  toolbar.className = "game-code-toolbar";
+
+  const file = document.createElement("span");
+  file.className = "game-code-file";
+  file.textContent = view.path.split("/").pop() ?? view.path;
+
+  const path = document.createElement("span");
+  path.className = "game-code-chip stage-code-path";
+  path.textContent = `// ${view.path}`;
+
+  const spacer = document.createElement("span");
+  spacer.className = "game-code-spacer";
+
+  const mode = document.createElement("span");
+  mode.className = "game-code-chip";
+  mode.textContent = "read-only";
+
+  toolbar.append(file, path, spacer, mode);
+
+  const body = document.createElement("div");
+  body.className = "game-code-body";
+  const gutter = document.createElement("div");
+  gutter.className = "game-code-gutter";
+  const content = document.createElement("div");
+  content.className = "game-code-content";
+
+  const start = view.start ?? 1;
+  view.lines.forEach((line, index) => {
+    const number = document.createElement("span");
+    number.textContent = String(start + index);
+    gutter.append(number);
+    renderCodeLine(content, line);
+  });
+  body.append(gutter, content);
+
+  const statusbar = document.createElement("div");
+  statusbar.className = "game-code-statusbar";
+  for (const text of [`Ln ${start}, Col 1`, "Spaces: 4", "UTF-8", "CRLF"]) {
+    const item = document.createElement("span");
+    item.className = "sb-item";
+    item.textContent = text;
+    statusbar.append(item);
+  }
+  const fill = document.createElement("span");
+  fill.className = "sb-spacer";
+  const language = document.createElement("span");
+  language.className = "sb-item";
+  language.textContent = "C++";
+  const readOnly = document.createElement("span");
+  readOnly.className = "sb-item";
+  readOnly.textContent = "read-only";
+  statusbar.append(fill, language, readOnly);
+
+  layer.replaceChildren(toolbar, body, statusbar);
+}
+
+/**
  * @brief Normalises a game grid to square cells of one shared size.
  * @details Games hard-code `grid-template-columns: repeat(n, 44px)` for their
  * own layout; inside the document that reads as a wide table. The column count
@@ -140,6 +209,8 @@ export class GameStage {
   private unfocusEnabled = true;
   private viewport: HTMLElement | null = null;
   private codeLayer: HTMLElement | null = null;
+  private frame: HTMLElement | null = null;
+  private codeTimer: number | null = null;
   private cleanups: Array<() => void> = [];
 
   /**
@@ -213,11 +284,13 @@ export class GameStage {
 
   /** @brief Crossfades to the game layer. */
   private showGame(): void {
+    this.stopCodeRotation();
+    if (this.frame !== null) this.frame.inert = false;
     if (this.viewport !== null) this.viewport.dataset.view = "game";
   }
 
   /**
-   * @brief Crossfades to a freshly randomised source view.
+   * @brief Crossfades to a freshly randomised full-screen source view.
    * @return Resolves when the new code is painted.
    */
   private async showCode(): Promise<void> {
@@ -226,12 +299,27 @@ export class GameStage {
     if (viewport === null || layer === null || !this.unfocusEnabled) return;
 
     viewport.dataset.view = "code";
+    if (this.frame !== null) this.frame.inert = true;
+    this.stopCodeRotation();
+
     const view: CodeView = await this.codeFeed.next();
     // The stage may have switched games while the file was loading.
     if (layer !== this.codeLayer || viewport !== this.viewport) return;
 
-    layer.replaceChildren();
-    for (const line of view.lines) renderCodeLine(layer, line);
+    renderCodeDocument(layer, view);
+    // An idle screen that never changes looks like a screenshot; rotating the
+    // file keeps it reading as someone actually working in the editor.
+    this.codeTimer = window.setTimeout(() => {
+      this.codeTimer = null;
+      if (this.viewport?.dataset.view === "code") void this.showCode();
+    }, CODE_ROTATE_MS);
+  }
+
+  /** @brief Stops the idle-file rotation timer, if armed. */
+  private stopCodeRotation(): void {
+    if (this.codeTimer === null) return;
+    window.clearTimeout(this.codeTimer);
+    this.codeTimer = null;
   }
 
   /**
@@ -250,15 +338,31 @@ export class GameStage {
       leave();
     };
 
+    // The idle document is full-screen, so it sits on top of the frame and
+    // swallows mouseenter. Pointer position over the frame's slot still means
+    // "play": crossing that slot brings the board back.
+    const trackPointer = (event: PointerEvent): void => {
+      if (this.viewport === null || this.viewport.dataset.view !== "code") return;
+      const rect = frame.getBoundingClientRect();
+      const inside =
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+      if (inside) this.showGame();
+    };
+
     frame.addEventListener("mouseenter", enter);
     frame.addEventListener("mouseleave", leave);
     frame.addEventListener("focusin", focusIn);
     frame.addEventListener("focusout", focusOut);
+    document.addEventListener("pointermove", trackPointer, { passive: true });
     this.cleanups.push(
       () => frame.removeEventListener("mouseenter", enter),
       () => frame.removeEventListener("mouseleave", leave),
       () => frame.removeEventListener("focusin", focusIn),
       () => frame.removeEventListener("focusout", focusOut),
+      () => document.removeEventListener("pointermove", trackPointer),
     );
   }
 
@@ -341,6 +445,7 @@ export class GameStage {
     this.elements.host.append(frame);
     this.viewport = viewport;
     this.codeLayer = codeLayer;
+    this.frame = frame;
 
     mount.mount(inner, context);
     squareBoard(inner);
@@ -370,10 +475,12 @@ export class GameStage {
 
   /** @brief Tears down the active module without touching the panel. */
   private unmountActive(): void {
+    this.stopCodeRotation();
     for (const dispose of this.cleanups) dispose();
     this.cleanups = [];
     this.viewport = null;
     this.codeLayer = null;
+    this.frame = null;
     if (this.active === null) return;
     try {
       this.active.mount.unmount();

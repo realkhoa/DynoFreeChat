@@ -15,8 +15,10 @@ const VISIBLE_LINES = 90;
 
 /** One random code view: the file it came from plus its rendered lines. */
 export interface CodeView {
-  /** Workspace-relative path, shown nowhere but useful for tests. */
+  /** Workspace-relative path, shown in the fake editor toolbar. */
   path: string;
+  /** 1-based line number of the first rendered line, for the gutter. */
+  start: number;
   /** Lines to render, already offset into the file. */
   lines: string[];
 }
@@ -73,7 +75,7 @@ export class RandomCodeFeed {
 
       const maxStart = Math.max(0, lines.length - VISIBLE_LINES);
       const start = Math.floor(this.random() * (maxStart + 1));
-      return { path, lines: lines.slice(start, start + VISIBLE_LINES) };
+      return { path, start: start + 1, lines: lines.slice(start, start + VISIBLE_LINES) };
     } catch {
       return this.synthetic();
     }
@@ -150,7 +152,7 @@ export class RandomCodeFeed {
       );
     }
     body.push("};", "", "} // namespace VinaBIM::Core");
-    return { path: "VinaBIM/Core/clash/GeneratedClashPairs.cpp", lines: [...headers, ...body] };
+    return { path: "VinaBIM/Core/clash/GeneratedClashPairs.cpp", start: 1, lines: [...headers, ...body] };
   }
 }
 
@@ -250,7 +252,7 @@ export function tokenizeLine(line: string): Array<{ kind: TokenKind; text: strin
  */
 export function renderCodeLine(host: HTMLElement, line: string): void {
   const row = document.createElement("div");
-  row.className = "unfocus-line";
+  row.className = "code-line unfocus-line";
   if (line.length === 0) {
     row.textContent = " ";
     host.append(row);
