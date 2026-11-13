@@ -48,6 +48,8 @@ import { DocTabs } from "@/shared/ui/doc-tabs";
 import { GamesHubView, type FeatureModule } from "@/features/games/hub-view";
 import { GAMES, findGame } from "@/features/games/registry";
 import { GAME_FACTORIES } from "@/features/games/factories";
+import { MatchView } from "@/features/games/online/lobby";
+import type { OnlineBridge } from "@/features/games/online/bridge";
 import { GameStage } from "@/features/games/stage";
 import { MarketApi } from "@/features/market/api";
 import { MarketBoard } from "@/features/market/board";
@@ -137,6 +139,7 @@ const gamesGutterEl = byId<HTMLElement>("games-gutter");
 const gamesChipEl = byId<HTMLElement>("games-code-chip");
 const gamesFeatureListEl = byId<HTMLElement>("games-feature-list");
 const gameStageViewEl = byId<HTMLElement>("game-stage-view");
+const matchViewEl = byId<HTMLElement>("match-view");
 const marketViewEl = byId<HTMLElement>("market-view");
 const marketHubViewEl = byId<HTMLElement>("market-hub-view");
 const chartViewEl = byId<HTMLElement>("chart-view");
@@ -286,6 +289,7 @@ const FEATURE_OPENERS: Record<string, () => void> = {
   chart: () => openChartTab(),
   feed: () => openFeedTab(),
   workspace: () => openWorkspaceTab(),
+  match: () => openMatchTab(),
 };
 
 /**
@@ -302,6 +306,12 @@ const HUB_FEATURES: FeatureModule[] = [
     summary: module.summary,
     hotkey: module.hotkey,
   })),
+  {
+    id: "match",
+    name: "Match",
+    summary: "online rooms | create or join | caro pvp",
+    hotkey: "Ctrl+P",
+  },
   {
     id: "workspace",
     name: "Workspace",
@@ -320,6 +330,28 @@ const gameStage = new GameStage(
     restart: byId<HTMLButtonElement>("game-stage-restart"),
   },
   GAME_FACTORIES,
+);
+
+const matchView = new MatchView(
+  {
+    panel: matchViewEl,
+    gameSelect: byId<HTMLSelectElement>("match-game"),
+    slug: byId<HTMLInputElement>("match-slug"),
+    pass: byId<HTMLInputElement>("match-pass"),
+    createButton: byId<HTMLButtonElement>("match-create"),
+    joinButton: byId<HTMLButtonElement>("match-join"),
+    leaveButton: byId<HTMLButtonElement>("match-leave"),
+    status: byId<HTMLElement>("match-status"),
+    roster: byId<HTMLElement>("match-roster"),
+  },
+  {
+    wsUrl,
+    apiBase,
+    nick: () => identity.nick,
+    color: () => identity.color,
+    games: GAMES,
+    onMatch: (game, bridge) => openGameStage(game.id, bridge),
+  },
 );
 
 const gamesHub = new GamesHubView(
@@ -871,13 +903,21 @@ function openGamesTab(): void {
  * @brief Opens one game in the shared game stage document.
  * @param id Registry id of the game.
  */
-function openGameStage(id: string): void {
+function openGameStage(id: string, online?: OnlineBridge): void {
   const game = findGame(id);
   if (game === undefined) return;
 
   docTabs.open({ id: "game-stage", label: game.documentTitle, panel: gameStageViewEl, icon: game.icon });
   docTabs.setLabel("game-stage", game.documentTitle);
-  gameStage.open(id, game.documentTitle, game.summary);
+  gameStage.open(id, game.documentTitle, game.summary, online === undefined ? undefined : { online });
+}
+
+/**
+ * @brief Opens the online match lobby document.
+ */
+function openMatchTab(): void {
+  docTabs.open({ id: "match", label: "Match.cs", panel: matchViewEl, icon: "play" });
+  matchView.start();
 }
 
 /**

@@ -227,7 +227,7 @@ report.ok =
   report.quotes?.lines > 0 &&
   report.workspace?.hasSolution === true &&
   report.gamesHub?.count >= 14 &&
-  report.gamesHub?.features?.length === 7 &&
+  report.gamesHub?.features?.length === 8 &&
   report.game2048?.cells > 0 &&
   report.consoleErrors.length === 0;
 

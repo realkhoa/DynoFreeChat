@@ -1,0 +1,87 @@
+/* Match.cs document: the online lobby rendered as a small settings file. */
+
+.match-panel .doc-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 620px;
+}
+
+.match-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #6a9955;
+  font: 11.5px/1.4 var(--font-mono);
+}
+
+.match-field select,
+.match-field input {
+  height: 26px;
+  padding: 0 8px;
+  background: var(--editor);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font: 12px/1 var(--font-mono);
+}
+
+.match-field select:focus,
+.match-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.match-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.match-actions button {
+  height: 26px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font: 11.5px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.match-actions button:hover:not(:disabled) {
+  background: var(--hover-chrome);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.match-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.match-actions #match-create {
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.match-status,
+.match-roster {
+  min-height: 18px;
+  color: #6a9955;
+  font: 11.5px/1.6 var(--font-mono);
+  white-space: pre-wrap;
+}
+
+.match-roster-line {
+  color: #9cdcfe;
+}
+
+/* Waiting is the only phase that should draw attention, and it does so with the
+   editor's own selection colour rather than a game-style badge. */
+.match-panel[data-phase="waiting"] .match-status {
+  color: #dcdcaa;
+}
+
+.match-panel[data-phase="peer-left"] .match-status {
+  color: #f48771;
+}

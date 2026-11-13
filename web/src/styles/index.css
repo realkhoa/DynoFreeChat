@@ -16,6 +16,7 @@
 @import "../features/collab/collab.css";
 @import "../features/games/games.css";
 @import "../features/games/stage.css";
+@import "../features/games/online/match.css";
 @import "../features/market/market.css";
 @import "../features/workspace/workspace.css";
 @import "../features/lock/lock.css";

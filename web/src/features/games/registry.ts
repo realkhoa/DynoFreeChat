@@ -24,6 +24,8 @@ export interface GameDefinition {
   hotkey: string;
   /** Icon shown next to the entry. */
   icon: IconName;
+  /** Whether the game supports online play through the match lobby. */
+  online?: boolean;
 }
 
 /**
@@ -46,9 +48,10 @@ export const GAMES: readonly GameDefinition[] = [
     name: "Caro",
     className: "Caro",
     documentTitle: "Caro.cs",
-    summary: "gomoku 15x15 | AI opponent | undo",
+    summary: "gomoku 15x15 | online match | AI opponent | undo",
     hotkey: "↵",
     icon: "hash",
+    online: true,
   },
   {
     id: "battleship",

@@ -6,7 +6,7 @@
  * games hub stays the single entry point.
  */
 
-import type { GameFactory, GameMount } from "./mount";
+import type { GameContext, GameFactory, GameMount } from "./mount";
 
 /** DOM hosts the stage paints into. */
 export interface StageElements {
@@ -54,16 +54,20 @@ export class GameStage {
    * @param id Registry id.
    * @param title Document title for the toolbar.
    * @param summary One-line description for the toolbar chip.
+   * @param context Optional mount context, e.g. an online bridge.
    * @return Whether the game id is known.
    */
-  open(id: string, title: string, summary: string): boolean {
+  open(id: string, title: string, summary: string, context?: GameContext): boolean {
     const factory = this.factories[id];
     if (factory === undefined) return false;
 
     this.unmountActive();
     this.elements.title.textContent = title;
     this.elements.chip.textContent = `// ${summary}`;
-    this.elements.status.textContent = "Ready";
+    this.elements.status.textContent = context?.online === undefined ? "Ready" : "Online match";
+    // Restarting an online game would desync the two boards, so the stage hides
+    // the restart control while a bridge is attached.
+    this.elements.restart.disabled = context?.online !== undefined;
 
     const mount = factory();
     this.elements.host.replaceChildren();
@@ -75,7 +79,7 @@ export class GameStage {
     frame.dataset.game = title.replace(/\.(cs|cpp)$/i, "");
     this.elements.host.append(frame);
 
-    mount.mount(frame);
+    mount.mount(frame, context);
     this.active = { id, mount };
     return true;
   }

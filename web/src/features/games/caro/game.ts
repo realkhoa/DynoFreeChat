@@ -1,12 +1,15 @@
 /**
  * @file caro/game.ts
- * @brief Vietnamese Caro (Gomoku) on a 15x15 board against a built-in AI.
+ * @brief Vietnamese Caro (Gomoku) on a 15x15 board, against the AI or online.
  * @details The file holds the pure engine (board, win detection, heuristic move
  * scorer) and the vanilla DOM view. All mutable view state lives in the
  * {@link createCaroGame} closure so the stage can remount the module to restart.
+ * When an online bridge is supplied the AI is replaced by the opponent: local
+ * clicks are relayed and the opponent's moves are applied through the bridge.
  */
 
-import type { GameMount } from "../mount";
+import type { GameContext, GameMount } from "../mount";
+import type { OnlineBridge } from "../online/bridge";
 
 /** @brief Board edge length: Caro is played on 15x15 here. */
 export const CARO_SIZE = 15;
@@ -257,6 +260,15 @@ export function createCaroGame(): GameMount {
   let win: CaroWin | null = null;
   let draw = false;
   let timer: number | null = null;
+  let online: OnlineBridge | null = null;
+  let peerLeft = false;
+  let unsubscribeMove: (() => void) | null = null;
+  let unsubscribePeer: (() => void) | null = null;
+
+  /** @brief Mark the local player uses in an online match. */
+  function localMark(): CaroMark {
+    return online !== null && online.seat === 2 ? "O" : "X";
+  }
 
   /** @brief Cancels the pending AI move timer. */
   function clearTimer(): void {
@@ -306,12 +318,23 @@ export function createCaroGame(): GameMount {
 
   /** @brief Status line derived from the current state. */
   function statusText(): string {
+    const mine = localMark();
     if (win !== null) {
+      if (online !== null) {
+        return win.mark === mine
+          ? `Five in a row at ${caroSquareName(win.line[0] ?? 0)} — you win.`
+          : `Opponent wins with five in a row at ${caroSquareName(win.line[0] ?? 0)}.`;
+      }
       return win.mark === "X"
         ? `Five in a row for X at ${caroSquareName(win.line[0] ?? 0)} — you win.`
         : `AI wins with five in a row at ${caroSquareName(win.line[0] ?? 0)}.`;
     }
     if (draw) return "Board full — draw. Press Restart to play again.";
+    if (online !== null) {
+      if (peerLeft) return "Opponent left the match.";
+      if (turn === mine) return `Your turn — you are ${mine}.`;
+      return `Opponent's turn — you are ${mine}.`;
+    }
     if (turn === "O") return `You played ${caroSquareName(lastMove)}. AI thinking…`;
     if (history.length === 0) return "You are X. Click any cell to open the game.";
     return `AI played ${caroSquareName(lastMove)}. Your turn — you are X.`;
@@ -367,13 +390,20 @@ export function createCaroGame(): GameMount {
    * @param index Board index.
    */
   function playAt(index: number): void {
-    if (win !== null || draw || turn !== "X") return;
+    if (win !== null || draw || peerLeft) return;
+    const mine = localMark();
+    if (turn !== mine) return;
     if (at(board, index) !== null) return;
 
-    place(index, "X");
-    turn = "O";
+    place(index, mine);
+    turn = mine === "X" ? "O" : "X";
     render();
     if (win !== null) return;
+
+    if (online !== null) {
+      online.sendMove({ index });
+      return;
+    }
     clearTimer();
     timer = window.setTimeout(aiTurn, 140);
   }
@@ -394,6 +424,7 @@ export function createCaroGame(): GameMount {
 
   /** @brief Removes the last move pair (or the lone player move) and repaints. */
   function undo(): void {
+    if (online !== null) return;
     clearTimer();
     if (history.length === 0) {
       render();
@@ -406,6 +437,7 @@ export function createCaroGame(): GameMount {
 
   /** @brief Resets the game to an empty board. */
   function restart(): void {
+    if (online !== null) return;
     clearTimer();
     board = [...createCaroBoard()];
     history = [];
@@ -419,9 +451,16 @@ export function createCaroGame(): GameMount {
   /**
    * @brief Mounts the game, replacing any previous content of the host.
    * @param target Host element owned by the game stage.
+   * @param context Optional mount context; an online bridge switches to PvP.
    */
-  function mount(target: HTMLElement): void {
+  function mount(target: HTMLElement, context?: GameContext): void {
     clearTimer();
+    unsubscribeMove?.();
+    unsubscribePeer?.();
+    unsubscribeMove = null;
+    unsubscribePeer = null;
+    online = context?.online ?? null;
+    peerLeft = false;
     board = [...createCaroBoard()];
     history = [];
     turn = "X";
@@ -430,18 +469,43 @@ export function createCaroGame(): GameMount {
     draw = false;
     target.replaceChildren();
 
+    if (online !== null) {
+      const bridge = online;
+      const foe: CaroMark = bridge.seat === 1 ? "O" : "X";
+      unsubscribeMove = bridge.onMove((payload) => {
+        if (win !== null || draw) return;
+        const index = (payload as { index?: unknown } | null)?.index;
+        if (typeof index !== "number" || !Number.isInteger(index)) return;
+        if (index < 0 || index >= CARO_SIZE * CARO_SIZE) return;
+        if (turn !== foe || at(board, index) !== null) return;
+        place(index, foe);
+        turn = foe === "X" ? "O" : "X";
+        render();
+      });
+      unsubscribePeer = bridge.onPeerLeft(() => {
+        peerLeft = true;
+        render();
+      });
+    }
+
     const bar = document.createElement("div");
     bar.className = "stage-bar";
     const undoBtn = button("Undo", undo);
     const restartBtn = button("Restart", restart);
-    const hint = hudLabel(`15x15 · win with ${WIN_LENGTH} in a row`);
+    undoBtn.disabled = online !== null;
+    restartBtn.disabled = online !== null;
+    const hint = hudLabel(
+      online === null
+        ? `15x15 · win with ${WIN_LENGTH} in a row`
+        : `online · ${online.peerNick ?? "opponent"} · you are ${localMark()}`,
+    );
     hint.className = "stage-empty";
     bar.append(restartBtn, undoBtn, hint);
 
     const hud = document.createElement("div");
     hud.className = "stage-hud";
-    const youEl = hudLabel("you: X");
-    const aiEl = hudLabel("ai: O");
+    const youEl = hudLabel(`you: ${localMark()}`);
+    const aiEl = hudLabel(online === null ? "ai: O" : `opponent: ${localMark() === "X" ? "O" : "X"}`);
     movesEl = hudLabel("moves: 0");
     hud.append(youEl, aiEl, movesEl);
 
@@ -469,9 +533,15 @@ export function createCaroGame(): GameMount {
     render();
   }
 
-  /** @brief Releases the timer and drops DOM references. */
+  /** @brief Releases the timer, bridge subscriptions and DOM references. */
   function unmount(): void {
     clearTimer();
+    unsubscribeMove?.();
+    unsubscribePeer?.();
+    unsubscribeMove = null;
+    unsubscribePeer = null;
+    online = null;
+    peerLeft = false;
     cells = [];
     statusEl = null;
     movesEl = null;

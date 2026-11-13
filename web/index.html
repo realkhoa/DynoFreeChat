@@ -640,6 +640,35 @@
       </div>
     </section>
 
+    <!-- Online match lobby: create or join a room, then open the board -->
+    <section class="doc-panel match-panel" id="match-view" hidden>
+      <div class="doc-panel-head">
+        <span class="doc-panel-title">Match.cs</span>
+        <span class="doc-panel-hint">Tạo phòng hoặc vào phòng có sẵn để chơi online với bạn.</span>
+      </div>
+      <div class="doc-panel-body">
+        <label class="match-field" for="match-game">
+          <span>// game</span>
+          <select id="match-game" aria-label="Chọn game online"></select>
+        </label>
+        <label class="match-field" for="match-slug">
+          <span>// room slug</span>
+          <input id="match-slug" type="text" autocomplete="off" spellcheck="false" placeholder="caro-xxxx" maxlength="24" />
+        </label>
+        <label class="match-field" for="match-pass">
+          <span>// password (optional)</span>
+          <input id="match-pass" type="password" autocomplete="off" spellcheck="false" />
+        </label>
+        <div class="match-actions">
+          <button type="button" id="match-create">Create &amp; join</button>
+          <button type="button" id="match-join">Join</button>
+          <button type="button" id="match-leave" disabled>Leave</button>
+        </div>
+        <div class="match-status" id="match-status" role="status" aria-live="polite"></div>
+        <div class="match-roster" id="match-roster"></div>
+      </div>
+    </section>
+
     <!-- Chat Rooms document: the picker and the create form live in a tab -->
     <section class="doc-panel rooms-panel" id="rooms-view" hidden>
       <div class="doc-panel-head">

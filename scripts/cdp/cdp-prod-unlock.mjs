@@ -174,7 +174,7 @@ await shot("prod-02-quotes-unlocked");
 
 report.consoleErrors = consoleErrors.slice(0, 8);
 report.ok =
-  report.collab?.features?.length === 7 &&
+  report.collab?.features?.length === 8 &&
   report.collab?.games?.length === 14 &&
   report.lockPrompt?.lockTab === "Access.cs" &&
   report.afterUnlock?.stored === true &&
