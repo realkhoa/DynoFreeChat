@@ -40,11 +40,11 @@ import { GameDialog } from "@/features/collab/document/frame";
 import { icon, setIconButton } from "@/shared/ui/icons";
 import { LogView } from "@/features/chat/components/log-view";
 import { mountMenubar, type MenuAction } from "@/shared/ui/menubar";
-import { NickDialog } from "@/features/chat/components/nick-dialog";
 import { defaultToolbarSpec, StandardToolbar } from "@/shared/ui/toolbar";
 import { RoomDialog } from "@/features/chat/components/room-dialog";
-import { ChatPicker } from "@/features/chat/components/chat-picker";
-import { SettingsDialog } from "@/features/settings/settings-dialog";
+import { RoomsView } from "@/features/chat/components/rooms-view";
+import { SettingsView } from "@/features/settings/settings-view";
+import { DocTabs } from "@/shared/ui/doc-tabs";
 import { Sidebar } from "@/features/chat/components/sidebar";
 import { StatusBar } from "@/shared/ui/statusbar";
 
@@ -116,9 +116,9 @@ const notifyList = byId<HTMLElement>("notify-list");
 const notifyEmpty = byId<HTMLElement>("notify-empty");
 const notifyClear = byId<HTMLButtonElement>("notify-clear");
 const dialogEl = byId<HTMLDialogElement>("room-dialog");
-const nickDialogEl = byId<HTMLDialogElement>("nick-dialog");
-const pickerDialogEl = byId<HTMLDialogElement>("picker-dialog");
-const settingsDialogEl = byId<HTMLDialogElement>("settings-dialog");
+const settingsViewEl = byId<HTMLElement>("settings-view");
+const roomsViewEl = byId<HTMLElement>("rooms-view");
+const tabstripEl = byId<HTMLElement>("tabstrip");
 
 // ------------------------------------------------------------------ instances
 
@@ -174,30 +174,24 @@ const dialog = new RoomDialog(dialogEl, {
   error: byId<HTMLElement>("room-error"),
 });
 
-const nickDialog = new NickDialog(nickDialogEl, {
-  form: byId<HTMLFormElement>("nick-form"),
-  input: byId<HTMLInputElement>("nick-input"),
-  error: byId<HTMLElement>("nick-error"),
-  cancel: byId<HTMLButtonElement>("nick-cancel"),
-});
-
-const chatPicker = new ChatPicker(
-  pickerDialogEl,
+const roomsView = new RoomsView(
+  roomsViewEl,
   {
     search: byId<HTMLInputElement>("picker-search"),
     list: byId<HTMLElement>("picker-list"),
-    cancel: byId<HTMLButtonElement>("picker-cancel"),
-    closeX: byId<HTMLButtonElement>("picker-close-x"),
-    createButton: byId<HTMLButtonElement>("picker-create"),
+    createSlug: byId<HTMLInputElement>("rooms-create-slug"),
+    createPass: byId<HTMLInputElement>("rooms-create-pass"),
+    createButton: byId<HTMLButtonElement>("rooms-create-btn"),
+    createError: byId<HTMLElement>("rooms-create-error"),
   },
   {
     onPick: (room) => pickRoom(room),
-    onCreate: (slugPrefill) => openCreateDialog(slugPrefill),
+    onCreate: (slug, pass) => createRoomAndEnter(slug, pass),
   },
 );
 
-const settingsDialog = new SettingsDialog(
-  settingsDialogEl,
+const settingsView = new SettingsView(
+  settingsViewEl,
   {
     toggleTheme: byId<HTMLButtonElement>("settings-toggle-theme"),
     toggleMinimal: byId<HTMLButtonElement>("settings-toggle-minimal"),
@@ -208,15 +202,14 @@ const settingsDialog = new SettingsDialog(
     zoomIn: byId<HTMLButtonElement>("settings-zoom-in"),
     zoomOut: byId<HTMLButtonElement>("settings-zoom-out"),
     zoomLabel: byId<HTMLElement>("settings-zoom-label"),
-    changeNick: byId<HTMLButtonElement>("settings-change-nick"),
+    nickInput: byId<HTMLInputElement>("settings-nick-input"),
+    nickSave: byId<HTMLButtonElement>("settings-nick-save"),
     nickDesc: byId<HTMLElement>("settings-nick-desc"),
-    closeBtn: byId<HTMLButtonElement>("settings-close"),
-    closeX: byId<HTMLButtonElement>("settings-close-x"),
   },
   {
     onToggleTheme: () => {
       toggleTheme();
-      syncSettingsDialog();
+      syncSettingsView();
     },
     onToggleMinimal: () => toggleMinimal(),
     onToggleSidebar: () => {
@@ -228,27 +221,33 @@ const settingsDialog = new SettingsDialog(
       menubar.setChecked("sound", sound.isEnabled);
       store.addSystem(sound.isEnabled ? "đã bật âm thanh thông báo" : "đã tắt âm thanh thông báo");
       render();
-      syncSettingsDialog();
+      syncSettingsView();
     },
     onToggleNotify: () => void toggleNotifications(),
     onZoomIn: () => {
       changeZoom(stepZoom(zoom, 1));
-      syncSettingsDialog();
+      syncSettingsView();
     },
     onZoomOut: () => {
       changeZoom(stepZoom(zoom, -1));
-      syncSettingsDialog();
+      syncSettingsView();
     },
-    onChangeNick: () => void changeNickname(),
+    onChangeNick: (nick) => applyNickname(nick),
   },
 );
 
-function syncSettingsDialog(): void {
-  settingsDialog.update({
+const docTabs = new DocTabs(tabstripEl, editorEl, tabNew, {
+  onActivate: (_id, label) => showDocView(label),
+  onDeactivate: () => {},
+  onClose: () => selectRoomTab(),
+});
+
+function syncSettingsView(): void {
+  settingsView.update({
     theme,
     soundEnabled: sound.isEnabled,
     nick: identity.nick,
-    zoomPercent: Math.round(zoom * 100),
+    zoomPercent: Math.round(zoom),
   });
 }
 
@@ -259,6 +258,7 @@ function syncSettingsDialog(): void {
  * @return void
  */
 function selectRoomTab(): void {
+  docTabs.deactivate();
   tabRoom.setAttribute("aria-selected", "true");
   tabGame.setAttribute("aria-selected", "false");
   gameEditorPanel.hidden = true;
@@ -277,6 +277,7 @@ function selectRoomTab(): void {
  * @return void
  */
 function selectGameTab(): void {
+  docTabs.deactivate();
   tabGame.hidden = false;
   tabGame.setAttribute("aria-selected", "true");
   tabRoom.setAttribute("aria-selected", "false");
@@ -428,14 +429,22 @@ function changeZoom(next: Zoom): void {
   applyZoom();
 
   render();
-  syncSettingsDialog();
+  syncSettingsView();
 }
 
 function updateChrome(): void {
   const slug = current?.slug;
   tabLabel.textContent = slug === undefined ? "Start" : `#${slug}`;
   titlebarRoom.textContent = slug === undefined ? "no room" : `#${slug}`;
-  crumbRoom.textContent = slug === undefined ? "Start" : `#${slug}`;
+  const activeDoc = docTabs.activeId;
+  if (activeDoc !== null) {
+    byId<HTMLElement>("crumb-solution").textContent = "DynoFreeChat";
+    byId<HTMLElement>("crumb-group").textContent = "Documents";
+    crumbRoom.textContent = docTabs.activeLabel ?? activeDoc;
+  } else {
+    byId<HTMLElement>("crumb-group").textContent = "Rooms";
+    crumbRoom.textContent = slug === undefined ? "Start" : `#${slug}`;
+  }
   tabClose.hidden = slug === undefined;
 
   const unread = notifier.unread;
@@ -538,7 +547,7 @@ function toggleTheme(): void {
   menubar.setChecked("theme", theme === "light");
   store.addSystem(`giao diện: ${theme}`);
   render();
-  syncSettingsDialog();
+  syncSettingsView();
 }
 
 // --------------------------------------------------------------------- rooms
@@ -553,6 +562,7 @@ async function refreshRooms(): Promise<void> {
     sidebar.setQuery(treeSearch.value);
     const locked = rooms.filter((room) => room.locked).length;
     sidebar.setFoot(`${rooms.length} room · ${locked} có mật khẩu`);
+    if (docTabs.activeId === "rooms") roomsView.updateRooms(rooms, current?.slug ?? null);
   } catch {
     sidebar.setFoot("không tải được danh sách room");
   }
@@ -592,29 +602,61 @@ function openJoinDialog(slug: string, message?: string): void {
  * @param slugPrefill Optional pre-filled slug name for the new room.
  */
 function openCreateDialog(slugPrefill?: string): void {
-  if (dialog.isOpen) return;
-  dialog.open("create", { slug: slugPrefill }, async (result) => {
-    const created = await createRoom(
-      apiBase,
-      result.pass.length > 0 ? { slug: result.slug, pass: result.pass } : { slug: result.slug },
-    );
-    if (!created.ok) return ERROR_TEXT[created.code] ?? `lỗi: ${created.code}`;
+  openRoomsTab();
+  roomsView.focusCreate(slugPrefill);
+}
 
-    enterRoom(created.slug, result.pass.length > 0 ? result.pass : undefined);
-    void refreshRooms();
-    return null;
-  });
+/**
+ * @brief Creates a room from the rooms document and opens it.
+ * @param slug Room slug.
+ * @param pass Optional password.
+ * @return Error text for the form, or null on success.
+ */
+async function createRoomAndEnter(slug: string, pass: string): Promise<string | null> {
+  const created = await createRoom(apiBase, pass.length > 0 ? { slug, pass } : { slug });
+  if (!created.ok) return ERROR_TEXT[created.code] ?? `lỗi: ${created.code}`;
+
+  enterRoom(created.slug, pass.length > 0 ? pass : undefined);
+  void refreshRooms();
+  return null;
 }
 
 /**
  * @brief Opens the chat picker modal to choose an existing room or create a new one.
  */
-function openChatPicker(): void {
-  if (chatPicker.isOpen) return;
-  chatPicker.open(rooms, current?.slug ?? null);
-  void refreshRooms().then(() => {
-    if (chatPicker.isOpen) chatPicker.updateRooms(rooms, current?.slug ?? null);
-  });
+/**
+ * @brief Hides the chat and collab views so a tool document can show.
+ * @param label Breadcrumb label of the document.
+ */
+function showDocView(_label: string): void {
+  tabRoom.setAttribute("aria-selected", "false");
+  tabGame.setAttribute("aria-selected", "false");
+  gameEditorPanel.hidden = true;
+
+  const logwrapEl = document.querySelector<HTMLElement>(".logwrap");
+  const startviewEl = document.getElementById("startview");
+  if (logwrapEl) logwrapEl.hidden = true;
+  if (startviewEl) startviewEl.hidden = true;
+
+  updateChrome();
+  render();
+}
+
+/**
+ * @brief Opens the Chat Rooms document (pick a room or create one).
+ */
+function openRoomsTab(): void {
+  docTabs.open({ id: "rooms", label: "Chat Rooms", panel: roomsViewEl, icon: "hash" });
+  roomsView.show(rooms, current?.slug ?? null);
+  void refreshRooms().then(() => roomsView.updateRooms(rooms, current?.slug ?? null));
+}
+
+/**
+ * @brief Opens the Settings document.
+ */
+function openSettingsTab(): void {
+  docTabs.open({ id: "settings", label: "Settings", panel: settingsViewEl, icon: "solution" });
+  syncSettingsView();
 }
 
 // ---------------------------------------------------------------- connection
@@ -898,11 +940,20 @@ function applyFilter(kind: KindFilter, query = filterInput.value): void {
   updateFindCount();
 }
 
-async function changeNickname(): Promise<void> {
-  if (nickDialog.isOpen) return;
+/**
+ * @brief Opens Settings and puts the caret in the nickname field.
+ */
+function changeNickname(): void {
+  openSettingsTab();
+  settingsView.focusNick();
+}
 
-  const next = await nickDialog.open(identity.nick);
-  if (next === null || next === identity.nick) return;
+/**
+ * @brief Applies a nickname typed in the settings document.
+ * @param next New nickname.
+ */
+function applyNickname(next: string): void {
+  if (next.length === 0 || next === identity.nick) return;
 
   identity = saveNick(storage, identity, next);
   logView.selfNick = identity.nick;
@@ -910,7 +961,7 @@ async function changeNickname(): Promise<void> {
   statusbar.setNick(identity.nick);
   store.addSystem(`nickname đổi thành ${identity.nick}`);
   render();
-  syncSettingsDialog();
+  syncSettingsView();
 
   // Re-joining updates the name on the server for everyone in the room.
   if (socket !== null && current !== null) {
@@ -1029,7 +1080,7 @@ function handleMenuAction(action: MenuAction): void {
       sidebarEl.hidden = !sidebarEl.hidden;
       break;
     case "new-room":
-      openChatPicker();
+      openRoomsTab();
       break;
     case "reconnect":
       reconnect();
@@ -1044,12 +1095,7 @@ function handleMenuAction(action: MenuAction): void {
       break;
     }
     case "about":
-      settingsDialog.open({
-        theme,
-        soundEnabled: sound.isEnabled,
-        nick: identity.nick,
-        zoomPercent: Math.round(zoom * 100),
-      });
+      openSettingsTab();
       break;
     case "tictactoe":
       gameDialog.open();
@@ -1117,23 +1163,18 @@ function wire(): void {
     }
   });
 
-  tabNew.addEventListener("click", () => openChatPicker());
-  newRoomButton.addEventListener("click", () => openChatPicker());
+  tabNew.addEventListener("click", () => openRoomsTab());
+  newRoomButton.addEventListener("click", () => openRoomsTab());
   byId<HTMLButtonElement>("refresh-rooms").addEventListener("click", () => void refreshRooms());
   byId<HTMLButtonElement>("collapse-tree").addEventListener("click", () => sidebar.collapseAll());
-  byId<HTMLButtonElement>("start-new").addEventListener("click", () => openChatPicker());
+  byId<HTMLButtonElement>("start-new").addEventListener("click", () => openRoomsTab());
   byId<HTMLButtonElement>("start-refresh").addEventListener("click", () => void refreshRooms());
 
-  document.getElementById("btn-hub-chat")?.addEventListener("click", () => openChatPicker());
+  document.getElementById("btn-hub-chat")?.addEventListener("click", () => openRoomsTab());
   // The collab entry point opens the document itself, never a game lobby.
   document.getElementById("btn-hub-collab")?.addEventListener("click", () => gameDialog.open());
   document.getElementById("btn-hub-setting")?.addEventListener("click", () => {
-    settingsDialog.open({
-      theme,
-      soundEnabled: sound.isEnabled,
-      nick: identity.nick,
-      zoomPercent: Math.round(zoom * 100),
-    });
+    openSettingsTab();
   });
 
   for (const input of [roomSearch, treeSearch]) {
@@ -1271,7 +1312,7 @@ function wire(): void {
     }
     if (key === "n") {
       event.preventDefault();
-      openChatPicker();
+      openRoomsTab();
       return;
     }
     if (event.key === ";") {

@@ -14,5 +14,6 @@
 @import "../shared/styles/notifications.css";
 @import "../shared/styles/dock-compact.css";
 @import "../features/collab/collab.css";
+@import "../shared/ui/doc-panels.css";
 @import "../features/chat/chat.css";
 @import "./utilities.css";

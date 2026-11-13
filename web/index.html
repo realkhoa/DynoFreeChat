@@ -71,7 +71,7 @@
         <div class="toolbar-standard" id="toolbar-standard" aria-label="Standard toolbar"></div>
       </nav>
 
-      <div class="tabstrip" role="tablist" aria-label="Document">
+      <div class="tabstrip" id="tabstrip" role="tablist" aria-label="Document">
         <div class="tab" role="tab" id="tab-room" aria-selected="true" tabindex="0">
           <span class="tab-icon" id="tab-icon" aria-hidden="true"></span>
           <span class="tab-label" id="tab-label">Start</span>
@@ -262,30 +262,13 @@
       </form>
     </dialog>
 
-    <dialog class="dialog" id="nick-dialog">
-      <form method="dialog" id="nick-form">
-        <div class="dialog-head">Đổi nickname</div>
-        <div class="dialog-body">
-          <div class="field">
-            <label for="nick-input">Nickname</label>
-            <input id="nick-input" maxlength="24" autocomplete="off" spellcheck="false" />
-            <span class="field-hint">1–24 ký tự. Mọi người trong room đều thấy tên này.</span>
-          </div>
-          <p class="dialog-error" id="nick-error" role="alert"></p>
-        </div>
-        <div class="dialog-actions">
-          <button type="button" class="button" id="nick-cancel">Huỷ</button>
-          <button type="submit" class="button button--primary" id="nick-submit">Lưu</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog class="dialog picker-dialog" id="picker-dialog">
-      <div class="dialog-head">
-        <span>Chọn room chat</span>
-        <button type="button" class="picker-close" id="picker-close-x" aria-label="Đóng">✕</button>
+    <!-- Chat Rooms document: the picker and the create form live in a tab -->
+    <section class="doc-panel rooms-panel" id="rooms-view" hidden>
+      <div class="doc-panel-head">
+        <span class="doc-panel-title">Chat Rooms</span>
+        <span class="doc-panel-hint">Chọn room để mở, hoặc tạo room mới bên dưới.</span>
       </div>
-      <div class="dialog-body picker-body">
+      <div class="doc-panel-body rooms-body">
         <div class="field">
           <input
             id="picker-search"
@@ -297,12 +280,23 @@
           />
         </div>
         <div class="picker-list" id="picker-list" role="listbox" aria-label="Danh sách room"></div>
+        <div class="rooms-create">
+          <div class="field">
+            <label for="rooms-create-slug">Room mới</label>
+            <input id="rooms-create-slug" maxlength="24" autocomplete="off" spellcheck="false" placeholder="vd: anh-em" />
+            <span class="field-hint">2–24 ký tự: a-z, 0-9, dấu gạch ngang.</span>
+          </div>
+          <div class="field">
+            <label for="rooms-create-pass">Mật khẩu (để trống = phòng mở)</label>
+            <input id="rooms-create-pass" type="password" maxlength="64" autocomplete="new-password" />
+          </div>
+          <div class="rooms-create-actions">
+            <p class="dialog-error" id="rooms-create-error" role="alert"></p>
+            <button type="button" class="button button--primary" id="rooms-create-btn">+ Tạo room</button>
+          </div>
+        </div>
       </div>
-      <div class="dialog-actions picker-actions">
-        <button type="button" class="button button--primary" id="picker-create">+ Tạo room mới</button>
-        <button type="button" class="button" id="picker-cancel">Huỷ</button>
-      </div>
-    </dialog>
+    </section>
 
     <dialog class="dialog game-dialog" id="game-dialog">
       <div class="dialog-head">
@@ -314,13 +308,13 @@
       <div class="game-detach-body" id="game-detach-body"></div>
     </dialog>
 
-    <dialog class="dialog settings-dialog" id="settings-dialog">
-      <div class="dialog-head settings-head">
-        <span class="settings-title">Cài đặt hệ thống (Options)</span>
-        <button type="button" class="picker-close" id="settings-close-x" aria-label="Đóng">✕</button>
+    <!-- Settings document: same sections the modal had, without the dialog chrome -->
+    <section class="doc-panel settings-panel" id="settings-view" hidden>
+      <div class="doc-panel-head">
+        <span class="doc-panel-title">Settings</span>
+        <span class="doc-panel-hint">Không gian làm việc, thông báo, cỡ chữ và hồ sơ.</span>
       </div>
-
-      <div class="dialog-body settings-body">
+      <div class="doc-panel-body settings-body">
         <!-- Section: Giao diện -->
         <section class="settings-section">
           <h3 class="settings-section-title">Giao diện & Hiển thị</h3>
@@ -396,15 +390,15 @@
               <span class="settings-label">Tên hiển thị (Nickname)</span>
               <span class="settings-desc" id="settings-nick-desc">Nickname hiện tại: Chưa đặt</span>
             </div>
-            <button type="button" class="button button--primary" id="settings-change-nick">Đổi tên</button>
+                          <div class="settings-nick-edit">
+                <input id="settings-nick-input" maxlength="24" autocomplete="off" spellcheck="false" aria-label="Nickname" />
+                <button type="button" class="button button--primary" id="settings-nick-save">Lưu</button>
+              </div>
+
           </div>
         </section>
       </div>
-
-      <div class="dialog-actions settings-actions">
-        <button type="button" class="button button--primary" id="settings-close">Đóng</button>
-      </div>
-    </dialog>
+    </section>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

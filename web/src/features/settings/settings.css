@@ -1,29 +1,10 @@
 /* Extracted from the former styles/ide.css monolith. */
-/* ----------------------------------------------------------- settings-dialog */
-
-.settings-dialog {
-  min-width: 480px;
-  max-width: min(620px, 94vw);
-}
-
-.settings-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.settings-title {
-  font-weight: 600;
-  color: var(--fg);
-}
+/* ------------------------------------------------------------ settings document */
 
 .settings-body {
-  max-height: min(72vh, 580px);
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 16px;
 }
 
 .settings-section {
@@ -78,11 +59,4 @@
 .settings-btn-group {
   display: flex;
   gap: 4px;
-}
-
-.settings-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding: 10px 16px;
-  background: var(--chrome);
 }
