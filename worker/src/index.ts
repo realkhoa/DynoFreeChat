@@ -68,7 +68,7 @@ export default {
         headers: {
           ...corsHeaders(origin),
           "access-control-allow-methods": "GET,POST,OPTIONS",
-          "access-control-allow-headers": "content-type",
+          "access-control-allow-headers": "content-type,x-dyno-lock",
           "access-control-max-age": "600",
         },
       });
