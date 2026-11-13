@@ -40,6 +40,9 @@ export const MAX_ROOMS = 500;
 /** Rooms idle for longer than this are pruned when the lobby is listed. */
 export const ROOM_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
 
+/** Game rooms are short lived: prune them a day after their last match. */
+export const GAME_ROOM_IDLE_MS = 24 * 60 * 60 * 1000;
+
 /** Room creations allowed per IP per window. Generous on purpose: a group
  * behind one NAT must be able to open a room per match. */
 export const CREATES_PER_WINDOW = 30;
@@ -101,12 +104,25 @@ export interface ReplyRef {
   text: string;
 }
 
+/** What a room is for: chatting or an online match. */
+export type RoomKind = "chat" | "game";
+
 /** One row of the public lobby. */
 export interface RoomInfo {
   slug: string;
   locked: boolean;
   createdAt: number;
   lastSeen: number;
+  kind: RoomKind;
+}
+
+/**
+ * @brief Parses a room kind from untrusted input.
+ * @param raw Raw value, e.g. a query param or JSON field.
+ * @return The kind, or `null` when it is not one of the known kinds.
+ */
+export function parseRoomKind(raw: unknown): RoomKind | null {
+  return raw === "chat" || raw === "game" ? raw : null;
 }
 
 export type ClientFrame =

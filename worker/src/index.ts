@@ -137,9 +137,26 @@ export default {
 
     const registry = () => env.REGISTRY.get(env.REGISTRY.idFromName("registry"));
 
+    // Destructive maintenance: only a holder of a valid access session may purge.
+    if (url.pathname === "/api/rooms/purge" && request.method === "POST") {
+      const secrets = lockSecrets(env);
+      const unlocked =
+        secrets !== null && (await verifySession(secrets, request.headers.get(LOCK_HEADER), Date.now()));
+      if (!unlocked) return withCors(json({ code: "LOCKED" }, 401), origin);
+
+      const response = await registry().fetch("https://registry/purge", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: await request.text(),
+      });
+      return withCors(response, origin);
+    }
+
     if (url.pathname === "/api/rooms") {
       if (request.method === "GET") {
-        return withCors(await registry().fetch("https://registry/list"), origin);
+        const listUrl = new URL("https://registry/list");
+        listUrl.search = url.search;
+        return withCors(await registry().fetch(listUrl), origin);
       }
       if (request.method === "POST") {
         const response = await registry().fetch("https://registry/create", {

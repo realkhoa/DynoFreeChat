@@ -800,7 +800,7 @@ function toggleTheme(): void {
 
 async function refreshRooms(): Promise<void> {
   try {
-    rooms = await listRooms(apiBase);
+    rooms = await listRooms(apiBase, "chat");
     sidebar.render(rooms, current?.slug ?? null, pickRoom, (notice) => {
       store.addSystem(notice);
       render();
@@ -859,7 +859,10 @@ function openCreateDialog(slugPrefill?: string): void {
  * @return Error text for the form, or null on success.
  */
 async function createRoomAndEnter(slug: string, pass: string): Promise<string | null> {
-  const created = await createRoom(apiBase, pass.length > 0 ? { slug, pass } : { slug });
+  const created = await createRoom(
+    apiBase,
+    pass.length > 0 ? { slug, pass, kind: "chat" } : { slug, kind: "chat" },
+  );
   if (!created.ok) return ERROR_TEXT[created.code] ?? `lỗi: ${created.code}`;
 
   enterRoom(created.slug, pass.length > 0 ? pass : undefined);

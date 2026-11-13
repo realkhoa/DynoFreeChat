@@ -2,9 +2,11 @@ import { DurableObject } from "cloudflare:workers";
 import {
   CREATES_PER_WINDOW,
   CREATE_WINDOW_MS,
+  GAME_ROOM_IDLE_MS,
   MAX_ROOMS,
   ROOM_IDLE_MS,
   normalizePass,
+  parseRoomKind,
   sanitizeSlug,
   type RoomInfo,
 } from "@dyno/shared/protocol";
@@ -20,6 +22,7 @@ type RoomRow = SqlRow<{
   locked: number;
   createdAt: number;
   lastSeen: number;
+  kind: string;
 }>;
 
 type ListRow = SqlRow<{
@@ -27,6 +30,7 @@ type ListRow = SqlRow<{
   locked: number;
   createdAt: number;
   lastSeen: number;
+  kind: string;
 }>;
 
 type CountRow = SqlRow<{ n: number }>;
@@ -53,9 +57,19 @@ export class Registry extends DurableObject<Env> {
          hash TEXT NOT NULL,
          locked INTEGER NOT NULL,
          createdAt INTEGER NOT NULL,
-         lastSeen INTEGER NOT NULL
+         lastSeen INTEGER NOT NULL,
+         kind TEXT NOT NULL DEFAULT 'chat'
        )`,
     );
+    // Rooms created before the chat/game split have no kind column yet.
+    const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(rooms)").toArray();
+    if (!columns.some((column) => column.name === "kind")) {
+      this.sql.exec("ALTER TABLE rooms ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'");
+      // One-time backfill: slugs that look like the online games become game rooms.
+      this.sql.exec(
+        "UPDATE rooms SET kind = 'game' WHERE slug LIKE 'caro-%' OR slug LIKE 'battleship-%' OR slug LIKE 'chess-%' OR slug LIKE 'tienlen-%' OR slug LIKE 'gunny-%' OR slug LIKE 'shooter-%'",
+      );
+    }
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS creates (
          ip TEXT PRIMARY KEY,
@@ -72,7 +86,8 @@ export class Registry extends DurableObject<Env> {
 
     if (request.method === "POST" && url.pathname === "/create") return this.create(request);
     if (request.method === "POST" && url.pathname === "/verify") return this.verify(request);
-    if (request.method === "GET" && url.pathname === "/list") return this.list();
+    if (request.method === "GET" && url.pathname === "/list") return this.list(request);
+    if (request.method === "POST" && url.pathname === "/purge") return this.purge(request);
     if (request.method === "GET" && url.pathname === "/info") return this.info(request);
 
     return json({ code: "NOT_FOUND" }, 404);
@@ -124,18 +139,20 @@ export class Registry extends DurableObject<Env> {
     const now = Date.now();
     if (!this.allowCreate(ip, now)) return json({ code: "TRY_LATER" }, 429);
 
+    const kind = parseRoomKind(body.kind) ?? "chat";
     const salt = randomSalt();
     const locked = pass.pass.length > 0;
     const hash = locked ? await hashPass(salt, slug.slug, pass.pass) : "";
 
     this.sql.exec(
-      "INSERT INTO rooms (slug, salt, hash, locked, createdAt, lastSeen) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO rooms (slug, salt, hash, locked, createdAt, lastSeen, kind) VALUES (?, ?, ?, ?, ?, ?, ?)",
       slug.slug,
       salt,
       hash,
       locked ? 1 : 0,
       now,
       now,
+      kind,
     );
 
     return json({ slug: slug.slug }, 201);
@@ -152,7 +169,7 @@ export class Registry extends DurableObject<Env> {
 
     const row = this.sql
       .exec<RoomRow>(
-        "SELECT slug, salt, hash, locked, createdAt, lastSeen FROM rooms WHERE slug = ?",
+        "SELECT slug, salt, hash, locked, createdAt, lastSeen, kind FROM rooms WHERE slug = ?",
         slug.slug,
       )
       .toArray()[0];
@@ -168,23 +185,83 @@ export class Registry extends DurableObject<Env> {
     return json({ ok: true, slug: row.slug, locked: row.locked === 1 }, 200);
   }
 
-  private list(): Response {
-    // One statement, so idle rooms cost one row write for the whole prune pass
-    // and never a per-room request.
-    this.sql.exec("DELETE FROM rooms WHERE lastSeen < ?", Date.now() - ROOM_IDLE_MS);
+  /**
+   * @brief Deletes rooms in bulk. Lock-gated in the router; used to clean test litter.
+   * @param request JSON body: `kind` (optional), `keep` (slugs to preserve) and
+   * `prefixes` (slug prefixes to preserve).
+   * @return How many rooms were deleted.
+   */
+  private async purge(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const kind = parseRoomKind(body.kind);
 
-    const rows = this.sql
-      .exec<ListRow>(
-        "SELECT slug, locked, createdAt, lastSeen FROM rooms ORDER BY lastSeen DESC LIMIT ?",
-        MAX_ROOMS,
-      )
-      .toArray();
+    const keep: string[] = [];
+    if (Array.isArray(body.keep)) {
+      for (const entry of body.keep) {
+        const slug = sanitizeSlug(entry);
+        if (slug.ok) keep.push(slug.slug);
+      }
+    }
+
+    const prefixes: string[] = [];
+    if (Array.isArray(body.prefixes)) {
+      for (const entry of body.prefixes) {
+        if (typeof entry === "string" && /^[a-z0-9-]{1,16}$/.test(entry)) prefixes.push(entry);
+      }
+    }
+
+    const conditions: string[] = [];
+    const params: Array<string | number> = [];
+    if (kind !== null) {
+      conditions.push("kind = ?");
+      params.push(kind);
+    }
+    if (keep.length > 0) {
+      conditions.push(`slug NOT IN (${keep.map(() => "?").join(", ")})`);
+      params.push(...keep);
+    }
+    if (prefixes.length > 0) {
+      conditions.push(`NOT (${prefixes.map(() => "slug LIKE ?").join(" OR ")})`);
+      params.push(...prefixes.map((prefix) => `${prefix}%`));
+    }
+
+    const before = this.roomCount();
+    const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+    this.sql.exec(`DELETE FROM rooms${where}`, ...params);
+    const after = this.roomCount();
+    return json({ deleted: before - after, remaining: after }, 200);
+  }
+
+  private list(request: Request): Response {
+    const now = Date.now();
+    // One statement per kind, so idle rooms cost one row write for the whole
+    // prune pass and never a per-room request. Game rooms expire far sooner.
+    this.sql.exec("DELETE FROM rooms WHERE kind = 'chat' AND lastSeen < ?", now - ROOM_IDLE_MS);
+    this.sql.exec("DELETE FROM rooms WHERE kind = 'game' AND lastSeen < ?", now - GAME_ROOM_IDLE_MS);
+
+    const filter = parseRoomKind(new URL(request.url).searchParams.get("kind"));
+    const rows =
+      filter === null
+        ? this.sql
+            .exec<ListRow>(
+              "SELECT slug, locked, createdAt, lastSeen, kind FROM rooms ORDER BY lastSeen DESC LIMIT ?",
+              MAX_ROOMS,
+            )
+            .toArray()
+        : this.sql
+            .exec<ListRow>(
+              "SELECT slug, locked, createdAt, lastSeen, kind FROM rooms WHERE kind = ? ORDER BY lastSeen DESC LIMIT ?",
+              filter,
+              MAX_ROOMS,
+            )
+            .toArray();
 
     const rooms: RoomInfo[] = rows.map((row) => ({
       slug: row.slug,
       locked: row.locked === 1,
       createdAt: row.createdAt,
       lastSeen: row.lastSeen,
+      kind: row.kind === "game" ? "game" : "chat",
     }));
 
     return json({ rooms }, 200);

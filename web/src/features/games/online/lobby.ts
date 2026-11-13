@@ -57,6 +57,7 @@ export interface MatchDeps {
   /** Room listing seam; tests replace it. */
   listRooms?: (
     apiBase: string,
+    kind: "game",
     fetchImpl: typeof fetch,
   ) => Promise<Array<{ slug: string; locked: boolean; lastSeen: number }>>;
 }
@@ -144,7 +145,7 @@ export class MatchView {
     try {
       const listRoomsImpl = this.deps.listRooms ?? listRooms;
       const fetchImpl = this.deps.fetchImpl ?? ((input, init) => fetch(input, init));
-      const rooms = await listRoomsImpl(this.deps.apiBase, fetchImpl);
+      const rooms = await listRoomsImpl(this.deps.apiBase, "game", fetchImpl);
       this.paintRooms(rooms);
       this.setStatus(
         rooms.length === 0 ? "// no rooms yet - create the first one" : `// ${rooms.length} room(s)`,
@@ -175,7 +176,7 @@ export class MatchView {
     try {
       const code = this.createCode(game);
       const pass = this.elements.createPass.value.trim();
-      const body: { slug: string; pass?: string } = { slug: code };
+      const body: { slug: string; pass?: string; kind: "game" } = { slug: code, kind: "game" };
       if (pass.length > 0) body.pass = pass;
 
       const fetchImpl = this.deps.fetchImpl ?? ((input, init) => fetch(input, init));

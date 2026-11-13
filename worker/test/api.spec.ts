@@ -96,3 +96,48 @@ describe("room api", () => {
     expect((await post()).status).toBe(429);
   });
 });
+
+describe("room kinds", () => {
+  it("keeps chat and game rooms in separate lists", async () => {
+    const ip = uniqueIp();
+    const chatSlug = `chat-${uniqueSlug("c")}`.slice(0, 24);
+    const gameSlug = `caro-${uniqueSlug("g")}`.slice(0, 24);
+
+    const create = (slug: string, kind: string) =>
+      SELF.fetch(`${BASE}/api/rooms`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": ip, origin: ORIGIN },
+        body: JSON.stringify({ slug, kind }),
+      });
+
+    expect((await create(chatSlug, "chat")).status).toBe(201);
+    expect((await create(gameSlug, "game")).status).toBe(201);
+
+    const list = async (kind: string) => {
+      const response = await SELF.fetch(`${BASE}/api/rooms?kind=${kind}`, { headers: { origin: ORIGIN } });
+      return (await response.json()) as { rooms: Array<{ slug: string; kind: string }> };
+    };
+
+    const games = await list("game");
+    expect(games.rooms.map((room) => room.slug)).toContain(gameSlug);
+    expect(games.rooms.map((room) => room.slug)).not.toContain(chatSlug);
+    expect(games.rooms.every((room) => room.kind === "game")).toBe(true);
+
+    const chats = await list("chat");
+    expect(chats.rooms.map((room) => room.slug)).toContain(chatSlug);
+    expect(chats.rooms.map((room) => room.slug)).not.toContain(gameSlug);
+    expect(chats.rooms.every((room) => room.kind === "chat")).toBe(true);
+  });
+});
+
+describe("room purge", () => {
+  it("refuses to purge without an access session", async () => {
+    const response = await SELF.fetch(`${BASE}/api/rooms/purge`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: ORIGIN },
+      body: JSON.stringify({ kind: "chat" }),
+    });
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ code: "LOCKED" });
+  });
+});

@@ -80,6 +80,7 @@ interface Harness {
   leave: ReturnType<typeof vi.fn>;
   fetchImpl: ReturnType<typeof vi.fn>;
   rooms: RoomRow[];
+  listedKind: () => string;
 }
 
 /** Builds the lobby with fake fetch, room list and match. */
@@ -91,6 +92,7 @@ function makeHarness(rooms: RoomRow[] = []): Harness {
   const leave = vi.fn();
   const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ slug: "caro-test" }), { status: 201 }));
   const state = { rooms: [...rooms] };
+  let listedKind = "";
 
   const deps: MatchDeps = {
     wsUrl: "wss://api.example/ws",
@@ -100,7 +102,10 @@ function makeHarness(rooms: RoomRow[] = []): Harness {
     games: GAMES,
     onMatch,
     fetchImpl: fetchImpl as unknown as typeof fetch,
-    listRooms: async () => [...state.rooms],
+    listRooms: async (_apiBase, kind) => {
+      listedKind = kind;
+      return [...state.rooms];
+    },
     createMatch: (matchOptions) => {
       options.push(matchOptions);
       return { start, leave } as unknown as ReturnType<NonNullable<MatchDeps["createMatch"]>>;
@@ -116,6 +121,7 @@ function makeHarness(rooms: RoomRow[] = []): Harness {
     leave,
     fetchImpl,
     rooms: state.rooms,
+    listedKind: () => listedKind,
   };
 }
 
@@ -150,6 +156,11 @@ describe("MatchView", () => {
     const options = [...h.elements.gameSelect.options].map((option) => option.value);
     expect(options).toEqual(["caro"]);
     expect(h.view.currentGame?.id).toBe("caro");
+  });
+
+  it("asks the Worker only for game rooms", async () => {
+    h.view.start();
+    await vi.waitFor(() => expect(h.listedKind()).toBe("game"));
   });
 
   it("paints the room list newest first with its lock state", async () => {
@@ -192,7 +203,10 @@ describe("MatchView", () => {
 
     expect(h.fetchImpl).toHaveBeenCalledWith(
       "https://api.example/api/rooms",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ slug: "caro-test", pass: "1234" }) }),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ slug: "caro-test", kind: "game", pass: "1234" }),
+      }),
     );
     expect(h.start).toHaveBeenCalledTimes(1);
     expect(h.options[0]?.url).toContain("r=caro-test");

@@ -10,6 +10,7 @@ import {
   makeMessageId,
   mentionsNick,
   parseClientFrame,
+  parseRoomKind,
   sanitizeColor,
   sanitizeNick,
   sanitizeText,
@@ -211,5 +212,16 @@ describe("segmentText", () => {
 
   it("returns a single text segment when there is no mention", () => {
     expect(segmentText("không có ai")).toEqual([{ kind: "text", value: "không có ai" }]);
+  });
+});
+
+describe("parseRoomKind", () => {
+  it("accepts the two known kinds and rejects anything else", () => {
+    expect(parseRoomKind("chat")).toBe("chat");
+    expect(parseRoomKind("game")).toBe("game");
+    expect(parseRoomKind("CHAT")).toBeNull();
+    expect(parseRoomKind("")).toBeNull();
+    expect(parseRoomKind(null)).toBeNull();
+    expect(parseRoomKind(42)).toBeNull();
   });
 });

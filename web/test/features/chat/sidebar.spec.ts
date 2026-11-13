@@ -4,7 +4,7 @@ import type { RoomInfo } from "@dyno/shared/protocol";
 import { Sidebar } from "@/features/chat/components/sidebar";
 
 function room(slug: string, locked = false): RoomInfo {
-  return { slug, locked, createdAt: 1_700_000_000_000, lastSeen: Date.now() };
+  return { slug, locked, createdAt: 1_700_000_000_000, lastSeen: Date.now(), kind: "chat" };
 }
 
 let tree: HTMLElement;

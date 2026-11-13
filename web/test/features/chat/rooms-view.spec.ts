@@ -46,8 +46,8 @@ function makeHarness(): Harness {
 }
 
 const ROOMS: RoomInfo[] = [
-  { slug: "chung", locked: false, createdAt: 1, lastSeen: Date.now() - 60_000 },
-  { slug: "team", locked: true, createdAt: 1, lastSeen: Date.now() - 3_600_000 },
+  { slug: "chung", locked: false, createdAt: 1, lastSeen: Date.now() - 60_000, kind: "chat" },
+  { slug: "team", locked: true, createdAt: 1, lastSeen: Date.now() - 3_600_000, kind: "chat" },
 ];
 
 describe("RoomsView", () => {
