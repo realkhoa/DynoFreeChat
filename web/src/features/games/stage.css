@@ -16,7 +16,7 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  padding: 10px 14px;
+  padding: 6px 10px;
   background: var(--editor);
   overflow: auto;
 }
@@ -28,22 +28,22 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
   margin: 0 auto;
-  width: min(100%, 860px);
+  width: min(100%, 980px);
 }
 
 /* Real code lines above and below the board literal. */
 .stage-code {
   display: block;
   flex: none;
-  font: var(--code-font);
   color: #d4d4d4;
+  font: 11px/15px var(--font-mono);
 }
 
 .stage-code-line {
   white-space: pre;
-  min-height: var(--code-line-height);
+  min-height: 15px;
 }
 
 .stage-code-line.is-comment {
@@ -59,8 +59,8 @@
 .stage-game-host {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  opacity: 0.78;
+  gap: 2px;
+  opacity: 0.66;
   transition: opacity 120ms ease;
 }
 
@@ -70,7 +70,13 @@
 }
 
 .game-stage-host[data-focus="on"] .stage-game-host {
-  opacity: 0.55;
+  opacity: 0.48;
+}
+
+/* Game hints ("win with 5 in a row", "press R") are the most obvious tell, so
+   they never print inside the document. The board and its counters stay. */
+.stage-game-host .stage-empty {
+  display: none;
 }
 
 /* The bar, HUD and status are printed as file comments: quiet, monospace, and
@@ -79,10 +85,10 @@
 .stage-hud {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   color: #6a9955;
-  font: 11.5px/1.5 var(--font-mono);
+  font: 10.5px/1.4 var(--font-mono);
 }
 
 .stage-bar::before,
@@ -97,13 +103,13 @@
 }
 
 .stage-btn {
-  height: 20px;
-  padding: 0 6px;
+  height: 18px;
+  padding: 0 5px;
   background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: 2px;
   color: var(--fg-muted);
-  font: 11px/1 var(--font-mono);
+  font: 10px/1 var(--font-mono);
   cursor: pointer;
 }
 
@@ -135,7 +141,7 @@
 .stage-board {
   display: grid;
   gap: 0;
-  margin: 0 0 2px 14px;
+  margin: 0 0 1px 12px;
   width: max-content;
   max-width: 100%;
   background: transparent;
@@ -146,14 +152,14 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  min-width: 34px;
-  min-height: 30px;
-  padding: 0 2px;
+  min-width: 24px;
+  min-height: 21px;
+  padding: 0 1px;
   background: transparent;
   border: 0;
   border-radius: 0;
   color: #d4d4d4;
-  font: 500 13.5px/1.6 var(--font-mono);
+  font: 500 11.5px/1.35 var(--font-mono);
   text-align: left;
   cursor: pointer;
   user-select: none;
@@ -218,9 +224,9 @@
 /* Row based layouts (card hands, queue lists, word grids). */
 .stage-rows {
   display: block;
-  margin: 0 0 2px 14px;
+  margin: 0 0 1px 12px;
   max-width: 100%;
-  font: 13px/1.9 var(--font-mono);
+  font: 11.5px/1.6 var(--font-mono);
 }
 
 .stage-row {
@@ -231,7 +237,7 @@
   display: inline-block;
   min-width: 0;
   min-height: 0;
-  padding: 2px 3px;
+  padding: 1px 2px;
   background: transparent;
   border: 0;
   border-radius: 2px;
@@ -260,7 +266,7 @@
 .stage-canvas {
   display: block;
   width: 100%;
-  max-width: 760px;
+  max-width: 620px;
   margin: 0 auto;
   background: #181818;
   border: 1px solid var(--border-subtle);
