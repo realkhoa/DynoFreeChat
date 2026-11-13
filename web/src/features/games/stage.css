@@ -16,7 +16,7 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  padding: 6px 10px;
+  padding: 4px 8px;
   background: var(--editor);
   overflow: auto;
 }
@@ -28,9 +28,9 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   margin: 0 auto;
-  width: min(100%, 980px);
+  width: min(100%, 900px);
 }
 
 /* Real code lines above and below the board literal. */
@@ -38,12 +38,12 @@
   display: block;
   flex: none;
   color: #d4d4d4;
-  font: 11px/15px var(--font-mono);
+  font: 10px/13px var(--font-mono);
 }
 
 .stage-code-line {
   white-space: pre;
-  min-height: 15px;
+  min-height: 13px;
 }
 
 .stage-code-line.is-comment {
@@ -59,8 +59,8 @@
 .stage-game-host {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  opacity: 0.66;
+  gap: 1px;
+  opacity: 0.6;
   transition: opacity 120ms ease;
 }
 
@@ -85,10 +85,10 @@
 .stage-hud {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
   color: #6a9955;
-  font: 10.5px/1.4 var(--font-mono);
+  font: 9.5px/1.25 var(--font-mono);
 }
 
 .stage-bar::before,
@@ -103,13 +103,13 @@
 }
 
 .stage-btn {
-  height: 18px;
-  padding: 0 5px;
+  height: 16px;
+  padding: 0 4px;
   background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: 2px;
   color: var(--fg-muted);
-  font: 10px/1 var(--font-mono);
+  font: 9px/1 var(--font-mono);
   cursor: pointer;
 }
 
@@ -127,7 +127,7 @@
 
 .stage-status {
   color: #6a9955;
-  font: var(--code-font);
+  font: 10px/13px var(--font-mono);
   min-height: var(--code-line-height);
   white-space: pre-wrap;
 }
@@ -141,7 +141,7 @@
 .stage-board {
   display: grid;
   gap: 0;
-  margin: 0 0 1px 12px;
+  margin: 0 0 1px 10px;
   width: max-content;
   max-width: 100%;
   background: transparent;
@@ -152,14 +152,14 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  min-width: 24px;
-  min-height: 21px;
-  padding: 0 1px;
+  min-width: 16px;
+  min-height: 15px;
+  padding: 0;
   background: transparent;
   border: 0;
   border-radius: 0;
   color: #d4d4d4;
-  font: 500 11.5px/1.35 var(--font-mono);
+  font: 500 10px/1.15 var(--font-mono);
   text-align: left;
   cursor: pointer;
   user-select: none;
@@ -224,9 +224,9 @@
 /* Row based layouts (card hands, queue lists, word grids). */
 .stage-rows {
   display: block;
-  margin: 0 0 1px 12px;
+  margin: 0 0 1px 10px;
   max-width: 100%;
-  font: 11.5px/1.6 var(--font-mono);
+  font: 10px/1.4 var(--font-mono);
 }
 
 .stage-row {
@@ -237,7 +237,7 @@
   display: inline-block;
   min-width: 0;
   min-height: 0;
-  padding: 1px 2px;
+  padding: 0 1px;
   background: transparent;
   border: 0;
   border-radius: 2px;
@@ -266,7 +266,7 @@
 .stage-canvas {
   display: block;
   width: 100%;
-  max-width: 620px;
+  max-width: 420px;
   margin: 0 auto;
   background: #181818;
   border: 1px solid var(--border-subtle);
@@ -298,4 +298,28 @@
 .game-stage-host[data-focus="on"] .stage-hud,
 .game-stage-host[data-focus="on"] .stage-status {
   display: none;
+}
+
+/* Chess prints its glyphs inline at 22px; the compact document keeps them small. */
+.stage-game-host .stage-cell {
+  font-size: 10px !important;
+}
+
+/* Counters, buttons and the status line only appear while the pointer is over
+   the board (or the board has keyboard focus), so a resting document shows
+   nothing but the generated file. */
+.stage-game-host .stage-bar,
+.stage-game-host .stage-hud,
+.stage-game-host .stage-status {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.stage-game-host:hover .stage-bar,
+.stage-game-host:hover .stage-hud,
+.stage-game-host:hover .stage-status,
+.stage-game-host:focus-within .stage-bar,
+.stage-game-host:focus-within .stage-hud,
+.stage-game-host:focus-within .stage-status {
+  opacity: 1;
 }
