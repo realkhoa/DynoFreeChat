@@ -97,9 +97,9 @@ function toolbar(host: HTMLElement, text: string): HTMLButtonElement | undefined
   );
 }
 
-/** Local and opponent hands predicted from the seed. */
-function predictedHands(seed = 42): { local: string[]; remote: string[] } {
-  const state: TienLenDuoState = createTwoPlayerState(seed);
+/** Local and opponent hands predicted from the seed for one seat. */
+function predictedHands(seed = 42, localSeat: 1 | 2 = 1): { local: string[]; remote: string[] } {
+  const state: TienLenDuoState = createTwoPlayerState(seed, localSeat);
   return {
     local: state.hands[0].map((card) => card.id),
     remote: state.hands[1].map((card) => card.id),
@@ -111,16 +111,22 @@ describe("Tien Len online", () => {
     document.body.replaceChildren();
   });
 
-  it("deals the same 13-card hand to both seats from the shared seed", () => {
+  it("deals a deterministic 13-card hand per seat from the shared seed", () => {
     const first = mountTienLen(fakeBridge(1));
     const second = mountTienLen(fakeBridge(2));
-    const predicted = predictedHands(42);
+    const asSeatOne = predictedHands(42, 1);
+    const asSeatTwo = predictedHands(42, 2);
 
     expect(cardIds(first.host)).toHaveLength(13);
     expect(cardIds(second.host)).toHaveLength(13);
-    expect(cardIds(first.host)).toEqual(predicted.local);
-    expect(cardIds(second.host)).toEqual(predicted.local);
-    expect(new Set([...predicted.local, ...predicted.remote]).size).toBe(26);
+    expect(cardIds(first.host)).toEqual(asSeatOne.local);
+    expect(cardIds(second.host)).toEqual(asSeatTwo.local);
+    // Both clients reconstruct the same seat-indexed deal: the seat 1 hand the
+    // host holds locally is the seat 1 hand the guest holds as the opponent.
+    expect(asSeatOne.local).toEqual(asSeatTwo.remote);
+    expect(asSeatOne.remote).toEqual(asSeatTwo.local);
+    expect(new Set([...asSeatOne.local, ...asSeatOne.remote]).size).toBe(26);
+    expect(cardIds(first.host)).not.toEqual(cardIds(second.host));
 
     first.game.unmount();
     second.game.unmount();
@@ -136,7 +142,7 @@ describe("Tien Len online", () => {
     expect(guestSeat.host.querySelector(".stage-status")?.textContent).toContain("opponent's turn");
     expect(toolbar(guestSeat.host, "Play")?.disabled).toBe(true);
 
-    const first = predictedHands().local[0] ?? "";
+    const first = predictedHands(42, 2).local[0] ?? "";
     clickCard(guestSeat.host, first);
     toolbar(guestSeat.host, "Play")?.click();
     expect(guestSeat.host.querySelector(".is-selected")).toBeNull();
@@ -163,7 +169,7 @@ describe("Tien Len online", () => {
   it("relays a pass and resets the two-player trick", () => {
     const bridge = fakeBridge(2);
     const { host, game } = mountTienLen(bridge);
-    const remote = predictedHands().remote[0] ?? "";
+    const remote = predictedHands(42, 2).remote[0] ?? "";
     bridge.emitMove({ kind: "play", cards: [remote] });
 
     expect(host.querySelector(".stage-status")?.textContent).toContain("Opponent played");
@@ -177,26 +183,33 @@ describe("Tien Len online", () => {
     game.unmount();
   });
 
-  it("applies a remote play and updates the table", () => {
-    const bridge = fakeBridge(2);
-    const { host, game } = mountTienLen(bridge);
-    const remote = predictedHands().remote[0] ?? "";
+  it("applies a play relayed from the other client and updates the table", () => {
+    const hostBridge = fakeBridge(1);
+    const guestBridge = fakeBridge(2);
+    const hostSeat = mountTienLen(hostBridge);
+    const guestSeat = mountTienLen(guestBridge);
+    const first = predictedHands(42, 1).local[0] ?? "";
 
-    bridge.emitMove({ kind: "play", cards: [remote] });
+    clickCard(hostSeat.host, first);
+    toolbar(hostSeat.host, "Play")?.click();
+    expect(hostBridge.moves).toHaveLength(1);
+    guestBridge.emitMove(hostBridge.moves[0]);
 
-    const stats = [...host.querySelectorAll<HTMLElement>(".stage-hud b")];
+    const stats = [...guestSeat.host.querySelectorAll<HTMLElement>(".stage-hud b")];
     expect(stats[1]?.textContent).toBe("12");
-    const tableRow = host.querySelector(".stage-row");
+    const tableRow = guestSeat.host.querySelector(".stage-row");
     expect(tableRow?.textContent).toContain("Opponent played:");
     expect(tableRow?.querySelectorAll(".stage-card")).toHaveLength(1);
-    expect(host.querySelector(".stage-status")?.textContent).toContain("your turn");
-    game.unmount();
+    expect(guestSeat.host.querySelector(".stage-status")?.textContent).toContain("your turn");
+    expect(guestBridge.moves).toEqual([]);
+    hostSeat.game.unmount();
+    guestSeat.game.unmount();
   });
 
   it("ignores malformed, foreign, duplicate and out-of-turn payloads", () => {
     const bridge = fakeBridge(2);
     const { host, game } = mountTienLen(bridge);
-    const predicted = predictedHands();
+    const predicted = predictedHands(42, 2);
     const remote = predicted.remote[0] ?? "";
     const foreign = predicted.local[0] ?? "";
 

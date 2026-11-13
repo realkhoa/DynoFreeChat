@@ -156,11 +156,29 @@ report.afterUnlock = await evaluate(`(() => ({
   stored: localStorage.getItem("dyno.lock.session") !== null,
 }))()`);
 
+report.directFetch = await evaluate(`(async () => {
+  const token = localStorage.getItem("dyno.lock.session");
+  try {
+    const res = await fetch("https://dynofreechat-api.nbk2124-z.workers.dev/api/market/quotes?symbols=FPT", {
+      headers: { accept: "application/json", ...(token === null ? {} : { "x-dyno-lock": token }) },
+    });
+    return { status: res.status, body: (await res.text()).slice(0, 200), hasToken: token !== null };
+  } catch (error) {
+    return { error: String(error), hasToken: token !== null };
+  }
+})()`);
+
 // 4. Quotes document with the session token.
 await evaluate(
   `(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "F7", bubbles: true })); return "ok"; })()`,
 );
-await sleep(3500);
+// The board refreshes on its own three second tick; poll instead of assuming
+// one tick was enough, otherwise a slow upstream shows up as a false failure.
+for (let attempt = 0; attempt < 20; attempt += 1) {
+  const state = await evaluate(`document.querySelector("#market-state")?.textContent ?? null`);
+  if (state === "Live") break;
+  await sleep(600);
+}
 report.quotes = await evaluate(`(() => {
   const content = document.querySelector("#market-content");
   return {

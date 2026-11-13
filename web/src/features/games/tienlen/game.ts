@@ -472,18 +472,22 @@ export function applyPass(state: TienLenState, seat: TienLenSeat): TienLenState 
 
 /**
  * @brief Creates the two-player online deal from the match seed.
- * @details Both clients shuffle the same deck with the same generator, then take
- * the first 13 cards as the local hand and the next 13 as the opponent's. Card
- * ids keep the engine format `${suit}-${rank}` (for example `spade-3`), which is
- * also the wire format relayed in a play payload.
+ * @details Both clients shuffle the same deck with the same generator, then seat
+ * 1 takes the first 13 cards and seat 2 the next 13. The returned hands are
+ * ordered from the local perspective, so each client sees its own cards first
+ * and the opponent's second. Card ids keep the engine format `${suit}-${rank}`
+ * (for example `spade-3`), which is also the wire format relayed in a play.
  * @param seed Shared seed chosen by the host.
- * @param localLeads True when the local seat is seat 1 and opens the trick.
+ * @param localSeat Local bridge seat: 1 opens the trick, 2 answers.
  * @return A fresh two-player state with 13 cards per side.
  */
-export function createTwoPlayerState(seed: number, localLeads = true): TienLenDuoState {
+export function createTwoPlayerState(seed: number, localSeat: 1 | 2 = 1): TienLenDuoState {
   const deck = shuffle(createDeck(), createRng(seed));
-  const hands: TienLenDuoHands = [deck.slice(0, 13), deck.slice(13, 26)];
+  const seatOne = deck.slice(0, 13);
+  const seatTwo = deck.slice(13, 26);
+  const hands: TienLenDuoHands = localSeat === 1 ? [seatOne, seatTwo] : [seatTwo, seatOne];
   for (const hand of hands) hand.sort(compareAscending);
+  const localLeads = localSeat === 1;
   return {
     hands,
     turn: localLeads ? 0 : 1,
@@ -980,7 +984,7 @@ export function createTienLenGame(): GameMount {
   const startOnline = (target: HTMLElement, bridge: OnlineBridge): void => {
     online = bridge;
     peerLeft = false;
-    duo = createTwoPlayerState(bridge.seed, bridge.seat === 1);
+    duo = createTwoPlayerState(bridge.seed, bridge.seat);
     selected = new Set<string>();
     message = duo.lastAction;
 
