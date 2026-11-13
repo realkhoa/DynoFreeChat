@@ -347,6 +347,168 @@
       </div>
     </section>
 
+    <!-- Market module registry: opens the feed documents, rendered as a C# file -->
+    <section class="doc-panel market-panel game-code-mode" id="market-hub-view" hidden>
+      <div class="game-code-toolbar">
+        <span class="game-code-file"
+          ><span class="game-code-icon" id="market-hub-icon" aria-hidden="true"></span>Market.cs</span
+        >
+        <span class="game-code-chip" id="market-hub-chip">// modules: 0</span>
+        <span class="game-code-spacer"></span>
+      </div>
+
+      <div class="game-code-body">
+        <div class="game-code-gutter" id="market-hub-gutter" aria-hidden="true"></div>
+        <div class="game-code-content" id="market-hub-content">
+          <div class="code-line comment">// &lt;auto-generated&gt; DynoFreeChat market modules (rev 1)</div>
+          <div class="code-line comment">//   upstream: worker proxy | cache: 3s-60s | transport: https</div>
+          <div class="code-line empty"></div>
+          <div class="code-line"><span class="kw">namespace</span> <span class="ident">DynoFreeChat.Market</span>;</div>
+          <div class="code-line empty"></div>
+          <div class="code-line comment">// feed modules - select a struct to open its document</div>
+          <div class="code-line empty"></div>
+          <div class="market-hub-list" id="market-hub-list" role="list" aria-label="Market modules"></div>
+          <div class="code-line empty"></div>
+          <div class="code-line comment">// [ F7 ] quotes   [ F8 ] order book   [ F9 ] chart   [ F10 ] feed</div>
+        </div>
+      </div>
+
+      <div class="game-code-statusbar">
+        <span class="sb-item">Ln 1, Col 1</span>
+        <span class="sb-item">Spaces: 4</span>
+        <span class="sb-item">UTF-8</span>
+        <span class="sb-item">CRLF</span>
+        <span class="sb-spacer"></span>
+        <span class="sb-item market-state--live" id="market-hub-state">Ready</span>
+      </div>
+    </section>
+
+    <!-- Volume profile document: traded volume per price, rendered as C++ -->
+    <section class="doc-panel market-panel game-code-mode" id="depth-view" hidden>
+      <div class="game-code-toolbar">
+        <span class="game-code-file"
+          ><span class="game-code-icon" id="depth-code-icon" aria-hidden="true"></span>OrderBook.cpp</span
+        >
+        <span class="game-code-chip" id="depth-chip">// profile: 0 levels</span>
+        <span class="game-code-spacer"></span>
+        <label class="market-add" for="depth-symbol">
+          <span class="market-add-label">symbol =</span>
+          <input
+            id="depth-symbol"
+            class="code-literal market-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="12"
+            placeholder="FPT"
+            aria-label="Mã cần xem volume profile"
+          />
+        </label>
+        <button type="button" class="game-code-tool-btn" id="depth-open-btn" title="Tải profile (Enter)">Load</button>
+      </div>
+
+      <div class="game-code-body">
+        <div class="game-code-gutter" id="depth-gutter" aria-hidden="true"></div>
+        <div class="game-code-content" id="depth-content"></div>
+      </div>
+
+      <div class="game-code-statusbar">
+        <span class="sb-item">Ln 1, Col 1</span>
+        <span class="sb-item">UTF-8</span>
+        <span class="sb-item">CRLF</span>
+        <span class="sb-item" id="depth-clock">--:--:--</span>
+        <span class="sb-spacer"></span>
+        <span class="sb-item market-state--live" id="depth-state">Loading</span>
+      </div>
+    </section>
+
+    <!-- Candle chart document: a Canvas chart dressed as a C# file -->
+    <section class="doc-panel market-panel" id="chart-view" hidden>
+      <div class="game-code-toolbar">
+        <span class="game-code-file"
+          ><span class="game-code-icon" id="chart-code-icon" aria-hidden="true"></span>Chart.cs</span
+        >
+        <span class="game-code-chip">// canvas 2d | no dependency</span>
+        <span class="game-code-spacer"></span>
+        <div class="market-chips" id="chart-resolutions" role="group" aria-label="Khung thời gian">
+          <button type="button" class="game-code-tool-btn" data-resolution="1">1m</button>
+          <button type="button" class="game-code-tool-btn" data-resolution="5">5m</button>
+          <button type="button" class="game-code-tool-btn" data-resolution="15">15m</button>
+          <button type="button" class="game-code-tool-btn is-active" data-resolution="1D">1D</button>
+        </div>
+        <label class="market-add" for="chart-symbol">
+          <span class="market-add-label">symbol =</span>
+          <input
+            id="chart-symbol"
+            class="code-literal market-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="12"
+            placeholder="FPT"
+            aria-label="Mã cần xem biểu đồ"
+          />
+        </label>
+        <button type="button" class="game-code-tool-btn" id="chart-open-btn" title="Vẽ biểu đồ (Enter)">Draw</button>
+      </div>
+
+      <div class="chart-canvas-wrap">
+        <canvas id="chart-canvas" aria-label="Biểu đồ nến"></canvas>
+      </div>
+
+      <div class="game-code-statusbar">
+        <span class="sb-item">Ln 1, Col 1</span>
+        <span class="sb-item">UTF-8</span>
+        <span class="sb-item">CRLF</span>
+        <span class="sb-item" id="chart-clock">--:--:--</span>
+        <span class="sb-spacer"></span>
+        <span class="sb-item market-state--live" id="chart-state">Loading</span>
+      </div>
+    </section>
+
+    <!-- Community feed document: FireAnt / F247 / VOZ posts as comment blocks -->
+    <section class="doc-panel market-panel game-code-mode" id="feed-view" hidden>
+      <div class="game-code-toolbar">
+        <span class="game-code-file"
+          ><span class="game-code-icon" id="feed-code-icon" aria-hidden="true"></span>Feed.cs</span
+        >
+        <span class="game-code-chip">// community | 60s refresh</span>
+        <span class="game-code-spacer"></span>
+        <div class="market-chips" id="feed-sources" role="group" aria-label="Nguồn cộng đồng">
+          <button type="button" class="game-code-tool-btn is-active" data-source="fireant">FireAnt</button>
+          <button type="button" class="game-code-tool-btn" data-source="f247">F247</button>
+          <button type="button" class="game-code-tool-btn" data-source="voz">VOZ</button>
+        </div>
+        <label class="market-add" for="feed-symbol">
+          <span class="market-add-label">symbol =</span>
+          <input
+            id="feed-symbol"
+            class="code-literal market-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="12"
+            placeholder="FPT"
+            aria-label="Mã cần đọc tin"
+          />
+        </label>
+        <button type="button" class="game-code-tool-btn" id="feed-open-btn" title="Tải bài viết (Enter)">Load</button>
+      </div>
+
+      <div class="game-code-body">
+        <div class="game-code-content" id="feed-content"></div>
+      </div>
+
+      <div class="game-code-statusbar">
+        <span class="sb-item" id="feed-page">page 1/1</span>
+        <button type="button" class="game-code-tool-btn" id="feed-prev">Prev</button>
+        <button type="button" class="game-code-tool-btn" id="feed-next">Next</button>
+        <span class="sb-item" id="feed-clock">--:--:--</span>
+        <span class="sb-spacer"></span>
+        <span class="sb-item market-state--live" id="feed-state">Loading</span>
+      </div>
+    </section>
+
     <!-- Chat Rooms document: the picker and the create form live in a tab -->
     <section class="doc-panel rooms-panel" id="rooms-view" hidden>
       <div class="doc-panel-head">

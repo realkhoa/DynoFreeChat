@@ -92,3 +92,36 @@
 .market-panel .market-state--offline {
   color: #f48771;
 }
+
+/* Toolbar chip rows: resolution and community source pickers. */
+.market-chips {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.market-chips .game-code-tool-btn {
+  height: 18px;
+  padding: 0 6px;
+  font-size: 10.5px;
+}
+
+/* Chart document: the canvas fills whatever the editor area gives it. */
+.chart-canvas-wrap {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  background: #181818;
+  overflow: hidden;
+}
+
+#chart-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Market module registry rows reuse the games hub look. */
+.market-hub-list {
+  display: block;
+}

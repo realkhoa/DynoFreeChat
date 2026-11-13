@@ -7,7 +7,14 @@
  * board can tell a dead upstream from a bad payload.
  */
 
-import type { IndicesPayload, QuotesPayload } from "@dyno/shared/market";
+import type {
+  ChartPayload,
+  DepthPayload,
+  FeedPayload,
+  FeedSource,
+  IndicesPayload,
+  QuotesPayload,
+} from "@dyno/shared/market";
 
 /** Error raised by the market client; `code` is stable enough to branch on. */
 export class MarketApiError extends Error {
@@ -67,6 +74,69 @@ export class MarketApi {
     return {
       indices: body.indices as IndicesPayload["indices"],
       stale: body.stale === true,
+      ts: typeof body.ts === "number" ? body.ts : Date.now(),
+    };
+  }
+
+  /**
+   * @brief Fetches a candle series.
+   * @param symbol Ticker or index.
+   * @param resolution One of `1`, `5`, `15`, `1D`.
+   * @return The normalized candle series.
+   * @throws {MarketApiError} When the proxy fails or the body is malformed.
+   */
+  async chart(symbol: string, resolution: string): Promise<ChartPayload> {
+    const body = await this.get(
+      `/api/market/chart?symbol=${encodeURIComponent(symbol)}&resolution=${encodeURIComponent(resolution)}`,
+    );
+
+    if (!Array.isArray(body.candles)) throw new MarketApiError("BAD_PAYLOAD", "candle series is malformed");
+    return {
+      symbol: typeof body.symbol === "string" ? body.symbol : symbol,
+      resolution: typeof body.resolution === "string" ? body.resolution : resolution,
+      candles: body.candles as ChartPayload["candles"],
+      ts: typeof body.ts === "number" ? body.ts : Date.now(),
+    };
+  }
+
+  /**
+   * @brief Fetches the volume profile of one symbol.
+   * @param symbol Ticker or index.
+   * @return The normalized profile.
+   * @throws {MarketApiError} When the proxy fails or the body is malformed.
+   */
+  async depth(symbol: string): Promise<DepthPayload> {
+    const body = await this.get(`/api/market/depth?symbol=${encodeURIComponent(symbol)}`);
+
+    if (!Array.isArray(body.levels)) throw new MarketApiError("BAD_PAYLOAD", "volume profile is malformed");
+    return {
+      symbol: typeof body.symbol === "string" ? body.symbol : symbol,
+      totalVolume: typeof body.totalVolume === "number" ? body.totalVolume : 0,
+      levels: body.levels as DepthPayload["levels"],
+      ts: typeof body.ts === "number" ? body.ts : Date.now(),
+    };
+  }
+
+  /**
+   * @brief Fetches one community feed page.
+   * @param symbol Ticker to read about.
+   * @param source Community source.
+   * @param page VOZ page, or `0` for the latest.
+   * @return The normalized feed page.
+   * @throws {MarketApiError} When the proxy fails or the body is malformed.
+   */
+  async feed(symbol: string, source: FeedSource, page = 0): Promise<FeedPayload> {
+    const body = await this.get(
+      `/api/market/feed?symbol=${encodeURIComponent(symbol)}&source=${encodeURIComponent(source)}&page=${page}`,
+    );
+
+    if (!Array.isArray(body.items)) throw new MarketApiError("BAD_PAYLOAD", "community feed is malformed");
+    return {
+      symbol: typeof body.symbol === "string" ? body.symbol : symbol,
+      source: typeof body.source === "string" ? body.source : source,
+      items: body.items as FeedPayload["items"],
+      page: typeof body.page === "number" ? body.page : 1,
+      maxPage: typeof body.maxPage === "number" ? body.maxPage : 1,
       ts: typeof body.ts === "number" ? body.ts : Date.now(),
     };
   }

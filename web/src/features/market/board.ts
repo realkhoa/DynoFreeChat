@@ -7,13 +7,25 @@
  * screen, and persists the watchlist in the browser.
  */
 
-import type { IndicesPayload, MarketIndex, Quote, QuotesPayload } from "@dyno/shared/market";
+import type {
+  ChartPayload,
+  DepthPayload,
+  FeedPayload,
+  FeedSource,
+  IndicesPayload,
+  MarketIndex,
+  Quote,
+  QuotesPayload,
+} from "@dyno/shared/market";
 import { formatTime } from "@/shared/lib/format";
 
-/** The subset of the market client the board needs; tests provide a fake. */
+/** The subset of the market client the documents need; tests provide a fake. */
 export interface MarketClient {
   quotes(symbols: string[]): Promise<QuotesPayload>;
   indices(): Promise<IndicesPayload>;
+  chart(symbol: string, resolution: string): Promise<ChartPayload>;
+  depth(symbol: string): Promise<DepthPayload>;
+  feed(symbol: string, source: FeedSource, page?: number): Promise<FeedPayload>;
 }
 
 /** Browser storage key holding the ticker list. */

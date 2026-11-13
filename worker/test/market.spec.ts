@@ -1,12 +1,22 @@
 import { SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { IndicesPayload, QuotesPayload } from "@dyno/shared/market";
+import type {
+  ChartPayload,
+  DepthPayload,
+  FeedPayload,
+  IndicesPayload,
+  QuotesPayload,
+} from "@dyno/shared/market";
 import {
+  CHART_TTL_MS,
   INDEX_TTL_MS,
   QUOTE_TTL_MS,
   RATE_CAPACITY,
   RATE_WINDOW_MS,
   STALE_TTL_MS,
+  chartResponse,
+  depthResponse,
+  feedResponse,
   indicesResponse,
   quotesResponse,
   resetMarketCache,
@@ -264,5 +274,212 @@ describe("market routes", () => {
       headers: { origin: "https://evil.example" },
     });
     expect(response.status).toBe(403);
+  });
+});
+
+/** One scripted upstream route for the router harness. */
+interface Route {
+  /** Substring of the request URL that selects this route. */
+  match: string;
+  /** Body returned: an object is JSON encoded, a string is returned as-is. */
+  body: unknown;
+  /** HTTP status, defaults to 200. */
+  status?: number;
+}
+
+interface RouterHarness {
+  deps: MarketDeps;
+  requests: Array<{ url: string; headers: Record<string, string> }>;
+  clock: { now: number };
+}
+
+/**
+ * @brief Builds market dependencies that answer by URL substring.
+ * @param routes Scripted upstream routes, first match wins.
+ * @return The harness.
+ */
+function makeRouter(routes: Route[]): RouterHarness {
+  const requests: Array<{ url: string; headers: Record<string, string> }> = [];
+  const clock = { now: 1_000_000 };
+
+  const deps: MarketDeps = {
+    now: () => clock.now,
+    cache: null,
+    fetch: async (input, init) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      requests.push({ url: input, headers });
+      const route = routes.find((candidate) => input.includes(candidate.match));
+      if (route === undefined) return new Response("not found", { status: 404 });
+      const body = typeof route.body === "string" ? route.body : JSON.stringify(route.body);
+      return new Response(body, { status: route.status ?? 200 });
+    },
+  };
+
+  return { deps, requests, clock };
+}
+
+/** Entrade-shaped OHLC payload: three one-minute candles. */
+const OHLC = {
+  t: [1_700_000_000, 1_700_000_060, 1_700_000_120],
+  o: [132.1, 132.4, 132.2],
+  h: [132.6, 132.7, 132.5],
+  l: [131.9, 132.1, 132.0],
+  c: [132.4, 132.2, 132.5],
+  v: [1200, 800, 400],
+};
+
+describe("chart proxy", () => {
+  it("normalizes the parallel arrays into candles with millisecond times", async () => {
+    const h = makeRouter([{ match: "ohlcs/stock", body: OHLC }]);
+    const body = (await (await chartResponse("fpt", "1D", h.deps)).json()) as ChartPayload;
+
+    expect(body.symbol).toBe("FPT");
+    expect(body.resolution).toBe("1D");
+    expect(body.candles).toHaveLength(3);
+    expect(body.candles[0]).toEqual({
+      time: 1_700_000_000_000,
+      open: 132.1,
+      high: 132.6,
+      low: 131.9,
+      close: 132.4,
+      volume: 1200,
+    });
+    expect(h.requests[0]?.url).toContain("symbol=FPT");
+    expect(h.requests[0]?.url).toContain("resolution=1D");
+  });
+
+  it("routes index tickers to the index endpoint", async () => {
+    const h = makeRouter([{ match: "ohlcs/index", body: OHLC }]);
+    await chartResponse("vnindex", null, h.deps);
+    expect(h.requests[0]?.url).toContain("ohlcs/index?symbol=VNINDEX");
+    expect(h.requests[0]?.url).toContain("resolution=1D");
+  });
+
+  it("400s a missing or invalid symbol", async () => {
+    const h = makeRouter([]);
+    expect((await chartResponse(null, null, h.deps)).status).toBe(400);
+    expect((await chartResponse("BAD!", null, h.deps)).status).toBe(400);
+  });
+
+  it("502s when the candle series is empty", async () => {
+    const h = makeRouter([{ match: "ohlcs", body: { t: [], o: [], h: [], l: [], c: [], v: [] } }]);
+    expect((await chartResponse("FPT", null, h.deps)).status).toBe(502);
+  });
+
+  it("caches a candle series for a minute", async () => {
+    const h = makeRouter([{ match: "ohlcs", body: OHLC }]);
+    await chartResponse("FPT", "1D", h.deps);
+    h.clock.now += CHART_TTL_MS - 1;
+    await chartResponse("FPT", "1D", h.deps);
+    expect(h.requests).toHaveLength(1);
+  });
+});
+
+describe("depth proxy", () => {
+  it("aggregates volume by price, heaviest price first", async () => {
+    const h = makeRouter([{ match: "ohlcs", body: OHLC }]);
+    const body = (await (await depthResponse("FPT", h.deps)).json()) as DepthPayload;
+
+    expect(body.symbol).toBe("FPT");
+    expect(body.totalVolume).toBe(2400);
+    expect(body.levels.map((level) => level.price)).toEqual([132.5, 132.4, 132.2]);
+    expect(body.levels[0]).toEqual({ price: 132.5, volume: 400, percent: 33.33 });
+    expect(body.levels[1]).toEqual({ price: 132.4, volume: 1200, percent: 100 });
+  });
+
+  it("502s when the profile has no levels", async () => {
+    const h = makeRouter([{ match: "ohlcs", body: { t: [], o: [], h: [], l: [], c: [], v: [] } }]);
+    expect((await depthResponse("FPT", h.deps)).status).toBe(502);
+  });
+});
+
+describe("feed proxy", () => {
+  it("loads FireAnt posts and the replies of the busiest threads", async () => {
+    const tokenHtml = `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({
+      props: { initialState: { auth: { accessToken: "tok-123" } } },
+    })}</script></html>`;
+    const posts = [
+      {
+        postID: 11,
+        title: "FPT sắp bứt phá",
+        content: "<p>Dòng tiền <b>vào</b></p>",
+        user: { name: "An" },
+        totalReplies: 2,
+        totalLikes: 7,
+        date: "2026-11-13T02:00:00Z",
+      },
+      { postID: 12, content: "Giữ tiếp", user: { name: "Bình" }, totalReplies: 0, totalLikes: 1 },
+    ];
+    const replies = [{ postID: 111, content: "Đồng ý", user: { name: "Chi" }, totalLikes: 2 }];
+
+    const h = makeRouter([
+      { match: "fireant.vn/ma-chung-khoan", body: tokenHtml },
+      { match: "/posts/11/replies", body: replies },
+      { match: "/symbols/FPT/posts", body: posts },
+    ]);
+
+    const body = (await (await feedResponse("FPT", "fireant", null, h.deps)).json()) as FeedPayload;
+    expect(body.source).toBe("fireant");
+    expect(body.items.map((item) => item.author)).toEqual(["An", "Bình", "Chi"]);
+    expect(body.items[0]?.text).toBe("FPT sắp bứt phá. Dòng tiền vào");
+    expect(body.items[2]?.text).toBe("↳ Đồng ý");
+    expect(h.requests[1]?.headers.authorization).toBe("Bearer tok-123");
+  });
+
+  it("loads the F247 search results", async () => {
+    const h = makeRouter([
+      {
+        match: "f247.com/search.json",
+        body: {
+          posts: [
+            {
+              id: 7,
+              username: "Trader",
+              blurb: "Nhận định HPG",
+              topic_id: 3,
+              like_count: 4,
+              created_at: "2026-11-12",
+            },
+          ],
+          topics: [{ id: 3, title: "Thép" }],
+        },
+      },
+    ]);
+
+    const body = (await (await feedResponse("HPG", "f247", null, h.deps)).json()) as FeedPayload;
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({ source: "F247", topic: "Thép", likes: 4 });
+  });
+
+  it("scrapes the VOZ thread with the streaming rewriter", async () => {
+    const html = `
+      <article data-author="VoZer A">
+        <div class="message-inner">
+          <div class="message-content"><div class="bbWrapper">Thị trường <b>hôm nay</b> xanh quá</div></div>
+          <time datetime="2026-11-13T03:04:05Z"></time>
+        </div>
+      </article>
+      <article data-author="VoZer B">
+        <div class="bbWrapper">Chốt lời <a href="#">HPG</a> thôi</div>
+      </article>`;
+    const h = makeRouter([{ match: "voz.vn/t/", body: html }]);
+
+    const body = (await (await feedResponse("HPG", "voz", "3", h.deps)).json()) as FeedPayload;
+    expect(body.page).toBe(3);
+    expect(body.items).toHaveLength(2);
+    expect(body.items[0]).toMatchObject({ author: "VoZer A", createdAt: "2026-11-13T03:04:05Z" });
+    expect(body.items[0]?.text).toBe("Thị trường hôm nay xanh quá");
+    expect(body.items[1]?.text).toBe("Chốt lời HPG thôi");
+    expect(h.requests[0]?.url).toContain("/page-3");
+  });
+
+  it("400s an unknown source", async () => {
+    const h = makeRouter([]);
+    expect((await feedResponse("FPT", "twitter", null, h.deps)).status).toBe(400);
+  });
+
+  it("502s when upstream returns nothing usable", async () => {
+    const h = makeRouter([{ match: "f247.com", body: { posts: [], topics: [] } }]);
+    expect((await feedResponse("FPT", "f247", null, h.deps)).status).toBe(502);
   });
 });

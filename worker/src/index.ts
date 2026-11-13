@@ -1,7 +1,15 @@
 import { sanitizeSlug } from "@dyno/shared/protocol";
 import type { Env } from "./env";
 import { json } from "./http";
-import { indicesResponse, marketDeps, quotesResponse, takeRate } from "./market";
+import {
+  chartResponse,
+  depthResponse,
+  feedResponse,
+  indicesResponse,
+  marketDeps,
+  quotesResponse,
+  takeRate,
+} from "./market";
 import { Registry } from "./registry";
 import { ChatRoom } from "./room";
 
@@ -66,8 +74,8 @@ export default {
     }
 
     // Market feed proxy. Read-only, rate limited per IP, and never cached by the
-    // browser: the Worker owns the three second freshness window.
-    if (url.pathname === "/api/market/quotes" || url.pathname === "/api/market/indices") {
+    // browser: the Worker owns the freshness windows.
+    if (url.pathname.startsWith("/api/market/")) {
       if (request.method !== "GET") return withCors(json({ code: "METHOD_NOT_ALLOWED" }, 405), origin);
 
       const ip = request.headers.get("cf-connecting-ip") ?? "local";
@@ -76,10 +84,36 @@ export default {
       }
 
       const deps = marketDeps();
-      const response =
-        url.pathname === "/api/market/quotes"
-          ? await quotesResponse(url.searchParams.get("symbols"), deps)
-          : await indicesResponse(deps);
+      let response: Response;
+      switch (url.pathname) {
+        case "/api/market/quotes":
+          response = await quotesResponse(url.searchParams.get("symbols"), deps);
+          break;
+        case "/api/market/indices":
+          response = await indicesResponse(deps);
+          break;
+        case "/api/market/chart":
+          response = await chartResponse(
+            url.searchParams.get("symbol"),
+            url.searchParams.get("resolution"),
+            deps,
+          );
+          break;
+        case "/api/market/depth":
+          response = await depthResponse(url.searchParams.get("symbol"), deps);
+          break;
+        case "/api/market/feed":
+          response = await feedResponse(
+            url.searchParams.get("symbol"),
+            url.searchParams.get("source"),
+            url.searchParams.get("page"),
+            deps,
+          );
+          break;
+        default:
+          response = json({ code: "NOT_FOUND" }, 404);
+      }
+
       const out = withCors(response, origin);
       out.headers.set("cache-control", "no-store");
       return out;

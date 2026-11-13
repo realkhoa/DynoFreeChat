@@ -49,6 +49,10 @@ import { GamesHubView } from "@/features/games/hub-view";
 import { GAMES, findGame } from "@/features/games/registry";
 import { MarketApi } from "@/features/market/api";
 import { MarketBoard } from "@/features/market/board";
+import { ChartView } from "@/features/market/chart-view";
+import { DepthView } from "@/features/market/depth-view";
+import { FeedView } from "@/features/market/feed-view";
+import { FEED_MODULES, MarketHubView } from "@/features/market/hub";
 import { Sidebar } from "@/features/chat/components/sidebar";
 import { StatusBar } from "@/shared/ui/statusbar";
 
@@ -127,6 +131,10 @@ const gamesListEl = byId<HTMLElement>("games-list");
 const gamesGutterEl = byId<HTMLElement>("games-gutter");
 const gamesChipEl = byId<HTMLElement>("games-code-chip");
 const marketViewEl = byId<HTMLElement>("market-view");
+const marketHubViewEl = byId<HTMLElement>("market-hub-view");
+const chartViewEl = byId<HTMLElement>("chart-view");
+const feedViewEl = byId<HTMLElement>("feed-view");
+const depthViewEl = byId<HTMLElement>("depth-view");
 const tabstripEl = byId<HTMLElement>("tabstrip");
 
 // ------------------------------------------------------------------ instances
@@ -274,6 +282,60 @@ const marketBoard = new MarketBoard(
     error: byId<HTMLElement>("market-error"),
   },
   { api: new MarketApi(apiBase), storage },
+);
+
+const marketClient = new MarketApi(apiBase);
+const marketHub = new MarketHubView(
+  {
+    list: byId<HTMLElement>("market-hub-list"),
+    gutter: byId<HTMLElement>("market-hub-gutter"),
+    chip: byId<HTMLElement>("market-hub-chip"),
+  },
+  { onOpen: (id) => MARKET_OPENERS[id]?.() },
+);
+marketHub.setModules(FEED_MODULES);
+
+const chartView = new ChartView(
+  {
+    panel: chartViewEl,
+    canvas: byId<HTMLCanvasElement>("chart-canvas"),
+    symbol: byId<HTMLInputElement>("chart-symbol"),
+    resolutions: byId<HTMLElement>("chart-resolutions"),
+    openButton: byId<HTMLButtonElement>("chart-open-btn"),
+    state: byId<HTMLElement>("chart-state"),
+    clock: byId<HTMLElement>("chart-clock"),
+  },
+  marketClient,
+);
+
+const feedView = new FeedView(
+  {
+    panel: feedViewEl,
+    symbol: byId<HTMLInputElement>("feed-symbol"),
+    openButton: byId<HTMLButtonElement>("feed-open-btn"),
+    sources: byId<HTMLElement>("feed-sources"),
+    list: byId<HTMLElement>("feed-content"),
+    state: byId<HTMLElement>("feed-state"),
+    clock: byId<HTMLElement>("feed-clock"),
+    pageLabel: byId<HTMLElement>("feed-page"),
+    prevButton: byId<HTMLButtonElement>("feed-prev"),
+    nextButton: byId<HTMLButtonElement>("feed-next"),
+  },
+  marketClient,
+);
+
+const depthView = new DepthView(
+  {
+    panel: depthViewEl,
+    content: byId<HTMLElement>("depth-content"),
+    gutter: byId<HTMLElement>("depth-gutter"),
+    symbol: byId<HTMLInputElement>("depth-symbol"),
+    openButton: byId<HTMLButtonElement>("depth-open-btn"),
+    chip: byId<HTMLElement>("depth-chip"),
+    state: byId<HTMLElement>("depth-state"),
+    clock: byId<HTMLElement>("depth-clock"),
+  },
+  marketClient,
 );
 
 const docTabs = new DocTabs(tabstripEl, editorEl, tabNew, {
@@ -700,12 +762,54 @@ function openGamesTab(): void {
 }
 
 /**
- * @brief Opens the market feed document.
+ * @brief Opens the market hub document (the registry of feed modules).
  */
 function openMarketTab(): void {
-  docTabs.open({ id: "market", label: "MarketFeed.cpp", panel: marketViewEl, icon: "chart" });
+  docTabs.open({ id: "market", label: "Market.cs", panel: marketHubViewEl, icon: "chart" });
+  marketHub.focusFirst();
+}
+
+/**
+ * @brief Opens the live quotes document.
+ */
+function openQuotesTab(): void {
+  docTabs.open({ id: "market-quotes", label: "MarketFeed.cpp", panel: marketViewEl, icon: "chart" });
   marketBoard.start();
 }
+
+/**
+ * @brief Opens the volume profile document.
+ */
+function openDepthTab(): void {
+  docTabs.open({ id: "market-depth", label: "OrderBook.cpp", panel: depthViewEl, icon: "chart" });
+  depthView.start();
+}
+
+/**
+ * @brief Opens the candle chart document.
+ */
+function openChartTab(): void {
+  docTabs.open({ id: "market-chart", label: "Chart.cs", panel: chartViewEl, icon: "chart" });
+  chartView.start();
+}
+
+/**
+ * @brief Opens the community feed document.
+ */
+function openFeedTab(): void {
+  docTabs.open({ id: "market-feed", label: "Feed.cs", panel: feedViewEl, icon: "chart" });
+  feedView.start();
+}
+
+/**
+ * @brief Open handler per market module id; metadata lives in features/market/hub.
+ */
+const MARKET_OPENERS: Record<string, () => void> = {
+  quotes: () => openQuotesTab(),
+  orderbook: () => openDepthTab(),
+  chart: () => openChartTab(),
+  feed: () => openFeedTab(),
+};
 
 /**
  * @brief Opens the Settings document.
@@ -1214,6 +1318,18 @@ function wire(): void {
     if (e.ctrlKey && e.key.toLowerCase() === "m") {
       e.preventDefault();
       openMarketTab();
+    } else if (!modalOpen && e.key === "F7") {
+      e.preventDefault();
+      openQuotesTab();
+    } else if (!modalOpen && e.key === "F8") {
+      e.preventDefault();
+      openDepthTab();
+    } else if (!modalOpen && e.key === "F9") {
+      e.preventDefault();
+      openChartTab();
+    } else if (!modalOpen && e.key === "F10") {
+      e.preventDefault();
+      openFeedTab();
     } else if (e.ctrlKey && e.key.toLowerCase() === "b") {
       e.preventDefault();
       if (tabGame.hidden) gameDialog.open();

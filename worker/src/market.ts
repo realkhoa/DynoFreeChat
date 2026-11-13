@@ -10,9 +10,25 @@
 
 import {
   INDEX_KEYS,
+  isIndexTicker,
+  makeFireAntReply,
+  makeVozItem,
+  parseChart,
+  parseDepthProfile,
+  parseF247Posts,
+  parseFeedSource,
+  parseFireAntPosts,
   parseIndices,
+  parseOneSymbol,
   parseQuotes,
+  parseResolution,
   parseSymbolList,
+  type Candle,
+  type ChartPayload,
+  type DepthLevel,
+  type DepthPayload,
+  type FeedItem,
+  type FeedPayload,
   type IndicesPayload,
   type MarketIndex,
   type Quote,
@@ -22,6 +38,35 @@ import { json } from "./http";
 
 /** VPS datafeed origin: quotes, index levels and three-tier depth. */
 export const VPS_BASE = "https://bgapidatafeed.vps.com.vn";
+
+/** Entrade chart API: candles for every listed ticker and index. */
+export const ENTARDE_BASE = "https://services.entrade.com.vn/chart-api/v2/ohlcs";
+
+/** FireAnt REST API: community posts and replies per symbol. */
+export const FIREANT_BASE = "https://restv2.fireant.vn";
+
+/** FireAnt symbol page, scraped only to refresh the anonymous bearer token. */
+export const FIREANT_PAGE = "https://fireant.vn/ma-chung-khoan";
+
+/** F247 public search endpoint. */
+export const F247_SEARCH = "https://f247.com/search.json?q=";
+
+/** VOZ thread the club posts in; page 99999 redirects to the last page. */
+export const VOZ_THREAD =
+  "https://voz.vn/t/clb-chung-khoan-chia-se-kinh-nghiem-dau-tu-chung-khoan-2026-ky-nguyen-vuon-minh.1188208/page-";
+
+/** Public anonymous FireAnt token, used when the page scrape fails. */
+const FIREANT_ANON_TOKEN =
+  "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IkdYdExONzViZlZQakdvNERWdjV4QkRITHpnSSIsImtpZCI6IkdYdExONzViZlZQakdvNERWdjV4QkRITHpnSSJ9.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmZpcmVhbnQudm4iLCJhdWQiOiJodHRwczovL2FjY291bnRzLmZpcmVhbnQudm4vcmVzb3VyY2VzIiwiZXhwIjoxODg5NjIyNTMwLCJuYmYiOjE1ODk2MjI1MzAsImNsaWVudF9pZCI6ImZpcmVhbnQudHJhZGVzdGF0aW9uIiwic2NvcGUiOlsiYWNhZGVteS1yZWFkIiwiYWNhZGVteS13cml0ZSIsImFjY291bnRzLXJlYWQiLCJhY2NvdW50cy13cml0ZSIsImJsb2ctcmVhZCIsImNvbXBhbmllcy1yZWFkIiwiZmluYW5jZS1yZWFkIiwiaW5kaXZpZHVhbHMtcmVhZCIsImludmVzdG9wZWRpYS1yZWFkIiwib3JkZXJzLXJlYWQiLCJvcmRlcnMtd3JpdGUiLCJwb3N0cy1yZWFkIiwicG9zdHMtd3JpdGUiLCJzZWFyY2giLCJzeW1ib2xzLXJlYWQiLCJ1c2VyLWRhdGEtcmVhZCIsInVzZXItZGF0YS13cml0ZSIsInVzZXJzLXJlYWQiXSwianRpIjoiMjYxYTZhYWQ2MTQ5Njk1ZmJiYzcwODM5MjM0Njc1NWQifQ.dA5-HVzWv-BRfEiAd24uNBiBxASO-PAyWeWESovZm_hj4aXMAZA1-bWNZeXt88dqogo18AwpDQ-h6gefLPdZSFrG5umC1dVWaeYvUnGm62g4XS29fj6p01dhKNNqrsu5KrhnhdnKYVv9VdmbmqDfWR8wDgglk5cJFqalzq6dJWJInFQEPmUs9BW_Zs8tQDn-i5r4tYq2U8vCdqptXoM7YgPllXaPVDeccC9QNu2Xlp9WUvoROzoQXg25lFub1IYkTrM66gJ6t9fJRZToewCt495WNEOQFa_rwLCZ1QwzvL0iYkONHS_jZ0BOhBCdW9dWSawD6iF1SIQaFROvMDH1rg";
+
+/** Freshness window for a candle series. */
+export const CHART_TTL_MS = 60_000;
+
+/** Freshness window for a volume profile. */
+export const DEPTH_TTL_MS = 60_000;
+
+/** Freshness window for the community feed; upstream is slow and chatty. */
+export const FEED_TTL_MS = 60_000;
 
 /** Freshness window for a quote batch, matching the upstream update rate. */
 export const QUOTE_TTL_MS = 3000;
@@ -177,26 +222,47 @@ async function load<T>(
 }
 
 /**
- * @brief Fetches one upstream URL as JSON, bounded by the timeout.
+ * @brief Fetches one upstream URL, bounded by the timeout.
  * @param deps Runtime dependencies.
  * @param url Absolute upstream URL.
- * @return The decoded JSON value.
+ * @param headers Extra request headers.
+ * @return The upstream response.
  * @throws When the request fails, times out, or the response is not ok.
  */
-async function getJson(deps: MarketDeps, url: string): Promise<unknown> {
+async function request(
+  deps: MarketDeps,
+  url: string,
+  headers: Record<string, string> = {},
+): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
 
   try {
     const response = await deps.fetch(url, {
-      headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
+      headers: { "user-agent": "Mozilla/5.0", accept: "application/json", ...headers },
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`upstream ${response.status}`);
-    return await response.json();
+    return response;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * @brief Fetches one upstream URL as JSON.
+ * @param deps Runtime dependencies.
+ * @param url Absolute upstream URL.
+ * @param headers Extra request headers.
+ * @return The decoded JSON value.
+ * @throws When the request fails or the body is not JSON.
+ */
+async function getJson(
+  deps: MarketDeps,
+  url: string,
+  headers: Record<string, string> = {},
+): Promise<unknown> {
+  return (await request(deps, url, headers)).json();
 }
 
 /**
@@ -276,4 +342,311 @@ export function takeRate(ip: string, now: number): boolean {
 
   current.count += 1;
   return current.count <= RATE_CAPACITY;
+}
+
+/** FireAnt bearer token cached for the isolate, plus its expiry. */
+let fireantToken: { value: string; expiresAt: number } = { value: "", expiresAt: 0 };
+
+/**
+ * @brief Reads the `__NEXT_DATA__` blob embedded in a FireAnt page.
+ * @param html Page HTML.
+ * @return The decoded JSON blob, or `null` when the page has none.
+ */
+function nextData(html: string): unknown {
+  const marker = html.indexOf("__NEXT_DATA__");
+  if (marker === -1) return null;
+
+  const open = html.indexOf(">", marker);
+  const close = html.indexOf("</script>", open);
+  if (open === -1 || close === -1) return null;
+
+  try {
+    return JSON.parse(html.slice(open + 1, close));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @brief Resolves the FireAnt bearer token, refreshing it from the page when stale.
+ * @details The public token rotates; the page carries the current one inside its
+ * Next.js state. When the scrape fails the last known public token is used so
+ * the feed still answers.
+ * @param deps Runtime dependencies.
+ * @return The bearer token, possibly empty.
+ */
+async function getFireantToken(deps: MarketDeps): Promise<string> {
+  const now = deps.now();
+  if (fireantToken.value.length > 0 && fireantToken.expiresAt > now) return fireantToken.value;
+
+  try {
+    const html = await (await request(deps, `${FIREANT_PAGE}/FPT`, { accept: "text/html" })).text();
+    const data = nextData(html) as { props?: { initialState?: { auth?: { accessToken?: unknown } } } } | null;
+    const token = data?.props?.initialState?.auth?.accessToken;
+    if (typeof token === "string" && token.length > 0) {
+      fireantToken = { value: token, expiresAt: now + 2 * 60 * 60 * 1000 };
+      return token;
+    }
+  } catch {
+    // Fall back to the public token below.
+  }
+
+  fireantToken = { value: FIREANT_ANON_TOKEN, expiresAt: now + 5 * 60 * 1000 };
+  return FIREANT_ANON_TOKEN;
+}
+
+/** One community page: its items and the pagination it came from. */
+interface FeedPage {
+  items: FeedItem[];
+  page: number;
+  maxPage: number;
+}
+
+/**
+ * @brief Loads the FireAnt posts and the replies of the busiest threads.
+ * @param symbol Symbol to load.
+ * @param deps Runtime dependencies.
+ * @return The page, or `null` when upstream returned nothing usable.
+ */
+async function loadFireAnt(symbol: string, deps: MarketDeps): Promise<FeedPage | null> {
+  const token = await getFireantToken(deps);
+  const headers = { authorization: `Bearer ${token}` };
+  const raw = await getJson(
+    deps,
+    `${FIREANT_BASE}/symbols/${encodeURIComponent(symbol)}/posts?offset=0&limit=40`,
+    headers,
+  );
+  const items = parseFireAntPosts(raw, symbol);
+  if (!Array.isArray(raw)) return items.length > 0 ? { items, page: 1, maxPage: 1 } : null;
+
+  const threads = raw
+    .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
+    .filter((entry) => Number(entry.totalReplies ?? 0) > 0 && entry.postID !== undefined)
+    .slice(0, 4);
+
+  for (const thread of threads) {
+    const postId = String(thread.postID);
+    try {
+      const replies = await getJson(
+        deps,
+        `${FIREANT_BASE}/posts/${encodeURIComponent(postId)}/replies`,
+        headers,
+      );
+      if (!Array.isArray(replies)) continue;
+      for (const reply of replies.slice(0, 5)) {
+        const item = makeFireAntReply(reply, symbol, postId);
+        if (item !== null) items.push(item);
+      }
+    } catch {
+      // One dead thread must not empty the whole feed.
+    }
+  }
+
+  return items.length > 0 ? { items: items.slice(0, 80), page: 1, maxPage: 1 } : null;
+}
+
+/**
+ * @brief Loads the F247 search results for one symbol.
+ * @param symbol Symbol to load.
+ * @param deps Runtime dependencies.
+ * @return The page, or `null` when upstream returned nothing usable.
+ */
+async function loadF247(symbol: string, deps: MarketDeps): Promise<FeedPage | null> {
+  const raw = await getJson(deps, `${F247_SEARCH}${encodeURIComponent(symbol)}`);
+  const items = parseF247Posts(raw);
+  return items.length > 0 ? { items, page: 1, maxPage: 1 } : null;
+}
+
+/**
+ * @brief Scrapes one VOZ thread page with the streaming HTML rewriter.
+ * @param response Upstream page response; its body is consumed.
+ * @param page Page number the articles are attributed to.
+ * @return The feed items found on the page.
+ */
+async function scrapeVoz(response: Response, page: number): Promise<FeedItem[]> {
+  interface Draft {
+    author: string;
+    createdAt: string;
+    text: string;
+  }
+
+  const drafts: Draft[] = [];
+  let current: Draft | null = null;
+
+  const rewriter = new HTMLRewriter()
+    .on("article[data-author]", {
+      element(element) {
+        const draft: Draft = {
+          author: element.getAttribute("data-author") ?? "",
+          createdAt: "",
+          text: "",
+        };
+        current = draft;
+        element.onEndTag(() => {
+          drafts.push(draft);
+        });
+      },
+    })
+    .on("article[data-author] .bbWrapper", {
+      text(text) {
+        if (current !== null) current.text += text.text;
+      },
+    })
+    .on("article[data-author] time[datetime]", {
+      element(element) {
+        if (current !== null) current.createdAt = element.getAttribute("datetime") ?? "";
+      },
+    });
+
+  await rewriter.transform(response).text();
+
+  const items: FeedItem[] = [];
+  drafts.forEach((draft, index) => {
+    const item = makeVozItem(draft.author, draft.text, draft.createdAt, index, page);
+    if (item !== null) items.push(item);
+  });
+  return items;
+}
+
+/**
+ * @brief Loads one VOZ thread page.
+ * @details Page `0` asks for the last page; the redirect target tells us which
+ * page that was, so pagination can continue backwards from there.
+ * @param page Requested page, or `0` for the latest.
+ * @param deps Runtime dependencies.
+ * @return The page, or `null` when the scrape found nothing.
+ */
+async function loadVoz(page: number, deps: MarketDeps): Promise<FeedPage | null> {
+  const requested = page > 0 ? page : 99999;
+  const response = await request(deps, `${VOZ_THREAD}${requested}`, { accept: "text/html" });
+  const match = /page-(\d+)/.exec(response.url);
+  const actualPage = match !== null ? Number(match[1]) : page > 0 ? page : 1;
+  const items = await scrapeVoz(response, actualPage);
+  return items.length > 0 ? { items, page: actualPage, maxPage: actualPage } : null;
+}
+
+/**
+ * @brief Answers `GET /api/market/chart`.
+ * @param rawSymbol Raw `symbol` query value.
+ * @param rawResolution Raw `resolution` query value.
+ * @param deps Runtime dependencies.
+ * @return A JSON response with a {@link ChartPayload}, or an error code.
+ */
+export async function chartResponse(
+  rawSymbol: string | null,
+  rawResolution: string | null,
+  deps: MarketDeps,
+): Promise<Response> {
+  const symbol = parseOneSymbol(rawSymbol);
+  if (symbol === null) return json({ code: "BAD_SYMBOL" }, 400);
+
+  const resolution = parseResolution(rawResolution);
+  const kind = isIndexTicker(symbol) ? "index" : "stock";
+  const nowSeconds = Math.floor(deps.now() / 1000);
+  const windowSeconds = resolution === "1D" ? 86_400 * 180 : 86_400 * 5;
+  const key = `https://market.cache/chart/${kind}/${symbol}/${resolution}`;
+
+  const loaded = await load<Candle[]>(
+    deps,
+    key,
+    CHART_TTL_MS,
+    async () => {
+      const payload = await getJson(
+        deps,
+        `${ENTARDE_BASE}/${kind}?symbol=${symbol}&from=${nowSeconds - windowSeconds}&to=${nowSeconds}&resolution=${resolution}`,
+      );
+      const chart = parseChart(payload, symbol, resolution);
+      return chart.candles.length > 0 ? chart.candles : null;
+    },
+    (candles) => candles.length > 0,
+  );
+
+  if (loaded === null) return json({ code: "UPSTREAM_UNAVAILABLE" }, 502);
+
+  const body: ChartPayload = { symbol, resolution, candles: loaded.payload, ts: deps.now() };
+  return json(body);
+}
+
+/**
+ * @brief Answers `GET /api/market/depth` with a volume profile.
+ * @param rawSymbol Raw `symbol` query value.
+ * @param deps Runtime dependencies.
+ * @return A JSON response with a {@link DepthPayload}, or an error code.
+ */
+export async function depthResponse(rawSymbol: string | null, deps: MarketDeps): Promise<Response> {
+  const symbol = parseOneSymbol(rawSymbol);
+  if (symbol === null) return json({ code: "BAD_SYMBOL" }, 400);
+
+  const kind = isIndexTicker(symbol) ? "index" : "stock";
+  const nowSeconds = Math.floor(deps.now() / 1000);
+  const key = `https://market.cache/depth/${kind}/${symbol}`;
+
+  const loaded = await load<DepthLevel[]>(
+    deps,
+    key,
+    DEPTH_TTL_MS,
+    async () => {
+      const payload = await getJson(
+        deps,
+        `${ENTARDE_BASE}/${kind}?symbol=${symbol}&from=${nowSeconds - 86_400}&to=${nowSeconds}&resolution=1`,
+      );
+      const depth = parseDepthProfile(payload, symbol);
+      return depth.levels.length > 0 ? depth.levels : null;
+    },
+    (levels) => levels.length > 0,
+  );
+
+  if (loaded === null) return json({ code: "UPSTREAM_UNAVAILABLE" }, 502);
+
+  const totalVolume = loaded.payload.reduce((sum, level) => sum + level.volume, 0);
+  const body: DepthPayload = { symbol, totalVolume, levels: loaded.payload, ts: deps.now() };
+  return json(body);
+}
+
+/**
+ * @brief Answers `GET /api/market/feed`.
+ * @param rawSymbol Raw `symbol` query value.
+ * @param rawSource Raw `source` query value.
+ * @param rawPage Raw `page` query value.
+ * @param deps Runtime dependencies.
+ * @return A JSON response with a {@link FeedPayload}, or an error code.
+ */
+export async function feedResponse(
+  rawSymbol: string | null,
+  rawSource: string | null,
+  rawPage: string | null,
+  deps: MarketDeps,
+): Promise<Response> {
+  const symbol = parseOneSymbol(rawSymbol);
+  if (symbol === null) return json({ code: "BAD_SYMBOL" }, 400);
+
+  const source = parseFeedSource(rawSource);
+  if (source === null) return json({ code: "BAD_SOURCE" }, 400);
+
+  const requestedPage = rawPage !== null && /^\d{1,5}$/.test(rawPage.trim()) ? Number(rawPage.trim()) : 0;
+  const key = `https://market.cache/feed/${source}/${symbol}/${requestedPage}`;
+
+  const loaded = await load<FeedPage>(
+    deps,
+    key,
+    FEED_TTL_MS,
+    async () => {
+      if (source === "fireant") return loadFireAnt(symbol, deps);
+      if (source === "f247") return loadF247(symbol, deps);
+      return loadVoz(requestedPage, deps);
+    },
+    (page) => page.items.length > 0,
+  );
+
+  if (loaded === null) return json({ code: "UPSTREAM_UNAVAILABLE" }, 502);
+
+  const body: FeedPayload = {
+    symbol,
+    source,
+    items: loaded.payload.items,
+    page: loaded.payload.page,
+    maxPage: loaded.payload.maxPage,
+    ts: deps.now(),
+  };
+  return json(body);
 }
