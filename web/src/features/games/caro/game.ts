@@ -8,16 +8,16 @@
 
 import type { GameMount } from "../mount";
 
-/** Board edge length: Caro is played on 15x15 here. */
+/** @brief Board edge length: Caro is played on 15x15 here. */
 export const CARO_SIZE = 15;
 
-/** Marks on the board: the player is X, the AI is O. */
+/** @brief Marks on the board: the player is X, the AI is O. */
 export type CaroMark = "X" | "O";
 
-/** Row-major 15x15 board; null marks an empty cell. */
+/** @brief Row-major 15x15 board; null marks an empty cell. */
 export type CaroBoard = readonly (CaroMark | null)[];
 
-/** How many marks in a line win the game. */
+/** @brief How many marks in a line win the game. */
 export const WIN_LENGTH = 5;
 
 /** Score of a line that already wins; also used as the immediate-win sentinel. */
@@ -31,7 +31,7 @@ const DIRECTIONS: readonly (readonly [number, number])[] = [
   [1, -1],
 ];
 
-/** A completed five-in-a-row and the cells that form it. */
+/** @brief A completed five-in-a-row and the cells that form it. */
 export interface CaroWin {
   /** Mark that owns the line. */
   mark: CaroMark;
@@ -300,7 +300,8 @@ export function createCaroGame(): GameMount {
   function cellLabel(index: number): string {
     const mark = at(board, index);
     const state = mark === null ? "empty" : mark;
-    return `${caroSquareName(index)}, ${state}`;
+    const suffix = index === lastMove ? ", last move" : "";
+    return `${caroSquareName(index)}, ${state}${suffix}`;
   }
 
   /** @brief Status line derived from the current state. */
@@ -325,8 +326,8 @@ export function createCaroGame(): GameMount {
       cell.textContent = mark ?? "";
       cell.className = "stage-cell";
       if (mark !== null) cell.classList.add(mark === "X" ? "is-primary" : "is-warn");
-      if (win !== null && win.line.includes(i)) cell.classList.add("is-good");
-      cell.style.boxShadow = i === lastMove ? "inset 0 0 0 1px #dcdcaa" : "";
+      // The winning line and the most recent stone both use the shared highlight.
+      if ((win !== null && win.line.includes(i)) || i === lastMove) cell.classList.add("is-good");
       cell.setAttribute("aria-label", cellLabel(i));
     }
     if (movesEl !== null) movesEl.textContent = `moves: ${history.length}`;

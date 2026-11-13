@@ -12,7 +12,7 @@ import type { GameMount } from "../mount";
 export type Color = "w" | "b";
 /** @brief Piece kind, lowercase. */
 export type PieceType = "p" | "n" | "b" | "r" | "q" | "k";
-/** @brief Board cell: a coloured piece like "wQ", or null. */
+/** @brief Board cell: a coloured piece like "wQ" or null. */
 export type PieceCode = `${Color}${"P" | "N" | "B" | "R" | "Q" | "K"}`;
 /** @brief 64 cells, index 0 = a8, index 63 = h1. */
 export type Board = (PieceCode | null)[];
@@ -21,11 +21,8 @@ export type Board = (PieceCode | null)[];
 export interface Move {
   from: number;
   to: number;
-  /** Moving piece kind. */
   piece: PieceType;
-  /** Captured piece kind, when the move captures. */
   capture?: PieceType;
-  /** Promotion target, when a pawn reaches the last rank. */
   promo?: PieceType;
   /** Castling side, when the king castles. */
   castle?: "k" | "q";
@@ -45,8 +42,10 @@ export interface Position {
   fullmove: number;
 }
 
+/** Row/column delta. */
+type Step = readonly [number, number];
 const FILES = "abcdefgh";
-const KNIGHT_STEPS: readonly (readonly [number, number])[] = [
+const KNIGHT_STEPS: readonly Step[] = [
   [-2, -1],
   [-2, 1],
   [-1, -2],
@@ -56,7 +55,7 @@ const KNIGHT_STEPS: readonly (readonly [number, number])[] = [
   [2, -1],
   [2, 1],
 ];
-const KING_STEPS: readonly (readonly [number, number])[] = [
+const KING_STEPS: readonly Step[] = [
   [-1, -1],
   [-1, 0],
   [-1, 1],
@@ -66,19 +65,19 @@ const KING_STEPS: readonly (readonly [number, number])[] = [
   [1, 0],
   [1, 1],
 ];
-const ROOK_STEPS: readonly (readonly [number, number])[] = [
+const ROOK_STEPS: readonly Step[] = [
   [-1, 0],
   [1, 0],
   [0, -1],
   [0, 1],
 ];
-const BISHOP_STEPS: readonly (readonly [number, number])[] = [
+const BISHOP_STEPS: readonly Step[] = [
   [-1, -1],
   [-1, 1],
   [1, -1],
   [1, 1],
 ];
-const QUEEN_STEPS: readonly (readonly [number, number])[] = [...ROOK_STEPS, ...BISHOP_STEPS];
+const QUEEN_STEPS: readonly Step[] = [...ROOK_STEPS, ...BISHOP_STEPS];
 const PIECE_VALUE: Readonly<Record<PieceType, number>> = {
   p: 100,
   n: 320,
@@ -111,9 +110,14 @@ const PST_TEXT: Readonly<Record<PieceType, string>> = {
 };
 
 /** Decoded piece-square tables, indexed by board square for White. */
-const PST = Object.fromEntries(
-  Object.entries(PST_TEXT).map(([kind, text]) => [kind, text.split(",").map(Number)]),
-) as unknown as Readonly<Record<PieceType, readonly number[]>>;
+const PST: Readonly<Record<PieceType, readonly number[]>> = {
+  p: PST_TEXT.p.split(",").map(Number),
+  n: PST_TEXT.n.split(",").map(Number),
+  b: PST_TEXT.b.split(",").map(Number),
+  r: PST_TEXT.r.split(",").map(Number),
+  q: PST_TEXT.q.split(",").map(Number),
+  k: PST_TEXT.k.split(",").map(Number),
+};
 
 /** Score that dominates any material evaluation. */
 const MATE_SCORE = 100_000;
@@ -162,14 +166,7 @@ export function squareName(index: number): string {
   return `${FILES.charAt(index % 8)}${8 - Math.floor(index / 8)}`;
 }
 
-/**
- * @brief Builds a move, attaching the capture when there is one.
- * @param from Source square.
- * @param to Destination square.
- * @param piece Moving piece kind.
- * @param capture Captured piece kind or null.
- * @return The move.
- */
+/** Builds a move, attaching the capture when there is one. */
 function makeMove(from: number, to: number, piece: PieceType, capture: PieceType | null): Move {
   const move: Move = { from, to, piece };
   if (capture !== null) move.capture = capture;
@@ -196,28 +193,16 @@ export function createInitialPosition(): Position {
 }
 
 /**
- * @brief Creates a position with no pieces, for tests and fixtures.
+ * @brief Creates a piece-less position for tests and fixtures.
  * @param turn Side to move.
- * @return An empty position without castling rights.
+ * @return Empty position without castling rights.
  */
 export function createEmptyPosition(turn: Color = "w"): Position {
-  return {
-    board: Array<PieceCode | null>(64).fill(null),
-    turn,
-    castling: "",
-    ep: null,
-    halfmove: 0,
-    fullmove: 1,
-  };
+  const board: Board = Array<PieceCode | null>(64).fill(null);
+  return { board, turn, castling: "", ep: null, halfmove: 0, fullmove: 1 };
 }
 
-/**
- * @brief Tests whether a square is attacked by one colour.
- * @param board Board to scan.
- * @param target Square index.
- * @param byColor Attacking colour.
- * @return True when a piece of that colour attacks the square.
- */
+/** Tests whether a square is attacked by one colour. */
 function attacked(board: Board, target: number, byColor: Color): boolean {
   const row = Math.floor(target / 8);
   const col = target % 8;
@@ -277,14 +262,13 @@ function pawnTargets(from: number, to: number, capture: PieceType | null, promoR
   return (["q", "r", "b", "n"] as const).map((promo) => ({ ...base, promo }));
 }
 
-/** Candidate pawn moves from one square, including en passant and promotions. */
+/** Candidate pawn moves including double push, en passant and promotions. */
 function pawnMoves(position: Position, from: number, color: Color, row: number, col: number): Move[] {
   const moves: Move[] = [];
   const dir = color === "w" ? -1 : 1;
   const startRow = color === "w" ? 6 : 1;
   const promoRow = color === "w" ? 0 : 7;
   const oneRow = row + dir;
-
   if (onBoard(oneRow, col) && boardAt(position.board, indexAt(oneRow, col)) === null) {
     moves.push(...pawnTargets(from, indexAt(oneRow, col), null, promoRow));
     const twoRow = row + 2 * dir;
@@ -318,27 +302,12 @@ function castleMoves(position: Position, from: number, color: Color): Move[] {
     return piece !== null && colorOf(piece) === color && typeOf(piece) === "r";
   };
   const moves: Move[] = [];
-  if (
-    rights.includes(color === "w" ? "K" : "k") &&
-    empty(5) &&
-    empty(6) &&
-    rookAt(7) &&
-    safe(4) &&
-    safe(5) &&
-    safe(6)
-  ) {
+  const kingSide = rights.includes(color === "w" ? "K" : "k");
+  const queenSide = rights.includes(color === "w" ? "Q" : "q");
+  if (kingSide && empty(5) && empty(6) && rookAt(7) && safe(4) && safe(5) && safe(6)) {
     moves.push({ from, to: indexAt(homeRow, 6), piece: "k", castle: "k" });
   }
-  if (
-    rights.includes(color === "w" ? "Q" : "q") &&
-    empty(1) &&
-    empty(2) &&
-    empty(3) &&
-    rookAt(0) &&
-    safe(4) &&
-    safe(3) &&
-    safe(2)
-  ) {
+  if (queenSide && empty(1) && empty(2) && empty(3) && rookAt(0) && safe(4) && safe(3) && safe(2)) {
     moves.push({ from, to: indexAt(homeRow, 2), piece: "k", castle: "q" });
   }
   return moves;
@@ -477,15 +446,6 @@ export function isCheckmate(position: Position): boolean {
   return allLegalMoves(position).length === 0 && isInCheck(position, position.turn);
 }
 
-/**
- * @brief Tests whether the side to move is stalemated.
- * @param position Position to test.
- * @return True when not in check and without legal moves.
- */
-export function isStalemate(position: Position): boolean {
-  return allLegalMoves(position).length === 0 && !isInCheck(position, position.turn);
-}
-
 /** Static evaluation in centipawns from White's point of view. */
 function evaluate(position: Position): number {
   let score = 0;
@@ -511,7 +471,7 @@ function orderMoves(moves: readonly Move[]): Move[] {
   return [...moves].sort((a, b) => score(b) - score(a));
 }
 
-/** Negamax with alpha-beta pruning, mate scores preferring faster mates. */
+/** Negamax with alpha-beta pruning; mate scores prefer faster mates. */
 function negamax(position: Position, depth: number, alpha: number, beta: number, ply: number): number {
   if (depth === 0) {
     if (isInCheck(position, position.turn) && allLegalMoves(position).length === 0) {
@@ -557,24 +517,6 @@ export function bestMove(position: Position, depth = 3): Move | null {
 }
 
 /**
- * @brief Lists the legal moves of one piece kind that reach a square, used for
- * SAN disambiguation.
- * @param position Position to read.
- * @param kind Piece kind.
- * @param to Destination square.
- * @return Matching moves.
- */
-function movesTo(position: Position, kind: PieceType, to: number): Move[] {
-  const moves: Move[] = [];
-  for (let i = 0; i < 64; i++) {
-    const piece = boardAt(position.board, i);
-    if (piece === null || colorOf(piece) !== position.turn || typeOf(piece) !== kind) continue;
-    for (const move of legalMoves(position, i)) if (move.to === to) moves.push(move);
-  }
-  return moves;
-}
-
-/**
  * @brief Formats a move in standard algebraic notation (SAN).
  * @param position Position before the move.
  * @param move Move to describe.
@@ -592,7 +534,14 @@ export function moveToAlgebraic(position: Position, move: Move): string {
     if (move.promo !== undefined) text += `=${move.promo.toUpperCase()}`;
   } else {
     text += kind.toUpperCase();
-    const rivals = movesTo(position, kind, move.to).filter((other) => other.from !== move.from);
+    const rivals: Move[] = [];
+    for (let i = 0; i < 64; i++) {
+      const other = boardAt(position.board, i);
+      if (other === null || colorOf(other) !== position.turn || typeOf(other) !== kind) continue;
+      for (const candidate of legalMoves(position, i)) {
+        if (candidate.to === move.to && candidate.from !== move.from) rivals.push(candidate);
+      }
+    }
     if (rivals.length > 0) {
       const sameFile = rivals.some((other) => other.from % 8 === move.from % 8);
       const sameRank = rivals.some((other) => Math.floor(other.from / 8) === Math.floor(move.from / 8));
@@ -608,7 +557,6 @@ export function moveToAlgebraic(position: Position, move: Move): string {
   return text;
 }
 
-/** Unicode glyphs for each piece code. */
 const GLYPHS: Readonly<Record<PieceCode, string>> = {
   wK: "♔",
   wQ: "♕",
@@ -623,8 +571,6 @@ const GLYPHS: Readonly<Record<PieceCode, string>> = {
   bN: "♞",
   bP: "♟",
 };
-
-/** Readable piece names for status messages. */
 const PIECE_NAMES: Readonly<Record<PieceType, string>> = {
   p: "pawn",
   n: "knight",
@@ -639,14 +585,6 @@ const AI_DEPTH = 3;
 
 /** Game result, or null while the game is still running. */
 type Outcome = "win" | "lose" | "draw";
-
-/** DOM references rebuilt on every mount. */
-interface Refs {
-  hud: HTMLElement;
-  promo: HTMLElement;
-  board: HTMLElement;
-  status: HTMLElement;
-}
 
 /** Formats the SAN history as numbered move pairs, keeping the tail. */
 function formatMoves(san: readonly string[]): string {
@@ -676,7 +614,7 @@ export function createChessGame(): GameMount {
   let thinking = false;
   let note = "";
   let timer: number | null = null;
-  let refs: Refs | null = null;
+  let refs: { hud: HTMLElement; promo: HTMLElement; board: HTMLElement; status: HTMLElement } | null = null;
 
   function clearTimer(): void {
     if (timer !== null) {
@@ -684,7 +622,6 @@ export function createChessGame(): GameMount {
       timer = null;
     }
   }
-
   function button(text: string, onClick: () => void): HTMLButtonElement {
     const el = document.createElement("button");
     el.type = "button";
@@ -693,17 +630,14 @@ export function createChessGame(): GameMount {
     el.addEventListener("click", onClick);
     return el;
   }
-
   function label(text: string): HTMLElement {
     const el = document.createElement("span");
     el.textContent = text;
     return el;
   }
-
   function checkSuffix(): string {
     return isInCheck(position, position.turn) ? " Check." : "";
   }
-
   function statusText(): string {
     if (over === "win") return "Checkmate — you win. Press Restart for a new game.";
     if (over === "lose") return "Checkmate — the AI wins. Undo or Restart.";
@@ -762,7 +696,6 @@ export function createChessGame(): GameMount {
 
   function onCellClick(index: number): void {
     if (over !== null || thinking || promotion !== null || position.turn !== "w") return;
-
     const piece = boardAt(position.board, index);
     const candidates = selectedMoves.filter((move) => move.to === index);
     if (selected !== null && candidates.length > 0) {
@@ -778,7 +711,6 @@ export function createChessGame(): GameMount {
       }
       return;
     }
-
     if (piece !== null && colorOf(piece) === "w") {
       selected = index;
       selectedMoves = legalMoves(position, index);
@@ -837,7 +769,6 @@ export function createChessGame(): GameMount {
     grid.className = "stage-board";
     grid.style.gridTemplateColumns = "repeat(8, 44px)";
     const targets = new Set(selectedMoves.map((move) => move.to));
-
     for (let index = 0; index < 64; index++) {
       const piece = boardAt(position.board, index);
       const isTarget = targets.has(index);
@@ -862,8 +793,7 @@ export function createChessGame(): GameMount {
         piece === null
           ? "empty"
           : `${colorOf(piece) === "w" ? "white" : "black"} ${PIECE_NAMES[typeOf(piece)]}`;
-      const suffix = isTarget ? ", legal move" : "";
-      cell.setAttribute("aria-label", `${squareName(index)}, ${content}${suffix}`);
+      cell.setAttribute("aria-label", `${squareName(index)}, ${content}${isTarget ? ", legal move" : ""}`);
       cell.addEventListener("click", () => onCellClick(index));
       grid.append(cell);
     }
@@ -873,14 +803,12 @@ export function createChessGame(): GameMount {
   function render(): void {
     const view = refs;
     if (view === null) return;
-
     const moves = formatMoves(pastSan);
     view.hud.replaceChildren(
       label(`turn: ${position.turn === "w" ? "white" : "black"}`),
       label(`plies: ${pastSan.length}`),
       label(moves === "" ? "moves: —" : `moves: ${moves}`),
     );
-
     view.promo.replaceChildren();
     if (promotion !== null) {
       for (const kind of ["q", "r", "b", "n"] as const) {
@@ -894,7 +822,6 @@ export function createChessGame(): GameMount {
         );
       }
     }
-
     view.board.replaceChildren(buildBoard(isInCheck(position, position.turn)));
     view.status.textContent = statusText();
   }
@@ -907,11 +834,9 @@ export function createChessGame(): GameMount {
     clearTimer();
     restart();
     host.replaceChildren();
-
     const bar = document.createElement("div");
     bar.className = "stage-bar";
     bar.append(button("Restart", restart), button("Undo", undo), label("you: white · ai: black"));
-
     const hud = document.createElement("div");
     hud.className = "stage-hud";
     const promo = document.createElement("div");
@@ -919,7 +844,6 @@ export function createChessGame(): GameMount {
     const board = document.createElement("div");
     const status = document.createElement("div");
     status.className = "stage-status";
-
     refs = { hud, promo, board, status };
     host.append(bar, hud, promo, status, board);
     render();

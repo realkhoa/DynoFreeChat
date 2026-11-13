@@ -8,10 +8,10 @@
 
 import type { GameMount } from "../mount";
 
-/** Board edge length. */
+/** @brief Board edge length. */
 export const BATTLESHIP_SIZE = 10;
 
-/** One board cell, 0-based from the top-left. */
+/** @brief One board cell, 0-based from the top-left. */
 export interface Coord {
   /** Row index, 0 = top. */
   row: number;
@@ -19,7 +19,7 @@ export interface Coord {
   col: number;
 }
 
-/** A placed ship. */
+/** @brief A placed ship. */
 export interface Ship {
   /** Display name, e.g. "Carrier". */
   name: string;
@@ -29,10 +29,10 @@ export interface Ship {
   cells: Coord[];
 }
 
-/** Shot marks: empty string means never fired at. */
+/** @brief Shot marks: empty string means never fired at. */
 export type ShotMark = "" | "miss" | "hit" | "sunk";
 
-/** Fleet plus the shots already fired at it. */
+/** @brief Fleet plus the shots already fired at it. */
 export interface BoardState {
   /** Ships on this board (empty for a board that is still being deployed). */
   ships: Ship[];
@@ -40,7 +40,7 @@ export interface BoardState {
   shots: ShotMark[];
 }
 
-/** Outcome of one shot. */
+/** @brief Outcome of one shot. */
 export interface FireResult {
   /** Board after the shot; the input board is never mutated. */
   state: BoardState;
@@ -52,7 +52,7 @@ export interface FireResult {
   won: boolean;
 }
 
-/** Ship name and length, in deployment order. */
+/** @brief Ship name and length, in deployment order. */
 export const FLEET_SPEC: readonly { name: string; length: number }[] = [
   { name: "Carrier", length: 5 },
   { name: "Battleship", length: 4 },
@@ -61,7 +61,7 @@ export const FLEET_SPEC: readonly { name: string; length: number }[] = [
   { name: "Destroyer", length: 2 },
 ];
 
-/** Ship orientation on the grid. */
+/** @brief Ship orientation on the grid. */
 export type Orientation = "h" | "v";
 
 /**

@@ -1,74 +1,62 @@
 /**
  * @file game.ts
  * @brief Gunny game module: a turn-based artillery duel against an AI on a canvas.
- * @details Terrain, ballistic motion, damage and the AI aim are pure functions so
- * the duel is testable without a canvas. The factory wires inputs, the flight
- * loop and the alternating turns.
+ * @details Terrain, ballistics, damage and the AI aim are pure functions, so the
+ * duel is testable without a canvas. The factory owns inputs, the flight loop,
+ * the alternating turns and the AI timer.
  */
 
 import type { GameMount } from "../mount";
 
 /** @brief Playfield width in logical pixels. */
 export const GUNNY_WIDTH = 900;
-
 /** @brief Playfield height in logical pixels. */
 export const GUNNY_HEIGHT = 360;
-
-/** @brief Downward acceleration applied to every shot, in pixels per second squared. */
+/** @brief Downward acceleration in pixels per second squared. */
 export const GUNNY_GRAVITY = 260;
-
-/** @brief Muzzle velocity in pixels per second for one unit of power. */
+/** @brief Muzzle speed in pixels per second for one unit of power. */
 export const GUNNY_SPEED_SCALE = 5;
-
-/** @brief Explosion radius in pixels; damage falls to zero at this distance. */
+/** @brief Explosion radius in pixels; damage reaches zero at this distance. */
 export const GUNNY_BLAST_RADIUS = 60;
-
 /** @brief Damage dealt by a shot landing exactly on the target. */
 export const GUNNY_MAX_DAMAGE = 45;
-
-/** @brief Highest terrain surface the generator will produce, in pixels from the top. */
+/** @brief Highest terrain surface the generator produces, in pixels from the top. */
 export const GUNNY_TERRAIN_MIN = 150;
-
-/** @brief Lowest terrain surface the generator will produce, in pixels from the top. */
+/** @brief Lowest terrain surface the generator produces, in pixels from the top. */
 export const GUNNY_TERRAIN_MAX = 330;
-
 /** @brief Horizontal position of the player tank. */
 export const GUNNY_PLAYER_X = 70;
-
 /** @brief Horizontal position of the AI tank. */
 export const GUNNY_ENEMY_X = 830;
-
 /** @brief Height of a tank hull in pixels. */
 export const GUNNY_TANK_HEIGHT = 18;
-
 /** @brief Width of a tank hull in pixels. */
 export const GUNNY_TANK_WIDTH = 34;
-
 /** @brief Fixed flight step in milliseconds (60 Hz). */
 export const GUNNY_STEP_MS = 1000 / 60;
 
+const ANGLE_MIN = 10;
+const ANGLE_MAX = 80;
+const POWER_MIN = 10;
+const POWER_MAX = 100;
 const AI_ANGLE_ERROR = 3.2;
 const AI_POWER_ERROR = 0.07;
-const AI_ANGLE_MIN = 10;
-const AI_ANGLE_MAX = 80;
-const AI_POWER_MIN = 10;
-const AI_POWER_MAX = 100;
 
 /** @brief Ballistic projectile advanced by {@link stepProjectile}. */
 export interface GunnyProjectile {
-  /** Horizontal position in logical pixels. */
+  /** Horizontal position in pixels. */
   x: number;
-  /** Vertical position in logical pixels. */
+  /** Vertical position in pixels. */
   y: number;
   /** Horizontal velocity in pixels per second. */
   vx: number;
-  /** Vertical velocity in pixels per second (positive points down). */
+  /** Vertical velocity in pixels per second, positive pointing down. */
   vy: number;
   /** Horizontal wind acceleration in pixels per second squared. */
   wind: number;
   /** Downward gravity in pixels per second squared. */
   gravity: number;
-  /** Time advanced by the next {@link stepProjectile} call. */
+  /** Time the next step will advance. */
   dtMs: number;
   /** False once the shot has resolved. */
   alive: boolean;
@@ -76,11 +64,11 @@ export interface GunnyProjectile {
 
 /** @brief What the AI knows about the shot it is about to take. */
 export interface GunnyAimState {
-  /** Horizontal gap to the target in pixels; always positive. */
+  /** Horizontal gap to the target in pixels. */
   distance: number;
-  /** Target surface minus shooter surface in pixels (positive means the target sits lower). */
+  /** Target surface minus shooter surface; positive means the target is lower. */
   heightDelta: number;
-  /** Wind acceleration in pixels per second squared; positive blows to the right. */
+  /** Wind acceleration; positive blows to the right. */
   wind: number;
   /** +1 when the shot flies right, -1 when it flies left. */
   direction: 1 | -1;
@@ -88,7 +76,7 @@ export interface GunnyAimState {
 
 /** @brief Gun settings the AI decided to use. */
 export interface GunnyAim {
-  /** Barrel angle in degrees above the horizon, 10 to 80. */
+  /** Barrel angle in degrees, 10 to 80. */
   angle: number;
   /** Power setting, 10 to 100. */
   power: number;
@@ -96,13 +84,13 @@ export interface GunnyAim {
 
 /** @brief One live duel. */
 interface GunnySession {
-  /** Surface height per terrain column, in pixels from the top. */
+  /** Surface height per terrain column. */
   terrain: number[];
   /** Player hit points, 0 to 100. */
   playerHp: number;
   /** AI hit points, 0 to 100. */
   enemyHp: number;
-  /** Wind acceleration for the current round. */
+  /** Wind acceleration for the round. */
   wind: number;
   /** Round counter, starting at 1. */
   round: number;
@@ -116,7 +104,7 @@ interface GunnySession {
   aiAngle: number;
   /** Shot in flight, if any. */
   projectile: GunnyProjectile | null;
-  /** Recent projectile positions, for the smoke trail. */
+  /** Recent projectile positions for the smoke trail. */
   trail: Array<{ x: number; y: number }>;
   /** Expanding explosion marker, if any. */
   boom: { x: number; y: number; alpha: number } | null;
@@ -128,31 +116,17 @@ interface GunnySession {
   over: boolean;
 }
 
-/**
- * @brief Clamps a number into an inclusive range.
- * @param value Input value.
- * @param min Lower bound.
- * @param max Upper bound.
- * @return The clamped value.
- */
+/** @brief Clamps a number into an inclusive range. */
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-/**
- * @brief Rounds a number to one decimal place.
- * @param value Input value.
- * @return The rounded value.
- */
+/** @brief Rounds a number to one decimal place. */
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-/**
- * @brief Deterministic 32-bit PRNG (mulberry32).
- * @param seed Starting state.
- * @return A function producing numbers in [0, 1).
- */
+/** @brief Deterministic 32-bit PRNG (mulberry32). */
 function createRng(seed: number): () => number {
   let state = seed >>> 0;
   return (): number => {
@@ -166,8 +140,8 @@ function createRng(seed: number): () => number {
 
 /**
  * @brief Builds a seeded, smooth terrain heightmap.
- * @details A bounded random walk keeps the seabed plausible: never a cliff, never
- * outside the playable band, and identical for identical seeds.
+ * @details A bounded random walk keeps the seabed plausible: no cliffs, nothing
+ * outside the playable band, identical output for identical seeds.
  * @param seed Starting state for the generator.
  * @param width Number of columns to generate.
  * @return Surface height in pixels from the top, one entry per column.
@@ -197,23 +171,13 @@ export function generateTerrain(seed: number, width: number): number[] {
 /**
  * @brief Samples the terrain surface under a horizontal position.
  * @param terrain Heightmap from {@link generateTerrain}.
- * @param x Horizontal position in logical pixels.
+ * @param x Horizontal position in pixels.
  * @return The surface height, or the canvas floor for an empty heightmap.
  */
 export function terrainHeightAt(terrain: readonly number[], x: number): number {
   if (terrain.length === 0) return GUNNY_HEIGHT;
   const index = Math.round(clamp(x, 0, terrain.length - 1));
   return terrain[index] ?? GUNNY_HEIGHT;
-}
-
-/**
- * @brief Vertical position of a tank's hull top.
- * @param terrain Heightmap from {@link generateTerrain}.
- * @param x Horizontal position of the tank.
- * @return Surface height minus the hull height.
- */
-function tankTop(terrain: readonly number[], x: number): number {
-  return terrainHeightAt(terrain, x) - GUNNY_TANK_HEIGHT;
 }
 
 /**
@@ -236,8 +200,8 @@ export function launchProjectile(
   facing: 1 | -1,
   dtMs: number = GUNNY_STEP_MS,
 ): GunnyProjectile {
-  const radians = (clamp(angleDeg, AI_ANGLE_MIN, AI_ANGLE_MAX) * Math.PI) / 180;
-  const speed = clamp(power, AI_POWER_MIN, AI_POWER_MAX) * GUNNY_SPEED_SCALE;
+  const radians = (clamp(angleDeg, ANGLE_MIN, ANGLE_MAX) * Math.PI) / 180;
+  const speed = clamp(power, POWER_MIN, POWER_MAX) * GUNNY_SPEED_SCALE;
   return {
     x,
     y,
@@ -252,10 +216,10 @@ export function launchProjectile(
 
 /**
  * @brief Advances a projectile one ballistic step.
- * @details Semi-implicit Euler: wind changes horizontal velocity, gravity changes
- * vertical velocity, then the position integrates both.
- * @param state Current projectile state.
- * @return A new projectile state; the same object when the shot already resolved.
+ * @details Semi-implicit Euler: wind and gravity change the velocities first,
+ * then the position integrates the new velocities.
+ * @param state Current projectile.
+ * @return A new projectile state; the same object once the shot resolved.
  */
 export function stepProjectile(state: GunnyProjectile): GunnyProjectile {
   if (!state.alive) return state;
@@ -297,32 +261,23 @@ export function aiAim(state: GunnyAimState, rng: () => number): GunnyAim {
   const angleError = (rng() - 0.5) * 2 * AI_ANGLE_ERROR;
   const powerError = 1 + (rng() - 0.5) * 2 * AI_POWER_ERROR;
   return {
-    angle: Math.round(clamp(baseAngle + angleError, AI_ANGLE_MIN, AI_ANGLE_MAX)),
-    power: Math.round(clamp(idealPower * powerError, AI_POWER_MIN, AI_POWER_MAX)),
+    angle: Math.round(clamp(baseAngle + angleError, ANGLE_MIN, ANGLE_MAX)),
+    power: Math.round(clamp(idealPower * powerError, POWER_MIN, POWER_MAX)),
   };
 }
 
-/**
- * @brief Describes the wind for the status line.
- * @param wind Wind acceleration in pixels per second squared.
- * @return A short human readable phrase.
- */
+/** @brief Describes the wind for the status line. */
 function describeWind(wind: number): string {
-  const strength = Math.abs(wind).toFixed(1);
   if (Math.abs(wind) < 0.2) return "calm";
-  return `${strength} to the ${wind > 0 ? "right" : "left"}`;
+  return `${Math.abs(wind).toFixed(1)} to the ${wind > 0 ? "right" : "left"}`;
 }
 
-/**
- * @brief Paints one tank, its barrel and its health bar.
- * @param ctx Two dimensional canvas context, already proven non-null.
- * @param x Hull centre in logical pixels.
- * @param y Hull top in logical pixels.
- * @param facing +1 when the barrel points right.
- * @param angle Barrel angle in degrees.
- * @param color Hull colour.
- * @param hp Remaining hit points, 0 to 100.
- */
+/** @brief Vertical position of a tank hull top at a horizontal position. */
+function tankTop(terrain: readonly number[], x: number): number {
+  return terrainHeightAt(terrain, x) - GUNNY_TANK_HEIGHT;
+}
+
+/** @brief Paints one tank, its barrel and its health bar. */
 function drawTank(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -351,11 +306,7 @@ function drawTank(
   ctx.fillRect(x - 22, y - 14, 44 * clamp(hp / 100, 0, 1), 5);
 }
 
-/**
- * @brief Paints the terrain, both tanks, the shot and the explosion.
- * @param ctx Two dimensional canvas context, already proven non-null.
- * @param session Duel to paint.
- */
+/** @brief Paints the terrain, both tanks, the shot and the explosion. */
 function drawScene(ctx: CanvasRenderingContext2D, session: GunnySession): void {
   ctx.fillStyle = "#0f1622";
   ctx.fillRect(0, 0, GUNNY_WIDTH, GUNNY_HEIGHT);
@@ -381,29 +332,13 @@ function drawScene(ctx: CanvasRenderingContext2D, session: GunnySession): void {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  drawTank(
-    ctx,
-    GUNNY_PLAYER_X,
-    tankTop(session.terrain, GUNNY_PLAYER_X),
-    1,
-    session.angle,
-    "#4ec9b0",
-    session.playerHp,
-  );
-  drawTank(
-    ctx,
-    GUNNY_ENEMY_X,
-    tankTop(session.terrain, GUNNY_ENEMY_X),
-    -1,
-    session.aiAngle,
-    "#f48771",
-    session.enemyHp,
-  );
+  const playerY = tankTop(session.terrain, GUNNY_PLAYER_X);
+  const enemyY = tankTop(session.terrain, GUNNY_ENEMY_X);
+  drawTank(ctx, GUNNY_PLAYER_X, playerY, 1, session.angle, "#4ec9b0", session.playerHp);
+  drawTank(ctx, GUNNY_ENEMY_X, enemyY, -1, session.aiAngle, "#f48771", session.enemyHp);
 
   ctx.fillStyle = "rgba(220, 220, 170, 0.35)";
-  for (const point of session.trail) {
-    ctx.fillRect(point.x - 1, point.y - 1, 2, 2);
-  }
+  for (const point of session.trail) ctx.fillRect(point.x - 1, point.y - 1, 2, 2);
 
   if (session.projectile !== null) {
     ctx.fillStyle = "#f0f0f0";
@@ -451,10 +386,9 @@ export function createGunnyGame(): GameMount {
   let roundValue: HTMLElement | null = null;
   let turnValue: HTMLElement | null = null;
   let statusLine: HTMLElement | null = null;
-  let angleInput: HTMLInputElement | null = null;
-  let powerInput: HTMLInputElement | null = null;
   let fireButton: HTMLButtonElement | null = null;
 
+  /** @brief Builds a duel: fresh terrain, full tanks and a random wind. */
   function createSession(source: () => number): GunnySession {
     const seed = Math.floor(source() * 0x7fffffff);
     const wind = round1(source() * 12 - 6);
@@ -521,8 +455,6 @@ export function createGunnyGame(): GameMount {
     roundValue = null;
     turnValue = null;
     statusLine = null;
-    angleInput = null;
-    powerInput = null;
     fireButton = null;
     host = null;
   };
@@ -567,8 +499,7 @@ export function createGunnyGame(): GameMount {
       span.textContent = text;
       return span;
     };
-
-    const makeNumberInput = (min: number, max: number, value: number, name: string): HTMLInputElement => {
+    const numberInput = (min: number, max: number, value: number, name: string): HTMLInputElement => {
       const input = document.createElement("input");
       input.type = "number";
       input.className = "stage-input";
@@ -580,11 +511,8 @@ export function createGunnyGame(): GameMount {
       input.style.width = "72px";
       return input;
     };
-
-    const angleField = makeNumberInput(10, 80, session.angle, "Barrel angle in degrees");
-    const powerField = makeNumberInput(10, 100, session.power, "Shot power");
-    angleInput = angleField;
-    powerInput = powerField;
+    const angleField = numberInput(ANGLE_MIN, ANGLE_MAX, session.angle, "Barrel angle in degrees");
+    const powerField = numberInput(POWER_MIN, POWER_MAX, session.power, "Shot power");
 
     const makeButton = (text: string, onClick: () => void): HTMLButtonElement => {
       const button = document.createElement("button");
@@ -594,9 +522,8 @@ export function createGunnyGame(): GameMount {
       addListener<MouseEvent>(button, "click", onClick);
       return button;
     };
-
-    const readNumber = (input: HTMLInputElement | null, fallback: number): number => {
-      const raw = input === null ? Number.NaN : Number(input.value);
+    const readNumber = (input: HTMLInputElement, fallback: number): number => {
+      const raw = Number(input.value);
       return Number.isFinite(raw) ? raw : fallback;
     };
 
@@ -652,7 +579,6 @@ export function createGunnyGame(): GameMount {
         syncHud();
         return;
       }
-
       if (session.shooter === "player") {
         session.turn = "ai";
         session.message = damage > 0 ? `Hit for ${damage}. The AI is aiming…` : "Missed. The AI is aiming…";
@@ -660,7 +586,6 @@ export function createGunnyGame(): GameMount {
         scheduleAi();
         return;
       }
-
       session.round += 1;
       session.wind = round1(rng() * 12 - 6);
       session.turn = "player";
@@ -694,8 +619,8 @@ export function createGunnyGame(): GameMount {
 
     const firePlayer = (): void => {
       if (session.over || session.turn !== "player" || session.projectile !== null) return;
-      session.angle = Math.round(clamp(readNumber(angleField, 45), 10, 80));
-      session.power = Math.round(clamp(readNumber(powerField, 60), 10, 100));
+      session.angle = Math.round(clamp(readNumber(angleField, 45), ANGLE_MIN, ANGLE_MAX));
+      session.power = Math.round(clamp(readNumber(powerField, 60), POWER_MIN, POWER_MAX));
       angleField.value = String(session.angle);
       powerField.value = String(session.power);
       session.shooter = "player";
@@ -733,7 +658,6 @@ export function createGunnyGame(): GameMount {
       fire,
       makeButton("New round", restart),
     );
-
     addListener<KeyboardEvent>(angleField, "keydown", (event) => {
       if (event.key !== "Enter") return;
       event.preventDefault();
@@ -748,7 +672,6 @@ export function createGunnyGame(): GameMount {
     const status = document.createElement("p");
     status.className = "stage-status";
     statusLine = status;
-
     host.append(hud, canvas, bar, status);
     syncHud();
 
@@ -757,7 +680,6 @@ export function createGunnyGame(): GameMount {
 
     let lastTime = 0;
     let accumulator = 0;
-
     const frame = (now: number): void => {
       if (!mounted) return;
       frameId = requestAnimationFrame(frame);

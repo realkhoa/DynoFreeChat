@@ -9,7 +9,6 @@ import {
   createInitialPosition,
   isCheckmate,
   isInCheck,
-  isStalemate,
   legalMoves,
   moveToAlgebraic,
   squareIndex,
@@ -207,7 +206,6 @@ describe("chess engine", () => {
     ]);
     expect(isInCheck(position, "b")).toBe(false);
     expect(isCheckmate(position)).toBe(false);
-    expect(isStalemate(position)).toBe(true);
     expect(allLegalMoves(position)).toHaveLength(0);
   });
 
@@ -242,7 +240,7 @@ describe("chess engine", () => {
     expect(allLegalMoves(position)).toHaveLength(0);
     expect(bestMove(position, 2)).toBeNull();
     expect(isCheckmate(position)).toBe(false);
-    expect(isStalemate(position)).toBe(true);
+    expect(isInCheck(position, "w")).toBe(false);
   });
 });
 

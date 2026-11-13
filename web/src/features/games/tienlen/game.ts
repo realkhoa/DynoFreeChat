@@ -11,7 +11,7 @@ import type { GameMount } from "../mount";
 /** @brief The four card suits, ordered spade < club < diamond < heart. */
 export type TienLenSuit = "spade" | "club" | "diamond" | "heart";
 
-/** @brief One card; rank 3..14 are 3..Ace and 15 is the 2 (he). */
+/** @brief One card; ranks 3..14 are 3..Ace and 15 is the 2 (he). */
 export interface TienLenCard {
   /** Stable identity, e.g. `heart-15`. */
   id: string;
@@ -34,7 +34,7 @@ export interface TienLenCombination {
   size: number;
   /** The cards, sorted from the highest rank down. */
   cards: TienLenCard[];
-  /** Suit of the highest card, for display and tie-break clarity. */
+  /** Suit of the highest card. */
   highSuit: TienLenSuit;
 }
 
@@ -103,32 +103,18 @@ const KIND_BY_SIZE: Record<number, TienLenKind | undefined> = {
 
 const SEAT_NAMES: Record<TienLenSeat, string> = { 0: "You", 1: "Bao", 2: "Linh" };
 
-/**
- * @brief Orders two cards ascending by rank, then by suit.
- * @param a First card.
- * @param b Second card.
- * @return Negative when `a` is weaker, positive when it is stronger.
- */
+/** @brief Orders two cards ascending by rank, then by suit. */
 function compareAscending(a: TienLenCard, b: TienLenCard): number {
   if (a.rank !== b.rank) return a.rank - b.rank;
   return SUIT_ORDER[a.suit] - SUIT_ORDER[b.suit];
 }
 
-/**
- * @brief Orders two cards descending by rank, then by suit.
- * @param a First card.
- * @param b Second card.
- * @return Negative when `a` is stronger, positive when it is weaker.
- */
+/** @brief Orders two cards descending by rank, then by suit. */
 function compareDescending(a: TienLenCard, b: TienLenCard): number {
   return compareAscending(b, a);
 }
 
-/**
- * @brief Groups a hand by rank, keeping every group ordered by suit.
- * @param hand Cards to group.
- * @return Rank to cards map, iterated in ascending rank order.
- */
+/** @brief Groups a hand by rank, iterating in ascending rank order. */
 function groupByRank(hand: readonly TienLenCard[]): Map<number, TienLenCard[]> {
   const groups = new Map<number, TienLenCard[]>();
   for (const card of [...hand].sort(compareAscending)) {
@@ -139,20 +125,12 @@ function groupByRank(hand: readonly TienLenCard[]): Map<number, TienLenCard[]> {
   return groups;
 }
 
-/**
- * @brief Builds the next seat in turn order.
- * @param seat Current seat.
- * @return The following seat, wrapping 2 back to 0.
- */
+/** @brief Next seat in turn order, wrapping 2 back to 0. */
 function nextSeat(seat: TienLenSeat): TienLenSeat {
   return seat === 0 ? 1 : seat === 1 ? 2 : 0;
 }
 
-/**
- * @brief Deterministic 32-bit PRNG (mulberry32).
- * @param seed Starting state.
- * @return A function producing numbers in [0, 1).
- */
+/** @brief Deterministic 32-bit PRNG (mulberry32). */
 function createRng(seed: number): () => number {
   let state = seed >>> 0;
   return (): number => {
@@ -164,31 +142,21 @@ function createRng(seed: number): () => number {
   };
 }
 
-/**
- * @brief Renders a card as its rank plus suit glyph, e.g. `10♥`.
- * @param card Card to render.
- * @return Short human readable label.
- */
+/** @brief Renders a card as its rank plus suit glyph, e.g. `10♥`. */
 function cardLabel(card: TienLenCard): string {
   return `${RANK_LABELS[card.rank] ?? "?"}${SUIT_GLYPHS[card.suit]}`;
 }
 
-/**
- * @brief Describes a combination for the status line.
- * @param combination Combination to describe, or null.
- * @return A phrase such as `pair of 7s` or `straight 5-9`.
- */
+/** @brief Describes a combination for the status line. */
 function describeCombination(combination: TienLenCombination | null): string {
   if (combination === null) return "nothing";
-  if (combination.kind === "single") return `single ${RANK_LABELS[combination.rank] ?? "?"}`;
-  if (combination.kind === "straight") {
-    const lowest = combination.cards[combination.cards.length - 1];
-    return `straight ${lowest === undefined ? "?" : RANK_LABELS[lowest.rank]}-${RANK_LABELS[combination.rank]}`;
-  }
   const label = RANK_LABELS[combination.rank] ?? "?";
+  if (combination.kind === "single") return `single ${label}`;
   if (combination.kind === "pair") return `pair of ${label}s`;
   if (combination.kind === "triple") return `triple of ${label}s`;
-  return `quad of ${label}s`;
+  if (combination.kind === "quad") return `quad of ${label}s`;
+  const lowest = combination.cards[combination.cards.length - 1];
+  return `straight ${lowest === undefined ? "?" : RANK_LABELS[lowest.rank]}-${label}`;
 }
 
 /**
@@ -273,19 +241,13 @@ export function classify(cards: readonly TienLenCard[]): TienLenCombination | nu
     if ((ascending[index] ?? 0) !== (ascending[index - 1] ?? 0) + 1) return null;
   }
   const topCard = sorted.find((card) => card.rank === top) ?? first;
-  return {
-    kind: "straight",
-    rank: top,
-    size: cards.length,
-    cards: sorted,
-    highSuit: topCard.suit,
-  };
+  return { kind: "straight", rank: top, size: cards.length, cards: sorted, highSuit: topCard.suit };
 }
 
 /**
  * @brief Decides whether a play beats the combination on the table.
- * @details A play must have the same shape and length as the previous one and a
- * strictly higher rank; the 2 is the highest single because it has rank 15.
+ * @details Same shape and length, strictly higher rank; the 2 is the highest
+ * single because it has rank 15.
  * @param candidate Cards the player wants to play.
  * @param previous Combination to beat, or null on a free lead.
  * @return True when the play is legal in this trick.
@@ -366,7 +328,6 @@ export function aiChoose(
     const lowest = sorted[0];
     return lowest === undefined ? null : [lowest];
   }
-
   const ranked = findPlays(sorted, previous)
     .map((cards) => ({ cards, combination: classify(cards) }))
     .filter(
@@ -439,7 +400,6 @@ export function applyPlay(
       lastAction: `${played} and is out of cards.`,
     };
   }
-
   return {
     ...state,
     hands,
@@ -474,17 +434,12 @@ export function applyPass(state: TienLenState, seat: TienLenSeat): TienLenState 
       lastAction: `${SEAT_NAMES[seat]} passed — new trick, ${SEAT_NAMES[leader]} leads.`,
     };
   }
-  return {
-    ...state,
-    passes,
-    turn: nextSeat(seat),
-    lastAction: `${SEAT_NAMES[seat]} passed.`,
-  };
+  return { ...state, passes, turn: nextSeat(seat), lastAction: `${SEAT_NAMES[seat]} passed.` };
 }
 
 /**
  * @brief Creates one Tiến Lên game instance.
- * @details State, the timers and the DOM references all live in this closure.
+ * @details State, timers and DOM references all live in this closure.
  * @return A mountable game module.
  */
 export function createTienLenGame(): GameMount {
@@ -627,7 +582,7 @@ export function createTienLenGame(): GameMount {
     }
     const combination = classify(cards);
     if (combination === null) {
-      message = `${describeCombination(combination)} is not a legal Tiến Lên combination.`;
+      message = "That is not a legal Tiến Lên combination.";
       render();
       return;
     }
@@ -718,7 +673,6 @@ export function createTienLenGame(): GameMount {
     const status = document.createElement("p");
     status.className = "stage-status";
     statusLine = status;
-
     target.replaceChildren(hud, rows, bar, status);
   };
 

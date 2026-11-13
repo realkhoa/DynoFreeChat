@@ -483,3 +483,25 @@ describe("feed proxy", () => {
     expect((await feedResponse("FPT", "f247", null, h.deps)).status).toBe(502);
   });
 });
+
+describe("VPS fallback", () => {
+  it("derives a quote from Entrade candles when the VPS datafeed is unreachable", async () => {
+    const h = makeRouter([{ match: "ohlcs/stock", body: OHLC }]);
+
+    const body = (await (await quotesResponse("FPT", h.deps)).json()) as QuotesPayload;
+    expect(body.quotes).toHaveLength(1);
+    expect(body.quotes[0]).toMatchObject({ symbol: "FPT", last: 132.5, ref: 132.2, change: 0.3 });
+    expect(body.quotes[0]?.bids).toEqual([]);
+    expect(body.quotes[0]?.ceiling).toBe(141.45);
+    expect(h.requests.some((request) => request.url.includes("bgapidatafeed"))).toBe(true);
+    expect(h.requests.some((request) => request.url.includes("services.entrade.com.vn"))).toBe(true);
+  });
+
+  it("derives the index basket from Entrade candles when the VPS datafeed is unreachable", async () => {
+    const h = makeRouter([{ match: "ohlcs/index", body: OHLC }]);
+
+    const body = (await (await indicesResponse(h.deps)).json()) as IndicesPayload;
+    expect(body.indices.map((index) => index.name)).toEqual(["VN-INDEX", "VN30", "HNX", "UPCOM"]);
+    expect(body.indices[0]).toMatchObject({ key: "10", value: 132.5, change: 0.3 });
+  });
+});

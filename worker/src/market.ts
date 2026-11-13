@@ -266,7 +266,113 @@ async function getJson(
 }
 
 /**
+ * @brief Rounds to two decimals.
+ * @param value Raw number.
+ * @return The value rounded to two decimals.
+ */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * @brief Builds one quote from an Entrade daily candle series.
+ * @details The VPS datafeed refuses Cloudflare egress in production, so quotes
+ * fall back to Entrade: the last close becomes the matched price, the previous
+ * close the reference, and the ceiling/floor are the ±7% band. Bid/ask depth is
+ * simply absent in this mode.
+ * @param symbol Ticker or index.
+ * @param deps Runtime dependencies.
+ * @return The derived quote, or `null` when the series is unusable.
+ */
+async function entradeQuote(symbol: string, deps: MarketDeps): Promise<Quote | null> {
+  const kind = isIndexTicker(symbol) ? "index" : "stock";
+  const nowSeconds = Math.floor(deps.now() / 1000);
+  const payload = await getJson(
+    deps,
+    `${ENTARDE_BASE}/${kind}?symbol=${symbol}&from=${nowSeconds - 86_400 * 30}&to=${nowSeconds}&resolution=1D`,
+  );
+  const candles = parseChart(payload, symbol, "1D").candles;
+  if (candles.length === 0) return null;
+
+  const last = candles[candles.length - 1]!;
+  const previous = candles[candles.length - 2];
+  const ref = previous?.close ?? last.close;
+  const change = round2(last.close - ref);
+
+  return {
+    symbol,
+    ref: round2(ref),
+    ceiling: round2(ref * 1.07),
+    floor: round2(ref * 0.93),
+    last: round2(last.close),
+    avg: 0,
+    high: round2(last.high),
+    low: round2(last.low),
+    change,
+    changePercent: ref > 0 ? round2((change / ref) * 100) : 0,
+    volume: last.volume,
+    foreignBuy: 0,
+    foreignRoom: 0,
+    side: "",
+    bids: [],
+    asks: [],
+  };
+}
+
+/**
+ * @brief Loads a quote batch from Entrade, one request per symbol.
+ * @param symbols Tickers to load.
+ * @param deps Runtime dependencies.
+ * @return The quotes that loaded; empty when every symbol failed.
+ */
+async function entradeQuotes(symbols: string[], deps: MarketDeps): Promise<Quote[]> {
+  const settled = await Promise.allSettled(symbols.map((symbol) => entradeQuote(symbol, deps)));
+  const quotes: Quote[] = [];
+  for (const result of settled) {
+    if (result.status === "fulfilled" && result.value !== null) quotes.push(result.value);
+  }
+  return quotes;
+}
+
+/** Entrade tickers for the index ids the UI shows. */
+const ENTARDE_INDEX_SYMBOLS: Record<string, string> = {
+  "10": "VNINDEX",
+  "11": "VN30",
+  "02": "HNX",
+  "03": "UPCOM",
+};
+
+/**
+ * @brief Loads the index basket from Entrade, one request per index.
+ * @param deps Runtime dependencies.
+ * @return The indices that loaded; empty when every index failed.
+ */
+async function entradeIndices(deps: MarketDeps): Promise<MarketIndex[]> {
+  const keys = [...INDEX_KEYS];
+  const settled = await Promise.allSettled(
+    keys.map((key) => entradeQuote(ENTARDE_INDEX_SYMBOLS[key] ?? key, deps)),
+  );
+
+  const indices: MarketIndex[] = [];
+  settled.forEach((result, index) => {
+    const key = keys[index];
+    if (key === undefined || result.status !== "fulfilled" || result.value === null) return;
+    indices.push({
+      key,
+      name: key === "10" ? "VN-INDEX" : key === "11" ? "VN30" : key === "02" ? "HNX" : "UPCOM",
+      value: result.value.last,
+      change: result.value.change,
+      changePercent: result.value.changePercent,
+    });
+  });
+  return indices;
+}
+
+/**
  * @brief Answers `GET /api/market/quotes`.
+ * @details Tries the VPS datafeed first (three-tier depth) and falls back to
+ * Entrade daily candles when VPS is unreachable, which is the case from
+ * Cloudflare's egress.
  * @param rawSymbols Raw `symbols` query value.
  * @param deps Runtime dependencies.
  * @return A JSON response with a {@link QuotesPayload}, or an error code.
@@ -281,9 +387,16 @@ export async function quotesResponse(rawSymbols: string | null, deps: MarketDeps
     key,
     QUOTE_TTL_MS,
     async () => {
-      const payload = await getJson(deps, `${VPS_BASE}/getliststockdata/${symbols.join(",")}`);
-      const quotes = parseQuotes(payload);
-      return quotes.length > 0 ? quotes : null;
+      try {
+        const payload = await getJson(deps, `${VPS_BASE}/getliststockdata/${symbols.join(",")}`);
+        const quotes = parseQuotes(payload);
+        if (quotes.length > 0) return quotes;
+      } catch {
+        // Fall through to the Entrade snapshot below.
+      }
+
+      const fallback = await entradeQuotes(symbols, deps);
+      return fallback.length > 0 ? fallback : null;
     },
     (quotes) => quotes.length > 0,
   );
@@ -306,9 +419,16 @@ export async function indicesResponse(deps: MarketDeps): Promise<Response> {
     key,
     INDEX_TTL_MS,
     async () => {
-      const payload = await getJson(deps, `${VPS_BASE}/getlistindexdetail/${INDEX_KEYS.join(",")}`);
-      const indices = parseIndices(payload);
-      return indices.length > 0 ? indices : null;
+      try {
+        const payload = await getJson(deps, `${VPS_BASE}/getlistindexdetail/${INDEX_KEYS.join(",")}`);
+        const indices = parseIndices(payload);
+        if (indices.length > 0) return indices;
+      } catch {
+        // Fall through to the Entrade snapshot below.
+      }
+
+      const fallback = await entradeIndices(deps);
+      return fallback.length > 0 ? fallback : null;
     },
     (indices) => indices.length > 0,
   );
