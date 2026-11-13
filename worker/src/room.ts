@@ -142,17 +142,18 @@ export class ChatRoom extends DurableObject<Env> {
       // Already gone; presence recalculation below is all that matters.
     }
     this.broadcastPresence(ws);
-    if (conn.authed) void this.cleanupIfEmpty(conn.slug);
+    if (conn.authed) void this.cleanupIfEmpty(conn.slug, ws);
   }
 
   /**
    * @brief Asks the registry to drop a disposable game room once it is empty.
    * @param slug Room slug of the socket that just left.
+   * @param ws Socket that is closing; it must not count as a remaining player.
    * @return Resolves when the registry answered; failures are ignored.
    */
-  private async cleanupIfEmpty(slug: string): Promise<void> {
+  private async cleanupIfEmpty(slug: string, ws: WebSocket): Promise<void> {
     if (slug.length === 0) return;
-    if (this.authedSockets().length > 0) return;
+    if (this.authedSockets(ws).length > 0) return;
 
     try {
       const stub = this.env.REGISTRY.get(this.env.REGISTRY.idFromName("registry"));
