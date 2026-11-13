@@ -50,6 +50,11 @@ export interface MatchDeps {
   games: readonly GameDefinition[];
   /** Called once the match is ready; opens the game stage with the bridge. */
   onMatch: (game: GameDefinition, bridge: OnlineBridge) => void;
+  /**
+   * Called when the lobby drops a match (leave or a new create/join attempt),
+   * so the shell can close the stale game document that belonged to it.
+   */
+  onLeave?: () => void;
   /** Fetch implementation; tests replace it. */
   fetchImpl?: typeof fetch;
   /** Match factory; tests replace it. */
@@ -64,6 +69,18 @@ export interface MatchDeps {
 
 /** Room code shape accepted by the Worker lobby. */
 const CODE_PATTERN = /^[a-z0-9][a-z0-9-]{1,23}$/;
+
+/**
+ * Readable status lines for the Worker's room-creation refusals. A raw code
+ * like `TRY_LATER` leaves the user with no idea what to do next.
+ */
+const CREATE_ERROR: Readonly<Record<string, string>> = {
+  ROOM_EXISTS: "mã phòng đã tồn tại",
+  TRY_LATER: "tạo phòng quá nhanh — thử lại sau ít phút",
+  TOO_MANY_ROOMS: "sảnh đã đầy phòng — thử lại sau",
+  BAD_SLUG: "mã phòng không hợp lệ (2-24 ký tự: a-z, 0-9, dấu -)",
+  TOO_LONG: "mật khẩu quá dài",
+};
 
 /**
  * @brief Owns the Match.cs document.
@@ -164,6 +181,10 @@ export class MatchView {
 
   /**
    * @brief Creates a room from the create block and joins it.
+   * @details Create is idempotent on purpose: the create box keeps its code, so
+   * clicking Create after a finished match would otherwise answer ROOM_EXISTS
+   * forever and leave the user stuck on "opponent left". A taken code opens that
+   * room instead.
    * @return Resolves when the socket started connecting.
    */
   async createAndJoin(): Promise<void> {
@@ -173,6 +194,7 @@ export class MatchView {
 
     this.busy = true;
     this.setStatus("// creating room…");
+    this.detachMatch();
     try {
       const code = this.createCode(game);
       const pass = this.elements.createPass.value.trim();
@@ -182,7 +204,14 @@ export class MatchView {
       const fetchImpl = this.deps.fetchImpl ?? ((input, init) => fetch(input, init));
       const result = await createRoom(this.deps.apiBase, body, fetchImpl);
       if (!result.ok) {
-        this.setStatus(`// cannot create room (${result.code})`);
+        if (result.code === "ROOM_EXISTS") {
+          this.elements.joinCode.value = code;
+          this.elements.joinPass.value = pass;
+          this.connect(game, code, pass);
+          this.setStatus(`// ${code} đã có sẵn — đang vào phòng`);
+          return;
+        }
+        this.setStatus(`// cannot create room: ${CREATE_ERROR[result.code] ?? result.code}`);
         return;
       }
 
@@ -207,6 +236,7 @@ export class MatchView {
       this.setStatus("// room code must be 2-24 chars: a-z, 0-9, dash");
       return;
     }
+    this.detachMatch();
     this.connect(game, code, this.elements.joinPass.value.trim());
   }
 
@@ -217,6 +247,22 @@ export class MatchView {
     this.elements.leaveButton.disabled = true;
     this.setStatus("// left the match");
     this.paintRoster([]);
+    this.deps.onLeave?.();
+  }
+
+  /**
+   * @brief Drops the previous match before a new create/join attempt.
+   * @details A match in the `peer-left` phase still holds a socket and keeps the
+   * old game document on screen; reusing it would keep reporting the old peer.
+   * @return void
+   */
+  private detachMatch(): void {
+    if (this.match === null) return;
+    this.match.leave();
+    this.match = null;
+    this.elements.leaveButton.disabled = true;
+    this.paintRoster([]);
+    this.deps.onLeave?.();
   }
 
   /**
@@ -297,7 +343,13 @@ export class MatchView {
   /** @brief Keeps the selected game in sync with the select box. */
   private syncSelection(): void {
     const id = this.elements.gameSelect.value;
-    this.selected = this.deps.games.find((entry) => entry.id === id) ?? null;
+    const next = this.deps.games.find((entry) => entry.id === id) ?? null;
+    // A create code typed for the previous game would point at a room of that
+    // game (or a stranger's room); switching games starts from a fresh code.
+    if (next !== null && this.selected !== null && next.id !== this.selected.id) {
+      this.elements.createCode.value = "";
+    }
+    this.selected = next;
   }
 
   /**

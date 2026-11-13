@@ -182,6 +182,8 @@ let filterTimer: number | null = null;
 let suppressDisconnectNotice = false;
 /** Latest presence snapshot, kept so a panel opened later paints immediately. */
 let presenceUsers: PresenceUser[] = [];
+/** Game id shown in the shared stage for a live online match, if any. */
+let onlineStageGame: string | null = null;
 
 const logView = new LogView(logEl, {
   onReply: (row) => composer.setReply({ id: row.id, nick: row.nick, text: makeExcerpt(row.text) }),
@@ -371,6 +373,7 @@ const matchView = new MatchView(
     color: () => identity.color,
     games: GAMES,
     onMatch: (game, bridge) => openGameStage(game.id, bridge),
+    onLeave: () => closeMatchStage(),
   },
 );
 
@@ -502,7 +505,8 @@ const docTabs = new DocTabs(tabstripEl, editorEl, tabNew, {
     syncPresence();
   },
   onDeactivate: () => syncPresence(),
-  onClose: () => {
+  onClose: (id) => {
+    if (id === "game-stage") onlineStageGame = null;
     selectRoomTab();
     syncPresence();
   },
@@ -1019,9 +1023,22 @@ function openGameStage(id: string, online?: OnlineBridge): void {
   const game = findGame(id);
   if (game === undefined) return;
 
+  onlineStageGame = online === undefined ? null : id;
   docTabs.open({ id: "game-stage", label: game.documentTitle, panel: gameStageViewEl, icon: game.icon });
   docTabs.setLabel("game-stage", game.documentTitle);
   gameStage.open(id, game.documentTitle, game.summary, online === undefined ? undefined : { online });
+}
+
+/**
+ * @brief Closes the game document that belonged to a finished or abandoned match.
+ * @details Otherwise the stale board keeps printing "opponent left" while the
+ * player is already setting up the next room.
+ * @return void
+ */
+function closeMatchStage(): void {
+  if (onlineStageGame === null) return;
+  onlineStageGame = null;
+  docTabs.close("game-stage");
 }
 
 /**

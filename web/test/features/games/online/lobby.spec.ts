@@ -75,6 +75,7 @@ interface Harness {
   view: MatchView;
   elements: MatchElements;
   onMatch: ReturnType<typeof vi.fn<(game: GameDefinition, bridge: OnlineBridge) => void>>;
+  onLeave: ReturnType<typeof vi.fn>;
   options: OnlineMatchOptions[];
   start: ReturnType<typeof vi.fn>;
   leave: ReturnType<typeof vi.fn>;
@@ -84,9 +85,10 @@ interface Harness {
 }
 
 /** Builds the lobby with fake fetch, room list and match. */
-function makeHarness(rooms: RoomRow[] = []): Harness {
+function makeHarness(rooms: RoomRow[] = [], games: GameDefinition[] = GAMES): Harness {
   const elements = makeElements();
   const onMatch = vi.fn<(game: GameDefinition, bridge: OnlineBridge) => void>();
+  const onLeave = vi.fn();
   const options: OnlineMatchOptions[] = [];
   const start = vi.fn();
   const leave = vi.fn();
@@ -99,8 +101,9 @@ function makeHarness(rooms: RoomRow[] = []): Harness {
     apiBase: "https://api.example",
     nick: () => "An",
     color: () => "hsl(200 60% 60%)",
-    games: GAMES,
+    games,
     onMatch,
+    onLeave,
     fetchImpl: fetchImpl as unknown as typeof fetch,
     listRooms: async (_apiBase, kind) => {
       listedKind = kind;
@@ -116,6 +119,7 @@ function makeHarness(rooms: RoomRow[] = []): Harness {
     view: new MatchView(elements, deps),
     elements,
     onMatch,
+    onLeave,
     options,
     start,
     leave,
@@ -156,6 +160,17 @@ describe("MatchView", () => {
     const options = [...h.elements.gameSelect.options].map((option) => option.value);
     expect(options).toEqual(["caro"]);
     expect(h.view.currentGame?.id).toBe("caro");
+  });
+
+  it("clears a create code typed for a different game", () => {
+    const local = makeHarness([], [GAMES[0]!, { ...GAMES[1]!, online: true }]);
+    local.view.start();
+    local.elements.createCode.value = "caro-leftover";
+    local.elements.gameSelect.value = "chess";
+    local.elements.gameSelect.dispatchEvent(new Event("change"));
+
+    expect(local.elements.createCode.value).toBe("");
+    expect(local.view.currentGame?.id).toBe("chess");
   });
 
   it("asks the Worker only for game rooms", async () => {
@@ -222,6 +237,43 @@ describe("MatchView", () => {
     expect(h.options[0]?.url).toContain(`r=${h.elements.joinCode.value}`);
   });
 
+  it("opens the existing room when the create code is already taken", async () => {
+    h.view.start();
+    h.elements.createCode.value = "caro-test";
+    h.fetchImpl.mockResolvedValueOnce(new Response(JSON.stringify({ code: "ROOM_EXISTS" }), { status: 409 }));
+
+    await h.view.createAndJoin();
+
+    expect(h.start).toHaveBeenCalledTimes(1);
+    expect(h.options[0]?.url).toContain("r=caro-test");
+    expect(h.elements.status.textContent).toContain("đã có sẵn");
+    expect(h.view.isConnected).toBe(true);
+  });
+
+  it("reports a readable refusal when creation is rate limited", async () => {
+    h.view.start();
+    h.fetchImpl.mockResolvedValueOnce(new Response(JSON.stringify({ code: "TRY_LATER" }), { status: 429 }));
+
+    await h.view.createAndJoin();
+
+    expect(h.start).not.toHaveBeenCalled();
+    expect(h.elements.status.textContent).toContain("thử lại");
+  });
+
+  it("drops the previous match before creating a new one", async () => {
+    h.view.start();
+    h.elements.joinCode.value = "caro-old";
+    h.view.join();
+    expect(h.start).toHaveBeenCalledTimes(1);
+
+    await h.view.createAndJoin();
+
+    expect(h.leave).toHaveBeenCalledTimes(1);
+    expect(h.onLeave).toHaveBeenCalledTimes(1);
+    expect(h.start).toHaveBeenCalledTimes(2);
+    expect(h.options[1]?.url).not.toContain("r=caro-old");
+  });
+
   it("joins by code and password without creating a room", () => {
     h.view.start();
     h.elements.joinCode.value = "friend-room";
@@ -269,6 +321,7 @@ describe("MatchView", () => {
     h.view.leave();
 
     expect(h.leave).toHaveBeenCalledTimes(1);
+    expect(h.onLeave).toHaveBeenCalledTimes(1);
     expect(h.view.isConnected).toBe(false);
     expect(h.elements.status.textContent).toContain("left the match");
   });
