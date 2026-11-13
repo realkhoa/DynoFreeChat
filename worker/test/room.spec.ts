@@ -91,6 +91,12 @@ describe("chat room", () => {
     const slug = await makeRoom("bí-mật");
     const client = await connect(slug);
 
+    // Listen before the fifth attempt: the server closes right after the final
+    // BAD_PASS frame, so attaching afterwards can miss the event entirely.
+    const closed = new Promise<CloseEvent>((resolve) => {
+      client.ws.addEventListener("close", (event) => resolve(event as CloseEvent));
+    });
+
     for (let attempt = 1; attempt <= 5; attempt += 1) {
       client.join("khoan", `sai-${attempt}`);
       const error = await client.waitError("BAD_PASS");
@@ -98,11 +104,8 @@ describe("chat room", () => {
       if (attempt < 5) await new Promise((resolve) => setTimeout(resolve, 20));
     }
 
-    const closed = await new Promise<CloseEvent>((resolve) => {
-      client.ws.addEventListener("close", (event) => resolve(event as CloseEvent));
-    });
-    expect(closed.code).toBe(4403);
-  });
+    expect((await closed).code).toBe(4403);
+  }, 15_000);
 
   it("replays history to a client that joins later", async () => {
     const slug = await makeRoom();
