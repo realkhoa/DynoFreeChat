@@ -136,7 +136,8 @@ report.hub = await evaluate(`(() => {
     renderedLines:
       document.querySelectorAll("#games-content > .code-line").length +
       rows.length * 3,
-    exposed: ["Cờ Caro", "Tic-Tac-Toe", "Chơi", "Games"].some((word) => text.includes(word)),
+    nameVisible: rows[0]?.innerText?.includes("Tic-Tac-Toe") ?? false,
+    matrixWords: ["Matrix", "Diagnostic"].some((word) => text.includes(word)),
     opensModal: [...document.querySelectorAll("dialog[open]")].length > 0,
   };
 })()`);
@@ -148,6 +149,7 @@ await sleep(600);
 report.afterOpen = await evaluate(`(() => ({
   gamesTabSelected: document.querySelector('[data-doc-id="games"]')?.getAttribute("aria-selected"),
   gameTabSelected: document.querySelector("#tab-game")?.getAttribute("aria-selected"),
+  gameTabLabel: document.querySelector("#tab-game-label")?.textContent,
   gameTabHidden: document.querySelector("#tab-game")?.hidden,
   gamePanelVisible: (document.querySelector("#game-editor-panel")?.offsetHeight ?? 0) > 0,
   crumb: document.querySelector("#crumb-room")?.textContent,

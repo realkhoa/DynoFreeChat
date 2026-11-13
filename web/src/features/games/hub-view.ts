@@ -1,30 +1,18 @@
 /**
  * @file hub-view.ts
- * @brief Collab module registry, rendered as a plain C# file.
- * @details The launcher must read as another source file: every game is a class
- * declaration with a code lens line you can click, so the only thing on screen is a
- * module index. Adding a game is one entry plus its open handler.
+ * @brief Collab game registry, rendered as a plain C# file.
+ * @details The launcher reads as another source file: every game is a class block with
+ * a code lens line, and the real game name is on that lens line so it is easy to find.
+ * Adding a game is one entry in features/games/registry.ts plus its open handler.
  */
 
-import { icon, type IconName } from "@/shared/ui/icons";
-
-/** One module (game) offered by the registry. */
-export interface GameEntry {
-  /** Stable id used by the open handler. */
-  id: string;
-  /** Class name shown in the declaration, e.g. "MatrixInspector". */
-  module: string;
-  /** Comment describing the module's modes in technical wording. */
-  summary: string;
-  /** Function key shown in the lens line. */
-  hotkey: string;
-}
+import type { GameDefinition } from "./registry";
 
 /** Callbacks for the registry. */
 export interface GamesHubHandlers {
   /**
-   * Runs a module.
-   * @param id Module id from {@link GameEntry}.
+   * Opens a game.
+   * @param id Game id from {@link GameDefinition}.
    */
   onOpen: (id: string) => void;
 }
@@ -35,15 +23,15 @@ export interface GamesHubElements {
   list: HTMLElement;
   /** Gutter that receives one number per rendered code line. */
   gutter: HTMLElement;
-  /** Toolbar chip showing the module count. */
+  /** Toolbar chip showing the game count. */
   chip: HTMLElement | null;
 }
 
 /**
- * @brief Renders and updates the module registry.
+ * @brief Renders and updates the game registry.
  */
 export class GamesHubView {
-  private entries: GameEntry[] = [];
+  private entries: readonly GameDefinition[] = [];
 
   /**
    * @brief Stores the document hosts and callbacks.
@@ -56,10 +44,10 @@ export class GamesHubView {
   ) {}
 
   /**
-   * @brief Renders one clickable class block per module and renumbers the gutter.
-   * @param entries Modules to offer.
+   * @brief Renders one clickable class block per game and renumbers the gutter.
+   * @param entries Games to offer.
    */
-  setGames(entries: GameEntry[]): void {
+  setGames(entries: readonly GameDefinition[]): void {
     this.entries = entries;
     const fragment = document.createDocumentFragment();
 
@@ -68,18 +56,20 @@ export class GamesHubView {
       block.type = "button";
       block.className = "module-row";
       block.dataset.gameId = entry.id;
-      block.setAttribute("aria-label", `Run ${entry.module} — ${entry.summary}`);
+      block.setAttribute("aria-label", `${entry.name} — ${entry.summary}`);
 
-      // VS CodeLens style: the action line sits above the declaration.
+      // VS CodeLens style: the action line sits above the declaration and carries the
+      // real game name, so it can be found at a glance.
       const lens = document.createElement("span");
       lens.className = "code-line indent1 module-lens";
       lens.append(text("// ▶ run ", "comment"));
       lens.append(text(`[ ${entry.hotkey} ]`, "kw"));
+      lens.append(text(`  ${entry.name}`, "ident"));
 
       const declaration = document.createElement("span");
       declaration.className = "code-line indent1";
       declaration.append(text("public sealed class ", "kw"));
-      declaration.append(text(entry.module, "type"));
+      declaration.append(text(entry.className, "type"));
       declaration.append(text(" : ", "ident"));
       declaration.append(text("IGameModule", "type"));
 
@@ -101,28 +91,28 @@ export class GamesHubView {
     this.elements.list.replaceChildren(fragment);
     this.paintGutter(entries.length);
     if (this.elements.chip !== null) {
-      this.elements.chip.textContent = `// registry: ${entries.length} module${entries.length === 1 ? "" : "s"}`;
+      this.elements.chip.textContent = `// registry: ${entries.length} game${entries.length === 1 ? "" : "s"}`;
     }
   }
 
   /**
-   * @brief Focuses the first module, for tab activation.
+   * @brief Focuses the first game, for tab activation.
    */
   focusFirst(): void {
     this.elements.list.querySelector<HTMLButtonElement>(".module-row")?.focus();
   }
 
   /**
-   * @brief Currently offered modules, for tests and diagnostics.
+   * @brief Currently offered games, for tests and diagnostics.
    * @return Copy of the entry list.
    */
-  get games(): GameEntry[] {
+  get games(): GameDefinition[] {
     return [...this.entries];
   }
 
   /**
-   * @brief Renumbers the gutter from the static lines plus three lines per module.
-   * @param moduleCount Number of rendered module blocks.
+   * @brief Renumbers the gutter from the static lines plus three lines per game.
+   * @param moduleCount Number of rendered class blocks.
    * @details The gutter must match the rendered file or the disguise breaks, so it is
    * derived instead of hand-maintained.
    */
@@ -142,7 +132,7 @@ export class GamesHubView {
 }
 
 /**
- * @brief Builds a syntax-coloured text node holder.
+ * @brief Builds a syntax-coloured text span.
  * @param value Text content.
  * @param className Syntax class from the code document styles.
  * @return Span element.
@@ -153,6 +143,3 @@ function text(value: string, className: string): HTMLSpanElement {
   span.textContent = value;
   return span;
 }
-
-/** Re-exported so callers do not import the icon module just for the type. */
-export type { IconName };

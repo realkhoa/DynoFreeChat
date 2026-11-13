@@ -45,7 +45,8 @@ import { RoomDialog } from "@/features/chat/components/room-dialog";
 import { RoomsView } from "@/features/chat/components/rooms-view";
 import { SettingsView } from "@/features/settings/settings-view";
 import { DocTabs } from "@/shared/ui/doc-tabs";
-import { GamesHubView, type GameEntry } from "@/features/games/hub-view";
+import { GamesHubView } from "@/features/games/hub-view";
+import { GAMES, findGame } from "@/features/games/registry";
 import { Sidebar } from "@/features/chat/components/sidebar";
 import { StatusBar } from "@/shared/ui/statusbar";
 
@@ -242,27 +243,19 @@ const settingsView = new SettingsView(
 );
 
 /**
- * @brief Modules the Collab registry offers. One entry = one function + one tab.
- * @details Names are the class the module exposes, so the file reads as diagnostics.
+ * @brief Open handler per game id. The metadata itself lives in features/games/registry.
  */
-const GAME_ENTRIES: GameEntry[] = [
-  {
-    id: "tictactoe",
-    module: "MatrixInspector",
-    summary: "3x3 pointer buffer - remote attach | local simulation | dual-thread",
-    hotkey: "F6",
-  },
-];
+const GAME_OPENERS: Record<string, () => void> = {
+  tictactoe: () => gameDialog.open(),
+};
 
 const gamesHub = new GamesHubView(
   { list: gamesListEl, gutter: gamesGutterEl, chip: gamesChipEl },
   {
-    onOpen: (id) => {
-      if (id === "tictactoe") gameDialog.open();
-    },
+    onOpen: (id) => GAME_OPENERS[id]?.(),
   },
 );
-gamesHub.setGames(GAME_ENTRIES);
+gamesHub.setGames(GAMES);
 
 const docTabs = new DocTabs(tabstripEl, editorEl, tabNew, {
   onActivate: (_id, label) => showDocView(label),
@@ -315,7 +308,7 @@ function selectGameTab(): void {
   if (logwrapEl) logwrapEl.hidden = true;
   if (startviewEl) startviewEl.hidden = true;
 
-  crumbRoom.textContent = "DiagnosticMatrix.cs";
+  crumbRoom.textContent = findGame("tictactoe")?.documentTitle ?? "TicTacToe.cs";
   byId<HTMLElement>("crumb-solution").textContent = "DynoFreeChat";
   byId<HTMLElement>("crumb-group").textContent = "Collab";
 }
@@ -683,7 +676,7 @@ function openRoomsTab(): void {
  * @brief Opens the Collab games hub document.
  */
 function openGamesTab(): void {
-  docTabs.open({ id: "games", label: "DiagnosticModules.cs", panel: gamesViewEl, icon: "file" });
+  docTabs.open({ id: "games", label: "Games.cs", panel: gamesViewEl, icon: "file" });
   gamesHub.focusFirst();
 }
 
@@ -1154,6 +1147,7 @@ function decorateChrome(): void {
   byId<HTMLElement>("titlebar-mark").append(icon("solution", 15));
   byId<HTMLElement>("tab-icon").append(icon("folder", 14));
   byId<HTMLElement>("tab-game-icon").append(icon("file", 14));
+  byId<HTMLElement>("tab-game-label").textContent = findGame("tictactoe")?.documentTitle ?? "TicTacToe.cs";
   byId<HTMLElement>("game-code-icon").append(icon("file", 12));
   byId<HTMLElement>("games-code-icon").append(icon("file", 12));
   byId<HTMLElement>("filter-icon").append(icon("search", 12));
