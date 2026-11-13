@@ -85,7 +85,12 @@ const once = (method) =>
 
 await send("Page.enable");
 await send("Runtime.enable");
-await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+await send("Emulation.setDeviceMetricsOverride", {
+  width: 1440,
+  height: 900,
+  deviceScaleFactor: 1,
+  mobile: false,
+});
 const loaded = once("Page.loadEventFired");
 await send("Page.navigate", { url: APP_URL });
 await loaded;
