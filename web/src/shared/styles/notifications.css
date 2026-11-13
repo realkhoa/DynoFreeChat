@@ -218,10 +218,6 @@
   color: var(--fg-dim);
 }
 
-.presence-row[data-unfocus="true"] .presence-tag {
-  color: var(--accent);
-}
-
 /* VS-style zoom control for the chat pane only (bottom-left of the editor) */
 .statusitem--zoom {
   padding: 0 6px;

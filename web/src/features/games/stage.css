@@ -4,7 +4,7 @@
    The visual rule is the one tic-tac-toe follows: a board is a data initializer
    inside the open document, not a game screen. Cells are flat monospace glyphs on
    a thin editor grid; the HUD and status read as comment lines. Clickability
-   comes from the 44px cell size, never from button chrome. */
+   comes from the cell size, never from button chrome. */
 
 .game-stage-panel {
   --code-line-height: 19px;
@@ -12,7 +12,7 @@
 }
 
 .game-stage-host {
-  --stage-cell-size: 15px;
+  --stage-cell-size: 20px;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -55,29 +55,12 @@
   color: #c586c0;
 }
 
-/* The mounted game is dimmed like generated data, and brightens on hover or
-   focus so it stays comfortable to actually play. */
+/* The mounted game is always at full brightness: the board is meant to be read
+   and played, not guessed at through a dim layer. */
 .stage-game-host {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  opacity: 0.6;
-  transition: opacity 120ms ease;
-}
-
-.stage-game-host:hover,
-.stage-game-host:focus-within {
-  opacity: 1;
-}
-
-.game-stage-host[data-focus="on"] .stage-game-host {
-  opacity: 0.48;
-}
-
-/* Game hints ("win with 5 in a row", "press R") are the most obvious tell, so
-   they never print inside the document. The board and its counters stay. */
-.stage-game-host .stage-empty {
-  display: none;
 }
 
 /* The bar, HUD and status are printed as file comments: quiet, monospace, and
@@ -153,8 +136,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  width: var(--stage-cell-size, 15px);
-  height: var(--stage-cell-size, 15px);
+  width: var(--stage-cell-size, 20px);
+  height: var(--stage-cell-size, 20px);
   min-width: 0;
   min-height: 0;
   padding: 0;
@@ -305,14 +288,14 @@
   display: none;
 }
 
-/* Chess prints its glyphs inline at 22px; the compact document keeps them small. */
+/* Chess prints its glyphs inline at 22px; the document keeps them readable. */
 .stage-game-host .stage-cell {
-  font-size: 8.5px !important;
+  font-size: 12px !important;
 }
 
 /* Chess is the one board read as figurines instead of letters: hollow vs solid
    Unicode pieces need a few more pixels than a character, or the two sides stop
-   being distinguishable. Still a compact literal, just 24px squares. */
+   being distinguishable. */
 .stage-game-host .chess-board {
   --stage-cell-size: 24px;
 }
@@ -346,121 +329,4 @@
 
 .stage-game-host .chess-board .stage-cell.is-good {
   background: rgba(220, 220, 170, 0.14);
-}
-
-/* Counters, buttons and the status line only appear while the pointer is over
-   the board (or the board has keyboard focus), so a resting document shows
-   nothing but the generated file. */
-.stage-game-host .stage-bar,
-.stage-game-host .stage-hud,
-.stage-game-host .stage-status {
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.stage-game-host:hover .stage-bar,
-.stage-game-host:hover .stage-hud,
-.stage-game-host:hover .stage-status,
-.stage-game-host:focus-within .stage-bar,
-.stage-game-host:focus-within .stage-hud,
-.stage-game-host:focus-within .stage-status {
-  opacity: 1;
-}
-
-/* Unfocus mode: the idle source view is a full-screen editor document that sits
-   above the whole IDE, while the game keeps its normal slot underneath. Crossing
-   the game slot brings the board back, so the screen never rests on something
-   game-like. */
-.stage-viewport {
-  position: relative;
-  display: grid;
-  flex: 1;
-  min-height: 0;
-  margin: 1px 0 1px 6px;
-}
-
-.stage-viewport > * {
-  grid-area: 1 / 1;
-  min-width: 0;
-}
-
-.stage-code-layer,
-.stage-game-host {
-  transition:
-    opacity 220ms ease,
-    transform 220ms ease;
-}
-
-/* Same chrome as the TicTacToe collab document: file toolbar, gutter, code and
-   status bar. Fixed so the disguise fills the window instead of one pane. */
-.stage-code-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--editor);
-  opacity: 1;
-}
-
-.stage-code-layer .game-code-body {
-  flex: 1;
-  min-height: 0;
-}
-
-.stage-code-layer .stage-code-path {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.stage-viewport[data-view="code"] .stage-code-layer {
-  opacity: 1;
-}
-
-.stage-viewport[data-view="code"] .stage-game-host {
-  opacity: 0;
-  transform: scale(1.004);
-  pointer-events: none;
-}
-
-.stage-viewport[data-view="game"] .stage-code-layer {
-  opacity: 0;
-  transform: scale(0.996);
-  pointer-events: none;
-}
-
-.stage-viewport[data-view="game"] .stage-game-host {
-  opacity: 1;
-}
-
-.unfocus-line {
-  min-height: 13px;
-  white-space: pre;
-  color: #d4d4d4;
-}
-
-.unfocus-comment {
-  color: #6a9955;
-}
-
-.unfocus-pre {
-  color: #c586c0;
-}
-
-.unfocus-string {
-  color: #ce9178;
-}
-
-.unfocus-keyword {
-  color: #569cd6;
-}
-
-.unfocus-number {
-  color: #b5cea8;
-}
-
-.unfocus-plain {
-  color: #d4d4d4;
 }

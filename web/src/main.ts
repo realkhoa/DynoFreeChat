@@ -342,12 +342,9 @@ const gameStage = new GameStage(
     status: byId<HTMLElement>("game-stage-status"),
     restart: byId<HTMLButtonElement>("game-stage-restart"),
     focus: byId<HTMLButtonElement>("game-stage-focus"),
-    unfocus: byId<HTMLButtonElement>("game-stage-unfocus"),
   },
   GAME_FACTORIES,
   storage,
-  undefined,
-  () => syncPresence(),
 );
 
 const matchView = new MatchView(
@@ -803,23 +800,13 @@ function toggleNotificationsPanel(): void {
 // ------------------------------------------------------------------ presence
 
 /**
- * @brief Whether this client is currently in the game stage's unfocus mode.
- * @details The mode only matters while the game document is the active tab: a
- * user reading chat with the toggle still on is not "in unfocus".
- * @return True when the code-on-idle view is in charge.
- */
-function selfUnfocus(): boolean {
-  return docTabs.activeId === "game-stage" && gameStage.activeId !== null && gameStage.isUnfocused;
-}
-
-/**
  * @brief Announces this client's presence on the next heartbeat and right away.
- * @details Visibility, focus and the unfocus toggle all funnel through here so
- * the room's list reflects a tab switch immediately instead of up to 10s later.
+ * @details Visibility and focus funnel through here so the room's list reflects
+ * a tab switch immediately instead of up to 10s later.
  * @return void
  */
 function syncPresence(): void {
-  socket?.setPresence({ state: readPresenceState(), unfocus: selfUnfocus() });
+  socket?.setPresence({ state: readPresenceState() });
 }
 
 /**
@@ -839,13 +826,12 @@ function renderPresence(): void {
   presenceChip.dataset.away = String(self?.state === "away");
   presenceChip.title =
     presenceUsers.length === 0 ? "chưa có ai online" : `${presenceUsers.length} người đang online`;
-  presenceHint.textContent = selfUnfocus() ? "heartbeat 10s · unfocus" : "heartbeat 10s";
+  presenceHint.textContent = "heartbeat 10s";
 
   const rows = presenceUsers.map((user) => {
     const row = document.createElement("li");
     row.className = "presence-row";
     row.dataset.state = user.state;
-    row.dataset.unfocus = String(user.unfocus);
 
     const swatch = document.createElement("span");
     swatch.className = "presence-swatch";
@@ -857,8 +843,7 @@ function renderPresence(): void {
 
     const tag = document.createElement("span");
     tag.className = "presence-tag";
-    const state = user.state === "active" ? "web" : "away";
-    tag.textContent = user.unfocus ? `${state} ·u` : state;
+    tag.textContent = user.state === "active" ? "web" : "away";
 
     row.append(swatch, name, tag);
     return row;
@@ -1640,9 +1625,6 @@ function wire(): void {
     } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "h") {
       e.preventDefault();
       if (docTabs.activeId === "game-stage") gameStage.toggleFocus();
-    } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "u") {
-      e.preventDefault();
-      if (docTabs.activeId === "game-stage") gameStage.toggleUnfocus();
     } else if (!modalOpen && e.key === "F7") {
       e.preventDefault();
       openQuotesTab();

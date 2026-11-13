@@ -4,26 +4,14 @@ import { GAME_FACTORIES } from "@/features/games/factories";
 import type { GameMount } from "@/features/games/mount";
 import { GAMES } from "@/features/games/registry";
 import { GameStage, type StageElements } from "@/features/games/stage";
-import type { RandomCodeFeed } from "@/features/games/unfocus";
 
-/** Deterministic stand-in for the random VinaBIM code feed. */
-function fakeFeed(): RandomCodeFeed & { next: ReturnType<typeof vi.fn> } {
-  const next = vi.fn(async () => ({
-    path: "VinaBIM/Core/Demo.cpp",
-    start: 40,
-    lines: ["// generated demo", "int main() {"],
-  }));
-  return { next } as unknown as RandomCodeFeed & { next: ReturnType<typeof vi.fn> };
-}
-
-/** Builds a stage with the fake feed unless a feed is supplied. */
+/** Builds a stage with the supplied factories. */
 function makeStage(
   elements: StageElements,
   factories: Record<string, () => GameMount>,
   storage: Storage | null = null,
-  feed: RandomCodeFeed = fakeFeed(),
 ): GameStage {
-  return new GameStage(elements, factories, storage, feed);
+  return new GameStage(elements, factories, storage);
 }
 
 /** Records mount/unmount calls so the stage lifecycle is observable. */
@@ -56,8 +44,7 @@ function makeElements(): StageElements {
     <div id="game-stage-host"></div>
     <span id="game-stage-status"></span>
     <button id="game-stage-restart"></button>
-    <button id="game-stage-focus"></button>
-    <button id="game-stage-unfocus"></button>`;
+    <button id="game-stage-focus"></button>`;
   document.body.append(panel);
 
   return {
@@ -68,106 +55,20 @@ function makeElements(): StageElements {
     status: panel.querySelector<HTMLElement>("#game-stage-status")!,
     restart: panel.querySelector<HTMLButtonElement>("#game-stage-restart")!,
     focus: panel.querySelector<HTMLButtonElement>("#game-stage-focus")!,
-    unfocus: panel.querySelector<HTMLButtonElement>("#game-stage-unfocus")!,
   };
 }
 
 describe("GameStage", () => {
-  it("shows a random source view while the pointer is away and the game on hover", async () => {
-    const elements = makeElements();
-    const feed = fakeFeed();
-    const stage = makeStage(elements, { demo: () => fakeGame() }, null, feed);
-
-    stage.open("demo", "Demo.cs", "local simulation");
-    const viewport = elements.host.querySelector<HTMLElement>(".stage-viewport");
-    await vi.waitFor(() => expect(viewport?.dataset.view).toBe("code"));
-    expect(elements.host.querySelector(".stage-code-layer")?.textContent).toContain("generated demo");
-
-    const frame = elements.host.querySelector<HTMLElement>(".stage-code-frame");
-    frame?.dispatchEvent(new MouseEvent("mouseenter"));
-    expect(viewport?.dataset.view).toBe("game");
-
-    frame?.dispatchEvent(new MouseEvent("mouseleave"));
-    await vi.waitFor(() => expect(feed.next).toHaveBeenCalledTimes(2));
-    expect(viewport?.dataset.view).toBe("code");
-  });
-
-  it("paints the idle view as a full editor document with a gutter and status bar", async () => {
+  it("mounts the game directly, with no idle code layer to hide it", () => {
     const elements = makeElements();
     const stage = makeStage(elements, { demo: () => fakeGame() });
 
     stage.open("demo", "Demo.cs", "local simulation");
-    const layer = elements.host.querySelector<HTMLElement>(".stage-code-layer");
-    await vi.waitFor(() => expect(layer?.querySelectorAll(".code-line").length).toBe(2));
 
-    expect(layer?.querySelector(".game-code-toolbar")?.textContent).toContain("Demo.cpp");
-    expect(layer?.querySelector(".game-code-toolbar")?.textContent).toContain("VinaBIM/Core/Demo.cpp");
-    expect(layer?.querySelector(".game-code-gutter")?.textContent).toBe("4041");
-    expect(layer?.querySelector(".game-code-statusbar")?.textContent).toContain("Ln 40, Col 1");
+    expect(elements.host.querySelector(".stage-game-host")?.textContent).toBe("board");
+    expect(elements.host.querySelector(".stage-code-layer")).toBeNull();
   });
 
-  it("reveals the board when the pointer crosses the game slot under the overlay", async () => {
-    const elements = makeElements();
-    const stage = makeStage(elements, { demo: () => fakeGame() });
-
-    stage.open("demo", "Demo.cs", "local simulation");
-    const viewport = elements.host.querySelector<HTMLElement>(".stage-viewport");
-    await vi.waitFor(() => expect(viewport?.dataset.view).toBe("code"));
-
-    // The overlay is full-screen; a pointer over the frame's slot still means play.
-    document.dispatchEvent(new MouseEvent("pointermove", { clientX: 0, clientY: 0, bubbles: true }));
-    expect(viewport?.dataset.view).toBe("game");
-  });
-
-  it("only shows the fake source once the pointer leaves the editor region", async () => {
-    const elements = makeElements();
-    const editor = document.createElement("div");
-    editor.className = "editor";
-    editor.append(elements.panel);
-    document.body.append(editor);
-    editor.getBoundingClientRect = () =>
-      ({ left: 100, top: 100, right: 900, bottom: 800, width: 800, height: 700 }) as DOMRect;
-
-    const stage = makeStage(elements, { demo: () => fakeGame() });
-    stage.open("demo", "Demo.cs", "local simulation");
-    const viewport = elements.host.querySelector<HTMLElement>(".stage-viewport");
-    await vi.waitFor(() => expect(viewport?.dataset.view).toBe("code"));
-
-    // Header / sidebar: outside the editor, so the fake source stays.
-    document.dispatchEvent(new MouseEvent("pointermove", { clientX: 50, clientY: 50, bubbles: true }));
-    expect(viewport?.dataset.view).toBe("code");
-
-    // Inside the editor: the board comes back.
-    document.dispatchEvent(new MouseEvent("pointermove", { clientX: 400, clientY: 400, bubbles: true }));
-    expect(viewport?.dataset.view).toBe("game");
-
-    // Moving to the header / sidebar hands the screen back to the fake source.
-    editor.dispatchEvent(new MouseEvent("mouseleave"));
-    await vi.waitFor(() => expect(viewport?.dataset.view).toBe("code"));
-
-    // Leaving the browser window is the strongest away signal.
-    editor.dispatchEvent(new MouseEvent("mouseenter"));
-    expect(viewport?.dataset.view).toBe("game");
-    document.dispatchEvent(new MouseEvent("mouseleave"));
-    await vi.waitFor(() => expect(viewport?.dataset.view).toBe("code"));
-  });
-
-  it("turns the idle code view off and remembers it", () => {
-    const store = new Map<string, string>();
-    const storage = {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => store.set(key, value),
-    } as unknown as Storage;
-    const elements = makeElements();
-    const stage = makeStage(elements, { demo: () => fakeGame() }, storage);
-
-    stage.open("demo", "Demo.cs", "local simulation");
-    expect(stage.isUnfocused).toBe(true);
-    expect(stage.toggleUnfocus()).toBe(false);
-    expect(elements.unfocus.getAttribute("aria-pressed")).toBe("false");
-    expect(store.get("dyno.game.unfocus")).toBe("0");
-    expect(elements.host.querySelector<HTMLElement>(".stage-viewport")?.dataset.view).toBe("game");
-  });
   it("dims the board and hides the comments when Focus is on", () => {
     const elements = makeElements();
     const stage = makeStage(elements, { demo: () => fakeGame() });
