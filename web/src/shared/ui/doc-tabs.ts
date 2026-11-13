@@ -118,6 +118,19 @@ export class DocTabs {
   }
 
   /**
+   * @brief Renames an open document tab, e.g. when one stage hosts many games.
+   * @param id Tab id.
+   * @param label New label.
+   */
+  setLabel(id: string, label: string): void {
+    const entry = this.entries.get(id);
+    if (entry === undefined) return;
+    entry.tab.dataset.label = label;
+    const labelEl = entry.tab.querySelector<HTMLElement>(".tab-label");
+    if (labelEl !== null) labelEl.textContent = label;
+  }
+
+  /**
    * @brief Id of the visible document tab, if any.
    * @return Active id or null.
    */

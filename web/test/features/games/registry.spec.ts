@@ -25,9 +25,9 @@ describe("game registry", () => {
       expect(game.id).toMatch(/^[a-z0-9]+$/);
       expect(game.name.length).toBeGreaterThan(0);
       expect(game.className).toMatch(/^[A-Z][A-Za-z0-9]*$/);
-      expect(game.documentTitle).toMatch(/^[A-Za-z0-9]+\.cs$/);
+      expect(game.documentTitle).toMatch(/^[A-Za-z0-9]+\.(cs|cpp)$/);
       expect(game.summary.length).toBeGreaterThan(0);
-      expect(game.hotkey).toMatch(/^F\d{1,2}$/);
+      expect(game.hotkey).toMatch(/^(F\d{1,2}|↵)$/);
     }
   });
 

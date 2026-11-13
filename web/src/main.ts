@@ -47,6 +47,8 @@ import { SettingsView } from "@/features/settings/settings-view";
 import { DocTabs } from "@/shared/ui/doc-tabs";
 import { GamesHubView } from "@/features/games/hub-view";
 import { GAMES, findGame } from "@/features/games/registry";
+import { GAME_FACTORIES } from "@/features/games/factories";
+import { GameStage } from "@/features/games/stage";
 import { MarketApi } from "@/features/market/api";
 import { MarketBoard } from "@/features/market/board";
 import { ChartView } from "@/features/market/chart-view";
@@ -133,6 +135,7 @@ const gamesViewEl = byId<HTMLElement>("games-view");
 const gamesListEl = byId<HTMLElement>("games-list");
 const gamesGutterEl = byId<HTMLElement>("games-gutter");
 const gamesChipEl = byId<HTMLElement>("games-code-chip");
+const gameStageViewEl = byId<HTMLElement>("game-stage-view");
 const marketViewEl = byId<HTMLElement>("market-view");
 const marketHubViewEl = byId<HTMLElement>("market-hub-view");
 const chartViewEl = byId<HTMLElement>("chart-view");
@@ -260,10 +263,28 @@ const settingsView = new SettingsView(
 
 /**
  * @brief Open handler per game id. The metadata itself lives in features/games/registry.
+ * @details Tic-tac-toe keeps its dedicated online document; every other game
+ * opens in the shared stage, which mounts the module from GAME_FACTORIES.
  */
 const GAME_OPENERS: Record<string, () => void> = {
   tictactoe: () => gameDialog.open(),
 };
+for (const game of GAMES) {
+  if (game.id === "tictactoe") continue;
+  GAME_OPENERS[game.id] = () => openGameStage(game.id);
+}
+
+const gameStage = new GameStage(
+  {
+    panel: gameStageViewEl,
+    host: byId<HTMLElement>("game-stage-host"),
+    title: byId<HTMLElement>("game-stage-title"),
+    chip: byId<HTMLElement>("game-stage-chip"),
+    status: byId<HTMLElement>("game-stage-status"),
+    restart: byId<HTMLButtonElement>("game-stage-restart"),
+  },
+  GAME_FACTORIES,
+);
 
 const gamesHub = new GamesHubView(
   { list: gamesListEl, gutter: gamesGutterEl, chip: gamesChipEl },
@@ -806,6 +827,19 @@ function openRoomsTab(): void {
 function openGamesTab(): void {
   docTabs.open({ id: "games", label: "Games.cs", panel: gamesViewEl, icon: "file" });
   gamesHub.focusFirst();
+}
+
+/**
+ * @brief Opens one game in the shared game stage document.
+ * @param id Registry id of the game.
+ */
+function openGameStage(id: string): void {
+  const game = findGame(id);
+  if (game === undefined) return;
+
+  docTabs.open({ id: "game-stage", label: game.documentTitle, panel: gameStageViewEl, icon: game.icon });
+  docTabs.setLabel("game-stage", game.documentTitle);
+  gameStage.open(id, game.documentTitle, game.summary);
 }
 
 /**

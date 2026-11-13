@@ -612,6 +612,30 @@
       </div>
     </section>
 
+    <!-- Game stage: one document hosts whichever game is open -->
+    <section class="doc-panel game-stage-panel" id="game-stage-view" hidden>
+      <div class="game-code-toolbar">
+        <span class="game-code-file"
+          ><span class="game-code-icon" id="game-stage-icon" aria-hidden="true"></span
+          ><span id="game-stage-title">Game.cs</span></span
+        >
+        <span class="game-code-chip" id="game-stage-chip">// local simulation</span>
+        <span class="game-code-spacer"></span>
+        <button type="button" class="game-code-tool-btn" id="game-stage-restart" title="Restart (remount)">Restart</button>
+      </div>
+
+      <div class="game-stage-host" id="game-stage-host"></div>
+
+      <div class="game-code-statusbar">
+        <span class="sb-item">Ln 1, Col 1</span>
+        <span class="sb-item">Spaces: 4</span>
+        <span class="sb-item">UTF-8</span>
+        <span class="sb-item">CRLF</span>
+        <span class="sb-spacer"></span>
+        <span class="sb-item market-state--live" id="game-stage-status">Ready</span>
+      </div>
+    </section>
+
     <!-- Chat Rooms document: the picker and the create form live in a tab -->
     <section class="doc-panel rooms-panel" id="rooms-view" hidden>
       <div class="doc-panel-head">
