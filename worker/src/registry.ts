@@ -88,6 +88,7 @@ export class Registry extends DurableObject<Env> {
     if (request.method === "POST" && url.pathname === "/verify") return this.verify(request);
     if (request.method === "GET" && url.pathname === "/list") return this.list(request);
     if (request.method === "POST" && url.pathname === "/purge") return this.purge(request);
+    if (request.method === "POST" && url.pathname === "/empty") return this.empty(request);
     if (request.method === "GET" && url.pathname === "/info") return this.info(request);
 
     return json({ code: "NOT_FOUND" }, 404);
@@ -183,6 +184,33 @@ export class Registry extends DurableObject<Env> {
 
     this.sql.exec("UPDATE rooms SET lastSeen = ? WHERE slug = ?", Date.now(), row.slug);
     return json({ ok: true, slug: row.slug, locked: row.locked === 1 }, 200);
+  }
+
+  /**
+   * @brief Reacts to a room becoming empty.
+   * @details Game rooms are disposable: once the last player disconnects they are
+   * removed so the lobby never accumulates dead match rooms. Chat rooms keep
+   * their history and are only pruned by the idle sweep.
+   * @param request JSON body with the room `slug`.
+   * @return Whether the room was deleted.
+   */
+  private async empty(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const slug = sanitizeSlug(body.slug);
+    if (!slug.ok) return json({ code: "BAD_SLUG" }, 400);
+
+    const row = this.sql
+      .exec<{ kind: string }>("SELECT kind FROM rooms WHERE slug = ?", slug.slug)
+      .toArray()[0];
+    if (row === undefined) return json({ deleted: false }, 200);
+
+    if (row.kind !== "game") {
+      this.sql.exec("UPDATE rooms SET lastSeen = ? WHERE slug = ?", Date.now(), slug.slug);
+      return json({ deleted: false }, 200);
+    }
+
+    this.sql.exec("DELETE FROM rooms WHERE slug = ?", slug.slug);
+    return json({ deleted: true }, 200);
   }
 
   /**

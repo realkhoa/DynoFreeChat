@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MAX_GAME_PAYLOAD, RATE_CAPACITY, type ServerFrame } from "@dyno/shared/protocol";
-import { connect, makeRoom } from "./helpers";
+import { SELF } from "cloudflare:test";
+import { BASE, ORIGIN, connect, createRoom, makeRoom, uniqueSlug } from "./helpers";
 
 describe("chat room", () => {
   it("welcomes a joiner with the room identity and empty history", async () => {
@@ -353,5 +354,50 @@ describe("replies and mentions", () => {
     expect(frame.m.text).toBe("mồ côi");
     expect(frame.m.replyTo).toBeUndefined();
     client.close();
+  });
+});
+
+describe("room cleanup", () => {
+  /** Lists the slugs of one room kind. */
+  async function listed(kind: "chat" | "game"): Promise<string[]> {
+    const response = await SELF.fetch(`${BASE}/api/rooms?kind=${kind}`, { headers: { origin: ORIGIN } });
+    const body = (await response.json()) as { rooms: Array<{ slug: string }> };
+    return body.rooms.map((room) => room.slug);
+  }
+
+  /** Waits until the slug disappears from the list, or fails after the deadline. */
+  async function waitGone(kind: "chat" | "game", slug: string): Promise<void> {
+    const deadline = Date.now() + 4000;
+    for (;;) {
+      if (!(await listed(kind)).includes(slug)) return;
+      if (Date.now() > deadline) throw new Error(`${slug} was not cleaned up`);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+  }
+
+  it("deletes a game room once its last player disconnects", async () => {
+    const slug = uniqueSlug("g");
+    expect((await createRoom({ slug, kind: "game" })).status).toBe(201);
+    expect(await listed("game")).toContain(slug);
+
+    const client = await connect(slug);
+    client.join("khoan");
+    await client.welcome();
+    client.close();
+
+    await waitGone("game", slug);
+  });
+
+  it("keeps a chat room after its last player disconnects", async () => {
+    const slug = uniqueSlug("c");
+    expect((await createRoom({ slug })).status).toBe(201);
+
+    const client = await connect(slug);
+    client.join("khoan");
+    await client.welcome();
+    client.close();
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(await listed("chat")).toContain(slug);
   });
 });

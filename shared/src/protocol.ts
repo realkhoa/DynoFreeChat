@@ -40,8 +40,8 @@ export const MAX_ROOMS = 500;
 /** Rooms idle for longer than this are pruned when the lobby is listed. */
 export const ROOM_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** Game rooms are short lived: prune them a day after their last match. */
-export const GAME_ROOM_IDLE_MS = 24 * 60 * 60 * 1000;
+/** Game rooms are short lived: prune them an hour after their last match. */
+export const GAME_ROOM_IDLE_MS = 60 * 60 * 1000;
 
 /** Room creations allowed per IP per window. Generous on purpose: a group
  * behind one NAT must be able to open a room per match. */

@@ -135,12 +135,35 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   override webSocketClose(ws: WebSocket, code: number, reason: string, _wasClean: boolean): void {
+    const conn = this.readConn(ws);
     try {
       ws.close(code, reason);
     } catch {
       // Already gone; presence recalculation below is all that matters.
     }
     this.broadcastPresence(ws);
+    if (conn.authed) void this.cleanupIfEmpty(conn.slug);
+  }
+
+  /**
+   * @brief Asks the registry to drop a disposable game room once it is empty.
+   * @param slug Room slug of the socket that just left.
+   * @return Resolves when the registry answered; failures are ignored.
+   */
+  private async cleanupIfEmpty(slug: string): Promise<void> {
+    if (slug.length === 0) return;
+    if (this.authedSockets().length > 0) return;
+
+    try {
+      const stub = this.env.REGISTRY.get(this.env.REGISTRY.idFromName("registry"));
+      await stub.fetch("https://registry/empty", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug }),
+      });
+    } catch {
+      // Cleanup is best effort; the idle sweep still removes stale rooms.
+    }
   }
 
   override webSocketError(ws: WebSocket): void {

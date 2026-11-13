@@ -18,9 +18,14 @@ export function uniqueIp(): string {
   return `10.0.${(counter >> 8) & 255}.${counter & 255}`;
 }
 
-export async function createRoom(body: { slug: string; pass?: string }): Promise<Response> {
+export async function createRoom(body: {
+  slug: string;
+  pass?: string;
+  kind?: "chat" | "game";
+}): Promise<Response> {
   const payload: Record<string, string> = { slug: body.slug };
   if (body.pass !== undefined) payload.pass = body.pass;
+  if (body.kind !== undefined) payload.kind = body.kind;
   return SELF.fetch(`${BASE}/api/rooms`, {
     method: "POST",
     headers: { "content-type": "application/json", "cf-connecting-ip": uniqueIp(), origin: ORIGIN },
