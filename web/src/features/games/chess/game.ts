@@ -561,19 +561,24 @@ export function moveToAlgebraic(position: Position, move: Move): string {
   return text;
 }
 
+/**
+ * Chess pieces are the classic Unicode figurines: hollow for White, solid for
+ * Black. Shapes carry the colour, so a highlight class can recolour a selected
+ * or checked piece without hiding which side it belongs to.
+ */
 const GLYPHS: Readonly<Record<PieceCode, string>> = {
-  wK: "K",
-  wQ: "Q",
-  wR: "R",
-  wB: "B",
-  wN: "N",
-  wP: "P",
-  bK: "k",
-  bQ: "q",
-  bR: "r",
-  bB: "b",
-  bN: "n",
-  bP: "p",
+  wK: "\u2654",
+  wQ: "\u2655",
+  wR: "\u2656",
+  wB: "\u2657",
+  wN: "\u2658",
+  wP: "\u2659",
+  bK: "\u265A",
+  bQ: "\u265B",
+  bR: "\u265C",
+  bB: "\u265D",
+  bN: "\u265E",
+  bP: "\u265F",
 };
 const PIECE_NAMES: Readonly<Record<PieceType, string>> = {
   p: "pawn",
@@ -926,7 +931,7 @@ export function createChessGame(): GameMount {
 
   function buildBoard(inCheck: boolean): HTMLElement {
     const grid = document.createElement("div");
-    grid.className = "stage-board";
+    grid.className = "stage-board chess-board";
     grid.style.gridTemplateColumns = "repeat(8, 44px)";
     const targets = new Set(selectedMoves.map((move) => move.to));
     for (let index = 0; index < 64; index++) {
@@ -941,6 +946,7 @@ export function createChessGame(): GameMount {
       cell.type = "button";
       cell.className = "stage-cell";
       cell.style.fontSize = "22px";
+      if (piece !== null) cell.dataset.piece = colorOf(piece);
       let glyph = piece === null ? "" : GLYPHS[piece];
       if (isCheckedKing) cell.classList.add("is-warn");
       else if (isSelected) cell.classList.add("is-primary");

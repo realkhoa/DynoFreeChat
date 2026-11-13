@@ -310,6 +310,44 @@
   font-size: 8.5px !important;
 }
 
+/* Chess is the one board read as figurines instead of letters: hollow vs solid
+   Unicode pieces need a few more pixels than a character, or the two sides stop
+   being distinguishable. Still a compact literal, just 24px squares. */
+.stage-game-host .chess-board {
+  --stage-cell-size: 24px;
+}
+
+.stage-game-host .chess-board .stage-cell {
+  font-size: 20px !important;
+}
+
+/* Both sides print the same font colour by default, which makes White and
+   Black pieces nearly identical. Give each side its own ink plus a contrasting
+   halo, so the board reads the same on the dark and light themes. */
+.stage-game-host .chess-board .stage-cell[data-piece="w"] {
+  color: #f4f4f4;
+  text-shadow:
+    0 0 1px #2b2b2b,
+    0 0 2px #2b2b2b;
+}
+
+.stage-game-host .chess-board .stage-cell[data-piece="b"] {
+  color: #151515;
+  text-shadow:
+    0 0 1px #d0d0d0,
+    0 0 2px #d0d0d0;
+}
+
+/* The piece ink outranks the shared highlight colours, so selection and the
+   last move need a background instead of a text colour. */
+.stage-game-host .chess-board .stage-cell.is-primary {
+  background: rgba(78, 201, 176, 0.25);
+}
+
+.stage-game-host .chess-board .stage-cell.is-good {
+  background: rgba(220, 220, 170, 0.14);
+}
+
 /* Counters, buttons and the status line only appear while the pointer is over
    the board (or the board has keyboard focus), so a resting document shows
    nothing but the generated file. */
