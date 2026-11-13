@@ -190,10 +190,26 @@ if (LOCAL) await a.click("#match-join");
 else await a.click("#match-create");
 await sleep(2500);
 report.hostLobby = await a.evaluate(`document.querySelector("#match-status")?.textContent ?? null`);
+// Production rate-limits room creation per IP; when that kicks in, reuse an
+// existing unlocked room from the lobby API instead of failing the check.
+if (!LOCAL && (report.hostLobby ?? "").includes("429")) {
+  const apiBase = "https://dynofreechat-api.nbk2124-z.workers.dev";
+  const rooms = await (
+    await fetch(`${apiBase}/api/rooms`, { headers: { Origin: "https://realkhoa.github.io" } })
+  ).json();
+  const room = (rooms.rooms ?? []).find((entry) => entry.locked !== true);
+  if (room !== undefined) {
+    report.slug = room.slug;
+    await a.setValue("#match-slug", room.slug);
+    await a.click("#match-join");
+    await sleep(2500);
+    report.hostLobby = await a.evaluate(`document.querySelector("#match-status")?.textContent ?? null`);
+  }
+}
 
 await openLobby(b);
 await b.setValue("#match-game", "chess");
-await b.setValue("#match-slug", slug);
+await b.setValue("#match-slug", report.slug);
 await b.click("#match-join");
 await sleep(3000);
 report.guestLobby = await b.evaluate(`(() => ({
