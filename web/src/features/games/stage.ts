@@ -9,9 +9,13 @@
  */
 
 import type { GameContext, GameFactory, GameMount } from "./mount";
+import { RandomCodeFeed, renderCodeLine, type CodeView } from "./unfocus";
 
 /** Storage key remembering the Focus toggle. */
 export const FOCUS_STORAGE_KEY = "dyno.game.focus";
+
+/** Storage key remembering the unfocus (code-on-idle) preference. */
+export const UNFOCUS_STORAGE_KEY = "dyno.game.unfocus";
 
 /** Trailing code printed after the generated board literal. */
 const FOOTER_LINES = [
@@ -123,6 +127,8 @@ export interface StageElements {
   restart: HTMLButtonElement;
   /** Focus toggle: hides the game comments and counters. */
   focus: HTMLButtonElement;
+  /** Unfocus toggle: shows random source code while the pointer is away. */
+  unfocus: HTMLButtonElement;
 }
 
 /**
@@ -131,24 +137,33 @@ export interface StageElements {
 export class GameStage {
   private active: { id: string; mount: GameMount } | null = null;
   private focused = false;
+  private unfocusEnabled = true;
+  private viewport: HTMLElement | null = null;
+  private codeLayer: HTMLElement | null = null;
+  private cleanups: Array<() => void> = [];
 
   /**
    * @param elements DOM hosts.
    * @param factories Lazily created game modules keyed by registry id.
    * @param storage Storage for the Focus preference, or `null`.
+   * @param codeFeed Random source of the idle code view.
    */
   constructor(
     private readonly elements: StageElements,
     private readonly factories: Record<string, GameFactory>,
     private readonly storage: Storage | null = null,
+    private readonly codeFeed: RandomCodeFeed = new RandomCodeFeed(),
   ) {
     elements.restart.addEventListener("click", () => {
       const id = this.active?.id;
       if (id !== undefined) this.open(id, elements.title.textContent ?? id, elements.chip.textContent ?? "");
     });
     elements.focus.addEventListener("click", () => this.toggleFocus());
+    elements.unfocus.addEventListener("click", () => this.toggleUnfocus());
     this.focused = this.readFocus();
+    this.unfocusEnabled = this.readUnfocus();
     this.applyFocus();
+    this.applyUnfocusButton();
   }
 
   /** Registry id of the mounted game, if any. */
@@ -170,6 +185,109 @@ export class GameStage {
     this.writeFocus();
     this.applyFocus();
     return this.focused;
+  }
+
+  /** Whether the idle code view is enabled. */
+  get isUnfocused(): boolean {
+    return this.unfocusEnabled;
+  }
+
+  /**
+   * @brief Turns the idle code view on or off.
+   * @return The new state.
+   */
+  toggleUnfocus(): boolean {
+    this.unfocusEnabled = !this.unfocusEnabled;
+    this.writeUnfocus();
+    this.applyUnfocusButton();
+    if (this.viewport !== null) {
+      if (this.unfocusEnabled) void this.showCode();
+      else this.showGame();
+    }
+    return this.unfocusEnabled;
+  }
+
+  /** @brief Crossfades to the game layer. */
+  private showGame(): void {
+    if (this.viewport !== null) this.viewport.dataset.view = "game";
+  }
+
+  /**
+   * @brief Crossfades to a freshly randomised source view.
+   * @return Resolves when the new code is painted.
+   */
+  private async showCode(): Promise<void> {
+    const viewport = this.viewport;
+    const layer = this.codeLayer;
+    if (viewport === null || layer === null || !this.unfocusEnabled) return;
+
+    viewport.dataset.view = "code";
+    const view: CodeView = await this.codeFeed.next();
+    // The stage may have switched games while the file was loading.
+    if (layer !== this.codeLayer || viewport !== this.viewport) return;
+
+    layer.replaceChildren();
+    for (const line of view.lines) renderCodeLine(layer, line);
+  }
+
+  /**
+   * @brief Wires hover and keyboard focus to the two views.
+   * @param frame Code frame that owns the pointer events.
+   */
+  private wireUnfocus(frame: HTMLElement): void {
+    const enter = (): void => this.showGame();
+    const leave = (): void => {
+      if (this.unfocusEnabled) void this.showCode();
+    };
+    const focusIn = (): void => this.showGame();
+    const focusOut = (event: FocusEvent): void => {
+      const next = event.relatedTarget;
+      if (next instanceof Node && frame.contains(next)) return;
+      leave();
+    };
+
+    frame.addEventListener("mouseenter", enter);
+    frame.addEventListener("mouseleave", leave);
+    frame.addEventListener("focusin", focusIn);
+    frame.addEventListener("focusout", focusOut);
+    this.cleanups.push(
+      () => frame.removeEventListener("mouseenter", enter),
+      () => frame.removeEventListener("mouseleave", leave),
+      () => frame.removeEventListener("focusin", focusIn),
+      () => frame.removeEventListener("focusout", focusOut),
+    );
+  }
+
+  /** @brief Paints the unfocus toggle state. */
+  private applyUnfocusButton(): void {
+    this.elements.unfocus.classList.toggle("is-active", this.unfocusEnabled);
+    this.elements.unfocus.setAttribute("aria-pressed", String(this.unfocusEnabled));
+    this.elements.unfocus.title = this.unfocusEnabled
+      ? "Show random source code when the pointer leaves (Ctrl+Shift+U)"
+      : "Keep the game visible (Ctrl+Shift+U)";
+  }
+
+  /**
+   * @brief Reads the remembered unfocus preference.
+   * @return Whether the idle code view starts enabled.
+   */
+  private readUnfocus(): boolean {
+    if (this.storage === null) return true;
+    try {
+      return this.storage.getItem(UNFOCUS_STORAGE_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  }
+
+  /** @brief Remembers the unfocus preference, ignoring blocked storage. */
+  private writeUnfocus(): void {
+    if (this.storage === null) return;
+    try {
+      this.storage.setItem(UNFOCUS_STORAGE_KEY, this.unfocusEnabled ? "1" : "0");
+    } catch {
+      // A blocked storage must not break the toggle.
+    }
   }
 
   /**
@@ -196,6 +314,7 @@ export class GameStage {
 
     const mount = factory();
     this.elements.host.replaceChildren();
+    this.cleanups = [];
 
     // The game renders inside a generated source file: real code lines surround
     // it so the board reads as one data literal among other declarations.
@@ -204,16 +323,29 @@ export class GameStage {
     frame.dataset.game = title.replace(/\.(cs|cpp)$/i, "");
     frame.dataset.summary = summary;
 
+    // Two stacked views share the same slot: the idle source file and the game.
+    const codeLayer = document.createElement("div");
+    codeLayer.className = "stage-code-layer";
     const inner = document.createElement("div");
     inner.className = "stage-game-host";
+    const viewport = document.createElement("div");
+    viewport.className = "stage-viewport";
+    viewport.dataset.view = "game";
+    viewport.append(codeLayer, inner);
 
-    frame.append(codeBlock(headerLines(title)), inner, codeBlock(FOOTER_LINES));
+    frame.append(codeBlock(headerLines(title)), viewport, codeBlock(FOOTER_LINES));
     this.elements.host.append(frame);
+    this.viewport = viewport;
+    this.codeLayer = codeLayer;
 
     mount.mount(inner, context);
     squareBoard(inner);
     this.active = { id, mount };
     this.applyFocus();
+    this.wireUnfocus(frame);
+
+    if (this.unfocusEnabled) void this.showCode();
+    else this.showGame();
     return true;
   }
 
@@ -234,6 +366,10 @@ export class GameStage {
 
   /** @brief Tears down the active module without touching the panel. */
   private unmountActive(): void {
+    for (const dispose of this.cleanups) dispose();
+    this.cleanups = [];
+    this.viewport = null;
+    this.codeLayer = null;
     if (this.active === null) return;
     try {
       this.active.mount.unmount();

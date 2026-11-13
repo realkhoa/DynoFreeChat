@@ -328,3 +328,83 @@
 .stage-game-host:focus-within .stage-status {
   opacity: 1;
 }
+
+/* Unfocus mode: the idle source view and the game share one slot and crossfade.
+   Leaving the pointer shows a freshly randomised VinaBIM file; hovering shows the
+   real board, so the screen never rests on something game-like. */
+.stage-viewport {
+  position: relative;
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  margin: 1px 0 1px 6px;
+}
+
+.stage-viewport > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.stage-code-layer,
+.stage-game-host {
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease;
+}
+
+.stage-code-layer {
+  overflow: hidden;
+  background: var(--editor);
+  font: 10px/13px var(--font-mono);
+  opacity: 1;
+}
+
+.stage-viewport[data-view="code"] .stage-code-layer {
+  opacity: 1;
+}
+
+.stage-viewport[data-view="code"] .stage-game-host {
+  opacity: 0;
+  transform: scale(1.004);
+  pointer-events: none;
+}
+
+.stage-viewport[data-view="game"] .stage-code-layer {
+  opacity: 0;
+  transform: scale(0.996);
+  pointer-events: none;
+}
+
+.stage-viewport[data-view="game"] .stage-game-host {
+  opacity: 1;
+}
+
+.unfocus-line {
+  min-height: 13px;
+  white-space: pre;
+  color: #d4d4d4;
+}
+
+.unfocus-comment {
+  color: #6a9955;
+}
+
+.unfocus-pre {
+  color: #c586c0;
+}
+
+.unfocus-string {
+  color: #ce9178;
+}
+
+.unfocus-keyword {
+  color: #569cd6;
+}
+
+.unfocus-number {
+  color: #b5cea8;
+}
+
+.unfocus-plain {
+  color: #d4d4d4;
+}

@@ -329,6 +329,7 @@ const gameStage = new GameStage(
     status: byId<HTMLElement>("game-stage-status"),
     restart: byId<HTMLButtonElement>("game-stage-restart"),
     focus: byId<HTMLButtonElement>("game-stage-focus"),
+    unfocus: byId<HTMLButtonElement>("game-stage-unfocus"),
   },
   GAME_FACTORIES,
   storage,
@@ -1510,6 +1511,9 @@ function wire(): void {
     } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "h") {
       e.preventDefault();
       if (docTabs.activeId === "game-stage") gameStage.toggleFocus();
+    } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "u") {
+      e.preventDefault();
+      if (docTabs.activeId === "game-stage") gameStage.toggleUnfocus();
     } else if (!modalOpen && e.key === "F7") {
       e.preventDefault();
       openQuotesTab();

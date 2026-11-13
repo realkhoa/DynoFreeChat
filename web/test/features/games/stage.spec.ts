@@ -4,6 +4,26 @@ import { GAME_FACTORIES } from "@/features/games/factories";
 import type { GameMount } from "@/features/games/mount";
 import { GAMES } from "@/features/games/registry";
 import { GameStage, type StageElements } from "@/features/games/stage";
+import type { RandomCodeFeed } from "@/features/games/unfocus";
+
+/** Deterministic stand-in for the random VinaBIM code feed. */
+function fakeFeed(): RandomCodeFeed & { next: ReturnType<typeof vi.fn> } {
+  const next = vi.fn(async () => ({
+    path: "VinaBIM/Core/Demo.cpp",
+    lines: ["// generated demo", "int main() {"],
+  }));
+  return { next } as unknown as RandomCodeFeed & { next: ReturnType<typeof vi.fn> };
+}
+
+/** Builds a stage with the fake feed unless a feed is supplied. */
+function makeStage(
+  elements: StageElements,
+  factories: Record<string, () => GameMount>,
+  storage: Storage | null = null,
+  feed: RandomCodeFeed = fakeFeed(),
+): GameStage {
+  return new GameStage(elements, factories, storage, feed);
+}
 
 /** Records mount/unmount calls so the stage lifecycle is observable. */
 function fakeGame(): GameMount & { mounts: number; unmounts: number } {
@@ -35,7 +55,8 @@ function makeElements(): StageElements {
     <div id="game-stage-host"></div>
     <span id="game-stage-status"></span>
     <button id="game-stage-restart"></button>
-    <button id="game-stage-focus"></button>`;
+    <button id="game-stage-focus"></button>
+    <button id="game-stage-unfocus"></button>`;
   document.body.append(panel);
 
   return {
@@ -46,13 +67,49 @@ function makeElements(): StageElements {
     status: panel.querySelector<HTMLElement>("#game-stage-status")!,
     restart: panel.querySelector<HTMLButtonElement>("#game-stage-restart")!,
     focus: panel.querySelector<HTMLButtonElement>("#game-stage-focus")!,
+    unfocus: panel.querySelector<HTMLButtonElement>("#game-stage-unfocus")!,
   };
 }
 
 describe("GameStage", () => {
+  it("shows a random source view while the pointer is away and the game on hover", async () => {
+    const elements = makeElements();
+    const feed = fakeFeed();
+    const stage = makeStage(elements, { demo: () => fakeGame() }, null, feed);
+
+    stage.open("demo", "Demo.cs", "local simulation");
+    const viewport = elements.host.querySelector<HTMLElement>(".stage-viewport");
+    await vi.waitFor(() => expect(viewport?.dataset.view).toBe("code"));
+    expect(elements.host.querySelector(".stage-code-layer")?.textContent).toContain("generated demo");
+
+    const frame = elements.host.querySelector<HTMLElement>(".stage-code-frame");
+    frame?.dispatchEvent(new MouseEvent("mouseenter"));
+    expect(viewport?.dataset.view).toBe("game");
+
+    frame?.dispatchEvent(new MouseEvent("mouseleave"));
+    await vi.waitFor(() => expect(feed.next).toHaveBeenCalledTimes(2));
+    expect(viewport?.dataset.view).toBe("code");
+  });
+
+  it("turns the idle code view off and remembers it", () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value),
+    } as unknown as Storage;
+    const elements = makeElements();
+    const stage = makeStage(elements, { demo: () => fakeGame() }, storage);
+
+    stage.open("demo", "Demo.cs", "local simulation");
+    expect(stage.isUnfocused).toBe(true);
+    expect(stage.toggleUnfocus()).toBe(false);
+    expect(elements.unfocus.getAttribute("aria-pressed")).toBe("false");
+    expect(store.get("dyno.game.unfocus")).toBe("0");
+    expect(elements.host.querySelector<HTMLElement>(".stage-viewport")?.dataset.view).toBe("game");
+  });
   it("dims the board and hides the comments when Focus is on", () => {
     const elements = makeElements();
-    const stage = new GameStage(elements, { demo: () => fakeGame() });
+    const stage = makeStage(elements, { demo: () => fakeGame() });
     stage.open("demo", "Demo.cs", "local simulation");
 
     expect(elements.host.dataset.focus).toBe("off");
@@ -70,11 +127,11 @@ describe("GameStage", () => {
       setItem: (key: string, value: string) => store.set(key, value),
     } as unknown as Storage;
 
-    const first = new GameStage(makeElements(), { demo: () => fakeGame() }, storage);
+    const first = makeStage(makeElements(), { demo: () => fakeGame() }, storage);
     first.toggleFocus();
 
     const elements = makeElements();
-    const second = new GameStage(elements, { demo: () => fakeGame() }, storage);
+    const second = makeStage(elements, { demo: () => fakeGame() }, storage);
     expect(second.isFocused).toBe(true);
     expect(elements.host.dataset.focus).toBe("on");
   });
@@ -82,7 +139,7 @@ describe("GameStage", () => {
   it("mounts the requested game and paints the tab chrome", () => {
     const elements = makeElements();
     const game = fakeGame();
-    const stage = new GameStage(elements, { demo: () => game });
+    const stage = makeStage(elements, { demo: () => game });
 
     expect(stage.open("demo", "Demo.cs", "local simulation")).toBe(true);
     expect(stage.activeId).toBe("demo");
@@ -100,7 +157,7 @@ describe("GameStage", () => {
     const elements = makeElements();
     const first = fakeGame();
     const second = fakeGame();
-    const stage = new GameStage(elements, { first: () => first, second: () => second });
+    const stage = makeStage(elements, { first: () => first, second: () => second });
 
     stage.open("first", "First.cs", "one");
     stage.open("second", "Second.cs", "two");
@@ -113,7 +170,7 @@ describe("GameStage", () => {
   it("remounts the active game from the restart button", () => {
     const elements = makeElements();
     const game = fakeGame();
-    const stage = new GameStage(elements, { demo: () => game });
+    const stage = makeStage(elements, { demo: () => game });
 
     stage.open("demo", "Demo.cs", "local simulation");
     elements.restart.click();
@@ -125,7 +182,7 @@ describe("GameStage", () => {
   it("refuses an unknown game id without touching the mounted one", () => {
     const elements = makeElements();
     const game = fakeGame();
-    const stage = new GameStage(elements, { demo: () => game });
+    const stage = makeStage(elements, { demo: () => game });
 
     stage.open("demo", "Demo.cs", "local simulation");
     expect(stage.open("nope", "Nope.cs", "?")).toBe(false);
@@ -141,7 +198,7 @@ describe("GameStage", () => {
         throw new Error("boom");
       }),
     };
-    const stage = new GameStage(elements, { broken: () => broken, demo: () => fakeGame() });
+    const stage = makeStage(elements, { broken: () => broken, demo: () => fakeGame() });
 
     stage.open("broken", "Broken.cs", "x");
     expect(() => stage.open("demo", "Demo.cs", "y")).not.toThrow();

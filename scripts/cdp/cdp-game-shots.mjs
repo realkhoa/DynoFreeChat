@@ -118,7 +118,16 @@ await sleep(500);
 const report = {};
 for (const id of GAMES) {
   const opened = await click(`[data-game-id="${id}"]`);
-  await sleep(900);
+  await sleep(1200);
+  await shot(`game-${id}-code`);
+  // Move the real pointer over the board so the unfocus crossfade shows the game.
+  const box = await evaluate(
+    `(() => { const el = document.querySelector("#game-stage-host .stage-code-frame"); if (el === null) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`,
+  );
+  if (box !== null) {
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x, y: box.y });
+    await sleep(600);
+  }
   report[id] = {
     opened,
     tab: await evaluate(`document.querySelector(".tab[data-doc-id='game-stage']")?.dataset.label ?? null`),
