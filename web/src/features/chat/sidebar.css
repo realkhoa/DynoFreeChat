@@ -1,0 +1,214 @@
+/* Extracted from the former styles/ide.css monolith. */
+/* ------------------------------------------------- Solution Explorer dock */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 24px;
+  padding: 0 4px 0 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+}
+
+.sidebar-title {
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.section-actions {
+  display: flex;
+  gap: 0;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 20px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+}
+
+.icon-button:hover {
+  background: var(--hover-chrome);
+  border-color: var(--border);
+}
+
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 6px;
+  height: 20px;
+  padding: 0 6px;
+  background: var(--editor);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg-dim);
+}
+
+.sidebar-search:focus-within {
+  border-color: var(--accent);
+}
+
+.sidebar-search-icon {
+  display: grid;
+  place-items: center;
+  color: var(--fg-faint);
+}
+
+.sidebar-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  font: 11.5px/1 var(--font-ui);
+  color: var(--fg);
+}
+
+.sidebar-search input::placeholder {
+  color: var(--fg-faint);
+}
+
+.tree {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.tree-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  height: var(--row-h);
+  padding-right: 8px;
+  border-left: 2px solid transparent;
+  color: var(--fg);
+  font-size: 12px;
+  user-select: none;
+}
+
+.tree-row[data-depth="1"] {
+  padding-left: 14px;
+}
+
+.tree-row[data-depth="2"] {
+  padding-left: 30px;
+}
+
+.tree-row:hover {
+  background: var(--hover-row);
+}
+
+.tree-row[aria-selected="true"] {
+  background: var(--tree-selected);
+  border-left-color: var(--accent);
+}
+
+.tree-row:focus-within {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.tree-row--root .tree-label {
+  font-weight: 600;
+}
+
+.tree-toggle {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius);
+  color: var(--fg-dim);
+}
+
+.tree-toggle:hover:not(:disabled) {
+  background: var(--hover-chrome);
+}
+
+.tree-toggle:disabled {
+  cursor: default;
+}
+
+.tree-hit {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0 4px;
+  height: 100%;
+  min-width: 0;
+  text-align: left;
+  color: inherit;
+}
+
+.tree-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--project);
+}
+
+.tree-row--group .tree-icon,
+.tree-row--room .tree-icon {
+  color: var(--folder);
+}
+
+.tree-row--room .tree-icon[data-icon="lock"] {
+  color: var(--fg-dim);
+}
+
+.tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.tree-meta {
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tree-empty {
+  padding: 4px 12px;
+  color: var(--fg-faint);
+  font-size: 11.5px;
+  font-style: italic;
+}
+
+.sidebar-foot {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 10px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--fg-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+

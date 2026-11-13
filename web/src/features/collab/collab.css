@@ -1,0 +1,388 @@
+/* Extracted from the former styles/ide.css monolith. */
+/* ---------------------------------------------- Collab document (DiagnosticMatrix.cs) */
+
+/*
+ * The collab session is an open C# document, never a game window: one panel that
+ * lives in the editor area, renders the buffer as char literals and reports state
+ * through comments and the editor status bar. Timings are fixed so the gutter,
+ * the code and the matrix rows all share one line box.
+ */
+
+.game-editor-panel {
+  --code-line-height: 19px;
+  --code-font: 12.5px/var(--code-line-height) var(--font-mono);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--editor);
+  color: var(--fg);
+  font: var(--code-font);
+  overflow: hidden;
+  user-select: text;
+  contain: layout style;
+}
+
+.game-editor-panel[hidden],
+.logwrap[hidden] {
+  display: none !important;
+}
+
+.game-code-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.game-code-file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.game-code-chip {
+  color: #6a9955;
+  font: 11px/1 var(--font-mono);
+  white-space: nowrap;
+}
+
+.game-code-spacer {
+  flex: 1;
+}
+
+.game-code-tool-btn {
+  height: 20px;
+  padding: 0 7px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font: 11px/1 var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.game-code-tool-btn:hover {
+  background: var(--hover-chrome);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.game-code-tool-btn.is-active {
+  background: var(--sel);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+/* Detaching is only meaningful while the document sits in the tab; the frame
+   carries its own Dock command. */
+.game-editor-panel.is-detached #game-code-detach-btn {
+  display: none;
+}
+
+.game-code-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.game-code-gutter {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px 8px 6px;
+  background: var(--editor);
+  border-right: 1px solid var(--border-subtle);
+  color: #858585;
+  font: var(--code-font);
+  text-align: right;
+  user-select: none;
+  flex: none;
+}
+
+.game-code-gutter span {
+  height: var(--code-line-height);
+}
+
+.game-code-content {
+  flex: 1;
+  padding: 8px 12px;
+  overflow-x: auto;
+  font: var(--code-font);
+}
+
+.code-line {
+  white-space: pre;
+  height: var(--code-line-height);
+}
+
+.code-line.empty {
+  height: var(--code-line-height);
+}
+
+.code-line.indent1 {
+  padding-left: 18px;
+}
+
+.code-line.indent2 {
+  padding-left: 36px;
+}
+
+.code-line.indent3 {
+  padding-left: 54px;
+}
+
+.code-line .comment {
+  color: #6a9955;
+}
+
+.code-line .kw {
+  color: #569cd6;
+}
+
+.code-line .type {
+  color: #4ec9b0;
+}
+
+.code-line .ident {
+  color: #9cdcfe;
+}
+
+.code-line .num {
+  color: #b5cea8;
+}
+
+.code-line .str {
+  color: #ce9178;
+}
+
+/* Buffer slots render as char literals inside the initializer: text only, no
+   chip box, so the buffer reads as data and not as a clickable grid. */
+.matrix-row {
+  margin: 0;
+}
+
+.matrix-row .game-cell {
+  display: inline;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+  line-height: inherit;
+  color: #858585;
+  cursor: pointer;
+  box-shadow: none;
+  vertical-align: baseline;
+}
+
+.matrix-row .game-cell:hover:not(:disabled) {
+  background: rgba(86, 156, 214, 0.18);
+  color: var(--fg);
+}
+
+.matrix-row .game-cell:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.matrix-row .game-cell.cell-empty {
+  color: #6a9955;
+}
+
+.matrix-row .game-cell.cell-x {
+  color: #569cd6;
+  font-weight: 600;
+}
+
+.matrix-row .game-cell.cell-o {
+  color: #ce9178;
+  font-weight: 600;
+}
+
+.matrix-row .game-cell.cell-win {
+  background: rgba(86, 156, 214, 0.28);
+  color: #dcdcaa;
+  font-weight: 700;
+}
+
+.matrix-row .game-cell:disabled {
+  cursor: default;
+}
+
+/* Inline targets read like editor commands, not buttons. */
+.code-actions-row {
+  display: block;
+}
+
+.code-inline-btn {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--fg-dim);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.code-inline-btn:hover {
+  color: var(--fg);
+  background: var(--hover-chrome);
+}
+
+.code-inline-btn:focus-visible {
+  outline: 1px solid var(--accent);
+}
+
+/* The session id is edited in place, as if it were a string literal. */
+.code-literal {
+  width: 7ch;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px dashed var(--border);
+  color: #ce9178;
+  font: inherit;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.code-literal::placeholder {
+  color: #6a9955;
+}
+
+.code-literal:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------- status bar */
+
+.game-code-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 22px;
+  flex: none;
+  padding: 0 4px;
+  background: var(--chrome);
+  border-top: 1px solid var(--border);
+  color: var(--fg-dim);
+  font: 11px/1 var(--font-ui);
+  user-select: none;
+  overflow: hidden;
+}
+
+.game-code-statusbar .sb-item {
+  padding: 0 8px;
+  white-space: nowrap;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.game-code-statusbar .sb-item:last-child {
+  border-right: 0;
+}
+
+.game-code-statusbar .sb-spacer {
+  flex: 1;
+}
+
+.game-code-statusbar #game-code-thread {
+  color: var(--accent);
+}
+
+.game-code-statusbar #game-code-session {
+  color: #6a9955;
+}
+
+/* --------------------------------------------------------------- detach frame */
+
+.game-dialog {
+  width: min(860px, 94vw);
+  max-width: 94vw;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--fg);
+  overflow: hidden;
+}
+
+.game-dialog .dialog-head {
+  height: 28px;
+  padding: 0 8px 0 10px;
+  gap: 8px;
+}
+
+.game-dialog-mark {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.game-dialog-title {
+  flex: 1;
+  font: 12px/1 var(--font-mono);
+  color: var(--fg);
+}
+
+.game-detach-body {
+  height: min(600px, 78dvh);
+  display: flex;
+  min-height: 0;
+  background: var(--editor);
+}
+
+.game-detach-body .game-editor-panel {
+  flex: 1;
+  height: 100%;
+}
+
+.game-tool-btn {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.game-tool-btn:hover {
+  background: var(--hover-chrome);
+  color: var(--fg);
+}
+
+/* Stealth is a property of the document, not of a round: an idle file may dim,
+   but a running session stays fully legible. */
+.is-stealth {
+  opacity: var(--stealth-opacity, 0.35);
+  transition: opacity 0.18s ease, filter 0.18s ease;
+}
+
+.is-stealth--blur {
+  filter: blur(2px);
+}
+
+.is-stealth:hover,
+.is-stealth:focus-within {
+  opacity: 0.98;
+  filter: blur(0);
+}
+

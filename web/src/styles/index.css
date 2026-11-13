@@ -1,0 +1,18 @@
+/* Style entry point. Import order is load-bearing: it reproduces the
+   cascade of the former styles/ide.css monolith, then the chat log rules, then the
+   utilities layer. Add new feature styles inside their feature file, not here. */
+@import "../shared/styles/base.css";
+@import "../shared/styles/chrome.css";
+@import "../shared/styles/layout.css";
+@import "../features/chat/sidebar.css";
+@import "../shared/styles/dock-status.css";
+@import "../shared/styles/overlays.css";
+@import "../features/chat/start-view.css";
+@import "../shared/ui/dialogs.css";
+@import "../features/settings/settings.css";
+@import "../shared/styles/responsive.css";
+@import "../shared/styles/notifications.css";
+@import "../shared/styles/dock-compact.css";
+@import "../features/collab/collab.css";
+@import "../features/chat/chat.css";
+@import "./utilities.css";

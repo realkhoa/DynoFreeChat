@@ -1,0 +1,75 @@
+/* Extracted from the former styles/ide.css monolith. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--chrome);
+  color: var(--fg);
+  font: 12px/1.4 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.ico {
+  display: block;
+  flex: none;
+}
+
+/* ================================================================= shell */
+
+.ide {
+  display: grid;
+  grid-template-areas:
+    "titlebar"
+    "menubar"
+    "tabstrip"
+    "breadcrumb"
+    "content"
+    "dock";
+  grid-template-rows:
+    var(--titlebar-h)
+    var(--menubar-h)
+    var(--tabstrip-h)
+    var(--breadcrumb-h)
+    minmax(0, 1fr)
+    auto;
+  height: 100vh;
+  height: 100dvh;
+}
+

@@ -1,6 +1,5 @@
-import "./styles/tokens.css";
-import "./styles/ide.css";
-import "./styles/log.css";
+import "@/styles/tokens.css";
+import "@/styles/index.css";
 
 import {
   MAX_TEXT,
@@ -11,36 +10,35 @@ import {
   type RoomInfo,
   type ServerFrame,
 } from "@dyno/shared/protocol";
-import { createRoom, listRooms } from "./api";
-import { apiBase, roomSocketUrl, wsUrl } from "./env";
-import { applyBrowserBadges } from "./lib/badge";
-import { loadZoom, saveZoom, stepZoom, zoomToPixels, type Zoom } from "./lib/zoom";
-import { byId } from "./lib/dom";
-import { applyDock, closeDock, loadDock, revealDock, saveDock, toggleDock, type DockState } from "./lib/dockpref";
-import { joinPassFor } from "./lib/joinpass";
-import { applyMinimal, loadMinimal, minimalFromSearch, saveMinimal } from "./lib/minimal";
-import { applyRibbonVisible, loadRibbonVisible, saveRibbonVisible, updateRibbonToggleButton } from "./lib/ribbonpref";
-import { Outbox } from "./lib/outbox";
-import { formatAge } from "./lib/format";
-import { loadIdentity, saveNick, type Identity } from "./lib/identity";
-import { Notifier } from "./lib/notify";
-import { SoundPlayer } from "./lib/sound";
-import { PassVault } from "./lib/passvault";
-import { applyTheme, loadTheme, otherTheme, saveTheme, type Theme } from "./lib/theme";
-import { Store, type KindFilter } from "./model/store";
-import { ChatSocket, type SocketState } from "./net/socket";
-import { Composer } from "./ui/composer";
-import { GameDialog } from "./ui/game-dialog";
-import { icon, setIconButton } from "./ui/icons";
-import { LogView } from "./ui/log-view";
-import { mountMenubar, type MenuAction } from "./ui/menubar";
-import { NickDialog } from "./ui/nick-dialog";
-import { defaultToolbarSpec, StandardToolbar } from "./ui/toolbar";
-import { RoomDialog } from "./ui/room-dialog";
-import { ChatPicker } from "./ui/chat-picker";
-import { SettingsDialog } from "./ui/settings-dialog";
-import { Sidebar } from "./ui/sidebar";
-import { StatusBar } from "./ui/statusbar";
+import { createRoom, listRooms } from "@/api";
+import { apiBase, roomSocketUrl, wsUrl } from "@/env";
+import { applyBrowserBadges } from "@/shared/lib/badge";
+import { loadZoom, saveZoom, stepZoom, zoomToPixels, type Zoom } from "@/features/settings/zoom";
+import { byId } from "@/shared/lib/dom";
+import { applyDock, closeDock, loadDock, revealDock, saveDock, toggleDock, type DockState } from "@/features/settings/dockpref";
+import { joinPassFor } from "@/shared/lib/joinpass";
+import { applyMinimal, loadMinimal, minimalFromSearch, saveMinimal } from "@/features/settings/minimal";
+import { Outbox } from "@/shared/lib/outbox";
+import { formatAge } from "@/shared/lib/format";
+import { loadIdentity, saveNick, type Identity } from "@/shared/lib/identity";
+import { Notifier } from "@/shared/lib/notify";
+import { SoundPlayer } from "@/shared/lib/sound";
+import { PassVault } from "@/shared/lib/passvault";
+import { applyTheme, loadTheme, otherTheme, saveTheme, type Theme } from "@/features/settings/theme";
+import { Store, type KindFilter } from "@/features/chat/state/store";
+import { ChatSocket, type SocketState } from "@/shared/net/socket";
+import { Composer } from "@/features/chat/components/composer";
+import { GameDialog } from "@/features/collab/document/frame";
+import { icon, setIconButton } from "@/shared/ui/icons";
+import { LogView } from "@/features/chat/components/log-view";
+import { mountMenubar, type MenuAction } from "@/shared/ui/menubar";
+import { NickDialog } from "@/features/chat/components/nick-dialog";
+import { defaultToolbarSpec, StandardToolbar } from "@/shared/ui/toolbar";
+import { RoomDialog } from "@/features/chat/components/room-dialog";
+import { ChatPicker } from "@/features/chat/components/chat-picker";
+import { SettingsDialog } from "@/features/settings/settings-dialog";
+import { Sidebar } from "@/features/chat/components/sidebar";
+import { StatusBar } from "@/shared/ui/statusbar";
 
 const PENDING_TTL_MS = 10_000;
 const FILTER_DEBOUNCE_MS = 120;
@@ -124,7 +122,6 @@ const outbox = new Outbox();
 let outboxWarned = false;
 let theme: Theme = loadTheme(storage);
 let zoom: Zoom = loadZoom(storage);
-let ribbonVisible = loadRibbonVisible(storage);
 let minimal = loadMinimal(storage);
 let dock: DockState = loadDock(storage);
 
@@ -408,20 +405,8 @@ function setDock(next: DockState): void {
 }
 
 function applyChromeVisibility(): void {
-  applyRibbonVisible(document.documentElement, ribbonVisible);
   applyMinimal(document.documentElement, minimal);
-  menubar.setChecked("ribbon", ribbonVisible);
   menubar.setChecked("minimal", minimal);
-
-  const ribbonToggle = document.getElementById("menubar-ribbon-toggle");
-  if (ribbonToggle !== null) {
-    updateRibbonToggleButton(ribbonToggle, ribbonVisible);
-  }
-}
-
-function toggleRibbon(): void {
-  ribbonVisible = saveRibbonVisible(storage, !ribbonVisible);
-  applyChromeVisibility();
 }
 
 /** Only the log and the composer, for embedding in a WebView. */
@@ -1022,9 +1007,6 @@ function handleMenuAction(action: MenuAction): void {
     case "theme":
       toggleTheme();
       break;
-    case "ribbon":
-      toggleRibbon();
-      break;
     case "dock":
       setDock(revealDock(dock));
       break;
@@ -1196,9 +1178,6 @@ function wire(): void {
 
   byId<HTMLButtonElement>("minimal-exit").addEventListener("click", () => toggleMinimal());
 
-  const menubarRibbonToggle = document.getElementById("menubar-ribbon-toggle");
-  menubarRibbonToggle?.addEventListener("click", () => toggleRibbon());
-
   byId<HTMLButtonElement>("dock-reply-cancel").addEventListener("click", () => {
     composer.setReply(null);
     composer.focus();
@@ -1251,11 +1230,6 @@ function wire(): void {
     if (event.altKey && key === "o") {
       event.preventDefault();
       setDock(revealDock(dock));
-      return;
-    }
-    if (event.key === "F1") {
-      event.preventDefault();
-      toggleRibbon();
       return;
     }
     if (event.shiftKey && key === "m") {

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 // GitHub Pages serves project sites from /<repo>/, so the artefact must be built
@@ -7,6 +8,11 @@ const base = process.env.GITHUB_ACTIONS === "true" ? pagesBase : "/";
 
 export default defineConfig({
   base,
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
   build: {
     outDir: "dist",
     target: "es2022",

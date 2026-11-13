@@ -1,0 +1,92 @@
+/* Extracted from the former styles/ide.css monolith. */
+/* --------------------------------------------------------------- overlays */
+
+.editor-find-bar {
+  position: absolute;
+  top: 8px;
+  right: 20px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.editor-find-bar .find-icon {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  color: var(--fg-dim);
+}
+
+.editor-find-bar input {
+  width: 220px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--editor);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font: 11.5px var(--font-ui);
+  outline: none;
+}
+
+.editor-find-bar input:focus {
+  border-color: var(--accent);
+}
+
+.editor-find-bar .find-count {
+  font: 11px var(--font-mono);
+  color: var(--fg-dim);
+  min-width: 24px;
+  text-align: right;
+}
+
+.editor-find-bar .find-close {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--fg-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.editor-find-bar .find-close:hover {
+  background: var(--hover-chrome);
+  color: var(--fg);
+}
+
+.new-chip {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 10px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font-size: 11px;
+  box-shadow: 0 1px 4px #00000022;
+}
+
+.new-chip:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+

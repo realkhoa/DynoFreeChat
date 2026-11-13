@@ -1,0 +1,227 @@
+/* Extracted from the former styles/ide.css monolith. */
+/* ------------------------------------------------- notification bell + panel */
+
+.titlebar {
+  position: relative;
+}
+
+.titlebar-bell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 20px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+}
+
+.titlebar-bell:hover,
+.titlebar-bell[aria-expanded="true"] {
+  background: var(--panel);
+  border-color: var(--border);
+}
+
+.bell-count {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font: 10px/14px var(--font-ui);
+  text-align: center;
+}
+
+.notify-panel {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 8px;
+  z-index: 70;
+  width: 320px;
+  background: var(--menu);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px #00000045;
+}
+
+.notify-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 26px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--fg-muted);
+  font-size: 11.5px;
+}
+
+.notify-clear {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.notify-clear:hover {
+  text-decoration: underline;
+}
+
+.notify-clear:disabled {
+  color: var(--fg-faint);
+  text-decoration: none;
+}
+
+.notify-list {
+  margin: 0;
+  padding: 2px;
+  list-style: none;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.notify-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  text-align: left;
+  color: var(--fg);
+}
+
+.notify-item:hover {
+  background: var(--hover-row);
+  border-color: var(--accent);
+}
+
+.notify-room {
+  font: 11.5px/1.2 var(--font-mono);
+}
+
+.notify-count {
+  font-size: 10.5px;
+  color: var(--fg-dim);
+}
+
+.notify-meta {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+.notify-empty {
+  margin: 0;
+  padding: 12px;
+  color: var(--fg-faint);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+/* VS-style zoom control for the chat pane only (bottom-left of the editor) */
+.statusitem--zoom {
+  padding: 0 6px;
+}
+
+.statusitem--zoom select {
+  appearance: none;
+  height: 18px;
+  padding: 0 15px 0 5px;
+  background-color: transparent;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    right 8px center,
+    right 5px center;
+  background-size: 3px 3px, 3px 3px;
+  background-repeat: no-repeat;
+  border: 1px solid var(--statusbar-edge);
+  border-radius: var(--radius);
+  color: var(--statusbar-fg);
+  font: 11px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.statusitem--zoom select:hover {
+  background-color: var(--statusbar-chip);
+}
+
+.statusitem--zoom option {
+  background: var(--menu);
+  color: var(--fg);
+}
+
+/* placeholder trees read as present but clearly not live data */
+.tree-row--placeholder .tree-label,
+.tree-row--placeholder .tree-meta {
+  color: var(--fg-faint);
+}
+
+.tree-row--file .tree-icon {
+  color: var(--fg-faint);
+}
+
+.tree-row--file:hover {
+  background: var(--hover-row);
+}
+
+/* minimal: only the log and the composer, for a WebView host */
+:root[data-minimal="on"] .ide {
+  grid-template-areas:
+    "content"
+    "dock";
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+:root[data-minimal="on"] .titlebar,
+:root[data-minimal="on"] .menubar,
+:root[data-minimal="on"] .ribbon,
+:root[data-minimal="on"] .tabstrip,
+:root[data-minimal="on"] .breadcrumb,
+:root[data-minimal="on"] .sidebar {
+  display: none;
+}
+
+:root[data-minimal="on"] .content {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:root[data-minimal="on"] .dock {
+  border-top: 1px solid var(--border);
+}
+
+:root[data-minimal="on"] .log {
+  padding-top: 6px;
+}
+
+.minimal-exit {
+  display: none;
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 80;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 0 0 0 var(--radius);
+  background: var(--chrome);
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.55;
+}
+
+:root[data-minimal="on"] .minimal-exit {
+  display: grid;
+  place-items: center;
+}
+
+.minimal-exit:hover {
+  opacity: 1;
+  color: var(--fg);
+}
+

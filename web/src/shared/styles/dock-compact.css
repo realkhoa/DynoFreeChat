@@ -1,0 +1,49 @@
+/* Extracted from the former styles/ide.css monolith. */
+/* ------------------------------------------- Output dock: compact + closable */
+
+.dock-body {
+  height: 26px;
+}
+
+:root[data-dock="closed"] .ide {
+  grid-template-areas:
+    "titlebar"
+    "menubar"
+    "ribbon"
+    "tabstrip"
+    "breadcrumb"
+    "content";
+  grid-template-rows:
+    var(--titlebar-h)
+    var(--menubar-h)
+    var(--ribbon-h)
+    var(--tabstrip-h)
+    var(--breadcrumb-h)
+    minmax(0, 1fr);
+}
+
+:root[data-ribbon="off"][data-dock="closed"] .ide {
+  grid-template-areas:
+    "titlebar"
+    "menubar"
+    "tabstrip"
+    "breadcrumb"
+    "content";
+  grid-template-rows:
+    var(--titlebar-h)
+    var(--menubar-h)
+    var(--tabstrip-h)
+    var(--breadcrumb-h)
+    minmax(0, 1fr);
+}
+
+:root[data-minimal="on"][data-dock="closed"] .ide {
+  grid-template-areas:
+    "content";
+  grid-template-rows: minmax(0, 1fr);
+}
+
+:root[data-dock="closed"] .dock {
+  display: none;
+}
+

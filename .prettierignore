@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.wrangler/
+.vite/
+coverage/
+.shots/
+package-lock.json
+*.md

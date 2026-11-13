@@ -1,0 +1,68 @@
+/* Layout utilities: prefer these over new bespoke rules in feature styles. */
+
+.u-row {
+  display: flex;
+  align-items: center;
+}
+
+.u-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.u-center {
+  display: grid;
+  place-items: center;
+}
+
+.u-flex1 {
+  flex: 1;
+  min-width: 0;
+}
+
+.u-gap-2 { gap: 2px; }
+.u-gap-4 { gap: 4px; }
+.u-gap-6 { gap: 6px; }
+.u-gap-8 { gap: 8px; }
+
+.u-pad-2 { padding: 2px; }
+.u-pad-4 { padding: 4px; }
+.u-pad-6 { padding: 6px; }
+
+.u-nowrap {
+  white-space: nowrap;
+}
+
+.u-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.u-muted {
+  color: var(--fg-muted);
+}
+
+.u-dim {
+  color: var(--fg-dim);
+}
+
+.u-mono {
+  font-family: var(--font-mono);
+}
+
+.u-hidden {
+  display: none !important;
+}
+
+.u-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

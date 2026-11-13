@@ -1,0 +1,128 @@
+/* Extracted from the former styles/ide.css monolith. */
+/* ------------------------------------------------------------- start view */
+
+.startview {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  overflow: auto;
+  color: var(--fg-dim);
+}
+
+.startview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 480px;
+  padding: 28px 36px;
+  background: var(--panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.startview-badge {
+  font: 700 11px/1 var(--font-mono);
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #ffffff;
+  letter-spacing: 0.05em;
+}
+
+.startview h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+
+.startview p {
+  margin: 0;
+  font: 11.5px/1.6 var(--font-mono);
+  color: var(--fg-faint);
+}
+
+.startview-desc {
+  font: 12px/1.5 var(--font-ui) !important;
+  color: var(--fg-muted) !important;
+  text-align: center;
+}
+
+.startview-shortcuts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  width: 100%;
+  margin: 6px 0;
+  padding: 10px 14px;
+  background: var(--editor);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 11.5px var(--font-ui);
+  color: var(--fg-dim);
+}
+
+.shortcut-item kbd {
+  padding: 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font: 10.5px/1.4 var(--font-mono);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.startview .hint {
+  margin-top: 6px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.startview-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.button {
+  height: 23px;
+  min-width: 75px;
+  padding: 0 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.button:hover {
+  border-color: var(--accent);
+}
+
+.button:active {
+  background: var(--chrome);
+}
+
+.button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.button--primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+

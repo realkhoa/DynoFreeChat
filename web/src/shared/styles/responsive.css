@@ -1,0 +1,85 @@
+/* Extracted from the former styles/ide.css monolith. */
+/* ------------------------------------------------------------------ scroll */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::selection {
+  background: var(--sel);
+}
+
+/* ------------------------------------------------------------------ narrow */
+
+@media (max-width: 900px) {
+  .content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .menu-search,
+  .menubar-solution {
+    display: none;
+  }
+
+  .filter {
+    width: 120px;
+  }
+
+  .combo-label {
+    display: none;
+  }
+
+  .stdbar-combo,
+  .stdbar-combo--room {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.statusitem--button {
+  color: var(--statusbar-dim);
+  padding: 0 6px;
+  border: 1px solid transparent;
+}
+
+.statusitem--button:hover {
+  background: var(--statusbar-chip);
+  border-color: var(--statusbar-edge);
+  color: var(--statusbar-fg);
+}
+
