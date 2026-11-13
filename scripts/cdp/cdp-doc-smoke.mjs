@@ -203,7 +203,11 @@ await click("#btn-hub-collab");
 await sleep(600);
 report.gamesHub = await evaluate(`(() => {
   const rows = [...document.querySelectorAll("#games-list .module-row")];
-  return { count: rows.length, ids: rows.map((row) => row.dataset.gameId) };
+  return {
+    count: rows.length,
+    ids: rows.map((row) => row.dataset.gameId),
+    features: [...document.querySelectorAll("#games-feature-list .module-row")].map((row) => row.dataset.featureId),
+  };
 })()`);
 report.open2048 = await click('[data-game-id="2048"]');
 await sleep(800);
@@ -222,7 +226,8 @@ report.ok =
   report.marketHub?.rows === 4 &&
   report.quotes?.lines > 0 &&
   report.workspace?.hasSolution === true &&
-  report.gamesHub?.count >= 11 &&
+  report.gamesHub?.count >= 14 &&
+  report.gamesHub?.features?.length === 7 &&
   report.game2048?.cells > 0 &&
   report.consoleErrors.length === 0;
 

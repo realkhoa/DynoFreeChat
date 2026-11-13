@@ -45,7 +45,7 @@ import { RoomDialog } from "@/features/chat/components/room-dialog";
 import { RoomsView } from "@/features/chat/components/rooms-view";
 import { SettingsView } from "@/features/settings/settings-view";
 import { DocTabs } from "@/shared/ui/doc-tabs";
-import { GamesHubView } from "@/features/games/hub-view";
+import { GamesHubView, type FeatureModule } from "@/features/games/hub-view";
 import { GAMES, findGame } from "@/features/games/registry";
 import { GAME_FACTORIES } from "@/features/games/factories";
 import { GameStage } from "@/features/games/stage";
@@ -135,6 +135,7 @@ const gamesViewEl = byId<HTMLElement>("games-view");
 const gamesListEl = byId<HTMLElement>("games-list");
 const gamesGutterEl = byId<HTMLElement>("games-gutter");
 const gamesChipEl = byId<HTMLElement>("games-code-chip");
+const gamesFeatureListEl = byId<HTMLElement>("games-feature-list");
 const gameStageViewEl = byId<HTMLElement>("game-stage-view");
 const marketViewEl = byId<HTMLElement>("market-view");
 const marketHubViewEl = byId<HTMLElement>("market-hub-view");
@@ -274,6 +275,41 @@ for (const game of GAMES) {
   GAME_OPENERS[game.id] = () => openGameStage(game.id);
 }
 
+/**
+ * @brief Open handler per feature module listed in the Collab hub.
+ */
+const FEATURE_OPENERS: Record<string, () => void> = {
+  rooms: () => openRoomsTab(),
+  settings: () => openSettingsTab(),
+  quotes: () => openQuotesTab(),
+  orderbook: () => openDepthTab(),
+  chart: () => openChartTab(),
+  feed: () => openFeedTab(),
+  workspace: () => openWorkspaceTab(),
+};
+
+/**
+ * @brief Every non-game document the Collab hub links to.
+ * @details The hub is the single index of the app: chat, settings, the four market
+ * documents and the workspace all appear here before the game list.
+ */
+const HUB_FEATURES: FeatureModule[] = [
+  { id: "rooms", name: "ChatRooms", summary: "room picker | create | password vault", hotkey: "Ctrl+K" },
+  { id: "settings", name: "Settings", summary: "theme | sound | zoom | nickname", hotkey: "—" },
+  ...FEED_MODULES.map((module) => ({
+    id: module.id,
+    name: module.name,
+    summary: module.summary,
+    hotkey: module.hotkey,
+  })),
+  {
+    id: "workspace",
+    name: "Workspace",
+    summary: "VinaBIM solution | build output | immediate",
+    hotkey: "Ctrl+Shift+E",
+  },
+];
+
 const gameStage = new GameStage(
   {
     panel: gameStageViewEl,
@@ -287,11 +323,13 @@ const gameStage = new GameStage(
 );
 
 const gamesHub = new GamesHubView(
-  { list: gamesListEl, gutter: gamesGutterEl, chip: gamesChipEl },
+  { features: gamesFeatureListEl, list: gamesListEl, gutter: gamesGutterEl, chip: gamesChipEl },
   {
     onOpen: (id) => GAME_OPENERS[id]?.(),
+    onOpenFeature: (id) => FEATURE_OPENERS[id]?.(),
   },
 );
+gamesHub.setFeatures(HUB_FEATURES);
 gamesHub.setGames(GAMES);
 
 const lockClient = new LockClient(apiBase, storage);
