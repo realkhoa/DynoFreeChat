@@ -92,6 +92,21 @@ function codeBlock(lines: string[]): HTMLElement {
   return block;
 }
 
+/**
+ * @brief Normalises a game grid to square cells of one shared size.
+ * @details Games hard-code `grid-template-columns: repeat(n, 44px)` for their
+ * own layout; inside the document that reads as a wide table. The column count
+ * is kept, but every track becomes the compact square cell size.
+ * @param root Mounted game root.
+ */
+function squareBoard(root: HTMLElement): void {
+  for (const board of root.querySelectorAll<HTMLElement>(".stage-board")) {
+    const template = board.style.gridTemplateColumns;
+    const repeat = /repeat\(\s*(\d+)\s*,/.exec(template);
+    if (repeat === null) continue;
+    board.style.gridTemplateColumns = `repeat(${repeat[1]}, var(--stage-cell-size, 15px))`;
+  }
+}
 /** DOM hosts the stage paints into. */
 export interface StageElements {
   /** Document panel, used for visibility checks. */
@@ -196,6 +211,7 @@ export class GameStage {
     this.elements.host.append(frame);
 
     mount.mount(inner, context);
+    squareBoard(inner);
     this.active = { id, mount };
     this.applyFocus();
     return true;
