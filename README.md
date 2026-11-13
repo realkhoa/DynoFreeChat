@@ -187,11 +187,48 @@ Các quy tắc được cài trong code, không phải lời hứa:
 ## Cấu trúc
 
 ```
-shared/   types + validator + token bucket (dùng chung FE/BE)
+shared/   protocol + validator + token bucket (dùng chung FE/BE)
 worker/   index.ts (router) · registry.ts · room.ts · pass.ts · test/
-web/      index.html · src/{ui,net,model,lib,styles} · test/
+web/      index.html · src/ · test/
 docs/     superpowers/specs (design) · superpowers/plans (kế hoạch) · screenshot
-scripts/  seed-demo.mjs
+scripts/  cdp/ (kiểm tra bằng Chrome DevTools Protocol) · tools/ (seed, probe)
+```
+
+### web/src — tổ chức theo feature
+
+```
+src/
+  main.ts                 điểm vào: đọc DOM, khởi tạo UI, wiring (đang tách dần)
+  api.ts · env.ts         HTTP client + cấu hình endpoint
+  features/
+    chat/                 components/ (log, composer, sidebar, picker, dialog)
+                          state/store.ts · chat.css · sidebar.css · start-view.css
+    collab/               engine/ (tictactoe, protocol, coordinator, session)
+                          document/ (view, frame, prefs) · collab.css
+    settings/             settings-dialog · theme · minimal · zoom · dockpref · settings.css
+  shared/
+    ui/                   icons · toolbar · statusbar · menubar · dialogs.css · notifications.css
+    lib/                  dom · format · identity · mentions · outbox · passvault · joinpass · notify · sound · badge
+    net/                  socket (reconnect backoff) · backoff
+    styles/               tokens.css · index.css (entry, thứ tự import quan trọng) + partials
+```
+
+- **Import dùng alias `@/`** trỏ về `web/src` (khai báo ở `tsconfig.json` + `vite.config.ts` + `vitest.config.ts`), nên file có thể đổi chỗ mà không phải sửa đường dẫn tương đối.
+- **CSS**: `styles/index.css` import các partial theo đúng thứ tự cascade cũ; `styles/utilities.css` có sẵn các class layout (`.u-row`, `.u-gap-8`, …) để việc mới không phải thêm rule rời. Việc mới đặt CSS trong file của feature tương ứng.
+- **Test** mirror theo cây feature: `web/test/features/*`, `web/test/shared/*`.
+- `web/index.html` **không** cho Prettier format vì markup của tab Collab là `white-space: pre` — thụt lề sẽ thành nội dung.
+
+### Lệnh thường dùng
+
+```bash
+npm run dev:web        # vite dev server
+npm run dev:worker     # wrangler dev (Durable Object local)
+npm run typecheck      # tsc --noEmit toàn workspace
+npm test               # vitest toàn workspace
+npm run format         # prettier --write
+npm run verify         # typecheck + format:check + test (dùng trước khi push)
+npm run build          # build web ra web/dist
+npm run deploy:worker  # deploy Cloudflare Worker
 ```
 
 ## Giấy phép
