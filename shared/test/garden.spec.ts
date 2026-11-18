@@ -291,7 +291,7 @@ describe("soil fertility", () => {
 describe("pets", () => {
   it("ships a rarity ladder and rolls legendary early", () => {
     expect(PETS.length).toBeGreaterThanOrEqual(10);
-    const legendary = rollPet(() => 0.01, 0);
+    const legendary = rollPet(() => 0.001, 0);
     expect(legendary.pet.rarity).toBe("legendary");
     const pity = rollPet(() => 0.99, EGG_PITY - 1);
     expect(["epic", "legendary"]).toContain(pity.pet.rarity);
