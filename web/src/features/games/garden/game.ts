@@ -132,6 +132,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let menu: MenuState | null = null;
   let chartMarket: MarketSnapshot | null = null;
   let buyQty = 1;
+  let tool: { kind: "fertilize" | "spray"; supply: SupplyId } | null = null;
+  let toolPicker: "fertilize" | "spray" | null = null;
   let pendingSelection: { area: "crop" | "tree"; slot: number } | null = null;
   let pendingPage: number | null = null;
   let message: Message | null = null;
@@ -572,14 +574,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /** @brief Applies one owned fertilizer to the selected plant. */
-  function applySupply(kind: "fertilize" | "spray", supply: SupplyId): void {
-    if (selectedSlot === null) return;
-    const tree = selectedArea === "tree";
+  function applySupply(
+    kind: "fertilize" | "spray",
+    supply: SupplyId,
+    slot: number | null = selectedSlot,
+    area: "crop" | "tree" = selectedArea,
+  ): void {
+    if (slot === null) return;
+    const tree = area === "tree";
     supplyPicker = null;
     const action: GardenAction =
       kind === "fertilize"
-        ? { kind, slot: selectedSlot, tree, supply: supply as FertilizerId }
-        : { kind: "spray", slot: selectedSlot, tree, supply: supply as SprayId };
+        ? { kind, slot, tree, supply: supply as FertilizerId }
+        : { kind: "spray", slot, tree, supply: supply as SprayId };
     const name = t(`supplies.${supply}`);
     void runAction(
       action,
@@ -846,10 +853,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (savedTab === "garden" || savedTab === "market" || savedTab === "event" || savedTab === "chart") {
       tab = savedTab;
     }
-    const savedPage = Number(readParam("gpage"));
+    const rawPage = readParam("gpage");
+    const savedPage = rawPage === null ? Number.NaN : Number(rawPage);
     pendingPage = Number.isInteger(savedPage) && savedPage > 0 ? savedPage : null;
     const savedArea = readParam("garea") === "tree" ? "tree" : "crop";
-    const savedSlot = Number(readParam("gslot"));
+    const rawSlot = readParam("gslot");
+    const savedSlot = rawSlot === null ? Number.NaN : Number(rawSlot);
     pendingSelection =
       Number.isInteger(savedSlot) && savedSlot >= 0 ? { area: savedArea, slot: savedSlot } : null;
   }
@@ -1559,6 +1568,46 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         ),
       );
       wrap.append(bulk);
+
+      const tools = div("garden-tools");
+      tools.append(span("garden-hint", t("garden.tools")));
+      tools.append(
+        actionButton(t("garden.useFertilizer"), "pickTool", true),
+        actionButton(t("garden.useSpray"), "pickTool", true),
+      );
+      for (const button of tools.querySelectorAll<HTMLButtonElement>('[data-act="pickTool"]')) {
+        button.dataset.kind =
+          button.textContent?.includes(t("garden.useFertilizer")) === true ? "fertilize" : "spray";
+      }
+      if (tool !== null) {
+        tools.append(
+          span(
+            "garden-tool-active",
+            t("garden.toolActive", {
+              supply: t(`supplies.${tool.supply}`),
+              left: state?.bag.supplies[tool.supply] ?? 0,
+            }),
+          ),
+          actionButton(t("garden.toolCancel"), "cancelTool"),
+        );
+      }
+      wrap.append(tools);
+      if (toolPicker !== null) {
+        const picker = div("garden-tools");
+        const catalog = toolPicker === "fertilize" ? FERTILIZERS : SPRAYS;
+        for (const supply of catalog) {
+          const owned = state?.bag.supplies[supply.id] ?? 0;
+          const button = actionButton(
+            `${t(`supplies.${supply.id}`)} (${owned})`,
+            "pickToolSupply",
+            owned > 0,
+          );
+          button.dataset.kind = toolPicker;
+          button.dataset.supply = supply.id;
+          picker.append(button);
+        }
+        wrap.append(picker);
+      }
     }
     const layout = div("garden-layout");
     const boards = div("garden-boards");
@@ -1823,6 +1872,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (message !== null) {
       line.textContent = message.text;
       line.classList.add(`is-${message.kind}`);
+    } else if (tool !== null) {
+      line.textContent = t("garden.toolActive", {
+        supply: t(`supplies.${tool.supply}`),
+        left: state?.bag.supplies[tool.supply] ?? 0,
+      });
     } else {
       line.textContent = mode === "visit" ? t("garden.readonly") : t("garden.noSelectionHint");
     }
@@ -1912,10 +1966,46 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const slot = Number(target.dataset.slot);
         const area = target.dataset.area === "tree" ? "tree" : "crop";
         if (!Number.isInteger(slot)) return;
+        if (tool !== null && mode === "owner") {
+          // Tool mode: one click uses the picked supply, no menu in the way.
+          const plant = area === "tree" ? treeAt(slot) : plotAt(slot);
+          if (plant === null || isPreviewPage()) {
+            message = { text: t("garden.toolEmpty"), kind: "info" };
+            render();
+            return;
+          }
+          applySupply(tool.kind, tool.supply, slot, area);
+          return;
+        }
         const rect = target.getBoundingClientRect();
         openMenu(slot, area, rect.left + 6, rect.bottom + 2, rect.top);
         return;
       }
+      case "pickTool": {
+        const kind = target.dataset.kind === "spray" ? "spray" : "fertilize";
+        toolPicker = toolPicker === kind ? null : kind;
+        render();
+        return;
+      }
+      case "pickToolSupply": {
+        const supply = target.dataset.supply as SupplyId | undefined;
+        const kind = target.dataset.kind === "spray" ? "spray" : "fertilize";
+        if (supply !== undefined) {
+          tool = { kind, supply };
+          toolPicker = null;
+          message = {
+            text: t("garden.toolPicked", { supply: t(`supplies.${supply}`) }),
+            kind: "info",
+          };
+          render();
+        }
+        return;
+      }
+      case "cancelTool":
+        tool = null;
+        toolPicker = null;
+        render();
+        return;
       case "menuClose":
         closeMenu();
         return;
@@ -2107,6 +2197,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Keyboard routing: plot digits, tab letters and action letters. */
   function onKeyDown(event: KeyboardEvent): void {
     if (event.key === "Escape") {
+      if (tool !== null || toolPicker !== null) {
+        tool = null;
+        toolPicker = null;
+        render();
+        return;
+      }
       if (menu !== null) closeMenu();
       else {
         selectedSlot = null;

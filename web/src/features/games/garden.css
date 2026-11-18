@@ -644,3 +644,22 @@
   border-color: var(--accent);
   color: #ffffff;
 }
+
+/* Click-to-use supply tools: pick a fertilizer or spray, then click plants. */
+.garden-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 6px;
+}
+
+.garden-tool-active {
+  padding: 1px 8px;
+  border: 1px solid #4ec9b066;
+  border-radius: 999px;
+  background: #4ec9b01a;
+  color: #6fe3b5;
+  font: 10px/16px var(--font-mono);
+  white-space: nowrap;
+}
