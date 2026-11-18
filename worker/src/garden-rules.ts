@@ -1719,11 +1719,23 @@ function sellCrop(
   if (stack === undefined || stack.qty < qty) return { ok: false, code: "NO_CROP" };
 
   const next = clone(ledger);
-  const gross = cropSellPrice(stack, season) * qty;
+  // A locked future guarantees its price for the covered units.
+  const marketPrice = cropSellPrice(stack, season);
+  const future = ledger.futures.find(
+    (entry) => entry.item === item && entry.expiresAt > now && entry.qty > 0,
+  );
+  const unit = future !== undefined ? Math.max(marketPrice, future.price) : marketPrice;
+  const gross = unit * qty;
   const tax = Math.round(gross * SELL_TAX_RATE);
   next.coins += gross - tax;
   next.stats.earned += gross;
   next.stats.tax += tax;
+  if (future !== undefined) {
+    const left = future.qty - qty;
+    next.futures = next.futures
+      .map((entry) => (entry === future ? { ...entry, qty: left } : entry))
+      .filter((entry) => entry.qty > 0);
+  }
   removeCrop(next.bag.crops, item, effects, pest, qty);
   return changed(next, now);
 }
@@ -1733,7 +1745,20 @@ function sellAll(ledger: GardenLedger, season: SeasonSnapshot, now: number): Rul
   if (ledger.bag.crops.length === 0) return { ok: false, code: "NOTHING_TO_SELL" };
   const next = clone(ledger);
   let total = 0;
-  for (const stack of next.bag.crops) total += cropSellPrice(stack, season) * stack.qty;
+  for (const stack of next.bag.crops) {
+    const base = cropSellPrice(stack, season);
+    const future = next.futures.find(
+      (entry) => entry.item === stack.item && entry.expiresAt > now && entry.qty > 0,
+    );
+    const unit = future !== undefined ? Math.max(base, future.price) : base;
+    total += unit * stack.qty;
+    if (future !== undefined) {
+      const left = future.qty - stack.qty;
+      next.futures = next.futures
+        .map((entry) => (entry === future ? { ...entry, qty: left } : entry))
+        .filter((entry) => entry.qty > 0);
+    }
+  }
   if (total <= 0) return { ok: false, code: "NOTHING_TO_SELL" };
   const tax = Math.round(total * SELL_TAX_RATE);
   next.coins += total - tax;

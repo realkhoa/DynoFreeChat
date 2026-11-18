@@ -101,6 +101,29 @@ describe("extras", () => {
     expect(locked.ledger.futures).toHaveLength(1);
   });
 
+  it("pays the locked future price even when the market crashes", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000;
+    ledger.bag.crops = [{ item: "carrot", effects: [], qty: 1 }];
+    const locked = run(ledger, { kind: "lockFuture", item: "carrot", qty: 1 });
+    expect(locked.ok).toBe(true);
+    if (!locked.ok) return;
+    const lockPrice = locked.ledger.futures[0]?.price ?? 0;
+    const base = seasonAt(NOW + 2_000);
+    const crashed = { ...base, prices: { ...base.prices, carrot: 1 } };
+    const sold = applyGardenAction(
+      locked.ledger,
+      { kind: "sellCrop", item: "carrot", effects: [], qty: 1 },
+      crashed,
+      NOW + 2_000,
+      () => 0.5,
+    );
+    expect(sold.ok).toBe(true);
+    if (!sold.ok) return;
+    const tax = Math.round(lockPrice * 0.1);
+    expect(sold.ledger.coins).toBe(locked.ledger.coins + lockPrice - tax);
+  });
+
   it("guarantees a rare wheel prize at pity", () => {
     const ledger = makeLedger();
     ledger.coins = WHEEL_PRICE;
