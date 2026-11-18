@@ -18,6 +18,7 @@ import {
   TREES_PER_TAB,
   FARM_CYCLE_MS,
   WATER_ALL_COST,
+  SELL_TAX_RATE,
   ANIMALS,
   animalById,
   animalIntervalMs,
@@ -105,6 +106,8 @@ export interface LedgerStats {
   earned: number;
   /** Coins spent on seeds, land and services. */
   spent: number;
+  /** Coins paid as sale tax. */
+  tax: number;
 }
 
 /** Everything the rules need to know about one garden. */
@@ -206,7 +209,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     plots: emptyCrops(STARTING_TABS),
     trees: emptyTrees(STARTING_TABS),
     bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {}, products: [], tools: {} },
-    stats: { planted: 0, harvested: 0, earned: 0, spent: 0 },
+    stats: { planted: 0, harvested: 0, earned: 0, spent: 0, tax: 0 },
     buildings: { coop: 0, barn: 0 },
     animals: { coop: [], barn: [] },
     farmSettledAt: input.now,
@@ -924,11 +927,13 @@ function sellProduct(
   const products = ledger.bag.products ?? [];
   const stack = products.find((entry) => entry.product === product && entry.star === star);
   if (stack === undefined || stack.qty < qty) return { ok: false, code: "NO_PRODUCT" };
-  const total = productPrice(stack, season) * qty;
+  const gross = productPrice(stack, season) * qty;
+  const tax = Math.round(gross * SELL_TAX_RATE);
 
   const next = clone(ledger);
-  next.coins += total;
-  next.stats.earned += total;
+  next.coins += gross - tax;
+  next.stats.earned += gross;
+  next.stats.tax += tax;
   next.bag.products = (next.bag.products ?? [])
     .map((entry) =>
       entry.product === product && entry.star === star ? { ...entry, qty: entry.qty - qty } : entry,
@@ -944,10 +949,12 @@ function sellAllProducts(ledger: GardenLedger, season: SeasonSnapshot, now: numb
   let total = 0;
   for (const stack of products) total += productPrice(stack, season) * stack.qty;
   if (total <= 0) return { ok: false, code: "NO_PRODUCT" };
+  const tax = Math.round(total * SELL_TAX_RATE);
 
   const next = clone(ledger);
-  next.coins += total;
+  next.coins += total - tax;
   next.stats.earned += total;
+  next.stats.tax += tax;
   next.bag.products = [];
   return changed(next, now);
 }
@@ -1176,9 +1183,11 @@ function sellCrop(
   if (stack === undefined || stack.qty < qty) return { ok: false, code: "NO_CROP" };
 
   const next = clone(ledger);
-  const total = cropSellPrice(stack, season) * qty;
-  next.coins += total;
-  next.stats.earned += total;
+  const gross = cropSellPrice(stack, season) * qty;
+  const tax = Math.round(gross * SELL_TAX_RATE);
+  next.coins += gross - tax;
+  next.stats.earned += gross;
+  next.stats.tax += tax;
   removeCrop(next.bag.crops, item, effects, qty);
   return changed(next, now);
 }
@@ -1190,8 +1199,10 @@ function sellAll(ledger: GardenLedger, season: SeasonSnapshot, now: number): Rul
   let total = 0;
   for (const stack of next.bag.crops) total += cropSellPrice(stack, season) * stack.qty;
   if (total <= 0) return { ok: false, code: "NOTHING_TO_SELL" };
-  next.coins += total;
+  const tax = Math.round(total * SELL_TAX_RATE);
+  next.coins += total - tax;
   next.stats.earned += total;
+  next.stats.tax += tax;
   next.bag.crops = [];
   return changed(next, now);
 }

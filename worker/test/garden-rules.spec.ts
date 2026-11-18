@@ -489,11 +489,13 @@ describe("garden ledger rules", () => {
     ];
     const season = seasonFor(NOW);
     const expected = season.prices.carrot * 5 * 2 + season.prices.corn;
+    const tax = Math.round(expected * 0.1);
     const sold = run(ledger, { kind: "sellAll" });
     expect(sold.ok).toBe(true);
     if (!sold.ok) return;
-    expect(sold.ledger.coins).toBe(ledger.coins + expected);
+    expect(sold.ledger.coins).toBe(ledger.coins + expected - tax);
     expect(sold.ledger.stats.earned).toBe(expected);
+    expect(sold.ledger.stats.tax).toBe(tax);
     expect(sold.ledger.bag.crops).toEqual([]);
 
     expect(run(sold.ledger, { kind: "sellAll" })).toMatchObject({ ok: false, code: "NOTHING_TO_SELL" });

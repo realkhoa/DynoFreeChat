@@ -392,6 +392,7 @@ export class Garden extends DurableObject<Env> {
         harvested: stats.harvested ?? 0,
         earned: stats.earned ?? 0,
         spent: stats.spent ?? 0,
+        tax: stats.tax ?? 0,
       },
     };
     return {

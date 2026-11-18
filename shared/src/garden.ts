@@ -775,6 +775,8 @@ export interface GardenStats {
   readonly earned: number;
   /** Coins spent on seeds, saplings, land and services. */
   readonly spent: number;
+  /** Coins paid as sale tax. */
+  readonly tax: number;
 }
 
 /** Warehouse and its machines. */
@@ -898,6 +900,9 @@ export interface ShopOffer {
   /** Units available to this player this rotation. */
   readonly stock: number;
 }
+
+/** Flat tax rate on every sale income. */
+export const SELL_TAX_RATE = 0.1;
 
 /** Coins charged per plant watered by the bulk "water all" action. */
 export const WATER_ALL_COST = 5;

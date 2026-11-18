@@ -707,7 +707,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       (entry) => entry.item === item && sameEffectSet(entry.effects, effects),
     );
     if (stack === undefined) return;
-    const gain = cropSellPrice(stack, season) * stack.qty;
+    const gross = cropSellPrice(stack, season) * stack.qty;
+    // The server keeps 10% of every sale; show the amount actually received.
+    const gain = gross - Math.round(gross * 0.1);
     void runAction(
       { kind: "sellCrop", item, effects: stack.effects, qty: stack.qty },
       t("market.sold", { seed: itemName(item), coins: gain }),
@@ -1869,6 +1871,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       qtyRow.append(button);
     }
     wrap.append(qtyRow);
+    wrap.append(lineBlock(`// ${t("market.taxHint")}`));
 
     const shop = div("garden-market-panel");
     shop.append(
