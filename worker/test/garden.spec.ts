@@ -119,15 +119,15 @@ describe("global market", () => {
 });
 
 describe("bots", () => {
-  it("creates ten bot gardens and keeps them out of the human leaderboard", async () => {
-    const tick = await SELF.fetch(`${BASE}/api/garden/bots/tick`, { method: "POST" });
-    expect(tick.status).toBe(200);
-    const body = (await tick.json()) as { bots: number };
-    expect(body.bots).toBe(10);
+  it("creates fifty bot gardens and keeps them out of the human leaderboard", async () => {
+    for (let round = 0; round < 5; round += 1) {
+      const tick = await SELF.fetch(`${BASE}/api/garden/bots/tick`, { method: "POST" });
+      expect(tick.status).toBe(200);
+    }
 
     const list = await SELF.fetch(`${BASE}/api/garden/bots`);
     const listed = (await list.json()) as { bots: Array<{ code: string; nick: string }> };
-    expect(listed.bots).toHaveLength(10);
+    expect(listed.bots).toHaveLength(50);
     for (const bot of listed.bots) expect(bot.nick).toMatch(/^Bot \d\d$/);
 
     const board = await SELF.fetch(`${BASE}/api/garden/leaderboard`);

@@ -2014,7 +2014,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Builds the bots tab: the ten market-maker gardens. */
   function buildBots(): HTMLElement {
     const wrap = div("garden-bots");
-    wrap.append(lineBlock(`// ${t("bots.title")}`));
+    wrap.append(lineBlock(`// ${t("bots.title", { count: botGardens.length })}`));
     if (botGardens.length === 0) {
       wrap.append(lineBlock(t("bots.empty")));
       return wrap;

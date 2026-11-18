@@ -18,7 +18,10 @@ import { MARKET_BOARD_NAME } from "./market-board";
 import { randomCode, randomRecoveryKey, sha256Hex } from "./secrets";
 
 /** How many bots exist right now. */
-export const BOT_COUNT = 10;
+export const BOT_COUNT = 50;
+
+/** Bot gardens created at most per tick, keeping the first cron under limits. */
+const BOT_CREATE_BATCH = 10;
 
 /** Singleton name of the bot manager. */
 export const BOT_MANAGER_NAME = "bots";
@@ -117,7 +120,9 @@ export class BotManager extends DurableObject<Env> {
   /** @brief Creates any missing bot garden, once. */
   private async ensureBots(bots: BotRecord[]): Promise<BotRecord[]> {
     const colors = ["#4ec9b0", "#d7ba7d", "#9cdcfe", "#ce9178", "#c586c0", "#6fe3b5"];
-    while (bots.length < BOT_COUNT) {
+    let created = 0;
+    while (bots.length < BOT_COUNT && created < BOT_CREATE_BATCH) {
+      created += 1;
       const index = bots.length + 1;
       const nick = `Bot ${String(index).padStart(2, "0")}`;
       const playerId = crypto.randomUUID();
@@ -204,6 +209,8 @@ export class BotManager extends DurableObject<Env> {
 
     const market = await this.marketHeader();
     const marketStub = this.env.MARKET.get(this.env.MARKET.idFromName(MARKET_BOARD_NAME));
+    const soldTotals: Record<string, number> = {};
+    const boughtTotals: Record<string, number> = {};
     let actions = 0;
     for (const bot of bots) {
       try {
@@ -235,28 +242,43 @@ export class BotManager extends DurableObject<Env> {
         if (typeof result.harvested === "number") bot.harvested = result.harvested;
         if (typeof result.bag === "number") bot.bag = result.bag;
 
-        // Bot trades feed the same market board as real players.
+        // Aggregate first: one market request per item instead of one per bot,
+        // which keeps a 50-bot tick well under the subrequest limit.
         for (const [item, qty] of Object.entries(result.sold ?? {})) {
           if (qty < 1) continue;
-          await marketStub.fetch("https://market/record", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ item, qty }),
-          });
+          soldTotals[item] = (soldTotals[item] ?? 0) + qty;
         }
         for (const [item, qty] of Object.entries(result.bought ?? {})) {
           if (qty < 1) continue;
-          await marketStub.fetch("https://market/purchase", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ item, qty }),
-          });
+          boughtTotals[item] = (boughtTotals[item] ?? 0) + qty;
         }
       } catch {
         // One failing bot must not stop the rest of the tick.
       }
     }
     this.writeBots(bots);
+    for (const [item, qty] of Object.entries(soldTotals)) {
+      try {
+        await marketStub.fetch("https://market/record", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ item, qty }),
+        });
+      } catch {
+        // Market accounting must not fail the whole bot tick.
+      }
+    }
+    for (const [item, qty] of Object.entries(boughtTotals)) {
+      try {
+        await marketStub.fetch("https://market/purchase", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ item, qty }),
+        });
+      } catch {
+        // Market accounting must not fail the whole bot tick.
+      }
+    }
     return json({ ok: true, bots: bots.length, actions });
   }
 }
