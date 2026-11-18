@@ -41,7 +41,7 @@ const RIPE_PLOT: PlotState = {
   seed: "carrot",
   plantedAt: CLOCK - 120_000,
   readyAt: CLOCK - 5_000,
-  effect: "golden",
+  effects: ["golden", "wet"],
   watered: true,
   fertilized: true,
   harvests: 0,
@@ -55,7 +55,7 @@ const GROWING_PLOT: PlotState = {
   seed: "tomato",
   plantedAt: CLOCK - 30_000,
   readyAt: CLOCK + 120_000,
-  effect: null,
+  effects: [],
   watered: false,
   fertilized: false,
   harvests: 0,
@@ -231,6 +231,15 @@ describe("garden tab", () => {
     expect(host.querySelectorAll(".garden-tab")).toHaveLength(3);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(18);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
+    // The cell shows only the strongest mutation; the detail panel shows all.
+    const readyCell = host.querySelector(".garden-cell.is-ready");
+    expect(readyCell?.textContent).toContain("Vàng");
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    await settle();
+    const detail = host.querySelector(".garden-detail-text")?.textContent ?? "";
+    expect(detail).toContain("Vàng x5");
+    expect(detail).toContain("Ướt x2");
+    expect(detail).toContain("x10");
     expect(host.querySelector(".stage-hud")?.textContent).toContain("coin");
     expect(host.querySelector(".garden-code")?.textContent).toBe("#ABCDEF");
   });

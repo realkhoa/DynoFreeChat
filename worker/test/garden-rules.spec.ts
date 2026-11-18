@@ -58,7 +58,7 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.bag.seeds.carrot).toBe(2);
     const plot = planted.ledger.plots[0];
     expect(plot).not.toBeNull();
-    expect(plot?.effect).toBe("golden");
+    expect(plot?.effects).toEqual(["golden", "frozen"]);
     expect(plot?.readyAt).toBeGreaterThan(NOW);
     expect(planted.ledger.stats.planted).toBe(1);
     expect(planted.ledger.rev).toBe(makeLedger().rev + 1);
@@ -100,7 +100,7 @@ describe("garden ledger rules", () => {
     if (!picked.ok) return;
     expect(picked.ledger.trees[0]?.harvests).toBe(1);
     expect(picked.ledger.trees[0]?.readyAt).toBeGreaterThan(tree.readyAt);
-    expect(picked.ledger.bag.crops).toEqual([{ item: "apple", effect: null, qty: 1 }]);
+    expect(picked.ledger.bag.crops).toEqual([{ item: "apple", effects: [], qty: 1 }]);
   });
 
   it("refuses a tree it cannot afford and an occupied tree slot", () => {
@@ -134,7 +134,7 @@ describe("garden ledger rules", () => {
     expect(harvested.ok).toBe(true);
     if (!harvested.ok) return;
     expect(harvested.ledger.plots[0]).toBeNull();
-    expect(harvested.ledger.bag.crops).toEqual([{ item: "carrot", effect: null, qty: 1 }]);
+    expect(harvested.ledger.bag.crops).toEqual([{ item: "carrot", effects: [], qty: 1 }]);
     expect(harvested.ledger.stats.harvested).toBe(1);
   });
 
@@ -146,14 +146,14 @@ describe("garden ledger rules", () => {
     const plot = planted.ledger.plots[0];
     if (plot === null || plot === undefined) throw new Error("plot empty");
 
-    const first = run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt, 0.01);
+    const first = run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt, 0.1);
     expect(first.ok).toBe(true);
     if (!first.ok) return;
     expect(first.ledger.plots[0]).not.toBeNull();
     expect(first.ledger.plots[0]?.harvests).toBe(1);
     expect(first.ledger.plots[0]?.readyAt).toBeGreaterThan(plot.readyAt);
-    expect(first.ledger.plots[0]?.effect).toBe("golden");
-    expect(first.ledger.bag.crops).toEqual([{ item: "tomato", effect: null, qty: 1 }]);
+    expect(first.ledger.plots[0]?.effects).toEqual(["frozen"]);
+    expect(first.ledger.bag.crops).toEqual([{ item: "tomato", effects: [], qty: 1 }]);
 
     expect(run(first.ledger, { kind: "harvest", slot: 0, tree: false })).toMatchObject({
       ok: false,
@@ -185,7 +185,7 @@ describe("garden ledger rules", () => {
     if (!watered.ok) return;
     const next = watered.ledger.plots[0];
     expect(next?.watered).toBe(true);
-    expect(next?.effect).toBe("wet");
+    expect(next?.effects).toEqual(["wet"]);
     expect(next?.readyAt).toBeLessThan(plot.readyAt);
     expect(run(watered.ledger, { kind: "water", slot: 0, tree: false })).toMatchObject({
       ok: false,
@@ -237,10 +237,10 @@ describe("garden ledger rules", () => {
     expect(sprayed.ledger.plots[0]?.spray).toEqual({ id: "snowSpray", left: 2 });
     expect(sprayed.ledger.bag.supplies.snowSpray).toBe(0);
 
-    const picked = run(sprayed.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt, 0.2);
+    const picked = run(sprayed.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt, 0.1);
     expect(picked.ok).toBe(true);
     if (!picked.ok) return;
-    expect(picked.ledger.plots[0]?.effect).toBe("snow");
+    expect(picked.ledger.plots[0]?.effects).toEqual(["frozen", "snow"]);
     expect(picked.ledger.plots[0]?.spray).toEqual({ id: "snowSpray", left: 1 });
   });
 
@@ -307,8 +307,8 @@ describe("garden ledger rules", () => {
   it("sells crop stacks with the effect multiplier", () => {
     const ledger = makeLedger();
     ledger.bag.crops = [
-      { item: "carrot", effect: "golden", qty: 2 },
-      { item: "corn", effect: null, qty: 1 },
+      { item: "carrot", effects: ["golden"], qty: 2 },
+      { item: "corn", effects: [], qty: 1 },
     ];
     const season = seasonFor(NOW);
     const expected = season.prices.carrot * 5 * 2 + season.prices.corn;

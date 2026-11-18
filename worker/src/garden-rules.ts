@@ -21,7 +21,8 @@ import {
   growTimeFor,
   hash32,
   nextPatchPrice,
-  rollEffect,
+  canonicalEffects,
+  rollEffects,
   seedById,
   fertilizerById,
   sprayById,
@@ -30,6 +31,7 @@ import {
   type ActiveFertilizer,
   type ActiveSpray,
   type CropStack,
+  type EffectId,
   type FertilizerId,
   type SprayId,
   type GardenAction,
@@ -248,7 +250,7 @@ export function applyGardenAction(
     case "buySupply":
       return buySupply(ledger, action.supply, action.qty, now);
     case "sellCrop":
-      return sellCrop(ledger, action.item, action.effect, action.qty, season, now);
+      return sellCrop(ledger, action.item, action.effects, action.qty, season, now);
     case "sellAll":
       return sellAll(ledger, season, now);
     default:
@@ -279,7 +281,7 @@ function plant(
     seed: seed.id,
     plantedAt: now,
     readyAt: now + growTimeFor(seed, event),
-    effect: rollEffect(event, rng),
+    effects: rollEffects(event, rng),
     watered: false,
     fertilized: false,
     harvests: 0,
@@ -312,7 +314,7 @@ function plantTree(
     tree: tree.id,
     plantedAt: now,
     readyAt: now + growTimeFor(tree, event),
-    effect: rollEffect(event, rng),
+    effects: rollEffects(event, rng),
     watered: false,
     fertilized: false,
     harvests: 0,
@@ -334,7 +336,7 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
   if (now < plot.readyAt) return { ok: false, code: "NOT_READY" };
 
   const next = clone(ledger);
-  addCrop(next.bag.crops, plot.seed, plot.effect, 1);
+  addCrop(next.bag.crops, plot.seed, plot.effects, 1);
   next.stats.harvested += 1;
 
   const seed = seedById(plot.seed);
@@ -346,7 +348,7 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
       seed: plot.seed,
       plantedAt: now,
       readyAt: now + growTimeFor(seed, event, plot.fertilizer),
-      effect: rollEffect(event, rng, sprayBonus),
+      effects: rollEffects(event, rng, sprayBonus),
       watered: false,
       fertilized: false,
       harvests: plot.harvests + 1,
@@ -368,7 +370,7 @@ function harvestTree(ledger: GardenLedger, slot: number, now: number, rng: () =>
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
 
   const next = clone(ledger);
-  addCrop(next.bag.crops, tree.tree, tree.effect, 1);
+  addCrop(next.bag.crops, tree.tree, tree.effects, 1);
   next.stats.harvested += 1;
   const event = eventAt(now);
   const sprayBonus = tree.spray === null ? {} : (sprayById(tree.spray.id)?.effectChances ?? {});
@@ -377,7 +379,7 @@ function harvestTree(ledger: GardenLedger, slot: number, now: number, rng: () =>
     tree: tree.tree,
     plantedAt: now,
     readyAt: now + growTimeFor(definition, event, tree.fertilizer),
-    effect: rollEffect(event, rng, sprayBonus),
+    effects: rollEffects(event, rng, sprayBonus),
     watered: false,
     fertilized: false,
     harvests: tree.harvests + 1,
@@ -400,7 +402,7 @@ function water(ledger: GardenLedger, slot: number, now: number): RuleResult {
     ...plot,
     readyAt: Math.max(now + 1_000, plot.readyAt - Math.round(remaining * WATER_CUT_RATIO)),
     watered: true,
-    effect: plot.effect ?? "wet",
+    effects: canonicalEffects([...plot.effects, "wet"]),
   };
   return changed(next, now);
 }
@@ -418,7 +420,7 @@ function waterTree(ledger: GardenLedger, slot: number, now: number): RuleResult 
     ...tree,
     readyAt: Math.max(now + 1_000, tree.readyAt - Math.round(remaining * WATER_CUT_RATIO)),
     watered: true,
-    effect: tree.effect ?? "wet",
+    effects: canonicalEffects([...tree.effects, "wet"]),
   };
   return changed(next, now);
 }
@@ -568,19 +570,19 @@ function buySeed(
 function sellCrop(
   ledger: GardenLedger,
   item: ItemId,
-  effect: CropStack["effect"],
+  effects: readonly EffectId[],
   qty: number,
   season: SeasonSnapshot,
   now: number,
 ): RuleResult {
-  const stack = ledger.bag.crops.find((entry) => entry.item === item && entry.effect === effect);
+  const stack = ledger.bag.crops.find((entry) => entry.item === item && sameEffects(entry.effects, effects));
   if (stack === undefined || stack.qty < qty) return { ok: false, code: "NO_CROP" };
 
   const next = clone(ledger);
   const total = cropSellPrice(stack, season) * qty;
   next.coins += total;
   next.stats.earned += total;
-  removeCrop(next.bag.crops, item, effect ?? null, qty);
+  removeCrop(next.bag.crops, item, effects, qty);
   return changed(next, now);
 }
 
@@ -621,23 +623,31 @@ function clone(ledger: GardenLedger): GardenLedger {
   };
 }
 
+/** @brief Whether two effect lists are the same mutation set. */
+function sameEffects(left: readonly EffectId[], right: readonly EffectId[]): boolean {
+  const a = canonicalEffects(left).join(":");
+  const b = canonicalEffects(right).join(":");
+  return a === b;
+}
+
 /** @brief Adds one produce unit to a mutable bag. */
-function addCrop(crops: CropStack[], item: ItemId, effect: CropStack["effect"], qty: number): void {
-  const stack = crops.find((entry) => entry.item === item && entry.effect === effect);
+function addCrop(crops: CropStack[], item: ItemId, effects: readonly EffectId[], qty: number): void {
+  const canonical = canonicalEffects(effects);
+  const stack = crops.find((entry) => entry.item === item && sameEffects(entry.effects, canonical));
   if (stack === undefined) {
-    crops.push({ item, effect, qty });
+    crops.push({ item, effects: canonical, qty });
     return;
   }
-  crops[crops.indexOf(stack)] = { item, effect, qty: stack.qty + qty };
+  crops[crops.indexOf(stack)] = { item, effects: canonical, qty: stack.qty + qty };
 }
 
 /** @brief Removes produce units from a mutable bag, dropping empty stacks. */
-function removeCrop(crops: CropStack[], item: ItemId, effect: CropStack["effect"], qty: number): void {
-  const index = crops.findIndex((entry) => entry.item === item && entry.effect === effect);
+function removeCrop(crops: CropStack[], item: ItemId, effects: readonly EffectId[], qty: number): void {
+  const index = crops.findIndex((entry) => entry.item === item && sameEffects(entry.effects, effects));
   if (index < 0) return;
   const stack = crops[index];
   if (stack === undefined) return;
   const left = stack.qty - qty;
   if (left <= 0) crops.splice(index, 1);
-  else crops[index] = { item, effect, qty: left };
+  else crops[index] = { item, effects: canonicalEffects(effects), qty: left };
 }

@@ -35,7 +35,7 @@ import {
   parseGardenAction,
   parseGardenAuth,
   plotView,
-  rollEffect,
+  rollEffects,
   FERTILIZERS,
   SPRAYS,
   TREES,
@@ -186,7 +186,7 @@ describe("garden growth math", () => {
       seed: "carrot",
       plantedAt: 1_000,
       readyAt: 1_000 + seed.growMs,
-      effect: null,
+      effects: [],
       watered: false,
       fertilized: false,
       harvests: 0,
@@ -194,6 +194,7 @@ describe("garden growth math", () => {
       spray: null,
     };
     expect(plotView(plot, 1_000).stage).toBe(0);
+    expect(plotView(plot, 1_000).effects).toEqual([]);
     expect(plotView(plot, 1_000 + seed.growMs * 0.4).stage).toBe(1);
     expect(plotView(plot, 1_000 + seed.growMs * 0.8).stage).toBe(2);
     expect(plotView(plot, 1_000 + seed.growMs).ready).toBe(true);
@@ -213,31 +214,31 @@ describe("garden growth math", () => {
   it("rolls golden and frozen from the event chances deterministically", () => {
     const goldenHour = eventAt(EPOCH_MS + 2 * EVENT_WAVE_MS);
     const frost = eventAt(EPOCH_MS + 3 * EVENT_WAVE_MS);
-    expect(rollEffect(goldenHour, () => 0.01)).toBe("golden");
-    expect(rollEffect(goldenHour, () => 0.1)).toBe("golden");
-    expect(rollEffect(frost, () => 0.05)).toBe("frozen");
-    expect(rollEffect(frost, () => 0.5)).toBeNull();
+    expect(rollEffects(goldenHour, () => 0.01)).toEqual(["golden", "frozen"]);
+    expect(rollEffects(goldenHour, () => 0.1)).toEqual(["golden"]);
+    expect(rollEffects(frost, () => 0.05)).toEqual(["frozen"]);
+    expect(rollEffects(frost, () => 0.5)).toEqual([]);
   });
 
   it("rolls the new weather effects during their own event", () => {
     const snowfall = eventAt(EPOCH_MS + 5 * EVENT_WAVE_MS + 100);
     expect(snowfall.id).toBe("snowfall");
-    expect(rollEffect(snowfall, () => 0.1)).toBe("snow");
+    expect(rollEffects(snowfall, () => 0.1)).toEqual(["snow"]);
 
     const coldSnap = eventAt(EPOCH_MS + 6 * EVENT_WAVE_MS + 100);
-    expect(rollEffect(coldSnap, () => 0.1)).toBe("chill");
+    expect(rollEffects(coldSnap, () => 0.1)).toEqual(["chill"]);
 
     const heatwave = eventAt(EPOCH_MS + 7 * EVENT_WAVE_MS + 100);
-    expect(rollEffect(heatwave, () => 0.1)).toBe("sunray");
+    expect(rollEffects(heatwave, () => 0.1)).toEqual(["sunray"]);
 
     const drought = eventAt(EPOCH_MS + 9 * EVENT_WAVE_MS + 100);
-    expect(rollEffect(drought, () => 0.1)).toBe("cracked");
+    expect(rollEffects(drought, () => 0.1)).toEqual(["cracked"]);
 
     const wildfire = eventAt(EPOCH_MS + 10 * EVENT_WAVE_MS + 100);
-    expect(rollEffect(wildfire, () => 0.1)).toBe("onfire");
+    expect(rollEffects(wildfire, () => 0.05)).toEqual(["onfire"]);
 
     // A calm sky still leaves most plantings plain.
-    expect(rollEffect(eventAt(EPOCH_MS + 100), () => 0.9)).toBeNull();
+    expect(rollEffects(eventAt(EPOCH_MS + 100), () => 0.9)).toEqual([]);
   });
 
   it("keeps every weather effect rollable except water", () => {
@@ -265,7 +266,7 @@ describe("garden growth math", () => {
       seed: "carrot",
       plantedAt: 0,
       readyAt: NOW,
-      effect: "golden",
+      effects: ["golden"],
       watered: false,
       fertilized: false,
       harvests: 0,
@@ -277,7 +278,7 @@ describe("garden growth math", () => {
       seed: "corn",
       plantedAt: NOW,
       readyAt: NOW + 60_000,
-      effect: null,
+      effects: [],
       watered: false,
       fertilized: false,
       harvests: 0,
@@ -285,7 +286,7 @@ describe("garden growth math", () => {
       spray: null,
     };
     expect(gardenCounts(plots, [], NOW)).toEqual({ ready: 1, growing: 1, free: 7 });
-    expect(cropSellPrice({ item: "carrot", effect: "golden", qty: 1 }, season)).toBe(
+    expect(cropSellPrice({ item: "carrot", effects: ["golden"], qty: 1 }, season)).toBe(
       season.prices.carrot * 5,
     );
   });
@@ -305,8 +306,8 @@ describe("garden wire parsing", () => {
     ]);
     expect(treeById("apple")?.sell).toBeGreaterThan(treeById("apple")?.buy ?? 0);
     const season = seasonAt(NOW);
-    expect(cropSellPrice({ item: "apple", effect: null, qty: 1 }, season)).toBe(season.fruitPrices.apple);
-    expect(cropSellPrice({ item: "apple", effect: "golden", qty: 1 }, season)).toBe(
+    expect(cropSellPrice({ item: "apple", effects: [], qty: 1 }, season)).toBe(season.fruitPrices.apple);
+    expect(cropSellPrice({ item: "apple", effects: ["golden"], qty: 1 }, season)).toBe(
       season.fruitPrices.apple * 5,
     );
   });
@@ -323,15 +324,15 @@ describe("garden wire parsing", () => {
       tree: true,
     });
     expect(parseGardenAction({ kind: "plantTree", slot: 0, tree: "nope" })).toBeNull();
-    expect(cropKey("apple", "wet")).toBe("apple:wet");
-    expect(parseCropKey("apple:wet")).toEqual({ item: "apple", effect: "wet" });
-    expect(parseCropKey("elderberry")).toEqual({ item: "elderberry", effect: null });
+    expect(cropKey("apple", ["wet"])).toBe("apple:wet");
+    expect(parseCropKey("apple:wet")).toEqual({ item: "apple", effects: ["wet"] });
+    expect(parseCropKey("apple")).toEqual({ item: "apple", effects: [] });
   });
 
   it("round-trips crop bag keys", () => {
-    expect(cropKey("tomato", "wet")).toBe("tomato:wet");
-    expect(parseCropKey("tomato:wet")).toEqual({ item: "tomato", effect: "wet" });
-    expect(parseCropKey("corn")).toEqual({ item: "corn", effect: null });
+    expect(cropKey("tomato", ["wet"])).toBe("tomato:wet");
+    expect(parseCropKey("tomato:wet")).toEqual({ item: "tomato", effects: ["wet"] });
+    expect(parseCropKey("corn")).toEqual({ item: "corn", effects: [] });
     expect(parseCropKey("unknown:wet")).toBeNull();
     expect(parseCropKey("tomato:nope")).toBeNull();
   });
@@ -378,10 +379,10 @@ describe("garden wire parsing", () => {
     expect(parseGardenAction({ kind: "water", slot: 54 })).toBeNull();
     expect(parseGardenAction({ kind: "plant", slot: 0, seed: "nope" })).toBeNull();
     expect(parseGardenAction({ kind: "buySeed", seed: "corn", qty: 0 })).toBeNull();
-    expect(parseGardenAction({ kind: "sellCrop", item: "corn", effect: "wet", qty: 2 })).toEqual({
+    expect(parseGardenAction({ kind: "sellCrop", item: "corn", effects: ["wet"], qty: 2 })).toEqual({
       kind: "sellCrop",
       item: "corn",
-      effect: "wet",
+      effects: ["wet"],
       qty: 2,
     });
     expect(parseGardenAction({ kind: "fertilize", slot: 0, tree: false, supply: "speedGrow" })).toEqual({

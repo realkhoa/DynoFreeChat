@@ -324,8 +324,8 @@ export interface PlotState {
   readonly plantedAt: number;
   /** Wall-clock time the crop becomes harvestable. */
   readonly readyAt: number;
-  /** Effect rolled at planting, or `null`. */
-  readonly effect: EffectId | null;
+  /** Mutations carried by the current fruit; may hold several at once. */
+  readonly effects: readonly EffectId[];
   /** Whether the owner already watered this planting. */
   readonly watered: boolean;
   /** Whether the owner already fertilized this planting. */
@@ -348,8 +348,8 @@ export interface TreeState {
   readonly plantedAt: number;
   /** Wall-clock time the fruit becomes harvestable. */
   readonly readyAt: number;
-  /** Effect rolled for the current fruit, or `null`. */
-  readonly effect: EffectId | null;
+  /** Mutations carried by the current fruit; may hold several at once. */
+  readonly effects: readonly EffectId[];
   /** Whether the owner already watered this cycle. */
   readonly watered: boolean;
   /** Whether the owner already fertilized this cycle. */
@@ -366,8 +366,8 @@ export interface TreeState {
 export interface CropStack {
   /** Item of the harvested stack: a seed's crop or a tree's fruit. */
   readonly item: ItemId;
-  /** Effect the crop carried when harvested, or `null`. */
-  readonly effect: EffectId | null;
+  /** Mutations the stack carried when harvested. */
+  readonly effects: readonly EffectId[];
   /** Units in the stack. */
   readonly qty: number;
 }
@@ -545,7 +545,7 @@ export type GardenAction =
   | {
       readonly kind: "sellCrop";
       readonly item: ItemId;
-      readonly effect: EffectId | null;
+      readonly effects: readonly EffectId[];
       readonly qty: number;
     }
   | { readonly kind: "sellAll" };
@@ -653,6 +653,29 @@ export function effectById(id: string): EffectDefinition | undefined {
   return EFFECTS.find((effect) => effect.id === id);
 }
 
+/**
+ * @brief Picks the strongest mutation for compact display.
+ * @param effects Mutations on one fruit; order is ignored.
+ * @details Ties keep the catalog order, so the cell never flickers between two
+ * equal multipliers.
+ */
+export function strongestEffect(effects: readonly EffectId[]): EffectDefinition | null {
+  let best: EffectDefinition | null = null;
+  for (const effect of EFFECTS) {
+    if (!effects.includes(effect.id)) continue;
+    if (best === null || effect.multiplier > best.multiplier) best = effect;
+  }
+  return best;
+}
+
+/**
+ * @brief Combined value multiplier of a mutation set.
+ * @param effects Mutations on one fruit.
+ */
+export function effectsMultiplier(effects: readonly EffectId[]): number {
+  return effects.reduce((total, id) => total * (effectById(id)?.multiplier ?? 1), 1);
+}
+
 /** @brief Looks one event up by id. */
 export function eventById(id: string): EventDefinition | undefined {
   return EVENTS.find((event) => event.id === id);
@@ -708,22 +731,33 @@ export function isRecoveryKey(value: unknown): value is string {
   return typeof value === "string" && RECOVERY_RE.test(value);
 }
 
+/** @brief Canonical effect order for bag keys and comparisons. */
+export function canonicalEffects(effects: readonly EffectId[]): EffectId[] {
+  const unique = new Set(effects);
+  return EFFECTS.filter((effect) => unique.has(effect.id)).map((effect) => effect.id);
+}
+
 /** @brief Builds the bag key for one produce stack. */
-export function cropKey(item: ItemId, effect: EffectId | null): string {
-  return effect === null ? item : `${item}:${effect}`;
+export function cropKey(item: ItemId, effects: readonly EffectId[]): string {
+  const canonical = canonicalEffects(effects);
+  return canonical.length === 0 ? item : `${item}:${canonical.join(":")}`;
 }
 
 /**
  * @brief Parses one bag key back into a stack identity.
- * @return The item and effect, or `null` when malformed.
+ * @return The item and its mutation list, or `null` when malformed.
  */
-export function parseCropKey(key: string): { item: ItemId; effect: EffectId | null } | null {
-  const [itemPart, effectPart] = key.split(":");
+export function parseCropKey(key: string): { item: ItemId; effects: EffectId[] } | null {
+  const [itemPart, ...effectParts] = key.split(":");
   const item = itemPart === undefined ? undefined : itemById(itemPart);
   if (item === undefined) return null;
-  if (effectPart === undefined) return { item: item.id as ItemId, effect: null };
-  const effect = effectById(effectPart);
-  return effect === undefined ? null : { item: item.id as ItemId, effect: effect.id };
+  const effects: EffectId[] = [];
+  for (const part of effectParts) {
+    const effect = effectById(part);
+    if (effect === undefined) return null;
+    effects.push(effect.id);
+  }
+  return { item: item.id as ItemId, effects: canonicalEffects(effects) };
 }
 
 /**
@@ -787,12 +821,18 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   }
   if (kind === "sellCrop") {
     const item = typeof value.item === "string" ? itemById(value.item) : undefined;
-    const effect =
-      value.effect === null ? null : typeof value.effect === "string" ? effectById(value.effect) : undefined;
     const qty = value.qty;
-    if (item === undefined || effect === undefined) return null;
+    if (item === undefined) return null;
     if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 99) return null;
-    return { kind, item: item.id as ItemId, effect: effect === null ? null : effect.id, qty };
+    const rawEffects = Array.isArray(value.effects) ? value.effects : [];
+    const effects: EffectId[] = [];
+    for (const rawEffect of rawEffects) {
+      if (typeof rawEffect !== "string") return null;
+      const effect = effectById(rawEffect);
+      if (effect === undefined) return null;
+      effects.push(effect.id);
+    }
+    return { kind, item: item.id as ItemId, effects: canonicalEffects(effects), qty };
   }
   if (kind === "buyPatch") return { kind };
   if (kind === "sellAll") return { kind };
@@ -909,38 +949,30 @@ export function growTimeFor(
  * @param event Event active at planting.
  * @param rng Deterministic random source.
  */
-export function rollEffect(
+export function rollEffects(
   event: EventDefinition,
   rng: () => number,
   bonus: Readonly<Partial<Record<EffectId, number>>> = {},
-): EffectId | null {
-  const natural = EFFECTS.filter((effect) => effect.natural);
-  const chances = natural.map((effect) => ({
-    id: effect.id,
-    chance:
-      (BASE_EFFECT_CHANCES[effect.id] ?? 0) + (event.effectChances[effect.id] ?? 0) + (bonus[effect.id] ?? 0),
-  }));
-  const total = chances.reduce((sum, entry) => sum + entry.chance, 0);
-  if (total <= 0) return null;
-
-  // More than 95% of plantings may be lucky; scale down so a stack of event
-  // chances never makes "plain" impossible.
-  const scale = total > 0.95 ? 0.95 / total : 1;
-  const roll = rng();
-  let cursor = 0;
-  for (const entry of chances) {
-    cursor += entry.chance * scale;
-    if (roll < cursor) return entry.id;
+): EffectId[] {
+  const rolled: EffectId[] = [];
+  // One independent roll per weather mutation, in catalog order, so a fruit can
+  // carry several mutations at once and the sequence stays deterministic.
+  for (const effect of EFFECTS) {
+    if (!effect.natural) continue;
+    const chance =
+      (BASE_EFFECT_CHANCES[effect.id] ?? 0) + (event.effectChances[effect.id] ?? 0) + (bonus[effect.id] ?? 0);
+    if (chance <= 0) continue;
+    if (rng() < chance) rolled.push(effect.id);
   }
-  return null;
+  return rolled;
 }
 
 /** Live view of one plot for rendering. */
 export interface PlotView {
   /** Seed planted here. */
   readonly seed: SeedDefinition;
-  /** Effect on the crop. */
-  readonly effect: EffectDefinition | null;
+  /** Mutations on the crop, possibly several. */
+  readonly effects: readonly EffectDefinition[];
   /** Whether the crop can be harvested now. */
   readonly ready: boolean;
   /** Art index: 0 seed, 1 sprout, 2 young, 3 ripe. */
@@ -966,7 +998,9 @@ export function plotView(plot: PlotState, now: number): PlotView {
   const stage = ready ? 3 : Math.min(2, Math.floor(progress * 3));
   return {
     seed,
-    effect: plot.effect === null ? null : (effectById(plot.effect) ?? null),
+    effects: plot.effects
+      .map((id) => effectById(id))
+      .filter((effect): effect is EffectDefinition => effect !== undefined),
     ready,
     stage,
     remainingMs: Math.max(0, plot.readyAt - now),
@@ -1019,8 +1053,7 @@ export function gardenCounts(
 
 /** @brief Sell price of one produce stack under a season snapshot. */
 export function cropSellPrice(stack: CropStack, season: SeasonSnapshot): number {
-  const effect = stack.effect === null ? null : effectById(stack.effect);
-  const multiplier = effect?.multiplier ?? 1;
+  const multiplier = effectsMultiplier(stack.effects);
   const seed = seedById(stack.item);
   const tree = seed === undefined ? treeById(stack.item) : undefined;
   const base =

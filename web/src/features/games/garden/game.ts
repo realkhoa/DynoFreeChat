@@ -19,9 +19,11 @@ import {
   cropSellPrice,
   effectById,
   gardenCounts,
+  effectsMultiplier,
   nextPatchPrice,
   plotView,
   seedById,
+  strongestEffect,
   treeById,
   type EffectId,
   type GardenAction,
@@ -206,6 +208,23 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Localized full name of any bag item. */
   function itemName(id: ItemId): string {
     return seedById(id) === undefined ? t(`trees.${id}`) : t(`seeds.${id}`);
+  }
+
+  /** @brief Compact mutation badge: strongest name plus a `+n` counter. */
+  function effectBadge(effects: readonly EffectId[]): string {
+    const strongest = strongestEffect(effects);
+    if (strongest === null) return "";
+    return effects.length > 1
+      ? `${t(`effects.${strongest.id}`)}+${effects.length - 1}`
+      : t(`effects.${strongest.id}`);
+  }
+
+  /** @brief Full mutation summary for the detail panel, with the total. */
+  function effectListText(effects: readonly EffectId[]): string {
+    if (effects.length === 0) return t("garden.effectNone");
+    const parts = effects.map((id) => `${t(`effects.${id}`)} x${effectById(id)?.multiplier ?? 1}`);
+    const total = effectsMultiplier(effects);
+    return effects.length > 1 ? `${parts.join(", ")} = x${total}` : (parts[0] ?? "");
   }
 
   /** @brief Plots for the active mode. */
@@ -438,7 +457,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         render();
         return;
       }
-      const gain = cropSellPrice({ item: tree.tree, effect: tree.effect, qty: 1 }, season);
+      const gain = cropSellPrice({ item: tree.tree, effects: tree.effects, qty: 1 }, season);
       void runAction(
         { kind: "harvest", slot, tree: true },
         t("garden.harvestedTree", { tree: itemName(tree.tree), coins: gain }),
@@ -453,7 +472,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       render();
       return;
     }
-    const gain = cropSellPrice({ item: plot.seed, effect: plot.effect, qty: 1 }, season);
+    const gain = cropSellPrice({ item: plot.seed, effects: plot.effects, qty: 1 }, season);
     void runAction(
       { kind: "harvest", slot, tree: false },
       t("garden.harvested", { seed: itemName(plot.seed), coins: gain }),
@@ -549,14 +568,23 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     );
   }
 
+  /** @brief Whether two mutation lists describe the same stack. */
+  function sameEffectSet(left: readonly EffectId[], right: readonly EffectId[]): boolean {
+    const a = [...left].sort().join(":");
+    const b = [...right].sort().join(":");
+    return a === b;
+  }
+
   /** @brief Sells one harvested stack. */
-  function sellStack(item: ItemId, effect: EffectId | null): void {
+  function sellStack(item: ItemId, effects: readonly EffectId[]): void {
     if (state === null || season === null) return;
-    const stack = state.bag.crops.find((entry) => entry.item === item && entry.effect === effect);
+    const stack = state.bag.crops.find(
+      (entry) => entry.item === item && sameEffectSet(entry.effects, effects),
+    );
     if (stack === undefined) return;
     const gain = cropSellPrice(stack, season) * stack.qty;
     void runAction(
-      { kind: "sellCrop", item, effect, qty: stack.qty },
+      { kind: "sellCrop", item, effects: stack.effects, qty: stack.qty },
       t("market.sold", { seed: itemName(item), coins: gain }),
     );
   }
@@ -834,8 +862,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     cell.classList.toggle("is-empty", render.empty);
     cell.classList.toggle("is-locked", render.locked);
     cell.classList.toggle("is-selected", selectedSlot === slot && selectedArea === area);
-    const effect = area === "tree" ? (tree?.effect ?? null) : (plot?.effect ?? null);
-    for (const definition of EFFECTS) cell.classList.toggle(`is-${definition.id}`, effect === definition.id);
+    const effects = area === "tree" ? (tree?.effects ?? []) : (plot?.effects ?? []);
+    for (const definition of EFFECTS)
+      cell.classList.toggle(`is-${definition.id}`, effects.includes(definition.id));
     cell.style.color = render.growing ? growthColor(render.progress) : "";
     const label =
       area === "tree"
@@ -915,13 +944,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             ready ? (stages[3] ?? "") : `${stages[stageIndex] ?? ""} (${stageIndex + 1}/3)`,
           ),
         );
-        const effect = tree.effect === null ? null : (effectById(tree.effect) ?? null);
-        lines.push(
-          labelValue(
-            t("garden.effect"),
-            effect === null ? t("garden.effectNone") : `${t(`effects.${effect.id}`)} x${effect.multiplier}`,
-          ),
-        );
+        lines.push(labelValue(t("garden.effect"), effectListText(tree.effects)));
         lines.push(
           labelValue(t("garden.readyIn"), ready ? t("garden.ready") : formatDuration(tree.readyAt - at)),
         );
@@ -929,7 +952,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           lines.push(
             labelValue(
               t("garden.finalSell"),
-              `${formatNumber(cropSellPrice({ item: tree.tree, effect: tree.effect, qty: 1 }, season))}c`,
+              `${formatNumber(cropSellPrice({ item: tree.tree, effects: tree.effects, qty: 1 }, season))}c`,
             ),
           );
         }
@@ -952,14 +975,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const stageIndex = view.ready ? 3 : Math.min(view.stage, 2);
       const stage = stages[stageIndex] ?? "";
       lines.push(labelValue(t("garden.stage"), view.ready ? stage : `${stage} (${stageIndex + 1}/3)`));
-      lines.push(
-        labelValue(
-          t("garden.effect"),
-          view.effect === null
-            ? t("garden.effectNone")
-            : `${t(`effects.${view.effect.id}`)} x${view.effect.multiplier}`,
-        ),
-      );
+      lines.push(labelValue(t("garden.effect"), effectListText(view.effects.map((effect) => effect.id))));
       if (plot.fertilizer !== null) {
         lines.push(
           labelValue(
@@ -983,7 +999,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         lines.push(
           labelValue(
             t("garden.finalSell"),
-            `${formatNumber(cropSellPrice({ item: plot.seed, effect: plot.effect, qty: 1 }, season))}c`,
+            `${formatNumber(cropSellPrice({ item: plot.seed, effects: plot.effects, qty: 1 }, season))}c`,
           ),
         );
       }
@@ -1156,11 +1172,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const value = cropSellPrice(stack, season) * stack.qty;
       const row = rowButton(
         "garden-market-row",
-        `${fitText(itemName(stack.item), 9)}${fitText(stack.effect === null ? "" : t(`effects.${stack.effect}`), 8)}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
+        `${fitText(itemName(stack.item), 9)}${fitText(effectBadge(stack.effects), 8)}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
         "sell",
       );
       row.dataset.item = stack.item;
-      row.dataset.effect = stack.effect ?? "plain";
+      row.dataset.effects = JSON.stringify(stack.effects);
       exchange.append(row);
     }
     if (state.bag.crops.length > 0) {
@@ -1434,8 +1450,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "sell": {
         const item = target.dataset.item as ItemId | undefined;
         if (item === undefined) return;
-        const effect = target.dataset.effect;
-        sellStack(item, effect === undefined || effect === "plain" ? null : (effect as EffectId));
+        let effects: EffectId[] = [];
+        try {
+          const parsed = JSON.parse(target.dataset.effects ?? "[]") as unknown;
+          if (Array.isArray(parsed))
+            effects = parsed.filter((entry): entry is EffectId => typeof entry === "string");
+        } catch {
+          effects = [];
+        }
+        sellStack(item, effects);
         return;
       }
       case "sellAll":

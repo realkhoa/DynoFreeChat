@@ -6,7 +6,7 @@
  * measured in code points, which keeps Vietnamese labels inside the frame.
  */
 
-import { plotView, treeById, type PlotState, type TreeState } from "@dyno/shared/garden";
+import { plotView, strongestEffect, treeById, type PlotState, type TreeState } from "@dyno/shared/garden";
 import { formatDuration, t } from "@/shared/i18n";
 
 /** Columns of one plot cell, borders included. */
@@ -125,7 +125,8 @@ export function cellRender(
   const view = plotView(plot, now);
   const glyph = view.seed.art[view.stage] ?? ".";
   const name = t(`seeds.${view.seed.id}.short`);
-  const effect = view.effect === null ? "" : t(`effects.${view.effect.id}`);
+  const strongest = strongestEffect(view.effects.map((effect) => effect.id));
+  const effect = strongest === null ? "" : t(`effects.${strongest.id}`);
   const tail = view.ready ? t("garden.ready") : formatDuration(view.remainingMs, "short");
   return {
     lines: [top, row(glyph, "center"), row(name), row(effect), row(tail), bottom],
@@ -185,7 +186,8 @@ export function treeCellRender(
   const total = Math.max(1, tree.readyAt - tree.plantedAt);
   const progress = Math.min(1, Math.max(0, now - tree.plantedAt) / total);
   const ready = now >= tree.readyAt;
-  const effect = tree.effect === null ? null : t(`effects.${tree.effect}`);
+  const treeStrongest = strongestEffect(tree.effects);
+  const effect = treeStrongest === null ? null : t(`effects.${treeStrongest.id}`);
   const tail = ready ? t("garden.ready") : formatDuration(Math.max(0, tree.readyAt - now), "short");
   return {
     lines: [

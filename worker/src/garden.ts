@@ -17,6 +17,7 @@ import {
   REGISTERS_PER_WINDOW,
   REGISTER_WINDOW_MS,
   parseGardenAction,
+  cropKey,
   parseCropKey,
   seasonAt,
   type CropStack,
@@ -26,6 +27,8 @@ import {
   type PlotState,
   type ActiveFertilizer,
   type ActiveSpray,
+  type EffectId,
+  effectById,
   type SeedId,
   type SupplyId,
   type TreeId,
@@ -254,7 +257,7 @@ export class Garden extends DurableObject<Env> {
         seed: row.seed as SeedId,
         plantedAt: row.planted_at,
         readyAt: row.ready_at,
-        effect: row.effect === null ? null : (row.effect as PlotState["effect"]),
+        effects: parseEffects(row.effect),
         watered: row.watered === 1,
         fertilized: row.fertilized === 1,
         harvests: row.harvests,
@@ -282,7 +285,7 @@ export class Garden extends DurableObject<Env> {
         tree: row.tree as TreeId,
         plantedAt: row.planted_at,
         readyAt: row.ready_at,
-        effect: row.effect === null ? null : (row.effect as TreeState["effect"]),
+        effects: parseEffects(row.effect),
         watered: row.watered === 1,
         fertilized: row.fertilized === 1,
         harvests: row.harvests,
@@ -309,7 +312,7 @@ export class Garden extends DurableObject<Env> {
         continue;
       }
       const parsed = parseCropKey(row.item);
-      if (parsed !== null) crops.push({ item: parsed.item, effect: parsed.effect, qty: row.qty });
+      if (parsed !== null) crops.push({ item: parsed.item, effects: parsed.effects, qty: row.qty });
     }
     return { seeds, crops, supplies };
   }
@@ -335,7 +338,7 @@ export class Garden extends DurableObject<Env> {
         plot.seed,
         plot.plantedAt,
         plot.readyAt,
-        plot.effect,
+        JSON.stringify(plot.effects),
         plot.watered ? 1 : 0,
         plot.fertilized ? 1 : 0,
         plot.harvests,
@@ -352,7 +355,7 @@ export class Garden extends DurableObject<Env> {
         tree.tree,
         tree.plantedAt,
         tree.readyAt,
-        tree.effect,
+        JSON.stringify(tree.effects),
         tree.watered ? 1 : 0,
         tree.fertilized ? 1 : 0,
         tree.harvests,
@@ -370,7 +373,7 @@ export class Garden extends DurableObject<Env> {
       this.sql.exec("INSERT INTO bag (kind, item, qty) VALUES ('seed', ?, ?)", seed, qty);
     }
     for (const stack of bag.crops) {
-      const item = stack.effect === null ? stack.item : `${stack.item}:${stack.effect}`;
+      const item = cropKey(stack.item, stack.effects);
       this.sql.exec("INSERT INTO bag (kind, item, qty) VALUES ('crop', ?, ?)", item, stack.qty);
     }
   }
@@ -690,6 +693,25 @@ export class Garden extends DurableObject<Env> {
     } catch {
       // A stale leaderboard row is preferable to a failed harvest.
     }
+  }
+}
+
+/** @brief Parses an effect cell: a JSON list, or one legacy effect string. */
+function parseEffects(raw: string | null): EffectId[] {
+  if (raw === null || raw.length === 0) return [];
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (Array.isArray(value)) {
+      const parsed: EffectId[] = [];
+      for (const entry of value) {
+        if (typeof entry === "string" && effectById(entry) !== undefined) parsed.push(entry as EffectId);
+      }
+      return parsed;
+    }
+    if (typeof value === "string" && effectById(value) !== undefined) return [value as EffectId];
+    return [];
+  } catch {
+    return effectById(raw) === undefined ? [] : [raw as EffectId];
   }
 }
 
