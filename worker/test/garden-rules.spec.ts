@@ -45,7 +45,7 @@ describe("garden ledger rules", () => {
   it("starts with coins, seeds and four open plots", () => {
     const ledger = makeLedger();
     expect(ledger.coins).toBe(30);
-    expect(ledger.unlocked).toBe(4);
+    expect(ledger.patches).toBe(1);
     expect(ledger.bag.seeds.carrot).toBe(3);
     expect(ledger.plots.filter((plot) => plot === null)).toHaveLength(9);
     expect(ledgerSnapshot(ledger).code).toBe("ABCDEF");
@@ -64,8 +64,8 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.rev).toBe(makeLedger().rev + 1);
   });
 
-  it("refuses locked plots, occupied plots and empty bags", () => {
-    expect(run(makeLedger(), { kind: "plant", slot: 4, seed: "carrot" })).toMatchObject({
+  it("refuses plots beyond the bought patches, occupied plots and empty bags", () => {
+    expect(run(makeLedger(), { kind: "plant", slot: 9, seed: "carrot" })).toMatchObject({
       ok: false,
       code: "PLOT_LOCKED",
     });
@@ -153,18 +153,26 @@ describe("garden ledger rules", () => {
     expect(uprooted.ledger.coins).toBe(planted.ledger.coins);
   });
 
-  it("unlocks plots in order and charges the ladder", () => {
+  it("buys the next 3x3 patch at the compounding price", () => {
     const ledger = makeLedger();
-    ledger.coins = 1_000;
-    const unlocked = run(ledger, { kind: "unlock", slot: 4 });
-    expect(unlocked.ok).toBe(true);
-    if (!unlocked.ok) return;
-    expect(unlocked.ledger.unlocked).toBe(5);
-    expect(unlocked.ledger.coins).toBe(850);
-    expect(run(unlocked.ledger, { kind: "unlock", slot: 6 })).toMatchObject({
-      ok: false,
-      code: "PLOT_LOCKED",
-    });
+    ledger.coins = 20_000;
+    const first = run(ledger, { kind: "buyPatch" });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.ledger.patches).toBe(2);
+    expect(first.ledger.plots).toHaveLength(18);
+    expect(first.ledger.coins).toBe(17_000);
+
+    const second = run(first.ledger, { kind: "buyPatch" });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.ledger.patches).toBe(3);
+    expect(second.ledger.plots).toHaveLength(27);
+    expect(second.ledger.coins).toBe(8_000);
+
+    const broke = makeLedger();
+    broke.coins = 2_999;
+    expect(run(broke, { kind: "buyPatch" })).toMatchObject({ ok: false, code: "NOT_ENOUGH_COINS" });
   });
 
   it("buys seeds at the rotating price and respects stock", () => {

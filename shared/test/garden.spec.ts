@@ -11,12 +11,15 @@ import {
   EVENTS,
   EVENT_WAVE_MS,
   GARDEN_AUTH_HEADER,
-  PLOT_COUNT,
+  MAX_PATCHES,
+  PATCH_BASE_PRICE,
+  PATCH_PRICE_FACTOR,
+  PLOTS_PER_PATCH,
   RECOVERY_RE,
   SEEDS,
   SHOP_RESTOCK_MS,
   STARTING_COINS,
-  STARTING_PLOTS,
+  STARTING_PATCHES,
   createRng,
   cropKey,
   cropSellPrice,
@@ -32,9 +35,10 @@ import {
   parseGardenAuth,
   plotView,
   rollEffect,
+  nextPatchPrice,
   seasonAt,
   seedById,
-  unlockCost,
+  totalPlots,
   type PlotState,
 } from "../src/garden";
 
@@ -53,16 +57,18 @@ describe("garden catalog", () => {
     }
   });
 
-  it("keeps the unlock ladder monotonic", () => {
-    for (let slot = STARTING_PLOTS; slot < PLOT_COUNT; slot += 1) {
-      expect(unlockCost(slot)).toBeGreaterThan(unlockCost(slot - 1));
-    }
+  it("prices each new patch on the compounding ladder", () => {
+    expect(nextPatchPrice(1)).toBe(PATCH_BASE_PRICE);
+    expect(nextPatchPrice(2)).toBe(PATCH_BASE_PRICE * PATCH_PRICE_FACTOR);
+    expect(nextPatchPrice(3)).toBe(PATCH_BASE_PRICE * PATCH_PRICE_FACTOR ** 2);
   });
 
-  it("starts a garden with the documented defaults", () => {
+  it("starts a garden with one 3x3 patch", () => {
     expect(STARTING_COINS).toBe(30);
-    expect(STARTING_PLOTS).toBe(4);
-    expect(PLOT_COUNT).toBe(9);
+    expect(STARTING_PATCHES).toBe(1);
+    expect(PLOTS_PER_PATCH).toBe(9);
+    expect(MAX_PATCHES).toBe(6);
+    expect(totalPlots(STARTING_PATCHES)).toBe(PLOTS_PER_PATCH);
   });
 });
 
@@ -161,7 +167,7 @@ describe("garden growth math", () => {
 
   it("counts plots and prices crop stacks", () => {
     const season = seasonAt(NOW);
-    const plots: Array<PlotState | null> = new Array(PLOT_COUNT).fill(null);
+    const plots: Array<PlotState | null> = new Array(totalPlots(1)).fill(null);
     plots[0] = {
       slot: 0,
       seed: "carrot",
@@ -180,7 +186,7 @@ describe("garden growth math", () => {
       watered: false,
       fertilized: false,
     };
-    expect(gardenCounts(plots, 4, NOW)).toEqual({ ready: 1, growing: 1, free: 2, locked: 5 });
+    expect(gardenCounts(plots, NOW)).toEqual({ ready: 1, growing: 1, free: 7 });
     expect(cropSellPrice({ seed: "carrot", effect: "golden", qty: 1 }, season)).toBe(
       season.prices.carrot * 5,
     );
@@ -226,7 +232,8 @@ describe("garden wire parsing", () => {
       seed: "carrot",
     });
     expect(parseGardenAction({ kind: "water", slot: 8 })).toEqual({ kind: "water", slot: 8 });
-    expect(parseGardenAction({ kind: "water", slot: 9 })).toBeNull();
+    expect(parseGardenAction({ kind: "water", slot: 9 })).toEqual({ kind: "water", slot: 9 });
+    expect(parseGardenAction({ kind: "water", slot: 54 })).toBeNull();
     expect(parseGardenAction({ kind: "plant", slot: 0, seed: "nope" })).toBeNull();
     expect(parseGardenAction({ kind: "buySeed", seed: "corn", qty: 0 })).toBeNull();
     expect(parseGardenAction({ kind: "sellCrop", seed: "corn", effect: "wet", qty: 2 })).toEqual({
@@ -235,6 +242,7 @@ describe("garden wire parsing", () => {
       effect: "wet",
       qty: 2,
     });
+    expect(parseGardenAction({ kind: "buyPatch" })).toEqual({ kind: "buyPatch" });
     expect(parseGardenAction({ kind: "sellAll" })).toEqual({ kind: "sellAll" });
     expect(parseGardenAction({ kind: "explode" })).toBeNull();
   });

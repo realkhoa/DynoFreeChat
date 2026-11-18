@@ -62,7 +62,7 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     color: "hsl(200 60% 60%)",
     code: "ABCDEF",
     coins: 42,
-    unlocked: 4,
+    patches: 1,
     plots: new Array<PlotState | null>(9).fill(null),
     bag: { seeds: { carrot: 3 }, crops: [] },
     stats: { planted: 0, harvested: 0, earned: 0 },
@@ -79,7 +79,7 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     color: "hsl(120 60% 60%)",
     code: "ABCDEF",
     coins: 12,
-    unlocked: 4,
+    patches: 1,
     plots: new Array<PlotState | null>(9).fill(null),
     bag: { seeds: {}, crops: [] },
     stats: { planted: 1, harvested: 0, earned: 0 },
@@ -256,6 +256,29 @@ describe("garden tab", () => {
     harvest?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "harvest")).toBe(true);
+  });
+
+  it("paginates bought 3x3 patches and offers the next one", async () => {
+    const plots = new Array<PlotState | null>(18).fill(null);
+    plots[12] = { ...RIPE_PLOT, slot: 12 };
+    const api = new FakeGardenApi(makeState({ patches: 2, plots }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    expect(host.querySelector(".garden-page")?.textContent).toContain("1/3");
+    const next = host.querySelector<HTMLButtonElement>('[data-act="nextPage"]');
+    next?.click();
+    await settle();
+    expect(host.querySelector(".garden-page")?.textContent).toContain("2/3");
+    expect(host.querySelectorAll<HTMLElement>(".garden-cell")[0]?.dataset.slot).toBe("9");
+
+    host.querySelector<HTMLButtonElement>('[data-act="nextPage"]')?.click();
+    await settle();
+    // Third page is the not-yet-bought preview, with a disabled buy action.
+    expect(host.querySelector(".garden-page")?.textContent).toContain("3/3");
+    const buy = host.querySelector<HTMLButtonElement>('[data-act="buyPatch"]');
+    expect(buy).not.toBeNull();
+    expect(buy?.disabled).toBe(true);
   });
 
   it("switches to English labels live", async () => {

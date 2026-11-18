@@ -86,6 +86,11 @@ export const VI: Dictionary = {
   "garden.emptyGarden": "Vườn còn trống - chọn một ô để bắt đầu.",
   "garden.you": "bạn",
   "garden.backHome": "Về vườn của tôi",
+  "garden.page": "Dải {page}/{total}",
+  "garden.patch": "Dải {patch}",
+  "garden.buyPatch": "Mở rộng +3x3 · {cost}c",
+  "garden.patchBought": "Đã mở dải {patch}",
+  "garden.patchMax": "Đã mở tối đa 6 dải",
   "garden.marketReadonly": "Đang ghé thăm vườn người khác — chợ chỉ mở cho chủ vườn.",
 
   "seeds.carrot": "Cà rốt",
@@ -252,6 +257,11 @@ export const EN: Dictionary = {
   "garden.emptyGarden": "This garden is empty - pick a plot to start.",
   "garden.you": "you",
   "garden.backHome": "My garden",
+  "garden.page": "Patch {page}/{total}",
+  "garden.patch": "Patch {patch}",
+  "garden.buyPatch": "Expand +3x3 · {cost}c",
+  "garden.patchBought": "Patch {patch} unlocked",
+  "garden.patchMax": "All 6 patches unlocked",
   "garden.marketReadonly": "Visiting someone else's garden - the market is owner-only.",
 
   "seeds.carrot": "Carrot",

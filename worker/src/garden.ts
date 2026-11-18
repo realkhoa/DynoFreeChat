@@ -12,7 +12,8 @@ import { DurableObject } from "cloudflare:workers";
 import {
   GARDEN_PROTOCOL_VERSION,
   GUEST_WATER_CUT_RATIO,
-  PLOT_COUNT,
+  MAX_PATCHES,
+  PLOTS_PER_PATCH,
   REGISTERS_PER_WINDOW,
   REGISTER_WINDOW_MS,
   parseGardenAction,
@@ -52,6 +53,22 @@ export const ONLINE_WINDOW_MS = 30_000;
 
 /** Visitors listed on a garden page. */
 export const VISITOR_LIMIT = 12;
+
+/**
+ * @brief Derives the owned patch count from a stored meta row.
+ * @param value Stored metadata; saves written before the 3x3 patch model only
+ * carry `unlocked`, so those gardens keep their old unlock count as one patch.
+ * @details Never reduces what a player already had: a legacy garden with four
+ * unlocked plots becomes one fully usable 3x3 patch, with every planted crop kept.
+ */
+export function derivePatches(value: { patches?: unknown; unlocked?: unknown }): number {
+  if (typeof value.patches === "number" && Number.isInteger(value.patches) && value.patches >= 1) {
+    return Math.min(MAX_PATCHES, value.patches);
+  }
+  const legacy =
+    typeof value.unlocked === "number" && Number.isFinite(value.unlocked) ? value.unlocked : PLOTS_PER_PATCH;
+  return Math.min(MAX_PATCHES, Math.max(1, Math.ceil(legacy / PLOTS_PER_PATCH)));
+}
 
 /** Stored metadata: the ledger minus the rows kept in their own tables. */
 type StoredMeta = Omit<GardenLedger, "plots" | "bag">;
@@ -150,13 +167,19 @@ export class Garden extends DurableObject<Env> {
   private read(): GardenLedger | null {
     const row = this.sql.exec<MetaRow>("SELECT value FROM meta WHERE key = 'ledger'").toArray()[0];
     if (row === undefined) return null;
-    const meta = JSON.parse(row.value) as StoredMeta;
-    return { ...meta, plots: this.readPlots(), bag: this.readBag() };
+    const raw = JSON.parse(row.value) as StoredMeta & { unlocked?: number };
+    // Old saves keep their plots; only the patch count is derived from `unlocked`.
+    const patches = derivePatches(raw);
+    const meta: StoredMeta = { ...raw, patches };
+    return { ...meta, plots: this.readPlots(patches), bag: this.readBag() };
   }
 
-  /** @brief Reads the plot rows into a dense vector. */
-  private readPlots(): (PlotState | null)[] {
-    const plots = emptyPlots();
+  /**
+   * @brief Reads the plot rows into a dense vector for the owned patches.
+   * @param patches Owned patch count.
+   */
+  private readPlots(patches: number): (PlotState | null)[] {
+    const plots = emptyPlots(patches);
     const rows = this.sql
       .exec<PlotRow>("SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized FROM plots")
       .toArray();
@@ -190,8 +213,13 @@ export class Garden extends DurableObject<Env> {
     return { seeds, crops };
   }
 
-  /** @brief Writes a complete ledger, replacing the row set. */
+  /** @brief Writes a complete ledger atomically, so a crash cannot lose the old one. */
   private write(ledger: GardenLedger): void {
+    this.ctx.storage.transactionSync(() => this.writeRows(ledger));
+  }
+
+  /** @brief Replaces the plot and bag rows of one ledger. */
+  private writeRows(ledger: GardenLedger): void {
     const { plots, bag, ...meta } = ledger;
     this.sql.exec(
       "INSERT INTO meta (key, value) VALUES ('ledger', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -394,7 +422,7 @@ export class Garden extends DurableObject<Env> {
       color: ledger.color,
       code: ledger.code,
       coins: ledger.coins,
-      unlocked: ledger.unlocked,
+      patches: ledger.patches,
       plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
       bag: {
         seeds: { ...ledger.bag.seeds },
@@ -438,7 +466,7 @@ export class Garden extends DurableObject<Env> {
     if (visitorId.length === 0 || typeof slot !== "number" || !Number.isInteger(slot) || !nick.ok) {
       return json({ code: "BAD_REQUEST" }, 400);
     }
-    if (slot < 0 || slot >= PLOT_COUNT) return json({ code: "BAD_REQUEST" }, 400);
+    if (slot < 0 || slot >= ledger.plots.length) return json({ code: "BAD_REQUEST" }, 400);
 
     const plot = ledger.plots[slot] ?? null;
     const now = Date.now();

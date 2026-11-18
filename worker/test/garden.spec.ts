@@ -16,6 +16,7 @@ import type {
   SeasonSnapshot,
   VisitSnapshot,
 } from "@dyno/shared/garden";
+import { derivePatches } from "../src/garden";
 import { BASE, ORIGIN, uniqueIp } from "./helpers";
 
 /** One freshly registered garden. */
@@ -78,6 +79,17 @@ async function visit(code: string): Promise<VisitSnapshot> {
   return payload.garden;
 }
 
+describe("legacy saves", () => {
+  it("keeps old unlocked data as usable 3x3 patches", () => {
+    expect(derivePatches({ unlocked: 4 })).toBe(1);
+    expect(derivePatches({ unlocked: 9 })).toBe(1);
+    expect(derivePatches({ unlocked: 10 })).toBe(2);
+    expect(derivePatches({})).toBe(1);
+    expect(derivePatches({ patches: 3, unlocked: 4 })).toBe(3);
+    expect(derivePatches({ patches: 99 })).toBe(6);
+  });
+});
+
 describe("garden registration", () => {
   it("creates a playable garden with credentials and a share code", async () => {
     const registered = await register();
@@ -88,7 +100,7 @@ describe("garden registration", () => {
     );
     expect(registered.state.code).toMatch(/^[0-9A-HJKMNP-TV-Z]{6}$/);
     expect(registered.state.coins).toBe(30);
-    expect(registered.state.unlocked).toBe(4);
+    expect(registered.state.patches).toBe(1);
     expect(registered.state.plots).toHaveLength(9);
     expect(registered.state.bag.seeds.carrot).toBe(3);
     expect(registered.state.rev).toBe(1);
@@ -135,11 +147,11 @@ describe("garden play", () => {
     expect(stale.payload).toMatchObject({ code: "STALE_REV" });
   });
 
-  it("refuses a locked plot and an unripe harvest", async () => {
+  it("refuses a patch it cannot afford and an unripe harvest", async () => {
     const registered = await register();
-    const locked = await act(registered, registered.state.rev, { kind: "plant", slot: 4, seed: "carrot" });
-    expect(locked.status).toBe(400);
-    expect(locked.payload).toMatchObject({ code: "PLOT_LOCKED" });
+    const patch = await act(registered, registered.state.rev, { kind: "buyPatch" });
+    expect(patch.status).toBe(400);
+    expect(patch.payload).toMatchObject({ code: "NOT_ENOUGH_COINS" });
 
     const planted = await act(registered, registered.state.rev, { kind: "plant", slot: 0, seed: "carrot" });
     if (planted.status !== 200) throw new Error("plant failed");

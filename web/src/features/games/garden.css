@@ -259,3 +259,22 @@
 .stage-status.is-info {
   color: #9cdcfe;
 }
+
+/* Patch pager above the 3x3 board: one page per bought 3x3 patch. */
+.garden-pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 6px;
+}
+
+.garden-page {
+  color: #d4d4d4;
+  font: 9.5px/16px var(--font-mono);
+}
+
+.garden-page-hint {
+  color: #6a9955;
+  font: 9.5px/16px var(--font-mono);
+}

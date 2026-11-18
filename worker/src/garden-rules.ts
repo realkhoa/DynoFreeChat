@@ -10,11 +10,14 @@ import {
   ACTIONS_PER_MINUTE,
   FERTILIZER_CUT_RATIO,
   FERTILIZER_PRICE,
-  PLOT_COUNT,
+  MAX_PATCHES,
+  PLOTS_PER_PATCH,
   STARTING_COINS,
-  STARTING_PLOTS,
+  STARTING_PATCHES,
   STARTING_SEEDS,
   WATER_CUT_RATIO,
+  nextPatchPrice,
+  totalPlots,
   createRng,
   cropSellPrice,
   eventAt,
@@ -22,7 +25,6 @@ import {
   hash32,
   rollEffect,
   seedById,
-  unlockCost,
   type CropStack,
   type GardenAction,
   type GardenErrorCode,
@@ -66,8 +68,8 @@ export interface GardenLedger {
   recoveryHash: string;
   /** Spendable coins. */
   coins: number;
-  /** Contiguous unlocked plots. */
-  unlocked: number;
+  /** Bought 3x3 patches. */
+  patches: number;
   /** One entry per plot, `null` for empty soil. */
   plots: (PlotState | null)[];
   /** Seeds and harvested crops, mutable while a rule runs. */
@@ -128,8 +130,8 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     tokenHash: input.tokenHash,
     recoveryHash: input.recoveryHash,
     coins: STARTING_COINS,
-    unlocked: STARTING_PLOTS,
-    plots: emptyPlots(),
+    patches: STARTING_PATCHES,
+    plots: emptyPlots(STARTING_PATCHES),
     bag: { seeds: { carrot: STARTING_SEEDS }, crops: [] },
     stats: { planted: 0, harvested: 0, earned: 0 },
     rev: 1,
@@ -143,9 +145,12 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
   };
 }
 
-/** @brief Creates the empty plot vector. */
-export function emptyPlots(): (PlotState | null)[] {
-  return new Array<PlotState | null>(PLOT_COUNT).fill(null);
+/**
+ * @brief Creates the empty plot vector for the owned patches.
+ * @param patches Owned patch count.
+ */
+export function emptyPlots(patches: number): (PlotState | null)[] {
+  return new Array<PlotState | null>(totalPlots(patches)).fill(null);
 }
 
 /**
@@ -160,7 +165,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     color: ledger.color,
     code: ledger.code,
     coins: ledger.coins,
-    unlocked: ledger.unlocked,
+    patches: ledger.patches,
     plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
     bag: {
       seeds: { ...ledger.bag.seeds },
@@ -205,8 +210,8 @@ export function applyGardenAction(
       return fertilize(ledger, action.slot, now);
     case "uproot":
       return uproot(ledger, action.slot, now);
-    case "unlock":
-      return unlock(ledger, action.slot, now);
+    case "buyPatch":
+      return buyPatch(ledger, now);
     case "buySeed":
       return buySeed(ledger, action.seed, action.qty, season, now);
     case "sellCrop":
@@ -226,7 +231,7 @@ function plant(
   now: number,
   rng: () => number,
 ): RuleResult {
-  if (slot >= ledger.unlocked) return { ok: false, code: "PLOT_LOCKED" };
+  if (slot >= ledger.plots.length) return { ok: false, code: "PLOT_LOCKED" };
   if (ledger.plots[slot] !== null) return { ok: false, code: "PLOT_OCCUPIED" };
   const seed = seedById(seedId);
   if (seed === undefined) return { ok: false, code: "NO_SEED" };
@@ -307,16 +312,16 @@ function uproot(ledger: GardenLedger, slot: number, now: number): RuleResult {
   return changed(next, now);
 }
 
-/** @brief Buys the next locked plot. */
-function unlock(ledger: GardenLedger, slot: number, now: number): RuleResult {
-  if (slot < ledger.unlocked) return { ok: false, code: "BAD_REQUEST" };
-  if (slot !== ledger.unlocked) return { ok: false, code: "PLOT_LOCKED" };
-  const cost = unlockCost(slot);
+/** @brief Buys the next 3x3 patch at the compounding ladder price. */
+function buyPatch(ledger: GardenLedger, now: number): RuleResult {
+  if (ledger.patches >= MAX_PATCHES) return { ok: false, code: "MAX_PATCHES" };
+  const cost = nextPatchPrice(ledger.patches);
   if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
 
   const next = clone(ledger);
   next.coins -= cost;
-  next.unlocked += 1;
+  next.patches += 1;
+  for (let index = 0; index < PLOTS_PER_PATCH; index += 1) next.plots.push(null);
   return changed(next, now);
 }
 

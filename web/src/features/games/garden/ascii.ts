@@ -68,9 +68,15 @@ function row(text: string, align: "left" | "center" = "left"): string {
   return `|${fitText(text, CELL_INNER, align)}|`;
 }
 
-/** @brief The border shared by the top and bottom of one cell. */
-function border(): string {
-  return `+${"-".repeat(CELL_INNER)}+`;
+/**
+ * @brief One cell border, optionally carrying the one-based plot number.
+ * @param slot Zero-based plot index; omitted for the bottom border.
+ */
+function border(slot?: number): string {
+  if (slot === undefined) return `+${"-".repeat(CELL_INNER)}+`;
+  const label = String(slot + 1);
+  const dashes = Math.max(0, CELL_INNER - label.length);
+  return `+${"-".repeat(dashes)}${label}+`;
 }
 
 /**
@@ -79,7 +85,14 @@ function border(): string {
  * @param now Server-clock time.
  * @param lockedCost Unlock price when the plot is locked, else `null`.
  */
-export function cellRender(plot: PlotState | null, now: number, lockedCost: number | null): CellRender {
+export function cellRender(
+  plot: PlotState | null,
+  now: number,
+  lockedCost: number | null,
+  slot = 0,
+): CellRender {
+  const top = border(slot);
+  const bottom = border();
   if (lockedCost !== null) {
     return {
       lines: [
@@ -87,7 +100,7 @@ export function cellRender(plot: PlotState | null, now: number, lockedCost: numb
         row("#", "center"),
         row(t("garden.locked")),
         row(""),
-        row(`${lockedCost}c`),
+        row(lockedCost > 0 ? `${lockedCost}c` : "--"),
         border(),
       ],
       ready: false,
@@ -100,7 +113,7 @@ export function cellRender(plot: PlotState | null, now: number, lockedCost: numb
 
   if (plot === null) {
     return {
-      lines: [border(), row(".", "center"), row(t("garden.empty")), row(""), row("--"), border()],
+      lines: [top, row(".", "center"), row(t("garden.empty")), row(""), row("--"), bottom],
       ready: false,
       growing: false,
       empty: true,
@@ -115,7 +128,7 @@ export function cellRender(plot: PlotState | null, now: number, lockedCost: numb
   const effect = view.effect === null ? "" : t(`effects.${view.effect.id}`);
   const tail = view.ready ? t("garden.ready") : formatDuration(view.remainingMs, "short");
   return {
-    lines: [border(), row(glyph, "center"), row(name), row(effect), row(tail), border()],
+    lines: [top, row(glyph, "center"), row(name), row(effect), row(tail), bottom],
     ready: view.ready,
     growing: !view.ready,
     empty: false,

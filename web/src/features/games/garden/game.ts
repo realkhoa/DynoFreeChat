@@ -10,12 +10,13 @@
 
 import {
   FERTILIZER_PRICE,
-  PLOT_COUNT,
+  MAX_PATCHES,
+  PLOTS_PER_PATCH,
   SEEDS,
   cropSellPrice,
   gardenCounts,
+  nextPatchPrice,
   plotView,
-  unlockCost,
   type EffectId,
   type GardenAction,
   type GardenSnapshot,
@@ -87,6 +88,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let visiting: VisitSnapshot | null = null;
   let season: SeasonSnapshot | null = null;
   let selectedSlot: number | null = null;
+  let page = 0;
   let message: Message | null = null;
   let loading = true;
   let offline = false;
@@ -187,9 +189,30 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return mode === "visit" ? (visiting?.plots ?? null) : (state?.plots ?? null);
   }
 
-  /** @brief Unlocked plot count for the active mode. */
-  function currentUnlocked(): number {
-    return mode === "visit" ? (visiting?.unlocked ?? 0) : (state?.unlocked ?? 0);
+  /** @brief Bought patch count for the active mode. */
+  function currentPatches(): number {
+    return mode === "visit" ? (visiting?.patches ?? 1) : (state?.patches ?? 1);
+  }
+
+  /** @brief Pages to show: owned patches plus one not-yet-bought preview. */
+  function pageCount(): number {
+    const owned = currentPatches();
+    return owned < MAX_PATCHES ? owned + 1 : owned;
+  }
+
+  /** @brief Whether the current page is the preview of the next patch. */
+  function isPreviewPage(): boolean {
+    return page >= currentPatches();
+  }
+
+  /** @brief Absolute plot index of the current page's first cell. */
+  function pageOffset(): number {
+    return page * PLOTS_PER_PATCH;
+  }
+
+  /** @brief Price of the next patch, or `null` at the cap. */
+  function nextPatchCost(): number | null {
+    return currentPatches() >= MAX_PATCHES ? null : nextPatchPrice(currentPatches());
   }
 
   /** @brief Public share code for the active mode. */
@@ -201,12 +224,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function plotAt(slot: number): PlotState | null {
     const plots = currentPlots();
     return plots === null ? null : (plots[slot] ?? null);
-  }
-
-  /** @brief Unlock price for one slot, or `null` when it is already open. */
-  function lockedCostAt(slot: number): number | null {
-    if (currentPlots() === null) return null;
-    return slot >= currentUnlocked() ? unlockCost(slot) : null;
   }
 
   /** @brief Localized text for one caught error. */
@@ -262,6 +279,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     offline = false;
     message = null;
     selectedSlot = null;
+    page = 0;
     uprootArmed = false;
     render();
     try {
@@ -545,6 +563,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     visiting = null;
     state = null;
     selectedSlot = null;
+    page = 0;
     restoreDraft = "";
     tab = "garden";
     if (typeof history !== "undefined") {
@@ -559,6 +578,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     mode = "owner";
     visiting = null;
     selectedSlot = null;
+    page = 0;
     tab = "garden";
     if (typeof history !== "undefined") {
       history.replaceState(null, "", `${location.pathname}${location.search}`);
@@ -578,12 +598,47 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     render();
   }
 
-  /** @brief Selects one plot and shows its detail panel. */
+  /** @brief Selects one owned plot and shows its detail panel. */
   function selectSlot(slot: number): void {
-    if (slot < 0 || slot >= PLOT_COUNT) return;
+    const plots = currentPlots();
+    if (plots === null || slot < 0 || slot >= plots.length) return;
     selectedSlot = slot;
     uprootArmed = false;
     render();
+  }
+
+  /**
+   * @brief Flips the garden page.
+   * @param delta `-1` previous page, `1` next page.
+   */
+  function goPage(delta: number): void {
+    const next = Math.min(pageCount() - 1, Math.max(0, page + delta));
+    if (next === page) return;
+    page = next;
+    selectedSlot = null;
+    uprootArmed = false;
+    render();
+  }
+
+  /** @brief Buys the next 3x3 patch and flips to it. */
+  async function buyPatch(): Promise<void> {
+    if (state === null || busy || mode !== "owner") return;
+    const cost = nextPatchCost();
+    if (cost === null) return;
+    busy = true;
+    try {
+      const result = await api.act(state.rev, { kind: "buyPatch" });
+      state = result.state;
+      season = result.season;
+      offline = false;
+      page = state.patches - 1;
+      selectedSlot = null;
+      message = { text: t("garden.patchBought", { patch: state.patches }), kind: "ok" };
+    } catch (error) {
+      applyApiError(error);
+    }
+    busy = false;
+    if (!disposed) render();
   }
 
   /** @brief Builds the tab strip with the garden code and share action. */
@@ -614,34 +669,40 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief HUD comment line. */
   function hudText(): string {
     if (mode === "visit" && visiting !== null) {
-      const counts = gardenCounts(visiting.plots, visiting.unlocked, now());
+      const counts = gardenCounts(visiting.plots, now());
       return `${t("garden.visitTitle", { nick: visiting.nick })} | ${t("garden.coins")} ${formatNumber(visiting.coins)} | ${t("garden.ready")} ${counts.ready} | ${visiting.online ? t("common.online") : t("common.offlineUser")}`;
     }
     if (state === null) return "";
-    const counts = gardenCounts(state.plots, state.unlocked, now());
+    const counts = gardenCounts(state.plots, now());
     return `${t("garden.coins")} ${formatNumber(state.coins)} | ${t("garden.ready")} ${counts.ready} | ${t("garden.growing")} ${counts.growing} | ${t("garden.free")} ${counts.free}`;
   }
 
-  /** @brief Builds one plot cell button. */
-  function buildCell(slot: number): HTMLButtonElement {
+  /**
+   * @brief Builds one plot cell button.
+   * @param local Zero-based cell index inside the current page.
+   */
+  function buildCell(local: number): HTMLButtonElement {
     const cell = document.createElement("button");
     cell.type = "button";
     cell.className = "garden-cell";
     cell.dataset.act = "plot";
-    cell.dataset.slot = String(slot);
+    cell.dataset.slot = String(pageOffset() + local);
+    if (isPreviewPage()) cell.disabled = true;
     for (let index = 0; index < 6; index += 1) {
       const line = document.createElement("span");
       line.className = "garden-cell-line";
       cell.append(line);
     }
-    syncCell(cell, slot, now());
+    syncCell(cell, pageOffset() + local, now());
     return cell;
   }
 
   /** @brief Repaints one plot cell from the current snapshot and clock. */
   function syncCell(cell: HTMLButtonElement, slot: number, at: number): void {
-    const plot = plotAt(slot);
-    const render = cellRender(plot, at, lockedCostAt(slot));
+    const local = slot - pageOffset();
+    const preview = isPreviewPage();
+    const plot = preview ? null : plotAt(slot);
+    const render = cellRender(plot, at, preview ? 0 : null, local);
     for (let index = 0; index < 6; index += 1) {
       const line = cell.children.item(index);
       if (line instanceof HTMLElement) line.textContent = render.lines[index] ?? "";
@@ -659,10 +720,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       plot === null
         ? t("garden.empty")
         : `${seedName(plot.seed)}${render.ready ? `, ${t("garden.ready")}` : ""}`;
-    cell.setAttribute("aria-label", `${t("garden.plot", { slot: slot + 1 })} ${label}`);
+    cell.setAttribute(
+      "aria-label",
+      `${t("garden.patch", { patch: page + 1 })} ${t("garden.plot", { slot: local + 1 })} ${label}`,
+    );
   }
 
-  /** @brief Builds the plot grid. */
+  /** @brief Builds the plot grid for the current 3x3 patch page. */
   function buildBoard(): HTMLElement {
     const board = div("garden-board");
     for (let row = 0; row < 3; row += 1) {
@@ -673,6 +737,23 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return board;
   }
 
+  /** @brief Builds the page strip: prev/next, patch counter and the buy action. */
+  function buildPager(): HTMLElement {
+    const bar = div("garden-pager");
+    bar.append(actionButton("<", "prevPage", page > 0));
+    bar.append(span("garden-page", t("garden.page", { page: page + 1, total: pageCount() })));
+    bar.append(actionButton(">", "nextPage", page < pageCount() - 1));
+    const cost = nextPatchCost();
+    if (mode === "owner") {
+      if (cost === null) bar.append(span("garden-page-hint", t("garden.patchMax")));
+      else {
+        const affordable = (state?.coins ?? 0) >= cost;
+        bar.append(actionButton(t("garden.buyPatch", { cost }), "buyPatch", affordable));
+      }
+    }
+    return bar;
+  }
+
   /** @brief Fills the detail panel text for the selected plot. */
   function fillDetail(pre: HTMLPreElement, at: number): void {
     const lines: string[] = [];
@@ -681,11 +762,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       lines.push(t("garden.noSelection"), "", t("garden.noSelectionHint"));
     } else {
       const plot = plotAt(slot);
-      const locked = lockedCostAt(slot);
-      lines.push(`// ${t("garden.plot", { slot: slot + 1 })}`);
-      if (locked !== null) {
-        lines.push("", t("garden.lockCost", { cost: locked }));
-      } else if (plot === null) {
+      lines.push(
+        `// ${t("garden.patch", { patch: page + 1 })} · ${t("garden.plot", { slot: slot - pageOffset() + 1 })}`,
+      );
+      if (plot === null) {
         lines.push("", t("garden.empty"), t("garden.emptyHint"));
       } else {
         const view = plotView(plot, at);
@@ -752,12 +832,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       actions.append(span("garden-hint", t("garden.noSelectionHint")));
     } else {
       const plot = plotAt(slot);
-      const locked = lockedCostAt(slot);
-      if (locked !== null) {
-        if (slot === currentUnlocked())
-          actions.append(actionButton(t("garden.lockCost", { cost: locked }), "unlock"));
-        else actions.append(span("garden-hint", t("garden.noSelectionHint")));
-      } else if (plot === null) {
+      if (plot === null) {
         actions.append(buildSeedPicker(slot));
       } else {
         const view = plotView(plot, now());
@@ -784,9 +859,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
-  /** @brief Builds the garden tab. */
+  /** @brief Builds the garden tab: patch pager above the 3x3 board and detail. */
   function buildGarden(): HTMLElement {
     const wrap = div("garden-garden");
+    wrap.append(buildPager());
     const layout = div("garden-layout");
     layout.append(buildBoard(), buildDetail());
     wrap.append(layout);
@@ -950,6 +1026,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Repaints the whole document. */
   function render(): void {
     if (root === null || disposed) return;
+    page = Math.min(page, pageCount() - 1);
     detailPre = null;
     root.dataset.tab = tab;
     root.dataset.mode = mode;
@@ -1036,14 +1113,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         else tend(selectedSlot, action);
         return;
       }
-      case "unlock": {
-        if (selectedSlot === null) return;
-        void runAction(
-          { kind: "unlock", slot: selectedSlot },
-          t("garden.unlocked", { slot: selectedSlot + 1 }),
-        );
+      case "prevPage":
+        goPage(-1);
         return;
-      }
+      case "nextPage":
+        goPage(1);
+        return;
+      case "buyPatch":
+        void buyPatch();
+        return;
       case "waterFriend": {
         if (selectedSlot !== null) void waterFriend(selectedSlot);
         return;
@@ -1102,10 +1180,20 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       switchTab("event");
       return;
     }
-    const digit = Number(event.key);
-    if (Number.isInteger(digit) && digit >= 1 && digit <= PLOT_COUNT) {
+    if (event.key === "ArrowLeft" || event.key === "[") {
       event.preventDefault();
-      selectSlot(digit - 1);
+      goPage(-1);
+      return;
+    }
+    if (event.key === "ArrowRight" || event.key === "]") {
+      event.preventDefault();
+      goPage(1);
+      return;
+    }
+    const digit = Number(event.key);
+    if (Number.isInteger(digit) && digit >= 1 && digit <= PLOTS_PER_PATCH) {
+      event.preventDefault();
+      selectSlot(pageOffset() + digit - 1);
       return;
     }
     if (selectedSlot === null) return;

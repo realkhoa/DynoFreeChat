@@ -11,11 +11,23 @@
 /** Wire version for every garden request and response. */
 export const GARDEN_PROTOCOL_VERSION = 1;
 
-/** Plots in one garden, laid out as three rows of three. */
-export const PLOT_COUNT = 9;
+/** Plots in one 3x3 patch; one garden page shows exactly one patch. */
+export const PLOTS_PER_PATCH = 9;
 
-/** Plots free when a garden is created. */
-export const STARTING_PLOTS = 4;
+/** Hard cap on bought patches, so the garden and the leaderboard stay bounded. */
+export const MAX_PATCHES = 6;
+
+/** Patches free when a garden is created. */
+export const STARTING_PATCHES = 1;
+
+/** Price of the second patch, in coins. */
+export const PATCH_BASE_PRICE = 3_000;
+
+/** Each further patch costs this multiple of the previous one. */
+export const PATCH_PRICE_FACTOR = 3;
+
+/** Absolute plot ceiling; action parsing uses it before the state is known. */
+export const MAX_PLOTS = PLOTS_PER_PATCH * MAX_PATCHES;
 
 /** Coins a new garden starts with. */
 export const STARTING_COINS = 30;
@@ -144,7 +156,7 @@ export const EVENTS: readonly EventDefinition[] = [
 
 /** One occupied plot on the wire. */
 export interface PlotState {
-  /** Plot index, `0..PLOT_COUNT-1`. */
+  /** Absolute plot index, `0..MAX_PLOTS-1`. */
   readonly slot: number;
   /** Seed planted here. */
   readonly seed: SeedId;
@@ -202,9 +214,9 @@ export interface GardenSnapshot {
   readonly code: string;
   /** Spendable coins. */
   readonly coins: number;
-  /** Contiguous unlocked plots, `STARTING_PLOTS..PLOT_COUNT`. */
-  readonly unlocked: number;
-  /** Plot states, always `PLOT_COUNT` entries. */
+  /** Bought 3x3 patches, `STARTING_PATCHES..MAX_PATCHES`. */
+  readonly patches: number;
+  /** Plot states for the owned patches, `patches * PLOTS_PER_PATCH` entries. */
   readonly plots: readonly (PlotState | null)[];
   /** Seeds and harvested crops. */
   readonly bag: BagState;
@@ -226,8 +238,8 @@ export interface VisitSnapshot {
   readonly code: string;
   /** Spendable coins. */
   readonly coins: number;
-  /** Unlocked plot count. */
-  readonly unlocked: number;
+  /** Bought 3x3 patches. */
+  readonly patches: number;
   /** Plot states. */
   readonly plots: readonly (PlotState | null)[];
   /** Seeds and harvested crops. */
@@ -322,7 +334,7 @@ export type GardenAction =
   | { readonly kind: "water"; readonly slot: number }
   | { readonly kind: "fertilize"; readonly slot: number }
   | { readonly kind: "uproot"; readonly slot: number }
-  | { readonly kind: "unlock"; readonly slot: number }
+  | { readonly kind: "buyPatch" }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | {
       readonly kind: "sellCrop";
@@ -354,6 +366,7 @@ export type GardenErrorCode =
   | "SHOP_SOLD_OUT"
   | "NO_CROP"
   | "NOTHING_TO_SELL"
+  | "MAX_PATCHES"
   | "CANNOT_VISIT_SELF";
 
 /** Successful response to a garden action. */
@@ -399,10 +412,18 @@ export function eventById(id: string): EventDefinition | undefined {
   return EVENTS.find((event) => event.id === id);
 }
 
-/** @brief Cost to unlock one plot; free plots cost nothing. */
-export function unlockCost(slot: number): number {
-  const costs: readonly number[] = [0, 0, 0, 0, 150, 300, 600, 1200, 2500];
-  return costs[slot] ?? 0;
+/** @brief Total plots owned with `patches` bought patches. */
+export function totalPlots(patches: number): number {
+  return patches * PLOTS_PER_PATCH;
+}
+
+/**
+ * @brief Price of the next patch.
+ * @param patchesOwned Patches already owned; the first bought patch is number 2.
+ * @details The ladder compounds: 3,000 -> 9,000 -> 27,000 -> ...
+ */
+export function nextPatchPrice(patchesOwned: number): number {
+  return Math.round(PATCH_BASE_PRICE * PATCH_PRICE_FACTOR ** Math.max(0, patchesOwned - 1));
 }
 
 /** @brief Wraps a number into `0..modulus-1` for clock math around the epoch. */
@@ -474,13 +495,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     if (slot === null || seed === undefined) return null;
     return { kind, slot, seed: seed.id };
   }
-  if (
-    kind === "harvest" ||
-    kind === "water" ||
-    kind === "fertilize" ||
-    kind === "uproot" ||
-    kind === "unlock"
-  ) {
+  if (kind === "harvest" || kind === "water" || kind === "fertilize" || kind === "uproot") {
     const slot = readSlot(value.slot);
     if (slot === null) return null;
     return { kind, slot };
@@ -508,13 +523,14 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 99) return null;
     return { kind, seed: seed.id, effect: effect === null ? null : effect.id, qty };
   }
+  if (kind === "buyPatch") return { kind };
   if (kind === "sellAll") return { kind };
   return null;
 }
 
 /** @brief Reads a plot slot, or `null` when out of range. */
 function readSlot(raw: unknown): number | null {
-  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0 || raw >= PLOT_COUNT) return null;
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0 || raw >= MAX_PLOTS) return null;
   return raw;
 }
 
@@ -665,36 +681,28 @@ export interface GardenCounts {
   readonly ready: number;
   /** Growing crops. */
   readonly growing: number;
-  /** Empty unlocked plots. */
+  /** Empty plots. */
   readonly free: number;
-  /** Plots still locked. */
-  readonly locked: number;
 }
 
 /**
- * @brief Counts ripe, growing, free and locked plots.
+ * @brief Counts ripe, growing and free plots on the owned patches.
  * @param plots Plot states.
- * @param unlocked Unlocked plot count.
  * @param now Clock to measure against.
  */
-export function gardenCounts(
-  plots: readonly (PlotState | null)[],
-  unlocked: number,
-  now: number,
-): GardenCounts {
+export function gardenCounts(plots: readonly (PlotState | null)[], now: number): GardenCounts {
   let ready = 0;
   let growing = 0;
   let free = 0;
-  plots.forEach((plot, slot) => {
-    if (slot >= unlocked) return;
+  for (const plot of plots) {
     if (plot === null) {
       free += 1;
-      return;
+      continue;
     }
     if (now >= plot.readyAt) ready += 1;
     else growing += 1;
-  });
-  return { ready, growing, free, locked: PLOT_COUNT - unlocked };
+  }
+  return { ready, growing, free };
 }
 
 /** @brief Sell price of one crop stack under a season snapshot. */
