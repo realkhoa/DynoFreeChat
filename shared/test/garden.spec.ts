@@ -11,15 +11,17 @@ import {
   EVENTS,
   EVENT_WAVE_MS,
   GARDEN_AUTH_HEADER,
-  MAX_PATCHES,
-  PATCH_BASE_PRICE,
-  PATCH_PRICE_FACTOR,
+  CROPS_PER_TAB,
+  MAX_TABS,
+  TAB_BASE_PRICE,
+  TAB_PRICE_FACTOR,
+  TREES_PER_TAB,
   PLOTS_PER_PATCH,
   RECOVERY_RE,
   SEEDS,
   SHOP_RESTOCK_MS,
   STARTING_COINS,
-  STARTING_PATCHES,
+  STARTING_TABS,
   createRng,
   cropKey,
   cropSellPrice,
@@ -40,12 +42,12 @@ import {
   SPRAYS,
   TREES,
   fertilizerById,
-  nextPatchPrice,
+  nextTabPrice,
   sprayById,
   supplyById,
   seasonAt,
   seedById,
-  totalPlots,
+  totalCrops,
   treeById,
   type PlotState,
 } from "../src/garden";
@@ -92,10 +94,10 @@ describe("garden catalog", () => {
     expect(supplyById("unknown")).toBeUndefined();
   });
 
-  it("prices each new patch on the compounding ladder", () => {
-    expect(nextPatchPrice(1)).toBe(PATCH_BASE_PRICE);
-    expect(nextPatchPrice(2)).toBe(PATCH_BASE_PRICE * PATCH_PRICE_FACTOR);
-    expect(nextPatchPrice(3)).toBe(PATCH_BASE_PRICE * PATCH_PRICE_FACTOR ** 2);
+  it("prices each new tab on the compounding ladder", () => {
+    expect(nextTabPrice(1)).toBe(TAB_BASE_PRICE);
+    expect(nextTabPrice(2)).toBe(TAB_BASE_PRICE * TAB_PRICE_FACTOR);
+    expect(nextTabPrice(3)).toBe(TAB_BASE_PRICE * TAB_PRICE_FACTOR ** 2);
   });
 
   it("marks reharvest plants apart from root crops", () => {
@@ -114,12 +116,14 @@ describe("garden catalog", () => {
     expect(seedById("lavender")?.regrow).toBe(false);
   });
 
-  it("starts a garden with one 3x3 patch", () => {
+  it("starts a garden with one tab of nine 3x3 patches", () => {
     expect(STARTING_COINS).toBe(30);
-    expect(STARTING_PATCHES).toBe(1);
+    expect(STARTING_TABS).toBe(1);
     expect(PLOTS_PER_PATCH).toBe(9);
-    expect(MAX_PATCHES).toBe(6);
-    expect(totalPlots(STARTING_PATCHES)).toBe(PLOTS_PER_PATCH);
+    expect(CROPS_PER_TAB).toBe(81);
+    expect(TREES_PER_TAB).toBe(27);
+    expect(MAX_TABS).toBe(4);
+    expect(totalCrops(STARTING_TABS)).toBe(CROPS_PER_TAB);
   });
 });
 
@@ -260,7 +264,7 @@ describe("garden growth math", () => {
 
   it("counts plots and prices crop stacks", () => {
     const season = seasonAt(NOW);
-    const plots: Array<PlotState | null> = new Array(totalPlots(1)).fill(null);
+    const plots: Array<PlotState | null> = new Array(totalCrops(1)).fill(null);
     plots[0] = {
       slot: 0,
       seed: "carrot",
@@ -285,7 +289,7 @@ describe("garden growth math", () => {
       fertilizer: null,
       spray: null,
     };
-    expect(gardenCounts(plots, [], NOW)).toEqual({ ready: 1, growing: 1, free: 7 });
+    expect(gardenCounts(plots, [], NOW)).toEqual({ ready: 1, growing: 1, free: 79 });
     expect(cropSellPrice({ item: "carrot", effects: ["golden"], qty: 1 }, season)).toBe(
       season.prices.carrot * 5,
     );
@@ -371,12 +375,13 @@ describe("garden wire parsing", () => {
       slot: 8,
       tree: false,
     });
-    expect(parseGardenAction({ kind: "water", slot: 9, tree: true })).toEqual({
+    expect(parseGardenAction({ kind: "water", slot: 80, tree: true })).toEqual({
       kind: "water",
-      slot: 9,
+      slot: 80,
       tree: true,
     });
-    expect(parseGardenAction({ kind: "water", slot: 54 })).toBeNull();
+    expect(parseGardenAction({ kind: "water", slot: 324 })).toBeNull();
+    expect(parseGardenAction({ kind: "water", slot: 108, tree: true })).toBeNull();
     expect(parseGardenAction({ kind: "plant", slot: 0, seed: "nope" })).toBeNull();
     expect(parseGardenAction({ kind: "buySeed", seed: "corn", qty: 0 })).toBeNull();
     expect(parseGardenAction({ kind: "sellCrop", item: "corn", effects: ["wet"], qty: 2 })).toEqual({
@@ -403,7 +408,7 @@ describe("garden wire parsing", () => {
       supply: "compost",
       qty: 2,
     });
-    expect(parseGardenAction({ kind: "buyPatch" })).toEqual({ kind: "buyPatch" });
+    expect(parseGardenAction({ kind: "buyTab" })).toEqual({ kind: "buyTab" });
     expect(parseGardenAction({ kind: "sellAll" })).toEqual({ kind: "sellAll" });
     expect(parseGardenAction({ kind: "explode" })).toBeNull();
   });

@@ -11,23 +11,38 @@
 /** Wire version for every garden request and response. */
 export const GARDEN_PROTOCOL_VERSION = 1;
 
-/** Plots in one 3x3 patch; one garden page shows exactly one patch. */
+/** Crop slots in one 3x3 patch. */
 export const PLOTS_PER_PATCH = 9;
 
-/** Hard cap on bought patches, so the garden and the leaderboard stay bounded. */
-export const MAX_PATCHES = 6;
+/** Crop patches shown inside one tab (3x3 patches = 81 crop slots). */
+export const CROP_PATCHES_PER_TAB = 9;
 
-/** Patches free when a garden is created. */
-export const STARTING_PATCHES = 1;
+/** Fruit patches shown inside one tab (3x3 trees each = 27 tree slots). */
+export const FRUIT_PATCHES_PER_TAB = 3;
 
-/** Price of the second patch, in coins. */
-export const PATCH_BASE_PRICE = 3_000;
+/** Crop slots one tab offers. */
+export const CROPS_PER_TAB = CROP_PATCHES_PER_TAB * PLOTS_PER_PATCH;
 
-/** Each further patch costs this multiple of the previous one. */
-export const PATCH_PRICE_FACTOR = 3;
+/** Fruit tree slots one tab offers. */
+export const TREES_PER_TAB = FRUIT_PATCHES_PER_TAB * PLOTS_PER_PATCH;
 
-/** Absolute plot ceiling; action parsing uses it before the state is known. */
-export const MAX_PLOTS = PLOTS_PER_PATCH * MAX_PATCHES;
+/** Tabs free when a garden is created. */
+export const STARTING_TABS = 1;
+
+/** Hard cap on bought tabs, so the garden stays bounded. */
+export const MAX_TABS = 4;
+
+/** Price of the second tab, in coins. */
+export const TAB_BASE_PRICE = 5_000;
+
+/** Each further tab costs this multiple of the previous one. */
+export const TAB_PRICE_FACTOR = 3;
+
+/** Absolute crop ceiling; action parsing uses it before the state is known. */
+export const MAX_CROPS = CROPS_PER_TAB * MAX_TABS;
+
+/** Absolute tree ceiling; action parsing uses it before the state is known. */
+export const MAX_TREES = TREES_PER_TAB * MAX_TABS;
 
 /** Coins a new garden starts with. */
 export const STARTING_COINS = 30;
@@ -406,11 +421,11 @@ export interface GardenSnapshot {
   readonly code: string;
   /** Spendable coins. */
   readonly coins: number;
-  /** Bought 3x3 patches, `STARTING_PATCHES..MAX_PATCHES`. */
-  readonly patches: number;
-  /** Plot states for the owned patches, `patches * PLOTS_PER_PATCH` entries. */
+  /** Bought tabs, `STARTING_TABS..MAX_TABS`. */
+  readonly tabs: number;
+  /** Crop slots for the owned tabs, `tabs * CROPS_PER_TAB` entries. */
   readonly plots: readonly (PlotState | null)[];
-  /** Tree states for the owned patches, parallel to `plots`. */
+  /** Fruit tree slots for the owned tabs, `tabs * TREES_PER_TAB` entries. */
   readonly trees: readonly (TreeState | null)[];
   /** Seeds and harvested crops. */
   readonly bag: BagState;
@@ -432,11 +447,11 @@ export interface VisitSnapshot {
   readonly code: string;
   /** Spendable coins. */
   readonly coins: number;
-  /** Bought 3x3 patches. */
-  readonly patches: number;
-  /** Plot states. */
+  /** Bought tabs. */
+  readonly tabs: number;
+  /** Crop slots. */
   readonly plots: readonly (PlotState | null)[];
-  /** Tree states, parallel to `plots`. */
+  /** Fruit tree slots. */
   readonly trees: readonly (TreeState | null)[];
   /** Seeds and harvested crops. */
   readonly bag: BagState;
@@ -539,7 +554,7 @@ export type GardenAction =
     }
   | { readonly kind: "spray"; readonly slot: number; readonly tree: boolean; readonly supply: SprayId }
   | { readonly kind: "uproot"; readonly slot: number; readonly tree: boolean }
-  | { readonly kind: "buyPatch" }
+  | { readonly kind: "buyTab" }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
   | {
@@ -573,7 +588,7 @@ export type GardenErrorCode =
   | "SHOP_SOLD_OUT"
   | "NO_CROP"
   | "NOTHING_TO_SELL"
-  | "MAX_PATCHES"
+  | "MAX_TABS"
   | "CANNOT_VISIT_SELF";
 
 /** Successful response to a garden action. */
@@ -681,18 +696,23 @@ export function eventById(id: string): EventDefinition | undefined {
   return EVENTS.find((event) => event.id === id);
 }
 
-/** @brief Total plots owned with `patches` bought patches. */
-export function totalPlots(patches: number): number {
-  return patches * PLOTS_PER_PATCH;
+/** @brief Crop slots owned with `tabs` bought tabs. */
+export function totalCrops(tabs: number): number {
+  return tabs * CROPS_PER_TAB;
+}
+
+/** @brief Fruit tree slots owned with `tabs` bought tabs. */
+export function totalTrees(tabs: number): number {
+  return tabs * TREES_PER_TAB;
 }
 
 /**
- * @brief Price of the next patch.
- * @param patchesOwned Patches already owned; the first bought patch is number 2.
- * @details The ladder compounds: 3,000 -> 9,000 -> 27,000 -> ...
+ * @brief Price of the next tab.
+ * @param tabsOwned Tabs already owned; the first bought tab is number 2.
+ * @details The ladder compounds: 5,000 -> 15,000 -> 45,000 -> ...
  */
-export function nextPatchPrice(patchesOwned: number): number {
-  return Math.round(PATCH_BASE_PRICE * PATCH_PRICE_FACTOR ** Math.max(0, patchesOwned - 1));
+export function nextTabPrice(tabsOwned: number): number {
+  return Math.round(TAB_BASE_PRICE * TAB_PRICE_FACTOR ** Math.max(0, tabsOwned - 1));
 }
 
 /** @brief Wraps a number into `0..modulus-1` for clock math around the epoch. */
@@ -770,33 +790,36 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   const kind = value.kind;
 
   if (kind === "plant") {
-    const slot = readSlot(value.slot);
+    const slot = readSlot(value.slot, MAX_CROPS);
     const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
     if (slot === null || seed === undefined) return null;
     return { kind, slot, seed: seed.id };
   }
   if (kind === "plantTree") {
-    const slot = readSlot(value.slot);
+    const slot = readSlot(value.slot, MAX_TREES);
     const tree = typeof value.tree === "string" ? treeById(value.tree) : undefined;
     if (slot === null || tree === undefined) return null;
     return { kind, slot, tree: tree.id };
   }
   if (kind === "harvest" || kind === "water" || kind === "uproot") {
-    const slot = readSlot(value.slot);
+    const isTree = value.tree === true;
+    const slot = readSlot(value.slot, isTree ? MAX_TREES : MAX_CROPS);
     if (slot === null) return null;
-    return { kind, slot, tree: value.tree === true };
+    return { kind, slot, tree: isTree };
   }
   if (kind === "fertilize") {
-    const slot = readSlot(value.slot);
+    const isTree = value.tree === true;
+    const slot = readSlot(value.slot, isTree ? MAX_TREES : MAX_CROPS);
     const supply = typeof value.supply === "string" ? fertilizerById(value.supply) : undefined;
     if (slot === null || supply === undefined) return null;
-    return { kind, slot, tree: value.tree === true, supply: supply.id };
+    return { kind, slot, tree: isTree, supply: supply.id };
   }
   if (kind === "spray") {
-    const slot = readSlot(value.slot);
+    const isTree = value.tree === true;
+    const slot = readSlot(value.slot, isTree ? MAX_TREES : MAX_CROPS);
     const supply = typeof value.supply === "string" ? sprayById(value.supply) : undefined;
     if (slot === null || supply === undefined) return null;
-    return { kind, slot, tree: value.tree === true, supply: supply.id };
+    return { kind, slot, tree: isTree, supply: supply.id };
   }
   if (kind === "buySupply") {
     const supply = typeof value.supply === "string" ? supplyById(value.supply) : undefined;
@@ -834,14 +857,14 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     }
     return { kind, item: item.id as ItemId, effects: canonicalEffects(effects), qty };
   }
-  if (kind === "buyPatch") return { kind };
+  if (kind === "buyTab") return { kind };
   if (kind === "sellAll") return { kind };
   return null;
 }
 
 /** @brief Reads a plot slot, or `null` when out of range. */
-function readSlot(raw: unknown): number | null {
-  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0 || raw >= MAX_PLOTS) return null;
+function readSlot(raw: unknown, limit: number): number | null {
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0 || raw >= limit) return null;
   return raw;
 }
 

@@ -17,7 +17,7 @@ import type {
   VisitSnapshot,
 } from "@dyno/shared/garden";
 import { SEEDS } from "@dyno/shared/garden";
-import { derivePatches } from "../src/garden";
+import { deriveTabs } from "../src/garden";
 import { BASE, ORIGIN, uniqueIp } from "./helpers";
 
 /** One freshly registered garden. */
@@ -81,13 +81,15 @@ async function visit(code: string): Promise<VisitSnapshot> {
 }
 
 describe("legacy saves", () => {
-  it("keeps old unlocked data as usable 3x3 patches", () => {
-    expect(derivePatches({ unlocked: 4 })).toBe(1);
-    expect(derivePatches({ unlocked: 9 })).toBe(1);
-    expect(derivePatches({ unlocked: 10 })).toBe(2);
-    expect(derivePatches({})).toBe(1);
-    expect(derivePatches({ patches: 3, unlocked: 4 })).toBe(3);
-    expect(derivePatches({ patches: 99 })).toBe(6);
+  it("keeps old patch data as usable tabs", () => {
+    expect(deriveTabs({ unlocked: 4 })).toBe(1);
+    expect(deriveTabs({ unlocked: 9 })).toBe(1);
+    expect(deriveTabs({ unlocked: 10 })).toBe(1);
+    expect(deriveTabs({})).toBe(1);
+    expect(deriveTabs({ patches: 3 })).toBe(1);
+    expect(deriveTabs({ patches: 6 })).toBe(2);
+    expect(deriveTabs({ tabs: 3, patches: 6 })).toBe(3);
+    expect(deriveTabs({ tabs: 99 })).toBe(4);
   });
 });
 
@@ -101,9 +103,9 @@ describe("garden registration", () => {
     );
     expect(registered.state.code).toMatch(/^[0-9A-HJKMNP-TV-Z]{6}$/);
     expect(registered.state.coins).toBe(30);
-    expect(registered.state.patches).toBe(1);
-    expect(registered.state.plots).toHaveLength(9);
-    expect(registered.state.trees).toHaveLength(9);
+    expect(registered.state.tabs).toBe(1);
+    expect(registered.state.plots).toHaveLength(81);
+    expect(registered.state.trees).toHaveLength(27);
     expect(registered.state.bag.seeds.carrot).toBe(3);
     expect(registered.state.rev).toBe(1);
   });
@@ -149,9 +151,9 @@ describe("garden play", () => {
     expect(stale.payload).toMatchObject({ code: "STALE_REV" });
   });
 
-  it("refuses a patch it cannot afford and an unripe harvest", async () => {
+  it("refuses a tab it cannot afford and an unripe harvest", async () => {
     const registered = await register();
-    const patch = await act(registered, registered.state.rev, { kind: "buyPatch" });
+    const patch = await act(registered, registered.state.rev, { kind: "buyTab" });
     expect(patch.status).toBe(400);
     expect(patch.payload).toMatchObject({ code: "NOT_ENOUGH_COINS" });
 
@@ -243,8 +245,8 @@ describe("garden visits", () => {
     const registered = await register("host");
     const snapshot = await visit(registered.state.code);
     expect(snapshot.nick).toBe("host");
-    expect(snapshot.plots).toHaveLength(9);
-    expect(snapshot.trees).toHaveLength(9);
+    expect(snapshot.plots).toHaveLength(81);
+    expect(snapshot.trees).toHaveLength(27);
     expect(snapshot.online).toBe(true);
     expect(snapshot.visitors).toEqual([]);
 

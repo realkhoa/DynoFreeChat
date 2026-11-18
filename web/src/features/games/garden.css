@@ -321,3 +321,107 @@
   color: #6a9955;
   font: 9.5px/16px var(--font-mono);
 }
+
+/* Compact 9x9 crop grid and three fruit patches per tab: one glyph per slot so
+   a whole tab fits beside the detail panel. Patch boundaries get extra gaps. */
+.garden-crop-grid,
+.garden-tree-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.garden-mini-row {
+  display: flex;
+  gap: 1px;
+}
+
+.garden-mini-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  color: #e6e6e6;
+  font: 500 10px/1 var(--font-mono);
+  cursor: pointer;
+  user-select: none;
+}
+
+.garden-mini-cell:hover {
+  background: var(--hover-row);
+  color: #ffffff;
+}
+
+.garden-mini-cell:focus-visible {
+  outline: 1px solid var(--accent);
+}
+
+.garden-mini-cell.is-selected {
+  outline: 1px solid var(--accent);
+  background: var(--sel);
+}
+
+.garden-mini-cell.is-empty {
+  color: #4b4b4b;
+}
+
+.garden-mini-cell.is-ready {
+  color: #6fe3b5;
+  animation: garden-blink 1.1s step-end infinite;
+}
+
+.garden-mini-cell.is-locked {
+  color: #3d3d3d;
+  cursor: default;
+}
+
+.garden-mini-cell.is-golden {
+  color: #d7ba7d;
+}
+
+.garden-mini-cell.is-frozen {
+  color: #9cdcfe;
+}
+
+.garden-mini-cell.is-wet {
+  color: #4ec9b0;
+}
+
+.garden-mini-cell.is-snow {
+  color: #b8dcff;
+}
+
+.garden-mini-cell.is-chill {
+  color: #7ec8ff;
+}
+
+.garden-mini-cell.is-sunray {
+  color: #f0d58c;
+}
+
+.garden-mini-cell.is-smoked {
+  color: #c586c0;
+}
+
+.garden-mini-cell.is-cracked {
+  color: #ce9178;
+}
+
+.garden-mini-cell.is-onfire {
+  color: #f48771;
+}
+
+/* Patch boundaries inside the 9x9 crop grid and the fruit strip. */
+.garden-crop-grid .garden-mini-cell:nth-child(3n),
+.garden-tree-grid .garden-mini-cell:nth-child(3n) {
+  margin-right: 5px;
+}
+
+.garden-crop-grid .garden-mini-row:nth-child(3n) {
+  margin-bottom: 5px;
+}

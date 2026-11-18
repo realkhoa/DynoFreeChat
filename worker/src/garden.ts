@@ -12,8 +12,10 @@ import { DurableObject } from "cloudflare:workers";
 import {
   GARDEN_PROTOCOL_VERSION,
   GUEST_WATER_CUT_RATIO,
-  MAX_PATCHES,
+  CROPS_PER_TAB,
+  MAX_TABS,
   PLOTS_PER_PATCH,
+  TREES_PER_TAB,
   REGISTERS_PER_WINDOW,
   REGISTER_WINDOW_MS,
   parseGardenAction,
@@ -42,7 +44,7 @@ import { json, readJson } from "./http";
 import {
   applyGardenAction,
   createLedger,
-  emptyPlots,
+  emptyCrops,
   emptyTrees,
   ledgerSnapshot,
   type GardenLedger,
@@ -70,13 +72,23 @@ export const VISITOR_LIMIT = 12;
  * @details Never reduces what a player already had: a legacy garden with four
  * unlocked plots becomes one fully usable 3x3 patch, with every planted crop kept.
  */
-export function derivePatches(value: { patches?: unknown; unlocked?: unknown }): number {
-  if (typeof value.patches === "number" && Number.isInteger(value.patches) && value.patches >= 1) {
-    return Math.min(MAX_PATCHES, value.patches);
+export function deriveTabs(value: { tabs?: unknown; patches?: unknown; unlocked?: unknown }): number {
+  if (typeof value.tabs === "number" && Number.isInteger(value.tabs) && value.tabs >= 1) {
+    return Math.min(MAX_TABS, value.tabs);
   }
-  const legacy =
-    typeof value.unlocked === "number" && Number.isFinite(value.unlocked) ? value.unlocked : PLOTS_PER_PATCH;
-  return Math.min(MAX_PATCHES, Math.max(1, Math.ceil(legacy / PLOTS_PER_PATCH)));
+  const patches =
+    typeof value.patches === "number" && Number.isFinite(value.patches) && value.patches >= 1
+      ? value.patches
+      : typeof value.unlocked === "number" && Number.isFinite(value.unlocked)
+        ? Math.max(1, Math.ceil(value.unlocked / PLOTS_PER_PATCH))
+        : 1;
+  // Old saves only had `patches * 9` crop and tree slots; promote to enough tabs
+  // for both grids so no planted slot is dropped.
+  const oldCropSlots = patches * PLOTS_PER_PATCH;
+  return Math.min(
+    MAX_TABS,
+    Math.max(1, Math.ceil(oldCropSlots / CROPS_PER_TAB), Math.ceil(oldCropSlots / TREES_PER_TAB)),
+  );
 }
 
 /** Stored metadata: the ledger minus the rows kept in their own tables. */
@@ -228,14 +240,14 @@ export class Garden extends DurableObject<Env> {
   private read(): GardenLedger | null {
     const row = this.sql.exec<MetaRow>("SELECT value FROM meta WHERE key = 'ledger'").toArray()[0];
     if (row === undefined) return null;
-    const raw = JSON.parse(row.value) as StoredMeta & { unlocked?: number };
-    // Old saves keep their plots; only the patch count is derived from `unlocked`.
-    const patches = derivePatches(raw);
-    const meta: StoredMeta = { ...raw, patches };
+    const raw = JSON.parse(row.value) as StoredMeta & { patches?: number; unlocked?: number };
+    // Old saves keep their planted slots; only the tab count is derived.
+    const tabs = deriveTabs(raw);
+    const meta: StoredMeta = { ...raw, tabs };
     return {
       ...meta,
-      plots: this.readPlots(patches),
-      trees: this.readTrees(patches),
+      plots: this.readPlots(tabs),
+      trees: this.readTrees(tabs),
       bag: this.readBag(),
     };
   }
@@ -244,8 +256,8 @@ export class Garden extends DurableObject<Env> {
    * @brief Reads the plot rows into a dense vector for the owned patches.
    * @param patches Owned patch count.
    */
-  private readPlots(patches: number): (PlotState | null)[] {
-    const plots = emptyPlots(patches);
+  private readPlots(tabs: number): (PlotState | null)[] {
+    const plots = emptyCrops(tabs);
     const rows = this.sql
       .exec<PlotRow>(
         "SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray FROM plots",
@@ -272,8 +284,8 @@ export class Garden extends DurableObject<Env> {
    * @brief Reads the tree rows into a dense vector for the owned patches.
    * @param patches Owned patch count.
    */
-  private readTrees(patches: number): (TreeState | null)[] {
-    const trees = emptyTrees(patches);
+  private readTrees(tabs: number): (TreeState | null)[] {
+    const trees = emptyTrees(tabs);
     const rows = this.sql
       .exec<TreeRow>(
         "SELECT slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray FROM trees",
@@ -550,7 +562,7 @@ export class Garden extends DurableObject<Env> {
       color: ledger.color,
       code: ledger.code,
       coins: ledger.coins,
-      patches: ledger.patches,
+      tabs: ledger.tabs,
       plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
       trees: ledger.trees.map((tree) => (tree === null ? null : { ...tree })),
       bag: {

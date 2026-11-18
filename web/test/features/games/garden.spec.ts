@@ -9,11 +9,13 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CROPS_PER_TAB,
   EPOCH_MS,
   EVENT_WAVE_MS,
   FERTILIZERS,
   SEEDS,
   TREES,
+  TREES_PER_TAB,
   seasonAt,
   type GardenAction,
   type GardenSnapshot,
@@ -87,9 +89,9 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     color: "hsl(200 60% 60%)",
     code: "ABCDEF",
     coins: 42,
-    patches: 1,
-    plots: new Array<PlotState | null>(9).fill(null),
-    trees: new Array<TreeState | null>(9).fill(null),
+    tabs: 1,
+    plots: new Array<PlotState | null>(CROPS_PER_TAB).fill(null),
+    trees: new Array<TreeState | null>(TREES_PER_TAB).fill(null),
     bag: { seeds: { carrot: 3 }, crops: [], supplies: {} },
     stats: { planted: 0, harvested: 0, earned: 0 },
     rev: 7,
@@ -105,9 +107,9 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     color: "hsl(120 60% 60%)",
     code: "ABCDEF",
     coins: 12,
-    patches: 1,
-    plots: new Array<PlotState | null>(9).fill(null),
-    trees: new Array<TreeState | null>(9).fill(null),
+    tabs: 1,
+    plots: new Array<PlotState | null>(CROPS_PER_TAB).fill(null),
+    trees: new Array<TreeState | null>(TREES_PER_TAB).fill(null),
     bag: { seeds: {}, crops: [], supplies: {} },
     stats: { planted: 1, harvested: 0, earned: 0 },
     updatedAt: CLOCK,
@@ -237,20 +239,21 @@ afterEach(() => {
 });
 
 describe("garden tab", () => {
-  it("renders three tabs, nine plots and the HUD", async () => {
+  it("renders three tabs, a 9x9 crop grid, three fruit patches and the HUD", async () => {
     const api = new FakeGardenApi(
-      makeState({ plots: [RIPE_PLOT, ...new Array<PlotState | null>(8).fill(null)] }),
+      makeState({ plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)] }),
     );
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
     expect(host.querySelectorAll(".garden-tab")).toHaveLength(3);
-    expect(host.querySelectorAll(".garden-cell")).toHaveLength(18);
-    expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
+    expect(host.querySelectorAll(".garden-mini-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
+    expect(host.querySelectorAll(".garden-mini-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
-    const readyCell = host.querySelector(".garden-cell.is-ready");
-    expect(readyCell?.textContent).toContain("Vàng");
-    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    const readyCell = host.querySelector(".garden-mini-cell.is-ready");
+    expect(readyCell?.classList.contains("is-golden")).toBe(true);
+    expect(readyCell?.classList.contains("is-wet")).toBe(true);
+    host.querySelectorAll<HTMLButtonElement>(".garden-mini-cell")[0]?.click();
     await settle();
     const detail = host.querySelector(".garden-detail-text")?.textContent ?? "";
     expect(detail).toContain("Vàng x5");
@@ -265,7 +268,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    const cells = host.querySelectorAll<HTMLButtonElement>(".garden-cell");
+    const cells = host.querySelectorAll<HTMLButtonElement>(".garden-mini-cell");
     cells[1]?.click();
     await settle();
     const seeds = host.querySelectorAll<HTMLButtonElement>(".garden-seeds .garden-row");
@@ -279,12 +282,12 @@ describe("garden tab", () => {
 
   it("shows the owner actions for a ripe crop and harvests it", async () => {
     const api = new FakeGardenApi(
-      makeState({ plots: [RIPE_PLOT, ...new Array<PlotState | null>(8).fill(null)] }),
+      makeState({ plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)] }),
     );
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    host.querySelectorAll<HTMLButtonElement>(".garden-mini-cell")[0]?.click();
     await settle();
     const harvest = host.querySelector<HTMLButtonElement>('[data-act="harvest"]');
     expect(harvest).not.toBeNull();
@@ -295,10 +298,10 @@ describe("garden tab", () => {
     expect(api.calls.some((call) => call.action?.kind === "harvest")).toBe(true);
   });
 
-  it("paginates bought 3x3 patches and offers the next one", async () => {
-    const plots = new Array<PlotState | null>(18).fill(null);
+  it("paginates bought tabs and offers the next one", async () => {
+    const plots = new Array<PlotState | null>(CROPS_PER_TAB * 2).fill(null);
     plots[12] = { ...RIPE_PLOT, slot: 12 };
-    const api = new FakeGardenApi(makeState({ patches: 2, plots }));
+    const api = new FakeGardenApi(makeState({ tabs: 2, plots }));
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
@@ -307,15 +310,15 @@ describe("garden tab", () => {
     next?.click();
     await settle();
     expect(host.querySelector(".garden-page")?.textContent).toContain("2/3");
-    const secondPageCells = host.querySelectorAll<HTMLElement>(".garden-cell");
-    expect(secondPageCells[0]?.dataset.slot).toBe("9");
+    const secondPageCells = host.querySelectorAll<HTMLElement>(".garden-mini-cell");
+    expect(secondPageCells[0]?.dataset.slot).toBe(String(CROPS_PER_TAB));
     expect(secondPageCells[0]?.dataset.area).toBe("crop");
 
     host.querySelector<HTMLButtonElement>('[data-act="nextPage"]')?.click();
     await settle();
     // Third page is the not-yet-bought preview, with a disabled buy action.
     expect(host.querySelector(".garden-page")?.textContent).toContain("3/3");
-    const buy = host.querySelector<HTMLButtonElement>('[data-act="buyPatch"]');
+    const buy = host.querySelector<HTMLButtonElement>('[data-act="buyTab"]');
     expect(buy).not.toBeNull();
     expect(buy?.disabled).toBe(true);
   });
@@ -325,7 +328,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    const treeCell = host.querySelectorAll<HTMLButtonElement>(".garden-cell")[9];
+    const treeCell = host.querySelector<HTMLButtonElement>('.garden-mini-cell[data-area="tree"]');
     expect(treeCell?.dataset.area).toBe("tree");
     treeCell?.click();
     await settle();
@@ -340,14 +343,14 @@ describe("garden tab", () => {
   it("opens the fertilizer picker and applies an owned supply", async () => {
     const api = new FakeGardenApi(
       makeState({
-        plots: [GROWING_PLOT, ...new Array<PlotState | null>(8).fill(null)],
+        plots: [GROWING_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)],
         bag: { seeds: { carrot: 3 }, crops: [], supplies: { compost: 2 } },
       }),
     );
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    host.querySelectorAll<HTMLButtonElement>(".garden-mini-cell")[0]?.click();
     await settle();
     host.querySelector<HTMLButtonElement>('[data-act="pickFertilize"]')?.click();
     await settle();
@@ -361,22 +364,22 @@ describe("garden tab", () => {
   });
 
   it("restores the saved tab, page and selection from the URL", async () => {
-    window.history.replaceState(null, "", "/index.html?gtab=garden&gpage=1&garea=tree&gslot=9");
-    const trees = new Array<TreeState | null>(18).fill(null);
-    trees[9] = SECOND_PAGE_TREE;
-    const api = new FakeGardenApi(makeState({ patches: 2, trees }));
+    window.history.replaceState(null, "", "/index.html?gtab=garden&gpage=1&garea=tree&gslot=36");
+    const trees = new Array<TreeState | null>(TREES_PER_TAB * 2).fill(null);
+    trees[36] = { ...SECOND_PAGE_TREE, slot: 36 };
+    const api = new FakeGardenApi(makeState({ tabs: 2, trees }));
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
     expect(host.querySelector(".garden-page")?.textContent).toContain("2/3");
-    const selected = host.querySelector<HTMLElement>(".garden-cell.is-selected");
+    const selected = host.querySelector<HTMLElement>(".garden-mini-cell.is-selected");
     expect(selected?.dataset.area).toBe("tree");
-    expect(selected?.dataset.slot).toBe("9");
+    expect(selected?.dataset.slot).toBe("36");
     expect(host.querySelector(".garden-detail-text")?.textContent).toContain("Táo");
   });
 
   it("mirrors tab and page changes into the URL", async () => {
-    const api = new FakeGardenApi(makeState({ patches: 2 }));
+    const api = new FakeGardenApi(makeState({ tabs: 2 }));
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
@@ -424,12 +427,14 @@ describe("market tab", () => {
 describe("visit mode", () => {
   it("opens read-only and lets the visitor water a crop", async () => {
     const api = new FakeGardenApi(makeState());
-    api.visitValue = makeVisit({ plots: [GROWING_PLOT, ...new Array<PlotState | null>(8).fill(null)] });
+    api.visitValue = makeVisit({
+      plots: [GROWING_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)],
+    });
     const { host, game } = await mountGame(api, "ABCDEF");
     mounted.push(game);
 
     expect(host.querySelector(".stage-status")?.textContent).toContain("Chế độ xem");
-    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    host.querySelectorAll<HTMLButtonElement>(".garden-mini-cell")[0]?.click();
     await settle();
     const water = host.querySelector<HTMLButtonElement>('[data-act="waterFriend"]');
     expect(water).not.toBeNull();

@@ -9,24 +9,26 @@
 
 import {
   ACTIONS_PER_MINUTE,
-  MAX_PATCHES,
-  PLOTS_PER_PATCH,
+  CROPS_PER_TAB,
+  MAX_TABS,
   STARTING_COINS,
-  STARTING_PATCHES,
+  STARTING_TABS,
   STARTING_SEEDS,
+  TREES_PER_TAB,
   WATER_CUT_RATIO,
   createRng,
   cropSellPrice,
   eventAt,
   growTimeFor,
   hash32,
-  nextPatchPrice,
+  nextTabPrice,
   canonicalEffects,
   rollEffects,
   seedById,
   fertilizerById,
   sprayById,
-  totalPlots,
+  totalCrops,
+  totalTrees,
   treeById,
   type ActiveFertilizer,
   type ActiveSpray,
@@ -82,8 +84,8 @@ export interface GardenLedger {
   recoveryHash: string;
   /** Spendable coins. */
   coins: number;
-  /** Bought 3x3 patches. */
-  patches: number;
+  /** Bought tabs. */
+  tabs: number;
   /** Crop slots, parallel to {@link trees}. */
   plots: (PlotState | null)[];
   /** Fruit tree slots, parallel to {@link plots}. */
@@ -146,9 +148,9 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     tokenHash: input.tokenHash,
     recoveryHash: input.recoveryHash,
     coins: STARTING_COINS,
-    patches: STARTING_PATCHES,
-    plots: emptyPlots(STARTING_PATCHES),
-    trees: emptyTrees(STARTING_PATCHES),
+    tabs: STARTING_TABS,
+    plots: emptyCrops(STARTING_TABS),
+    trees: emptyTrees(STARTING_TABS),
     bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {} },
     stats: { planted: 0, harvested: 0, earned: 0 },
     rev: 1,
@@ -163,19 +165,19 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
 }
 
 /**
- * @brief Creates the empty crop vector for the owned patches.
- * @param patches Owned patch count.
+ * @brief Creates the empty crop vector for the owned tabs.
+ * @param tabs Owned tab count.
  */
-export function emptyPlots(patches: number): (PlotState | null)[] {
-  return new Array<PlotState | null>(totalPlots(patches)).fill(null);
+export function emptyCrops(tabs: number): (PlotState | null)[] {
+  return new Array<PlotState | null>(totalCrops(tabs)).fill(null);
 }
 
 /**
- * @brief Creates the empty tree vector for the owned patches.
- * @param patches Owned patch count.
+ * @brief Creates the empty fruit vector for the owned tabs.
+ * @param tabs Owned tab count.
  */
-export function emptyTrees(patches: number): (TreeState | null)[] {
-  return new Array<TreeState | null>(totalPlots(patches)).fill(null);
+export function emptyTrees(tabs: number): (TreeState | null)[] {
+  return new Array<TreeState | null>(totalTrees(tabs)).fill(null);
 }
 
 /**
@@ -190,7 +192,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     color: ledger.color,
     code: ledger.code,
     coins: ledger.coins,
-    patches: ledger.patches,
+    tabs: ledger.tabs,
     plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
     trees: ledger.trees.map((tree) => (tree === null ? null : { ...tree })),
     bag: {
@@ -243,8 +245,8 @@ export function applyGardenAction(
       return spray(ledger, action.slot, action.supply, now, action.tree);
     case "uproot":
       return action.tree ? uprootTree(ledger, action.slot, now) : uproot(ledger, action.slot, now);
-    case "buyPatch":
-      return buyPatch(ledger, now);
+    case "buyTab":
+      return buyTab(ledger, now);
     case "buySeed":
       return buySeed(ledger, action.seed, action.qty, season, now);
     case "buySupply":
@@ -520,19 +522,17 @@ function uprootTree(ledger: GardenLedger, slot: number, now: number): RuleResult
   return changed(next, now);
 }
 
-/** @brief Buys the next 3x3 patch at the compounding ladder price. */
-function buyPatch(ledger: GardenLedger, now: number): RuleResult {
-  if (ledger.patches >= MAX_PATCHES) return { ok: false, code: "MAX_PATCHES" };
-  const cost = nextPatchPrice(ledger.patches);
+/** @brief Buys the next tab at the compounding ladder price. */
+function buyTab(ledger: GardenLedger, now: number): RuleResult {
+  if (ledger.tabs >= MAX_TABS) return { ok: false, code: "MAX_TABS" };
+  const cost = nextTabPrice(ledger.tabs);
   if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
 
   const next = clone(ledger);
   next.coins -= cost;
-  next.patches += 1;
-  for (let index = 0; index < PLOTS_PER_PATCH; index += 1) {
-    next.plots.push(null);
-    next.trees.push(null);
-  }
+  next.tabs += 1;
+  for (let index = 0; index < CROPS_PER_TAB; index += 1) next.plots.push(null);
+  for (let index = 0; index < TREES_PER_TAB; index += 1) next.trees.push(null);
   return changed(next, now);
 }
 
