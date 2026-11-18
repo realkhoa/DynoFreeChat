@@ -549,6 +549,33 @@ describe("market tab", () => {
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "buySeed")).toBe(true);
   });
+
+  it("buys seeds and supplies in bulk from the quantity selector", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 5_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
+    await settle();
+
+    host.querySelector<HTMLButtonElement>('[data-act="setBuyQty"][data-qty="10"]')?.click();
+    await settle();
+    host
+      .querySelectorAll<HTMLButtonElement>(".garden-market-panel")[0]
+      ?.querySelectorAll<HTMLButtonElement>(".garden-row")[0]
+      ?.click();
+    await settle();
+    const seedBuy = api.calls.find((call) => call.action?.kind === "buySeed");
+    const stock = SEASON.shop.offers[0]?.stock ?? 1;
+    expect(seedBuy?.action).toMatchObject({ kind: "buySeed", qty: Math.min(10, stock) });
+
+    host.querySelector<HTMLButtonElement>('[data-act="setBuyQty"][data-qty="25"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="buySupply"]')?.click();
+    await settle();
+    const supplyBuy = api.calls.find((call) => call.action?.kind === "buySupply");
+    expect(supplyBuy?.action?.kind).toBe("buySupply");
+    expect((supplyBuy?.action as { qty?: number } | undefined)?.qty).toBe(25);
+  });
 });
 
 describe("visit mode", () => {

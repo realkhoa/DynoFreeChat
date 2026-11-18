@@ -131,6 +131,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let page = 0;
   let menu: MenuState | null = null;
   let chartMarket: MarketSnapshot | null = null;
+  let buyQty = 1;
   let pendingSelection: { area: "crop" | "tree"; slot: number } | null = null;
   let pendingPage: number | null = null;
   let message: Message | null = null;
@@ -588,8 +589,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
   /** @brief Buys one fertilizer or spray. */
   function buySupply(supply: SupplyId): void {
+    if (state === null || season === null) return;
+    const definition = [...FERTILIZERS, ...SPRAYS].find((entry) => entry.id === supply);
+    if (definition === undefined) return;
+    const unit = buyPriceOf(supply, definition.price);
+    const affordable = Math.floor(state.coins / Math.max(1, unit));
+    const qty = Math.max(1, Math.min(buyQty, affordable));
     void runAction(
-      { kind: "buySupply", supply, qty: 1 },
+      { kind: "buySupply", supply, qty },
       t("garden.boughtSupply", { supply: t(`supplies.${supply}`) }),
     );
   }
@@ -637,9 +644,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
   /** @brief Buys one seed from the current shop rotation. */
   function buySeed(seedId: SeedId): void {
+    if (state === null || season === null) return;
+    const offer = season.shop.offers.find((entry) => entry.seed === seedId);
+    const unit = buyPriceOf(seedId, offer?.price ?? seedById(seedId)?.buy ?? 1);
+    const stock = offer?.stock ?? 0;
+    const affordable = Math.floor(state.coins / Math.max(1, unit));
+    const qty = Math.max(1, Math.min(buyQty, stock, affordable));
     void runAction(
-      { kind: "buySeed", seed: seedId, qty: 1 },
-      t("market.bought", { qty: 1, seed: seedName(seedId) }),
+      { kind: "buySeed", seed: seedId, qty },
+      t("market.bought", { qty, seed: seedName(seedId) }),
     );
   }
 
@@ -1567,6 +1580,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return wrap;
     }
     if (state === null || season === null) return lineBlock(t("common.loading"));
+    const qtyRow = div("garden-market-qty");
+    qtyRow.append(span("garden-hint", t("market.buyQty")));
+    for (const qty of [1, 10, 25, 50]) {
+      const button = actionButton(`x${qty}`, "setBuyQty");
+      button.dataset.qty = String(qty);
+      if (buyQty === qty) button.classList.add("is-active");
+      qtyRow.append(button);
+    }
+    wrap.append(qtyRow);
 
     const shop = div("garden-market-panel");
     shop.append(
@@ -1997,6 +2019,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const supply = target.dataset.supply as SupplyId | undefined;
         const kind = target.dataset.kind === "spray" ? "spray" : "fertilize";
         if (supply !== undefined) applySupply(kind, supply);
+        return;
+      }
+      case "setBuyQty": {
+        const qty = Number(target.dataset.qty);
+        if (Number.isInteger(qty) && qty >= 1 && qty <= 99) buyQty = qty;
+        render();
         return;
       }
       case "buySupply": {

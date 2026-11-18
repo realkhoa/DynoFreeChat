@@ -629,3 +629,18 @@
   gap: 6px;
   padding: 2px 0 6px;
 }
+
+/* Bulk purchase quantity selector in the market. */
+.garden-market-qty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 6px;
+}
+
+.garden-market-qty .stage-btn.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
