@@ -67,7 +67,7 @@ const POLL_MS = 60_000;
 const UPROOT_ARM_MS = 4_000;
 
 /** One active tab inside the document. */
-type Tab = "garden" | "market" | "event" | "chart" | "bots";
+type Tab = "garden" | "market" | "event" | "chart" | "bots" | "rank";
 
 /** Whether the document is showing the owner's garden or a friend's. */
 type Mode = "owner" | "visit";
@@ -476,11 +476,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Loads the leaderboard for the event tab. */
   async function loadLeaderboard(): Promise<void> {
     try {
-      leaderboard = await api.leaderboard(20);
+      leaderboard = await api.leaderboard(100);
     } catch {
       // A missing leaderboard never blocks the garden itself.
     }
-    if (!disposed && tab === "event") render();
+    if (!disposed && (tab === "event" || tab === "rank")) render();
   }
 
   // ---------------------------------------------------------------- mutations
@@ -844,6 +844,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (next === "event") void loadLeaderboard();
     if (next === "chart") void loadChart();
     if (next === "bots") void loadBots();
+    if (next === "rank") void loadLeaderboard();
     syncGardenQuery();
     render();
   }
@@ -866,7 +867,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       savedTab === "market" ||
       savedTab === "event" ||
       savedTab === "chart" ||
-      savedTab === "bots"
+      savedTab === "bots" ||
+      savedTab === "rank"
     ) {
       tab = savedTab;
     }
@@ -1011,7 +1013,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Builds the tab strip with the garden code and share action. */
   function buildTabs(): HTMLElement {
     const bar = div("garden-tabs");
-    for (const id of ["garden", "market", "event", "chart", "bots"] as const) {
+    for (const id of ["garden", "market", "event", "chart", "bots", "rank"] as const) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "garden-tab";
@@ -1737,6 +1739,41 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
   }
 
+  /** @brief Builds the dedicated leaderboard tab: coins, ROI and harvests. */
+  function buildRank(): HTMLElement {
+    const wrap = div("garden-rank");
+    wrap.append(lineBlock(`// ${t("rank.title")}`));
+    if (leaderboard.length === 0) {
+      wrap.append(lineBlock(t("rank.empty")));
+      return wrap;
+    }
+    const head = div("garden-rank-row is-head");
+    head.append(
+      span("garden-rank-cell", t("rank.rank")),
+      span("garden-rank-cell is-name", t("rank.player")),
+      span("garden-rank-cell", t("rank.coins")),
+      span("garden-rank-cell", t("rank.earned")),
+      span("garden-rank-cell", t("rank.roi")),
+      span("garden-rank-cell", t("rank.harvested")),
+    );
+    wrap.append(head);
+    leaderboard.forEach((entry, index) => {
+      const spent = entry.spent ?? 0;
+      const roi = spent > 0 ? Math.round(((entry.earned - spent) / spent) * 100) : entry.earned > 0 ? 100 : 0;
+      const row = div("garden-rank-row");
+      row.append(
+        span("garden-rank-cell", `#${index + 1}`),
+        span("garden-rank-cell is-name", `${entry.nick} · ${entry.code}`),
+        span("garden-rank-cell", `${formatNumber(entry.coins ?? 0)}c`),
+        span("garden-rank-cell", `${formatNumber(entry.earned)}c`),
+        span("garden-rank-cell", `${roi >= 0 ? "+" : ""}${roi}%`),
+        span("garden-rank-cell", String(entry.harvested)),
+      );
+      wrap.append(row);
+    });
+    return wrap;
+  }
+
   /** @brief Builds the bots tab: the ten market-maker gardens. */
   function buildBots(): HTMLElement {
     const wrap = div("garden-bots");
@@ -1933,6 +1970,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (tab === "market") return buildMarket();
     if (tab === "chart") return buildChart();
     if (tab === "bots") return buildBots();
+    if (tab === "rank") return buildRank();
     return buildEvent();
   }
 
@@ -2405,6 +2443,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         void refresh();
         if (tab === "chart") void loadChart();
         if (tab === "bots") void loadBots();
+        if (tab === "rank") void loadLeaderboard();
       }
     }, POLL_MS);
 

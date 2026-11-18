@@ -690,3 +690,39 @@
   background: var(--hover-row);
   color: #ffffff;
 }
+
+/* Dedicated leaderboard tab: coins, lifetime earnings, ROI and harvests. */
+.garden-rank {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 2px;
+  font: 10px/16px var(--font-mono);
+  overflow-x: auto;
+}
+
+.garden-rank-row {
+  display: grid;
+  grid-template-columns: 42px minmax(140px, 1fr) 90px 90px 64px 60px;
+  gap: 8px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  color: #d4d4d4;
+  white-space: nowrap;
+}
+
+.garden-rank-row.is-head {
+  color: #6a9955;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 3px;
+}
+
+.garden-rank-row:not(.is-head):hover {
+  background: var(--hover-row);
+}
+
+.garden-rank-cell.is-name {
+  color: #9cdcfe;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

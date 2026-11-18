@@ -371,10 +371,18 @@ export class Garden extends DurableObject<Env> {
     // Old saves keep their planted slots; only the tab count is derived.
     const tabs = deriveTabs(raw);
     const plots = this.readPlots(tabs);
+    const stats = raw.stats ?? { planted: 0, harvested: 0, earned: 0, spent: 0 };
     const meta: StoredMeta = {
       ...raw,
       tabs,
       unlockedPatches: deriveUnlockedPatches(raw.unlockedPatches, plots, tabs),
+      // Saves written before ROI tracking have no spent counter.
+      stats: {
+        planted: stats.planted ?? 0,
+        harvested: stats.harvested ?? 0,
+        earned: stats.earned ?? 0,
+        spent: stats.spent ?? 0,
+      },
     };
     return {
       ...meta,
@@ -1018,6 +1026,8 @@ export class Garden extends DurableObject<Env> {
           color: ledger.color,
           earned: ledger.stats.earned,
           harvested: ledger.stats.harvested,
+          coins: ledger.coins,
+          spent: ledger.stats.spent,
           now: ledger.updatedAt,
         }),
       });
@@ -1078,6 +1088,8 @@ type GardenRow = SqlRow<{
   color: string;
   earned: number;
   harvested: number;
+  coins: number;
+  spent: number;
   updated_at: number;
   recovery_hash: string;
 }>;
@@ -1118,6 +1130,10 @@ export class GardenHub extends DurableObject<Env> {
     const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(gardens)").toArray();
     if (!columns.some((column) => column.name === "bot")) {
       this.sql.exec("ALTER TABLE gardens ADD COLUMN bot INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!columns.some((column) => column.name === "coins")) {
+      this.sql.exec("ALTER TABLE gardens ADD COLUMN coins INTEGER NOT NULL DEFAULT 0");
+      this.sql.exec("ALTER TABLE gardens ADD COLUMN spent INTEGER NOT NULL DEFAULT 0");
     }
   }
 
@@ -1175,13 +1191,17 @@ export class GardenHub extends DurableObject<Env> {
     const nick = sanitizeNick(typeof body.nick === "string" ? body.nick : "");
     const earned = typeof body.earned === "number" ? Math.max(0, Math.floor(body.earned)) : 0;
     const harvested = typeof body.harvested === "number" ? Math.max(0, Math.floor(body.harvested)) : 0;
+    const coins = typeof body.coins === "number" ? Math.max(0, Math.floor(body.coins)) : 0;
+    const spent = typeof body.spent === "number" ? Math.max(0, Math.floor(body.spent)) : 0;
     const now = typeof body.now === "number" ? body.now : Date.now();
     this.sql.exec(
-      "UPDATE gardens SET nick = ?, color = ?, earned = ?, harvested = ?, updated_at = ? WHERE player_id = ?",
+      "UPDATE gardens SET nick = ?, color = ?, earned = ?, harvested = ?, coins = ?, spent = ?, updated_at = ? WHERE player_id = ?",
       nick.ok ? nick.nick : "",
       sanitizeColor(body.color),
       earned,
       harvested,
+      coins,
+      spent,
       now,
       playerId,
     );
@@ -1228,10 +1248,10 @@ export class GardenHub extends DurableObject<Env> {
   /** @brief Top gardens by earned coins. */
   private leaderboard(url: URL): Response {
     const raw = Number(url.searchParams.get("limit") ?? "20");
-    const limit = Number.isInteger(raw) ? Math.min(50, Math.max(1, raw)) : 20;
+    const limit = Number.isInteger(raw) ? Math.min(200, Math.max(1, raw)) : 20;
     const rows = this.sql
       .exec<GardenRow>(
-        "SELECT code, nick, color, earned, harvested, updated_at FROM gardens WHERE bot = 0 ORDER BY earned DESC, harvested DESC, updated_at ASC LIMIT ?",
+        "SELECT code, nick, color, earned, harvested, coins, spent, updated_at FROM gardens WHERE bot = 0 ORDER BY earned DESC, harvested DESC, updated_at ASC LIMIT ?",
         limit,
       )
       .toArray();
@@ -1241,6 +1261,8 @@ export class GardenHub extends DurableObject<Env> {
       color: row.color,
       earned: row.earned,
       harvested: row.harvested,
+      coins: row.coins,
+      spent: row.spent,
       updatedAt: row.updated_at,
     }));
     return json({ entries });

@@ -73,6 +73,8 @@ export interface LedgerStats {
   harvested: number;
   /** Coins earned by selling. */
   earned: number;
+  /** Coins spent on seeds, land and services. */
+  spent: number;
 }
 
 /** Everything the rules need to know about one garden. */
@@ -162,7 +164,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     plots: emptyCrops(STARTING_TABS),
     trees: emptyTrees(STARTING_TABS),
     bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {} },
-    stats: { planted: 0, harvested: 0, earned: 0 },
+    stats: { planted: 0, harvested: 0, earned: 0, spent: 0 },
     rev: 1,
     createdAt: input.now,
     updatedAt: input.now,
@@ -328,6 +330,7 @@ function plantTree(
 
   const next = clone(ledger);
   next.coins -= tree.buy;
+  next.stats.spent += tree.buy;
   const events = eventsAt(now);
   next.trees[slot] = {
     slot,
@@ -531,6 +534,7 @@ function buySupply(
 
   const next = clone(ledger);
   next.coins -= total;
+  next.stats.spent += total;
   next.bag.supplies[supply] = (next.bag.supplies[supply] ?? 0) + qty;
   return changed(next, now);
 }
@@ -597,6 +601,7 @@ function waterAll(ledger: GardenLedger, now: number): RuleResult {
   }
   const next = clone(current);
   next.coins -= cost;
+  next.stats.spent += cost;
   return changed(next, now);
 }
 
@@ -634,6 +639,7 @@ function harvestAll(ledger: GardenLedger, now: number, rng: () => number): RuleR
   }
   const next = clone(current);
   next.coins -= cost;
+  next.stats.spent += cost;
   return changed(next, now);
 }
 
@@ -645,6 +651,7 @@ function buyTab(ledger: GardenLedger, now: number): RuleResult {
 
   const next = clone(ledger);
   next.coins -= cost;
+  next.stats.spent += cost;
   next.tabs += 1;
   next.unlockedPatches.push(1);
   for (let index = 0; index < CROPS_PER_TAB; index += 1) next.plots.push(null);
@@ -662,6 +669,7 @@ function buyPatch(ledger: GardenLedger, tab: number, now: number): RuleResult {
 
   const next = clone(ledger);
   next.coins -= cost;
+  next.stats.spent += cost;
   next.unlockedPatches[tab] = open + 1;
   return changed(next, now);
 }
@@ -701,6 +709,7 @@ function buySeed(
   if (next.coins < total) return { ok: false, code: "NOT_ENOUGH_COINS" };
 
   next.coins -= total;
+  next.stats.spent += total;
   next.shopStock[seed.id] = stock - qty;
   next.bag.seeds[seed.id] = (next.bag.seeds[seed.id] ?? 0) + qty;
   return changed(next, now);

@@ -416,6 +416,8 @@ export interface GardenStats {
   readonly harvested: number;
   /** Coins earned by selling since the garden was created. */
   readonly earned: number;
+  /** Coins spent on seeds, saplings, land and services. */
+  readonly spent: number;
 }
 
 /** Full owner snapshot; every response carries one. */
@@ -769,6 +771,10 @@ export interface LeaderboardEntry {
   readonly color: string;
   /** Coins earned by selling. */
   readonly earned: number;
+  /** Coins spent on seeds, land and services. */
+  readonly spent?: number;
+  /** Coins currently in the wallet. */
+  readonly coins?: number;
   /** Crops harvested. */
   readonly harvested: number;
   /** Server time of the last update. */

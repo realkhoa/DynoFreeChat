@@ -94,7 +94,7 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     plots: new Array<PlotState | null>(CROPS_PER_TAB).fill(null),
     trees: new Array<TreeState | null>(TREES_PER_TAB).fill(null),
     bag: { seeds: { carrot: 3 }, crops: [], supplies: {} },
-    stats: { planted: 0, harvested: 0, earned: 0 },
+    stats: { planted: 0, harvested: 0, earned: 0, spent: 0 },
     rev: 7,
     updatedAt: CLOCK,
     ...overrides,
@@ -113,7 +113,7 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     plots: new Array<PlotState | null>(CROPS_PER_TAB).fill(null),
     trees: new Array<TreeState | null>(TREES_PER_TAB).fill(null),
     bag: { seeds: {}, crops: [], supplies: {} },
-    stats: { planted: 1, harvested: 0, earned: 0 },
+    stats: { planted: 1, harvested: 0, earned: 0, spent: 0 },
     updatedAt: CLOCK,
     lastSeen: CLOCK - 1_000,
     online: true,
@@ -203,7 +203,18 @@ class FakeGardenApi {
   }
 
   async leaderboard() {
-    return [];
+    return [
+      {
+        code: "ABCDEF",
+        nick: "Tester",
+        color: "#4ec9b0",
+        earned: 1_000,
+        harvested: 12,
+        coins: 700,
+        spent: 500,
+        updatedAt: CLOCK,
+      },
+    ];
   }
 
   async visit() {
@@ -280,7 +291,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    expect(host.querySelectorAll(".garden-tab")).toHaveLength(5);
+    expect(host.querySelectorAll(".garden-tab")).toHaveLength(6);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
@@ -561,6 +572,23 @@ describe("garden tab", () => {
     await settle();
     expect(host.querySelector(".garden-balance")?.textContent).toContain("$");
     expect(host.querySelector(".stage-status")?.textContent).toContain("Click");
+  });
+});
+
+describe("rank tab", () => {
+  it("shows coins, lifetime earnings and ROI for every player", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:rank"]')?.click();
+    await settle();
+    const row = host.querySelector(".garden-rank-row:not(.is-head)");
+    expect(row?.textContent).toContain("Tester");
+    expect(row?.textContent).toContain("700c");
+    expect(row?.textContent).toContain("1.000c");
+    expect(row?.textContent).toContain("+100%");
+    expect(row?.textContent).toContain("12");
   });
 });
 
