@@ -14,6 +14,11 @@ import {
   PLOTS_PER_PATCH,
   SEEDS,
   TREES,
+  cropSellPrice,
+  effectsMultiplier,
+  resolvedCropEffects,
+  type CropStack,
+  type PlotState,
   WATER_ALL_COST,
   seedById,
   treeById,
@@ -34,7 +39,11 @@ function seedBuyPrice(seedId: SeedId, season: SeasonSnapshot): number {
 }
 
 /** @brief Best net coin-per-minute seed the bot can afford right now. */
-function bestSeed(ledger: GardenLedger, season: SeasonSnapshot, focus?: SeedId): SeedId | null {
+function bestSeed(
+  ledger: GardenLedger,
+  season: SeasonSnapshot,
+  focus?: SeedId,
+): { id: SeedId; score: number } | null {
   let best: { id: SeedId; score: number } | null = null;
   for (const seed of SEEDS) {
     if (focus !== undefined && seed.id !== focus) continue;
@@ -51,7 +60,7 @@ function bestSeed(ledger: GardenLedger, season: SeasonSnapshot, focus?: SeedId):
     const score = (sell * cycles - cost) / Math.max(1, seed.growMs);
     if (best === null || score > best.score) best = { id: seed.id, score };
   }
-  return best?.id ?? null;
+  return best;
 }
 
 /** @brief First free crop slot in an open patch, if any. */
@@ -66,6 +75,37 @@ function freeCropSlot(ledger: GardenLedger): number | null {
     }
   }
   return null;
+}
+
+/** @brief Every free crop slot in an open patch. */
+function freeCropSlots(ledger: GardenLedger): number[] {
+  const slots: number[] = [];
+  for (let tab = 0; tab < ledger.tabs; tab += 1) {
+    const open = ledger.unlockedPatches[tab] ?? 1;
+    for (let patch = 0; patch < open; patch += 1) {
+      for (let plot = 0; plot < PLOTS_PER_PATCH; plot += 1) {
+        const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
+        if ((ledger.plots[slot] ?? null) === null) slots.push(slot);
+      }
+    }
+  }
+  return slots;
+}
+
+/** @brief Whether a crop slot belongs to an open patch. */
+function cropSlotOpen(ledger: GardenLedger, slot: number): boolean {
+  const tab = Math.floor(slot / CROPS_PER_TAB);
+  const local = slot % CROPS_PER_TAB;
+  const patch = Math.floor(local / PLOTS_PER_PATCH);
+  return (ledger.unlockedPatches[tab] ?? 0) > patch;
+}
+
+/** @brief Expected gross value of one growing plant with its mutations. */
+function expectedCropValue(plot: PlotState, season: SeasonSnapshot, now: number): number {
+  const effects = resolvedCropEffects(plot, now);
+  const value = cropSellPrice({ item: plot.seed, effects, pest: plot.pest, qty: 1 } as CropStack, season);
+  const seed = seedById(plot.seed);
+  return seed?.regrow === true ? value * 3 : value;
 }
 
 /** @brief First free fruit slot, if any. */
@@ -136,12 +176,36 @@ export function planBotActions(
 
   if (ledger.bag.crops.length > 0) push({ kind: "sellAll" });
 
+  // Uproot crops that would sell at a loss (or that are not the focused crop),
+  // freeing their slot for the best replant.
+  const best = bestSeed(ledger, season, focus);
+  const uprootTargets: number[] = [];
+  if (best !== null) {
+    for (let slot = 0; slot < ledger.plots.length; slot += 1) {
+      if (uprootTargets.length >= 2) break;
+      const plot = ledger.plots[slot] ?? null;
+      if (plot === null || now >= plot.readyAt) continue;
+      if (cropSlotOpen(ledger, slot) === false) continue;
+      const value = expectedCropValue(plot, season, now);
+      const seedCost = seedBuyPrice(plot.seed, season);
+      const progress = (now - plot.plantedAt) / Math.max(1, plot.readyAt - plot.plantedAt);
+      const wrongFocus = focus !== undefined && plot.seed !== focus;
+      const losing = value < seedCost * 0.8;
+      const weak = progress < 0.55 && value / Math.max(1, seedCost) < 1.2;
+      if (!wrongFocus && !losing && !weak) continue;
+      uprootTargets.push(slot);
+      push({ kind: "uproot", slot, tree: false });
+    }
+  }
+
   // Replant the best net-positive seed, buying from the shop when the bag is empty.
+  const targets = [...uprootTargets, ...freeCropSlots(ledger)];
   let planted = 0;
-  while (planted < 4) {
-    const slot = freeCropSlot(ledger);
-    const seedId = bestSeed(ledger, season, focus);
-    if (slot === null || seedId === null) break;
+  while (planted < 4 && planted < targets.length) {
+    const slot = targets[planted];
+    if (slot === undefined) break;
+    const seedId = best?.id ?? null;
+    if (seedId === null) break;
     const owned = ledger.bag.seeds[seedId] ?? 0;
     if (owned < 1) {
       const price = seedBuyPrice(seedId, season);
