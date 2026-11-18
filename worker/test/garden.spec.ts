@@ -7,7 +7,7 @@
  * new device.
  */
 
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type {
   GardenActResponse,
@@ -93,6 +93,27 @@ describe("global market", () => {
     const first = body.market.items[0] as { item: string; multiplier: number; price: number };
     expect(first.multiplier).toBe(1);
     expect(first.price).toBeGreaterThan(0);
+  });
+
+  it("counts bulk purchases globally for the next cycle", async () => {
+    const market = env.MARKET.get(env.MARKET.idFromName("board"));
+    const snapshot = () =>
+      market
+        .fetch("https://market/snapshot")
+        .then((response) => response.json() as Promise<{ offers: Array<{ item: string; bought: number }> }>);
+    const before = await snapshot();
+    const start = before.offers.find((offer) => offer.item === "compost")?.bought ?? 0;
+
+    const purchased = await market.fetch("https://market/purchase", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ item: "compost", qty: 25 }),
+    });
+    expect(purchased.status).toBe(200);
+
+    const after = await snapshot();
+    const now = after.offers.find((offer) => offer.item === "compost")?.bought ?? 0;
+    expect(now).toBeGreaterThanOrEqual(start + 25);
   });
 });
 

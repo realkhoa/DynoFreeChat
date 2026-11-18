@@ -676,10 +676,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function buySeed(seedId: SeedId): void {
     if (state === null || season === null) return;
     const offer = season.shop.offers.find((entry) => entry.seed === seedId);
-    const unit = buyPriceOf(seedId, offer?.price ?? seedById(seedId)?.buy ?? 1);
-    const stock = offer?.stock ?? 0;
-    const affordable = Math.floor(state.coins / Math.max(1, unit));
-    const qty = Math.max(1, Math.min(buyQty, stock, affordable));
+    // The shop stock caps one order; the wallet is validated by the server so a
+    // short balance reports an error instead of silently buying fewer seeds.
+    const stock = offer?.stock ?? 1;
+    const qty = Math.max(1, Math.min(buyQty, stock));
     void runAction(
       { kind: "buySeed", seed: seedId, qty },
       t("market.bought", { qty, seed: seedName(seedId) }),
