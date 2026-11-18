@@ -484,6 +484,27 @@ describe("garden tab", () => {
     expect(api.calls.some((call) => call.action?.kind === "harvestAll")).toBe(true);
   });
 
+  it("plants many empty cells with the quick-plant tool", async () => {
+    const api = new FakeGardenApi(makeState({ bag: { seeds: { carrot: 3 }, crops: [], supplies: {} } }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="pickPlantTool"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="pickPlantSeed"][data-seed="carrot"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-tool-active")?.textContent).toContain("Cà rốt");
+
+    host.querySelectorAll<HTMLButtonElement>('.garden-cell[data-area="crop"]')[0]?.click();
+    await settle();
+    host.querySelectorAll<HTMLButtonElement>('.garden-cell[data-area="crop"]')[2]?.click();
+    await settle();
+    const plants = api.calls.filter((call) => call.action?.kind === "plant");
+    expect(plants).toHaveLength(2);
+    expect(plants[0]?.action).toMatchObject({ kind: "plant", seed: "carrot" });
+    expect(host.querySelector(".garden-menu")).toBeNull();
+  });
+
   it("uses a picked supply on many plants with plain clicks", async () => {
     const api = new FakeGardenApi(
       makeState({

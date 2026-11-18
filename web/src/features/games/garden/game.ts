@@ -163,8 +163,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let stealth = localStorage.getItem("dyno.garden.stealth") !== "0";
   let farmPicker: { building: BuildingId; slot: number } | null = null;
   let buyQty = 1;
-  let tool: { kind: "fertilize" | "spray"; supply: SupplyId } | null = null;
-  let toolPicker: "fertilize" | "spray" | null = null;
+  type GardenTool = { kind: "fertilize" | "spray"; supply: SupplyId } | { kind: "plant"; seed: SeedId };
+  let tool: GardenTool | null = null;
+  let toolPicker: "fertilize" | "spray" | "plant" | null = null;
   let pendingSelection: { area: "crop" | "tree"; slot: number } | null = null;
   let pendingPage: number | null = null;
   let message: Message | null = null;
@@ -1676,39 +1677,58 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       tools.append(
         actionButton(t("garden.useFertilizer"), "pickTool", true),
         actionButton(t("garden.useSpray"), "pickTool", true),
+        actionButton(t("garden.plantQuick"), "pickPlantTool"),
       );
       for (const button of tools.querySelectorAll<HTMLButtonElement>('[data-act="pickTool"]')) {
         button.dataset.kind =
           button.textContent?.includes(t("garden.useFertilizer")) === true ? "fertilize" : "spray";
       }
       if (tool !== null) {
+        const activeLabel =
+          tool.kind === "plant"
+            ? t("garden.plantToolActive", {
+                seed: seedName(tool.seed),
+                left: state?.bag.seeds[tool.seed] ?? 0,
+              })
+            : t("garden.toolActive", {
+                supply: t(`supplies.${tool.supply}`),
+                left: state?.bag.supplies[tool.supply] ?? 0,
+              });
         tools.append(
-          span(
-            "garden-tool-active",
-            t("garden.toolActive", {
-              supply: t(`supplies.${tool.supply}`),
-              left: state?.bag.supplies[tool.supply] ?? 0,
-            }),
-          ),
+          span("garden-tool-active", activeLabel),
           actionButton(t("garden.toolCancel"), "cancelTool"),
         );
       }
       wrap.append(tools);
       if (toolPicker !== null) {
         const picker = div("garden-tools");
-        const catalog = toolPicker === "fertilize" ? FERTILIZERS : SPRAYS;
-        for (const supply of catalog) {
-          const owned = state?.bag.supplies[supply.id] ?? 0;
-          const button = actionButton(
-            `${t(`supplies.${supply.id}`)} (${owned})`,
-            "pickToolSupply",
-            owned > 0,
-          );
-          button.dataset.kind = toolPicker;
-          button.dataset.supply = supply.id;
-          picker.append(button);
+        if (toolPicker === "plant") {
+          const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
+          if (ownedSeeds.length === 0) picker.append(span("garden-hint", t("garden.plantNoSeeds")));
+          for (const seed of ownedSeeds) {
+            const button = actionButton(
+              `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})`,
+              "pickPlantSeed",
+            );
+            button.dataset.seed = seed.id;
+            picker.append(button);
+          }
+          wrap.append(picker);
+        } else {
+          const catalog = toolPicker === "fertilize" ? FERTILIZERS : SPRAYS;
+          for (const supply of catalog) {
+            const owned = state?.bag.supplies[supply.id] ?? 0;
+            const button = actionButton(
+              `${t(`supplies.${supply.id}`)} (${owned})`,
+              "pickToolSupply",
+              owned > 0,
+            );
+            button.dataset.kind = toolPicker;
+            button.dataset.supply = supply.id;
+            picker.append(button);
+          }
+          wrap.append(picker);
         }
-        wrap.append(picker);
       }
     }
     const layout = div("garden-layout");
@@ -2314,10 +2334,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       line.textContent = message.text;
       line.classList.add(`is-${message.kind}`);
     } else if (tool !== null) {
-      line.textContent = t("garden.toolActive", {
-        supply: t(`supplies.${tool.supply}`),
-        left: state?.bag.supplies[tool.supply] ?? 0,
-      });
+      line.textContent =
+        tool.kind === "plant"
+          ? t("garden.plantToolActive", {
+              seed: seedName(tool.seed),
+              left: state?.bag.seeds[tool.seed] ?? 0,
+            })
+          : t("garden.toolActive", {
+              supply: t(`supplies.${tool.supply}`),
+              left: state?.bag.supplies[tool.supply] ?? 0,
+            });
     } else {
       line.textContent = mode === "visit" ? t("garden.readonly") : t("garden.noSelectionHint");
     }
@@ -2414,6 +2440,23 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           return;
         }
         if (tool !== null && mode === "owner") {
+          if (tool.kind === "plant") {
+            // Quick plant: one click sows the picked seed, no menu in the way.
+            const occupied = area === "tree" || plotAt(slot) !== null || isPreviewPage();
+            if (occupied) {
+              message = { text: t("garden.plantOccupied"), kind: "info" };
+              render();
+              return;
+            }
+            if ((state?.bag.seeds[tool.seed] ?? 0) < 1) {
+              message = { text: t("garden.plantNoSeeds"), kind: "err" };
+              tool = null;
+              render();
+              return;
+            }
+            void plantSeed(slot, tool.seed);
+            return;
+          }
           // Tool mode: one click uses the picked supply, no menu in the way.
           const plant = area === "tree" ? treeAt(slot) : plotAt(slot);
           if (plant === null || isPreviewPage()) {
@@ -2432,6 +2475,23 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const kind = target.dataset.kind === "spray" ? "spray" : "fertilize";
         toolPicker = toolPicker === kind ? null : kind;
         render();
+        return;
+      }
+      case "pickPlantTool":
+        toolPicker = toolPicker === "plant" ? null : "plant";
+        render();
+        return;
+      case "pickPlantSeed": {
+        const seed = target.dataset.seed as SeedId | undefined;
+        if (seed !== undefined) {
+          tool = { kind: "plant", seed };
+          toolPicker = null;
+          message = {
+            text: t("garden.plantToolPicked", { seed: seedName(seed) }),
+            kind: "info",
+          };
+          render();
+        }
         return;
       }
       case "pickToolSupply": {
