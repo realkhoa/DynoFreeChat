@@ -165,22 +165,25 @@ export interface SeedDefinition {
 
 /** Catalog order is the shop order. */
 export const SEEDS: readonly SeedDefinition[] = [
+  // Single harvest: one pull, higher margin, replant to continue.
   { id: "carrot", growMs: 3 * 60_000, buy: 5, sell: 9, art: [".", "v", "Y", "^"], regrow: false },
   { id: "parsnip", growMs: 6 * 60_000, buy: 14, sell: 30, art: [".", "v", "Y", "p"], regrow: false },
-  { id: "cucumber", growMs: 10 * 60_000, buy: 30, sell: 40, art: [".", "v", "Y", "c"], regrow: true },
-  { id: "tomato", growMs: 8 * 60_000, buy: 18, sell: 34, art: [".", "v", "Y", "o"], regrow: true },
-  { id: "strawberry", growMs: 12 * 60_000, buy: 60, sell: 90, art: [".", "v", "Y", "s"], regrow: true },
-  { id: "corn", growMs: 15 * 60_000, buy: 45, sell: 95, art: [".", "v", "Y", "u"], regrow: true },
-  { id: "hop", growMs: 18 * 60_000, buy: 100, sell: 140, art: [".", "v", "Y", "h"], regrow: true },
-  { id: "cauliflower", growMs: 20 * 60_000, buy: 90, sell: 220, art: [".", "v", "Y", "f"], regrow: false },
-  { id: "blueberry", growMs: 25 * 60_000, buy: 180, sell: 260, art: [".", "v", "Y", "b"], regrow: true },
-  { id: "pumpkin", growMs: 30 * 60_000, buy: 120, sell: 280, art: [".", "v", "Y", "@"], regrow: true },
   { id: "potato", growMs: 7 * 60_000, buy: 16, sell: 36, art: [".", "v", "Y", "t"], regrow: false },
   { id: "sunflower", growMs: 14 * 60_000, buy: 55, sell: 130, art: [".", "v", "Y", "X"], regrow: false },
   { id: "lavender", growMs: 16 * 60_000, buy: 70, sell: 160, art: [".", "v", "Y", "l"], regrow: false },
-  { id: "watermelon", growMs: 22 * 60_000, buy: 130, sell: 210, art: [".", "v", "Y", "w"], regrow: true },
-  { id: "pineapple", growMs: 28 * 60_000, buy: 200, sell: 320, art: [".", "v", "Y", "i"], regrow: true },
-  { id: "pitcher", growMs: 35 * 60_000, buy: 250, sell: 380, art: [".", "v", "Y", "&"], regrow: true },
+  { id: "cauliflower", growMs: 20 * 60_000, buy: 90, sell: 220, art: [".", "v", "Y", "f"], regrow: false },
+  // Multi harvest: the plant stays, so each fruit pays less than a one-shot crop
+  // of the same tier; the cheap seed lets a new fruit start after the first pick.
+  { id: "cucumber", growMs: 10 * 60_000, buy: 20, sell: 30, art: [".", "v", "Y", "c"], regrow: true },
+  { id: "tomato", growMs: 8 * 60_000, buy: 14, sell: 28, art: [".", "v", "Y", "o"], regrow: true },
+  { id: "strawberry", growMs: 12 * 60_000, buy: 40, sell: 60, art: [".", "v", "Y", "s"], regrow: true },
+  { id: "corn", growMs: 15 * 60_000, buy: 30, sell: 70, art: [".", "v", "Y", "u"], regrow: true },
+  { id: "hop", growMs: 18 * 60_000, buy: 50, sell: 90, art: [".", "v", "Y", "h"], regrow: true },
+  { id: "blueberry", growMs: 25 * 60_000, buy: 80, sell: 140, art: [".", "v", "Y", "b"], regrow: true },
+  { id: "pumpkin", growMs: 30 * 60_000, buy: 70, sell: 150, art: [".", "v", "Y", "@"], regrow: true },
+  { id: "watermelon", growMs: 22 * 60_000, buy: 80, sell: 120, art: [".", "v", "Y", "w"], regrow: true },
+  { id: "pineapple", growMs: 28 * 60_000, buy: 100, sell: 160, art: [".", "v", "Y", "i"], regrow: true },
+  { id: "pitcher", growMs: 35 * 60_000, buy: 120, sell: 200, art: [".", "v", "Y", "&"], regrow: true },
 ];
 
 /** Multiplier-aware fertilizer ids. */
