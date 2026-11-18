@@ -1000,3 +1000,13 @@
 .garden-levels .garden-line {
   white-space: pre;
 }
+
+/* Staff popover mirrors the plot context menu but sizes to its rows. */
+.garden-staff-menu {
+  width: max-content;
+  max-width: min(92vw, 440px);
+}
+
+.garden-staff-menu .garden-line {
+  white-space: pre;
+}

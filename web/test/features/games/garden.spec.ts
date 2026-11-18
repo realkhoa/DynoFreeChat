@@ -833,6 +833,22 @@ describe("levels tab", () => {
 });
 
 describe("staff", () => {
+  it("opens a popover from the staff slot like a plot cell", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 1_000_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('.garden-staff [data-act="staffSlot"]')?.click();
+    await settle();
+    const popover = host.querySelector(".garden-staff-menu");
+    expect(popover).not.toBeNull();
+    const hire = popover?.querySelector<HTMLButtonElement>('[data-act="staffMenuHire"]');
+    expect(hire).not.toBeNull();
+    hire?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "hireStaff")).toBe(true);
+  });
+
   it("shows a staff slot in the garden and hires from the extras tab", async () => {
     const api = new FakeGardenApi(makeState({ coins: 1_000_000 }));
     const { host, game } = await mountGame(api);

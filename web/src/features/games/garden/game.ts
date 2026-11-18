@@ -176,6 +176,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let chartMarket: MarketSnapshot | null = null;
   let botGardens: GardenBot[] = [];
   let tournament: Array<{ nick: string; code: string; earned: number; harvested: number }> = [];
+  // Staff popover, mirroring the plot context menu.
+  let staffMenu: { index: number | null; x: number; y: number; anchorTop: number } | null = null;
   // Work-safe look by default: no bright game colours unless the player opts in.
   let stealth = localStorage.getItem("dyno.garden.stealth") !== "0";
   let farmPicker: { building: BuildingId; slot: number } | null = null;
@@ -985,6 +987,56 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     render();
   }
 
+  /** @brief Opens the staff popover for one slot (or the empty slot market). */
+  function openStaffMenu(index: number | null, x: number, y: number, anchorTop = y): void {
+    closeMenu();
+    staffMenu = { index, x, y, anchorTop };
+    render();
+  }
+
+  /** @brief Closes the staff popover. */
+  function closeStaffMenu(): void {
+    if (staffMenu === null) return;
+    staffMenu = null;
+    render();
+  }
+
+  /** @brief Builds the staff popover with role actions or hire candidates. */
+  function buildStaffMenu(): HTMLElement | null {
+    if (staffMenu === null || state === null) return null;
+    const wrap = div("garden-menu garden-staff-menu");
+    wrap.append(span("garden-menu-title", t("staff.title")));
+    const worker = staffMenu.index === null ? null : state.extras.staff[staffMenu.index];
+    if (staffMenu.index === null || worker === null || worker === undefined) {
+      wrap.append(lineBlock(`// ${t("staff.market")}`));
+      for (const candidate of staffMarketAt(state.playerId, now())) {
+        const traits = candidate.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
+        const row = menuRow(
+          `${candidate.name} · ${candidate.speed}⚡ · ${candidate.wage}c · ${traits} · ${formatNumber(staffHireCost(candidate))}c`,
+          "staffMenuHire",
+          { data: { id: candidate.id } },
+        );
+        row.disabled = state.extras.staff.length >= STAFF_SLOTS;
+        wrap.append(row);
+      }
+      wrap.append(menuRow(t("staff.openMarket"), "staffMenuMarket"));
+      wrap.append(menuRow(t("common.close"), "staffMenuClose"));
+    } else {
+      const traits = worker.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
+      wrap.append(lineBlock(`${worker.name} · ${t(`staffRole.${worker.role}`)} · ${worker.wage}c`));
+      wrap.append(lineBlock(`// ${traits}`));
+      wrap.append(
+        menuRow(t("staffRole.gardener"), "staffMenuGardener", { data: { index: String(staffMenu.index) } }),
+      );
+      wrap.append(
+        menuRow(t("staffRole.waterer"), "staffMenuWaterer", { data: { index: String(staffMenu.index) } }),
+      );
+      wrap.append(menuRow(t("staff.fire"), "staffMenuFire", { data: { index: String(staffMenu.index) } }));
+      wrap.append(menuRow(t("common.close"), "staffMenuClose"));
+    }
+    return wrap;
+  }
+
   /** @brief Keeps the open menu inside the viewport, flipping it above the cell. */
   function fitMenu(): void {
     if (root === null || menu === null) return;
@@ -999,6 +1051,26 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     let top = menu.y;
     if (top + rect.height > window.innerHeight - margin) {
       top = menu.anchorTop - rect.height - 4;
+    }
+    top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - rect.height - margin));
+    element.style.left = `${left}px`;
+    element.style.top = `${top}px`;
+  }
+
+  /** @brief Keeps the staff popover inside the viewport. */
+  function fitStaffMenu(): void {
+    if (root === null || staffMenu === null) return;
+    const element = root.querySelector<HTMLElement>(".garden-staff-menu");
+    if (element === null) return;
+    const rect = element.getBoundingClientRect();
+    const margin = 8;
+    const left = Math.min(
+      Math.max(margin, staffMenu.x),
+      Math.max(margin, window.innerWidth - rect.width - margin),
+    );
+    let top = staffMenu.y;
+    if (top + rect.height > window.innerHeight - margin) {
+      top = staffMenu.anchorTop - rect.height - 4;
     }
     top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - rect.height - margin));
     element.style.left = `${left}px`;
@@ -1233,7 +1305,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (let index = 0; index < STAFF_SLOTS; index += 1) {
       const worker = staff[index];
       if (worker === undefined) {
-        const empty = actionButton(`[ ${t("staff.emptySlot")} ]`, "staffOpen");
+        const empty = actionButton(`[ ${t("staff.emptySlot")} ]`, "staffSlot");
+        empty.dataset.index = "";
         empty.classList.add("is-empty");
         bar.append(empty);
         continue;
@@ -1241,8 +1314,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const traitNames = worker.traits.map((trait) => t(`staffTrait.${trait}`)).join(",");
       const button = actionButton(
         `[ ${worker.name} · ${t(`staffRole.${worker.role}`)} · ${worker.speed}⚡ · ${worker.wage}c · ${traitNames} ]`,
-        "staffOpen",
+        "staffSlot",
       );
+      button.dataset.index = String(index);
       button.classList.add("is-filled");
       bar.append(button);
     }
@@ -2642,8 +2716,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const parts: HTMLElement[] = [buildTabs(), buildHud(), buildContent(), buildStatus()];
     const popover = buildMenu(now());
     if (popover !== null) parts.push(popover);
+    if (staffMenu !== null) {
+      const staffEl = buildStaffMenu();
+      if (staffEl !== null) parts.push(staffEl);
+    }
     root.replaceChildren(...parts);
     fitMenu();
+    fitStaffMenu();
     refreshTimers();
   }
 
@@ -2702,7 +2781,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const target = clicked?.closest<HTMLElement>("[data-act]") ?? null;
     const inMenu = clicked?.closest(".garden-menu") !== null;
     if (target === null) {
-      if (!inMenu) closeMenu();
+      if (!inMenu) {
+        closeMenu();
+        if (staffMenu !== null) {
+          const inStaff = clicked?.closest(".garden-staff-menu") !== null;
+          if (!inStaff) closeStaffMenu();
+        }
+      }
       return;
     }
     const action = target.dataset.act ?? "";
@@ -3046,9 +3131,48 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         localStorage.setItem("dyno.garden.stealth", stealth ? "1" : "0");
         render();
         return;
-      case "staffOpen":
+      case "staffSlot": {
+        const rect = target?.getBoundingClientRect();
+        if (rect === undefined) return;
+        const raw = target?.dataset.index;
+        const index = raw === undefined || raw === "" ? null : Number(raw);
+        openStaffMenu(
+          index !== null && Number.isInteger(index) ? index : null,
+          rect.left,
+          rect.bottom + 2,
+          rect.top,
+        );
+        return;
+      }
+      case "staffMenuClose":
+        closeStaffMenu();
+        return;
+      case "staffMenuMarket":
+        closeStaffMenu();
         switchTab("extras");
         return;
+      case "staffMenuHire": {
+        const id = target.dataset.id;
+        if (id !== undefined) {
+          closeStaffMenu();
+          void runAction({ kind: "hireStaff", id }, t("staff.hired"));
+        }
+        return;
+      }
+      case "staffMenuGardener":
+      case "staffMenuWaterer":
+      case "staffMenuFire": {
+        const index = Number(target.dataset.index);
+        if (!Number.isInteger(index)) return;
+        closeStaffMenu();
+        if (target.dataset.act === "staffMenuFire") {
+          void runAction({ kind: "fireStaff", index }, t("staff.fired"));
+        } else {
+          const role = target.dataset.act === "staffMenuWaterer" ? "waterer" : "gardener";
+          void runAction({ kind: "setStaffRole", index, role }, t("staff.roleSet"));
+        }
+        return;
+      }
       case "staffHire": {
         const id = target.dataset.id;
         if (id !== undefined) void runAction({ kind: "hireStaff", id }, t("staff.hired"));
@@ -3199,6 +3323,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         tool = null;
         toolPicker = null;
         render();
+        return;
+      }
+      if (staffMenu !== null) {
+        closeStaffMenu();
         return;
       }
       if (menu !== null) closeMenu();
