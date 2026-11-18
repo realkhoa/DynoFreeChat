@@ -10,7 +10,7 @@ export function badgeLabel(count: number): string {
   return String(Math.floor(count));
 }
 
-const BASE = { size: 64, bg: "#2d2d30", accent: "#007acc", dim: "#9d9d9d", badge: "#d13438" };
+const BASE = { size: 64, bg: "#1c1c1c", accent: "#9184ee", dim: "#9d9d9d", badge: "#d13438" };
 
 function paintFavicon(label: string): string | null {
   const canvas = document.createElement("canvas");

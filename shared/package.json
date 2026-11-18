@@ -15,6 +15,10 @@
     "./market": {
       "types": "./src/market.ts",
       "import": "./src/market.ts"
+    },
+    "./garden": {
+      "types": "./src/garden.ts",
+      "import": "./src/garden.ts"
     }
   },
   "scripts": {

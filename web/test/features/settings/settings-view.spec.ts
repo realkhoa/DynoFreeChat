@@ -28,6 +28,10 @@ function makeHarness(): Harness {
     <button id="settings-toggle-notify"></button>
     <button id="settings-zoom-in"></button>
     <button id="settings-zoom-out"></button>
+    <select id="settings-lang">
+      <option value="vi">Tiếng Việt</option>
+      <option value="en">English</option>
+    </select>
   `;
   document.body.replaceChildren(root);
 
@@ -45,6 +49,7 @@ function makeHarness(): Harness {
     nickInput: q("settings-nick-input"),
     nickSave: q("settings-nick-save"),
     nickDesc: q("settings-nick-desc"),
+    langSelect: q<HTMLSelectElement>("settings-lang"),
   };
 
   const handlers: SettingsViewHandlers = {
@@ -57,6 +62,7 @@ function makeHarness(): Harness {
     onZoomIn: vi.fn(),
     onZoomOut: vi.fn(),
     onChangeNick: vi.fn(),
+    onChangeLanguage: vi.fn(),
   };
 
   return { view: new SettingsView(root, elements, handlers), elements, handlers };
@@ -67,6 +73,12 @@ describe("SettingsView", () => {
 
   beforeEach(() => {
     h = makeHarness();
+  });
+
+  it("forwards a picked interface language", () => {
+    h.elements.langSelect.value = "en";
+    h.elements.langSelect.dispatchEvent(new Event("change"));
+    expect(h.handlers.onChangeLanguage).toHaveBeenCalledWith("en");
   });
 
   it("renders the current state into the document", () => {

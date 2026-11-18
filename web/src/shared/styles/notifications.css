@@ -31,7 +31,7 @@
   padding: 0 3px;
   border-radius: 7px;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-fg);
   font: 10px/14px var(--font-ui);
   text-align: center;
 }
@@ -278,9 +278,10 @@
 
 :root[data-minimal="on"] .titlebar,
 :root[data-minimal="on"] .menubar,
-:root[data-minimal="on"] .ribbon,
+:root[data-minimal="on"] .stdbar,
 :root[data-minimal="on"] .tabstrip,
 :root[data-minimal="on"] .breadcrumb,
+:root[data-minimal="on"] .statusbar,
 :root[data-minimal="on"] .sidebar {
   display: none;
 }

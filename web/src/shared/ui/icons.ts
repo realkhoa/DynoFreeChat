@@ -8,6 +8,8 @@ export type IconName =
   | "search"
   | "chevron-down"
   | "chevron-right"
+  | "chevron-left"
+  | "gear"
   | "lock"
   | "hash"
   | "plus"
@@ -40,6 +42,8 @@ const PATHS: Record<IconName, string> = {
   search: '<circle cx="7.2" cy="7.2" r="4.1"/><path d="M10.3 10.3 13.4 13.4"/>',
   "chevron-down": '<path d="M4.5 6.5 8 10l3.5-3.5"/>',
   "chevron-right": '<path d="M6.5 4.5 10 8l-3.5 3.5"/>',
+  "chevron-left": '<path d="M9.5 4.5 6 8l3.5 3.5"/>',
+  gear: '<circle cx="8" cy="8" r="2.1"/><path d="M8 2.8v1.4M8 11.8v1.4M13.2 8h-1.4M4.2 8H2.8M11.7 4.3l-1 1M5.3 10.7l-1 1M11.7 11.7l-1-1M5.3 5.3l-1-1"/>',
   lock: '<rect x="4.2" y="7.2" width="7.6" height="5.4" rx="0.8"/><path d="M6 7.2V5.6a2 2 0 0 1 4 0v1.6"/>',
   hash: '<path d="M6.4 3.4 5.2 12.6M10.8 3.4 9.6 12.6M3.6 6.2h9M3 9.8h9"/>',
   plus: '<path d="M8 3.6v8.8M3.6 8h8.8"/>',

@@ -13,6 +13,8 @@ import type { OnlineBridge } from "./online/bridge";
 export interface GameContext {
   /** Present when the game was opened from an online match. */
   online?: OnlineBridge;
+  /** Public garden code to open in read-only visit mode. */
+  gardenCode?: string;
 }
 
 /** One mounted game instance. */

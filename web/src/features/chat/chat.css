@@ -104,8 +104,8 @@
 
 .log-row mark {
   background: var(--sel);
-  color: inherit;
-  border-radius: 1px;
+  color: var(--sel-fg);
+  border-radius: 2px;
 }
 
 /* self */

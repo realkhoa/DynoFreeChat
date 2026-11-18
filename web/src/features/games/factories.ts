@@ -10,6 +10,7 @@ import { create2048Game } from "./2048/game";
 import { createBattleshipGame } from "./battleship/game";
 import { createCaroGame } from "./caro/game";
 import { createChessGame } from "./chess/game";
+import { createAsciiGardenGame } from "./garden/game";
 import { createGunnyGame } from "./gunny/game";
 import { createMinesweeperGame } from "./minesweeper/game";
 import { createPinpointGame } from "./pinpoint/game";
@@ -27,6 +28,7 @@ export const GAME_FACTORIES: Record<string, GameFactory> = {
   battleship: createBattleshipGame,
   caro: createCaroGame,
   chess: createChessGame,
+  garden: createAsciiGardenGame,
   gunny: createGunnyGame,
   minesweeper: createMinesweeperGame,
   pinpoint: createPinpointGame,

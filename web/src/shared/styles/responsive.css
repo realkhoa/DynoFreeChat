@@ -43,8 +43,12 @@
   }
 
   .menu-search,
-  .menubar-solution {
+  .titlebar-window {
     display: none;
+  }
+
+  .menu-trigger {
+    padding: 0 5px;
   }
 
   .filter {
@@ -55,8 +59,21 @@
     display: none;
   }
 
-  .stdbar-combo,
-  .stdbar-combo--room {
+  .stdbar-field,
+  .stdbar-sep {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .titlebar-room,
+  .statusitem--url,
+  .statusitem--online,
+  .statusitem--muted {
+    display: none;
+  }
+
+  #stdbar-back {
     display: none;
   }
 }

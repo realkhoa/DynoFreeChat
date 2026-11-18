@@ -9,32 +9,19 @@
   grid-template-areas:
     "titlebar"
     "menubar"
-    "ribbon"
+    "stdbar"
     "tabstrip"
     "breadcrumb"
-    "content";
+    "content"
+    "statusbar";
   grid-template-rows:
     var(--titlebar-h)
     var(--menubar-h)
-    var(--ribbon-h)
+    var(--stdbar-h)
     var(--tabstrip-h)
     var(--breadcrumb-h)
-    minmax(0, 1fr);
-}
-
-:root[data-ribbon="off"][data-dock="closed"] .ide {
-  grid-template-areas:
-    "titlebar"
-    "menubar"
-    "tabstrip"
-    "breadcrumb"
-    "content";
-  grid-template-rows:
-    var(--titlebar-h)
-    var(--menubar-h)
-    var(--tabstrip-h)
-    var(--breadcrumb-h)
-    minmax(0, 1fr);
+    minmax(0, 1fr)
+    var(--statusbar-h);
 }
 
 :root[data-minimal="on"][data-dock="closed"] .ide {

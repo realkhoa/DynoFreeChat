@@ -166,6 +166,15 @@ export const GAMES: readonly GameDefinition[] = [
     hotkey: "↵",
     icon: "hash",
   },
+  {
+    id: "garden",
+    name: "ASCII Garden",
+    className: "AsciiGarden",
+    documentTitle: "Garden.cs",
+    summary: "ascii plots | shared season | visits | i18n",
+    hotkey: "↵",
+    icon: "hash",
+  },
 ];
 
 /**

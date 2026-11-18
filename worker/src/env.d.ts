@@ -1,9 +1,12 @@
+import type { Garden, GardenHub } from "./garden";
 import type { ChatRoom } from "./room";
 import type { Registry } from "./registry";
 
 export interface Env {
   CHAT_ROOM: DurableObjectNamespace<ChatRoom>;
   REGISTRY: DurableObjectNamespace<Registry>;
+  GARDEN: DurableObjectNamespace<Garden>;
+  GARDEN_HUB: DurableObjectNamespace<GardenHub>;
   /** Comma separated origin allowlist. Empty string allows everything (local dev only). */
   ALLOWED_ORIGINS: string;
   /** Access token for the market gate. Unset (or missing the PIN hash) leaves the gate open. */

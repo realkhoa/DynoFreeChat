@@ -15,12 +15,24 @@
         "name": "REGISTRY",
         "class_name": "Registry",
       },
+      {
+        "name": "GARDEN",
+        "class_name": "Garden",
+      },
+      {
+        "name": "GARDEN_HUB",
+        "class_name": "GardenHub",
+      },
     ],
   },
   "migrations": [
     {
       "tag": "v1",
       "new_sqlite_classes": ["ChatRoom", "Registry"],
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["Garden", "GardenHub"],
     },
   ],
   "vars": {

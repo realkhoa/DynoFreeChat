@@ -30,6 +30,7 @@ import { applyMinimal, loadMinimal, minimalFromSearch, saveMinimal } from "@/fea
 import { Outbox } from "@/shared/lib/outbox";
 import { formatAge } from "@/shared/lib/format";
 import { loadIdentity, saveNick, type Identity } from "@/shared/lib/identity";
+import { initLocale, setLocale } from "@/shared/i18n";
 import { Notifier } from "@/shared/lib/notify";
 import { SoundPlayer } from "@/shared/lib/sound";
 import { PassVault } from "@/shared/lib/passvault";
@@ -157,10 +158,16 @@ const depthViewEl = byId<HTMLElement>("depth-view");
 const workspaceViewEl = byId<HTMLElement>("workspace-view");
 const lockViewEl = byId<HTMLElement>("lock-view");
 const tabstripEl = byId<HTMLElement>("tabstrip");
+const startLabel = byId<HTMLElement>("stdbar-start-label");
+const startButton = byId<HTMLButtonElement>("stdbar-start");
+const startCaret = byId<HTMLButtonElement>("stdbar-start-caret");
+const configSelect = byId<HTMLSelectElement>("stdbar-config");
+const dockRoom = byId<HTMLElement>("dock-room");
 
 // ------------------------------------------------------------------ instances
 
 const storage = safeStorage();
+initLocale(storage);
 let identity: Identity = loadIdentity(storage);
 const vault = new PassVault(storage);
 const sound = new SoundPlayer({ storage });
@@ -247,6 +254,7 @@ const settingsView = new SettingsView(
     nickInput: byId<HTMLInputElement>("settings-nick-input"),
     nickSave: byId<HTMLButtonElement>("settings-nick-save"),
     nickDesc: byId<HTMLElement>("settings-nick-desc"),
+    langSelect: byId<HTMLSelectElement>("settings-lang"),
   },
   {
     onToggleTheme: () => {
@@ -275,6 +283,10 @@ const settingsView = new SettingsView(
       syncSettingsView();
     },
     onChangeNick: (nick) => applyNickname(nick),
+    onChangeLanguage: (locale) => {
+      setLocale(locale, storage);
+      syncSettingsView();
+    },
   },
 );
 
@@ -681,6 +693,7 @@ function setDock(next: DockState): void {
 function applyChromeVisibility(): void {
   applyMinimal(document.documentElement, minimal);
   menubar.setChecked("minimal", minimal);
+  toolbar?.setChecked("minimal", minimal);
 }
 
 /** Only the log and the composer, for embedding in a WebView. */
@@ -688,6 +701,21 @@ function toggleMinimal(): void {
   minimal = saveMinimal(storage, !minimal);
   applyChromeVisibility();
   if (!minimal) composer.focus();
+}
+
+/** Puts the window back to the default VS layout: chrome on, tree open, dock open. */
+function resetLayout(): void {
+  menubar.closeAll();
+  minimal = saveMinimal(storage, false);
+  applyChromeVisibility();
+  sidebarEl.hidden = false;
+  setDock("open");
+  setFollow(true);
+  filterInput.value = "";
+  setRoomQuery("");
+  applyFilter("all", "");
+  store.addSystem("đã đặt lại bố cục cửa sổ");
+  render();
 }
 
 function changeZoom(next: Zoom): void {
@@ -703,6 +731,9 @@ function updateChrome(): void {
   const slug = current?.slug;
   tabLabel.textContent = slug === undefined ? "Start" : `#${slug}`;
   titlebarRoom.textContent = slug === undefined ? "no room" : `#${slug}`;
+  dockRoom.textContent = slug === undefined ? "no room" : `#${slug}`;
+  startLabel.textContent = slug === undefined ? "Start" : "Restart";
+  startButton.title = slug === undefined ? "Chọn một room để bắt đầu" : `Kết nối lại room #${slug}`;
   const activeDoc = docTabs.activeId;
   if (activeDoc !== null) {
     byId<HTMLElement>("crumb-solution").textContent = "DynoFreeChat";
@@ -882,7 +913,8 @@ function toggleTheme(): void {
   saveTheme(storage, theme);
   applyTheme(document.documentElement, theme);
   logView.setTheme(theme);
-  menubar.setChecked("theme", theme === "light");
+  menubar.setChecked("theme", theme === "dark");
+  toolbar?.setChecked("theme", theme === "light");
   store.addSystem(`giao diện: ${theme}`);
   render();
   syncSettingsView();
@@ -1004,14 +1036,15 @@ function openGamesTab(): void {
  * @brief Opens one game in the shared game stage document.
  * @param id Registry id of the game.
  */
-function openGameStage(id: string, online?: OnlineBridge): void {
+function openGameStage(id: string, online?: OnlineBridge, gardenCode?: string): void {
   const game = findGame(id);
   if (game === undefined) return;
 
   onlineStageGame = online === undefined ? null : id;
   docTabs.open({ id: "game-stage", label: game.documentTitle, panel: gameStageViewEl, icon: game.icon });
   docTabs.setLabel("game-stage", game.documentTitle);
-  gameStage.open(id, game.documentTitle, game.summary, online === undefined ? undefined : { online });
+  const context = online !== undefined ? { online } : gardenCode !== undefined ? { gardenCode } : undefined;
+  gameStage.open(id, game.documentTitle, game.summary, context);
 }
 
 /**
@@ -1397,6 +1430,8 @@ function closeFind(): void {
 function applyFilter(kind: KindFilter, query = filterInput.value): void {
   store.setFilter(query, kind);
   kindSelect.value = kind;
+  // Debug shows every line; Release is the quieter chat-only configuration.
+  configSelect.value = kind === "chat" ? "release" : "debug";
   render();
   updateFindCount();
 }
@@ -1424,6 +1459,8 @@ function applyNickname(next: string): void {
   render();
   syncSettingsView();
 
+  // Games that mirror the nickname (ASCII Garden) refresh their profile row.
+  window.dispatchEvent(new CustomEvent("dyno:nick"));
   // Re-joining updates the name on the server for everyone in the room.
   if (socket !== null && current !== null) {
     socket.send({ t: "join", nick: identity.nick, color: identity.color });
@@ -1540,6 +1577,39 @@ function handleMenuAction(action: MenuAction): void {
     case "sidebar":
       sidebarEl.hidden = !sidebarEl.hidden;
       break;
+    case "rooms":
+      openRoomsTab();
+      break;
+    case "games":
+      openGamesTab();
+      break;
+    case "settings":
+      openSettingsTab();
+      break;
+    case "market":
+      openMarketTab();
+      break;
+    case "workspace":
+      openWorkspaceTab();
+      break;
+    case "match":
+      openMatchTab();
+      break;
+    case "leave-room":
+      leaveRoom();
+      break;
+    case "focus-search":
+      roomSearch.focus();
+      roomSearch.select();
+      break;
+    case "rebuild":
+      void refreshRooms();
+      store.addSystem("đã build lại danh sách room");
+      render();
+      break;
+    case "reset-layout":
+      resetLayout();
+      break;
     case "new-room":
       openRoomsTab();
       break;
@@ -1593,6 +1663,9 @@ function decorateChrome(): void {
   setIconButton(byId<HTMLElement>("collapse-tree"), "collapse", "Thu gọn Solution Explorer");
   setIconButton(newChip, "follow", "Xuống tin mới nhất");
   setIconButton(notifyBell, "bell", "Thông báo");
+  setIconButton(byId<HTMLElement>("stdbar-back"), "chevron-left", "Quay lại danh sách room");
+  setIconButton(byId<HTMLElement>("stdbar-forward"), "chevron-right", "Tiến tới");
+  setIconButton(byId<HTMLElement>("dock-clear"), "trash", "Xoá output (Ctrl+L)");
 }
 
 function wire(): void {
@@ -1654,14 +1727,17 @@ function wire(): void {
   byId<HTMLButtonElement>("start-new").addEventListener("click", () => openRoomsTab());
   byId<HTMLButtonElement>("start-refresh").addEventListener("click", () => void refreshRooms());
 
-  document.getElementById("btn-hub-chat")?.addEventListener("click", () => openRoomsTab());
-  // The collab entry point opens the document itself, never a game lobby.
-  document.getElementById("btn-hub-collab")?.addEventListener("click", () => openGamesTab());
-  document.getElementById("btn-hub-setting")?.addEventListener("click", () => {
-    openSettingsTab();
+  byId<HTMLButtonElement>("stdbar-back").addEventListener("click", () => openRoomsTab());
+  startButton.addEventListener("click", () => {
+    if (current === null) openRoomsTab();
+    else reconnect();
   });
-  document.getElementById("btn-hub-market")?.addEventListener("click", () => openMarketTab());
-  document.getElementById("btn-hub-workspace")?.addEventListener("click", () => openWorkspaceTab());
+  startCaret.addEventListener("click", () => openRoomsTab());
+  configSelect.addEventListener("change", () => {
+    applyFilter(configSelect.value === "release" ? "chat" : "all");
+  });
+  byId<HTMLButtonElement>("dock-close").addEventListener("click", () => setDock(closeDock(dock)));
+  byId<HTMLButtonElement>("dock-clear").addEventListener("click", () => clearLog());
 
   for (const input of [roomSearch, treeSearch]) {
     input.addEventListener("input", () => setRoomQuery(input.value));
@@ -1852,8 +1928,9 @@ function boot(): void {
   setFollow(true);
   syncNotifyMenu();
   renderNotifications();
-  menubar.setChecked("theme", theme === "light");
+  menubar.setChecked("theme", theme === "dark");
   menubar.setChecked("sound", sound.isEnabled);
+  toolbar?.setChecked("theme", theme === "light");
   applyZoom();
 
   // A WebView can pin the layout with ?minimal=1 instead of storage.
@@ -1867,6 +1944,11 @@ function boot(): void {
   const hashMatch = window.location.hash.match(/ttt=([a-zA-Z0-9]+)/);
   if (hashMatch !== null && hashMatch[1] !== undefined) {
     gameDialog.open("online", hashMatch[1]);
+  }
+
+  const gardenMatch = window.location.hash.match(/garden=([0-9a-zA-Z]{6})/);
+  if (gardenMatch !== null && gardenMatch[1] !== undefined) {
+    openGameStage("garden", undefined, gardenMatch[1].toUpperCase());
   }
 
   const requested = new URL(window.location.href).searchParams.get("r");

@@ -60,3 +60,20 @@
   display: flex;
   gap: 4px;
 }
+
+/* Language selector in the General section. */
+.settings-select {
+  height: 28px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  color: var(--fg);
+  font: 12px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.settings-select:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}

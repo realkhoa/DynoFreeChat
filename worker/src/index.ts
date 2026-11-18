@@ -1,6 +1,8 @@
 import { sanitizeSlug } from "@dyno/shared/protocol";
 import { LOCK_HEADER, lockSecrets, stateResponse, verifyResponse, verifySession } from "./auth";
 import type { Env } from "./env";
+import { handleGardenRoute } from "./garden-api";
+import { Garden, GardenHub } from "./garden";
 import { json } from "./http";
 import {
   chartResponse,
@@ -14,7 +16,7 @@ import {
 import { Registry } from "./registry";
 import { ChatRoom } from "./room";
 
-export { ChatRoom, Registry };
+export { ChatRoom, Garden, GardenHub, Registry };
 
 /**
  * Exact-match origin allowlist. A missing Origin (CLI, curl, miniflare) is
@@ -68,7 +70,7 @@ export default {
         headers: {
           ...corsHeaders(origin),
           "access-control-allow-methods": "GET,POST,OPTIONS",
-          "access-control-allow-headers": "content-type,x-dyno-lock",
+          "access-control-allow-headers": "content-type,x-dyno-lock,x-dyno-garden",
           "access-control-max-age": "600",
         },
       });
@@ -134,6 +136,10 @@ export default {
       out.headers.set("cache-control", "no-store");
       return out;
     }
+
+    // ASCII Garden: registration, play, visits and the leaderboard.
+    const gardenResponse = await handleGardenRoute(request, env, url);
+    if (gardenResponse !== null) return withCors(gardenResponse, origin);
 
     const registry = () => env.REGISTRY.get(env.REGISTRY.idFromName("registry"));
 

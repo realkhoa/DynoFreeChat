@@ -6,10 +6,10 @@
   max-width: min(560px, 92vw);
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--panel);
   color: var(--fg);
-  box-shadow: 0 8px 28px #00000055;
+  box-shadow: 0 12px 32px #00000066;
 }
 
 .dialog::backdrop {
@@ -45,10 +45,10 @@
 }
 
 .field input {
-  height: 22px;
-  padding: 0 6px;
-  background: var(--editor);
-  border: 1px solid var(--border);
+  height: 24px;
+  padding: 0 8px;
+  background: var(--control-bg);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   font: 11.5px/1 var(--font-mono);
   color: var(--fg);

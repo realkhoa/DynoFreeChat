@@ -58,17 +58,21 @@ button:disabled {
   grid-template-areas:
     "titlebar"
     "menubar"
+    "stdbar"
     "tabstrip"
     "breadcrumb"
     "content"
-    "dock";
+    "dock"
+    "statusbar";
   grid-template-rows:
     var(--titlebar-h)
     var(--menubar-h)
+    var(--stdbar-h)
     var(--tabstrip-h)
     var(--breadcrumb-h)
     minmax(0, 1fr)
-    auto;
+    auto
+    var(--statusbar-h);
   height: 100vh;
   height: 100dvh;
 }

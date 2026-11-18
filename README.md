@@ -1,11 +1,11 @@
 # DynoFreeChat
 
-Chat room nhiều phòng, giao diện giả lập **Visual Studio 2022 dark** — mỗi tin nhắn là một dòng log. Frontend tĩnh trên **GitHub Pages**, realtime bằng **Cloudflare Worker + Durable Objects**, mỗi phòng có thể đặt **mật khẩu**.
+Chat room nhiều phòng, giao diện giả lập **Visual Studio 2026 (Fluent) dark** — mỗi tin nhắn là một dòng log. Frontend tĩnh trên **GitHub Pages**, realtime bằng **Cloudflare Worker + Durable Objects**, mỗi phòng có thể đặt **mật khẩu**.
 
 ![Giao diện dark](docs/screenshot.png)
 ![Giao diện light](docs/screenshot-light.png)
 
-Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao diện` hoặc `Ctrl+Shift+D`; lựa chọn lưu trong `localStorage` và được áp trước lần paint đầu tiên nên không bị nháy.
+Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Dark Theme`, nút theme trên toolbar hoặc `Ctrl+Shift+D`; lựa chọn lưu trong `localStorage` và được áp trước lần paint đầu tiên nên không bị nháy.
 
 **Đang chạy:**
 
@@ -18,11 +18,11 @@ Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao di�
 
 ## Tính năng
 
-- Giao diện **Visual Studio 2022** (không phải VS Code): title bar có chuông thông báo, menu bar + ô Search, **ribbon** 3 tab (**Chat** / **Collab** / **Setting**) với các group có caption, tab tài liệu, breadcrumb, log có số dòng như editor, **Solution Explorer bên phải**, ô nhập tin Output ở dưới.
+- Giao diện **Visual Studio 2026** (không phải VS Code): title bar có chuông thông báo và nút cửa sổ, **menu bar đầy đủ** (`File` / `Edit` / `View` / `Git` / `Project` / `Build` / `Debug` / `Test` / `Analyze` / `Tools` / `Extensions` / `Window` / `Help`) + ô **Search (Ctrl+Q)** bên phải, **standard toolbar** với nút Start xanh, `Solution Configurations`, `Solution Platforms` và nhóm quick-launch, tab tài liệu, breadcrumb, log có số dòng như editor, **Solution Explorer bên phải**, cửa sổ **Output** ở dưới và **status bar** kiểu IDE.
 - **Collab: Cờ Caro (Tic-Tac-Toe 3×3) Multiplayer**: Chơi đối kháng trực tuyến ngay trong giao diện IDE qua Cloudflare Durable Objects. Nhập mã phòng 4 ký tự (ví dụ `9B2X`), tạo phòng chia sẻ link trực tiếp (`#ttt=ROOMCODE`), đấu với AI (thuật toán Minimax tối ưu), hoặc chơi 2 người cục bộ. UI co giãn linh hoạt (responsive clamp) chơi mượt mà kể cả trong WebView siêu nhỏ.
 - **Tab Setting chuyên biệt**: Tập trung toàn bộ cấu hình không gian (Solution/Workspace), thông báo tin nhắn, âm thanh thông báo WebAudio, giao diện Light/Dark, và thông tin phần mềm.
 - **Solution Explorer nhiều solution**: `DynoFreeChat` là dữ liệu thật (rooms), còn `Collab` và `VinaBIM` là **solution mẫu** (placeholder) để panel có hình dạng của một workspace thật — bấm vào sẽ báo rõ là placeholder, không giả vờ có dữ liệu.
-- **Đổi nickname** ở ribbon `Home → Nickname`, hoặc menu `Edit`/`Tools`.
+- **Đổi nickname** ở status bar (bấm tên), menu `Edit → Change Nickname…`, hoặc `Tools → Options…`.
 - **Nhiều phòng**, tạo bằng tên (slug), vào bằng link `?r=<slug>`.
 - **Mật khẩu phòng tuỳ chọn** — hỏi **một lần** khi vào phòng lần đầu, sau đó nhớ trong `localStorage` nên reload hay mở lại link đều vào thẳng. Server kiểm tra, không lưu plaintext, mật khẩu không đi qua URL.
 - Mỗi tin nhắn = một dòng log: `HH:MM:SS  nick  ›  nội dung`, cột thẳng hàng, màu nick theo người.
@@ -34,8 +34,7 @@ Hai theme **Dark (mặc định)** và **Light**, đổi ở `View → Giao di�
 - **Thông báo tin nhắn mới**, ba lớp và **không bao giờ kèm nội dung hay nickname**: chuông ở title bar (badge số chưa đọc, panel liệt kê `#phòng · N tin mới`, bấm để nhảy vào phòng), notification hệ điều hành khi tab ở nền, và **badge trên trình duyệt** — số đỏ vẽ thẳng lên favicon (`(3)` ở tiêu đề tab) kèm `navigator.setAppBadge` cho taskbar/PWA. Bật/tắt ở `Tools → Thông báo tin nhắn mới`.
 - **Âm thanh thông báo**: tiếng "ding" tổng hợp bằng WebAudio (không có file mp3, không request), hai nốt cho tin thường và ba nốt cao hơn khi bị `@tag`; chỉ kêu khi tab ở nền; bật/tắt ở `Tools → Âm thanh thông báo`, lưu trong `localStorage`.
 - **Dock Output ẩn/hiện được**: `Ctrl+Alt+O` hoặc `View → Output` để ẩn/hiện nhanh ô nhập tin. Trạng thái lưu trong `localStorage`.
-- **Ẩn ribbon** (`Ctrl+F1`, menu `View`, hoặc nút ⌃ trên ribbon) — lựa chọn được nhớ.
-- **Chế độ tối giản**: chỉ còn khung chat + ô nhập, không title bar/menu/ribbon/tab/breadcrumb/Solution Explorer. Bật bằng menu `View → Chế độ tối giản`, `Ctrl+Shift+M`, hoặc **ghim bằng URL** `?minimal=1` — tiện nhúng WebView. Nút `⌄` ở góc phải để thoát.
+- **Chế độ tối giản**: chỉ còn khung chat + ô nhập, không title bar/menu/toolbar/tab/breadcrumb/status bar/Solution Explorer. Bật bằng menu `View → Minimal Layout`, `Ctrl+Shift+M`, hoặc **ghim bằng URL** `?minimal=1` — tiện nhúng WebView. Nút `⌄` ở góc phải để thoát.
 - **Cỡ chữ khung chat riêng**: phím tắt `Ctrl+Shift+.` / `Ctrl+Shift+,`; chỉ đổi cỡ dòng log, toàn bộ chrome giữ nguyên cỡ. Lưu trong `localStorage`.
 - **Lọc log** (Ctrl+F, substring trên nick + nội dung) và combo All/Chat/System.
 - **Follow tail** tự cuộn khi ở đáy, tự tắt khi bạn cuộn lên, chip "↓ tin mới".

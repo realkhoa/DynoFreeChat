@@ -81,8 +81,8 @@
   width: 180px;
   height: 26px;
   padding: 0 8px;
-  background: var(--editor);
-  border: 1px solid var(--border);
+  background: var(--control-bg);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   color: var(--fg);
   font: 12px/1 var(--font-mono);

@@ -1,7 +1,8 @@
 /**
  * @file toolbar.ts
- * @brief Standard compact IDE toolbar for DynoFreeChat, styled after Visual Studio 2022.
- * @details Replaces the bloated Office Ribbon with a streamlined 28px standard action bar.
+ * @brief Quick-launch action group for the Visual Studio 2026 standard toolbar.
+ * @details Groups the documents and log controls right of the Start button,
+ *          mirroring the icon groups a real VS toolbar puts beside its combos.
  */
 
 import type { MenuAction } from "@/shared/ui/menubar";
@@ -25,10 +26,12 @@ export interface ToolbarItemSpec {
   disabled?: boolean;
   /** Optional extended tooltip text. */
   title?: string;
+  /** Optional DOM id, kept for the capture scripts that click toolbar actions. */
+  id?: string;
 }
 
 /**
- * @brief Compact Standard Toolbar component matching Visual Studio 2022 aesthetics.
+ * @brief Compact Standard Toolbar component matching Visual Studio 2026 aesthetics.
  * @details Renders action buttons directly within the top chrome and forwards clicks
  *          to a unified action handler.
  */
@@ -72,6 +75,7 @@ export class StandardToolbar {
       btn.type = "button";
       btn.className = "toolbar-btn";
       btn.dataset.action = item.action;
+      if (item.id !== undefined) btn.id = item.id;
       btn.title = item.title ?? item.label ?? item.action;
       btn.setAttribute("aria-label", item.title ?? item.label ?? item.action);
       btn.disabled = item.disabled === true;
@@ -134,6 +138,17 @@ export function defaultToolbarSpec(): ToolbarItemSpec[] {
   return [
     { action: "new-room", icon: "plus", title: "Tạo room mới (Ctrl+N)" },
     { action: "reload", icon: "refresh", title: "Nạp lại danh sách (F5)" },
+    { separator: true },
+    { action: "rooms", icon: "hash", title: "Chat Rooms", id: "btn-hub-chat" },
+    { action: "games", icon: "play", title: "Collab Hub (Ctrl+B)", id: "btn-hub-collab" },
+    { action: "market", icon: "chart", title: "Market Feed (Ctrl+M)", id: "btn-hub-market" },
+    {
+      action: "workspace",
+      icon: "folder",
+      title: "VinaBIM Workspace (Ctrl+Shift+E)",
+      id: "btn-hub-workspace",
+    },
+    { action: "settings", icon: "gear", title: "Settings", id: "btn-hub-setting" },
     { separator: true },
     { action: "find", icon: "search", title: "Tìm trong log (Ctrl+F)" },
     { action: "follow", icon: "follow", title: "Bám đuôi log (Ctrl+End)", toggle: true },

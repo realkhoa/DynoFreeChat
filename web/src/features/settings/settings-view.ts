@@ -4,6 +4,7 @@
  */
 
 import type { Theme } from "@/features/settings/theme";
+import { getLocale, type Locale } from "@/shared/i18n";
 
 /** DOM elements owned by the settings document. */
 export interface SettingsViewElements {
@@ -31,6 +32,8 @@ export interface SettingsViewElements {
   nickSave: HTMLButtonElement;
   /** Text showing the saved nickname. */
   nickDesc: HTMLElement;
+  /** Interface language selector. */
+  langSelect: HTMLSelectElement;
 }
 
 /** Current settings values rendered by the view. */
@@ -60,6 +63,11 @@ export interface SettingsViewHandlers {
    * @param nick Trimmed value typed by the user.
    */
   onChangeNick: (nick: string) => void;
+  /**
+   * Changes the interface language.
+   * @param locale Locale picked in the select.
+   */
+  onChangeLanguage: (locale: Locale) => void;
 }
 
 /**
@@ -91,6 +99,9 @@ export class SettingsView {
       if (nick.length === 0) return;
       handlers.onChangeNick(nick);
     };
+    elements.langSelect.addEventListener("change", () => {
+      handlers.onChangeLanguage(elements.langSelect.value === "en" ? "en" : "vi");
+    });
     elements.nickSave.addEventListener("click", saveNick);
     elements.nickInput.addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;
@@ -105,6 +116,7 @@ export class SettingsView {
    */
   update(state: SettingsState): void {
     this.elements.nickDesc.textContent = `Nickname hiện tại: ${state.nick}`;
+    this.elements.langSelect.value = getLocale();
     this.elements.nickInput.value = state.nick;
     this.elements.zoomLabel.textContent = `Cỡ log hiện tại: ${state.zoomPercent}%`;
     this.elements.toggleTheme.textContent = state.theme === "dark" ? "Chuyển sang Light" : "Chuyển sang Dark";

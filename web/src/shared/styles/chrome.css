@@ -7,9 +7,9 @@
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 16px;
-  padding: 0 10px;
+  padding: 0 0 0 10px;
   background: var(--titlebar);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 0;
   user-select: none;
 }
 
@@ -17,6 +17,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .titlebar-mark {
@@ -31,57 +32,15 @@
   font-size: 12px;
   color: var(--fg);
   white-space: nowrap;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 400;
 }
 
 .titlebar-center {
   display: flex;
   justify-content: center;
   align-items: center;
-}
-
-.titlebar-search {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  max-width: 380px;
-  height: 22px;
-  padding: 0 8px;
-  background: var(--editor);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  color: var(--fg-muted);
-  cursor: text;
-  transition:
-    border-color 0.15s,
-    background 0.15s;
-}
-
-.titlebar-search:focus-within {
-  border-color: var(--accent);
-  background: var(--panel);
-}
-
-.titlebar-search-icon {
-  display: grid;
-  place-items: center;
-  width: 12px;
-  height: 12px;
-  color: var(--fg-dim);
-}
-
-.titlebar-search input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  color: var(--fg);
-  font: 11px var(--font-ui);
-  outline: none;
 }
 
 .titlebar-right {
@@ -95,6 +54,34 @@
   font: 11.5px/1 var(--font-mono);
   color: var(--fg-dim);
   white-space: nowrap;
+  padding-right: 4px;
+}
+
+/* Decorative Windows caption buttons, like the real VS title bar. The browser
+   owns the real window, so these stay inert and are hidden from a11y trees. */
+.titlebar-window {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  margin-left: 6px;
+}
+
+.window-btn {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  color: var(--fg-dim);
+  font-size: 10px;
+}
+
+.window-btn:hover {
+  background: var(--hover-chrome);
+  color: var(--fg);
+}
+
+.window-btn--close:hover {
+  background: #c42b1c;
+  color: #fff;
 }
 
 /* ---------------------------------------------------------------- menubar */
@@ -104,54 +91,13 @@
   display: flex;
   align-items: stretch;
   gap: 0;
-  padding: 0 4px;
+  padding: 0 0 0 2px;
   background: var(--chrome);
   border-bottom: 1px solid var(--border-subtle);
   user-select: none;
-  overflow: hidden;
+  overflow: visible;
   white-space: nowrap;
-}
-
-.menubar-buttons {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.menubar-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 24px;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--fg);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    background 120ms ease,
-    border-color 120ms ease;
-}
-
-.menubar-btn:hover {
-  background: var(--panel);
-  border-color: var(--border);
-}
-
-.menubar-btn:active,
-.menubar-btn[aria-expanded="true"] {
-  background: var(--hover-row);
-  border-color: var(--accent);
-}
-
-.menubar-btn:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
+  z-index: 40;
 }
 
 .menu-root {
@@ -160,9 +106,12 @@
 }
 
 .menu-trigger {
+  align-self: center;
+  height: 24px;
   padding: 0 8px;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius);
+  background: transparent;
   color: var(--fg);
   font-size: 12px;
   white-space: nowrap;
@@ -170,23 +119,23 @@
 
 .menu-trigger:hover,
 .menu-trigger[aria-expanded="true"] {
-  background: var(--panel);
-  border-color: var(--border);
+  background: var(--hover-chrome);
+  color: var(--fg);
 }
 
 .menu-list {
   position: absolute;
   z-index: 60;
-  top: calc(100% - 1px);
+  top: 100%;
   left: 0;
-  min-width: 230px;
+  min-width: 248px;
   margin: 0;
   padding: 2px;
   list-style: none;
   background: var(--menu);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 4px 12px #00000040;
+  box-shadow: 0 8px 24px #00000055;
 }
 
 .menu-entry {
@@ -195,18 +144,19 @@
   justify-content: space-between;
   gap: 24px;
   width: 100%;
-  height: 22px;
+  height: 24px;
   padding: 0 8px;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius);
   text-align: left;
   color: var(--fg);
   font-size: 12px;
 }
 
-.menu-entry:hover:not(:disabled) {
-  background: var(--hover-row);
-  border-color: var(--accent);
+.menu-entry:hover:not(:disabled),
+.menu-entry:focus-visible:not(:disabled) {
+  background: var(--tree-selected);
+  outline: none;
 }
 
 .menu-entry:disabled {
@@ -216,6 +166,7 @@
 .menu-entry[aria-checked="true"]::before {
   content: "✓";
   margin-right: 6px;
+  color: var(--accent);
 }
 
 .menu-entry kbd {
@@ -234,20 +185,236 @@
   min-width: 8px;
 }
 
-.menubar-sep {
-  width: 1px;
-  height: 14px;
-  background: var(--border-subtle);
+/* Visual Studio puts search at the right end of the menu bar, not a centered
+   command palette. The hint makes the shortcut discoverable. */
+.menu-search {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   align-self: center;
-  margin: 0 4px;
+  width: clamp(180px, 22vw, 320px);
+  height: 21px;
+  margin: 0 8px 0 12px;
+  padding: 0 8px;
+  background: var(--control-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  cursor: text;
 }
 
+.menu-search:focus-within {
+  border-color: var(--accent);
+}
+
+.menu-search-icon {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  color: var(--fg-dim);
+}
+
+.menu-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--fg);
+  font: 11.5px var(--font-ui);
+  outline: none;
+}
+
+.menu-search-hint {
+  flex: none;
+  padding: 1px 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--fg-faint);
+  font: 9.5px/1 var(--font-mono);
+}
+
+/* -------------------------------------------------- standard toolbar row */
+
+.stdbar {
+  grid-area: stdbar;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 6px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  overflow: hidden;
+}
+
+.stdbar-group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.stdbar-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+}
+
+.stdbar-icon:hover:not(:disabled) {
+  background: var(--hover-chrome);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.stdbar-icon:disabled {
+  color: var(--fg-faint);
+  opacity: 0.5;
+}
+
+.stdbar-icon .ico {
+  width: 14px;
+  height: 14px;
+}
+
+.stdbar-sep {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 5px;
+  background: var(--border);
+}
+
+.stdbar-startgroup {
+  display: flex;
+  align-items: center;
+  margin: 0 2px;
+}
+
+.stdbar-start {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px 0 8px;
+  background: #388a34;
+  border: 1px solid #316f2e;
+  border-right: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
+  color: #fff;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.stdbar-start:hover {
+  background: #41993c;
+}
+
+.stdbar-start:active {
+  background: #2e7429;
+}
+
+.stdbar-start:disabled {
+  background: var(--chrome);
+  border-color: var(--border);
+  color: var(--fg-faint);
+}
+
+.stdbar-caret {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 22px;
+  padding: 0;
+  background: #388a34;
+  border: 1px solid #316f2e;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: #fff;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.stdbar-caret:hover {
+  background: #41993c;
+}
+
+.stdbar-play {
+  width: 0;
+  height: 0;
+  border-left: 6px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+
+/* VS stacks the caption above the combo so both stay legible at 30px. */
+.stdbar-field {
+  display: grid;
+  grid-template-rows: 10px 18px;
+  align-content: center;
+  gap: 1px;
+  height: 100%;
+  margin: 0 4px;
+  color: var(--fg-muted);
+}
+
+.stdbar-field-label {
+  font-size: 9.5px;
+  line-height: 10px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.stdbar-select-shell {
+  position: relative;
+  display: block;
+}
+
+.stdbar-select-shell::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 5px;
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-top: 4px solid var(--fg-dim);
+  pointer-events: none;
+}
+
+.stdbar-field select {
+  appearance: none;
+  width: 100%;
+  min-width: 96px;
+  height: 18px;
+  padding: 0 16px 0 5px;
+  background: var(--control-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.stdbar-field select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* the quick-launch group of icon buttons, mounted by StandardToolbar */
 .toolbar-standard {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 4px;
+  gap: 1px;
+  padding: 0 0 0 2px;
   align-self: center;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .toolbar-btn {
@@ -279,13 +446,13 @@
 
 .toolbar-btn:active:not(:disabled) {
   background: var(--tree-selected);
-  color: #fff;
+  color: var(--fg);
 }
 
 .toolbar-btn[aria-pressed="true"] {
   background: var(--tree-selected);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--fg);
 }
 
 .toolbar-btn:disabled {
@@ -293,121 +460,18 @@
   cursor: default;
 }
 
-.toolbar-btn .icon {
-  width: 14px;
-  height: 14px;
+.toolbar-btn .ico {
+  width: 15px;
+  height: 15px;
   color: inherit;
 }
 
 .toolbar-sep {
   width: 1px;
-  height: 14px;
-  background: var(--border-subtle);
+  height: 16px;
+  background: var(--border);
   margin: 0 4px;
   align-self: center;
-}
-
-/* -------------------------------------------------- standard toolbar row */
-
-.stdbar {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 6px;
-  background: var(--chrome);
-  border-bottom: 1px solid var(--border-subtle);
-  user-select: none;
-  overflow: hidden;
-}
-
-.tool-button {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  color: var(--fg-muted);
-}
-
-.tool-button:hover:not(:disabled) {
-  background: var(--panel);
-  border-color: var(--border);
-}
-
-.tool-button:disabled {
-  color: var(--fg-faint);
-  opacity: 0.6;
-}
-
-.tool-button[aria-pressed="false"] {
-  color: var(--fg-faint);
-}
-
-.stdbar-sep {
-  width: 1px;
-  height: 16px;
-  margin: 0 4px;
-  background: var(--border);
-}
-
-.stdbar-combo {
-  height: 21px;
-  max-width: 150px;
-  padding: 0 4px;
-  background: var(--editor);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--fg-muted);
-  font-size: 11.5px;
-}
-
-.stdbar-combo:disabled {
-  color: var(--fg-dim);
-  opacity: 1;
-  background: var(--chrome);
-}
-
-.stdbar-combo--room {
-  max-width: 180px;
-  font-family: var(--font-mono);
-}
-
-.stdbar-start {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 21px;
-  margin-left: 4px;
-  padding: 0 9px 0 8px;
-  background: #388a34;
-  border: 1px solid #316f2e;
-  border-radius: var(--radius);
-  color: #fff;
-  font-size: 11.5px;
-  white-space: nowrap;
-}
-
-.stdbar-start:hover {
-  background: #41993c;
-}
-
-.stdbar-start:active {
-  background: #2e7429;
-}
-
-.stdbar-start:disabled {
-  background: var(--chrome);
-  border-color: var(--border);
-  color: var(--fg-faint);
-}
-
-.stdbar-play {
-  width: 0;
-  height: 0;
-  border-left: 6px solid currentColor;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
 }
 
 .toolbar-spacer {
@@ -421,8 +485,10 @@
   grid-area: tabstrip;
   display: flex;
   align-items: stretch;
-  background: var(--chrome);
-  border-bottom: 1px solid var(--border);
+  gap: 1px;
+  padding: 2px 4px 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border-subtle);
   user-select: none;
   overflow-x: auto;
   scrollbar-width: none;
@@ -437,27 +503,22 @@
   max-width: 260px;
   padding: 0 6px 0 10px;
   background: transparent;
-  border-right: 1px solid var(--border-subtle);
+  border-right: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
   color: var(--fg-dim);
   font-size: 12px;
   cursor: pointer;
 }
 
 .tab:hover {
+  background: var(--hover-chrome);
   color: var(--fg);
 }
 
 .tab[aria-selected="true"] {
   background: var(--editor);
   color: var(--fg);
-}
-
-.tab[aria-selected="true"]::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  background: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .tab-icon {
@@ -506,10 +567,11 @@
   justify-content: center;
   width: 28px;
   height: 100%;
+  margin-left: 2px;
   padding: 0;
   background: transparent;
   border: none;
-  border-right: 1px solid var(--border-subtle);
+  border-radius: var(--radius) var(--radius) 0 0;
   color: var(--fg-dim);
   cursor: pointer;
   transition:
@@ -553,15 +615,21 @@
   color: var(--fg-faint);
 }
 
+.breadcrumb-hint {
+  color: var(--fg-faint);
+  font: 10.5px/1 var(--font-mono);
+  white-space: nowrap;
+}
+
 .filter {
   display: flex;
   align-items: center;
   gap: 4px;
   height: 19px;
   width: 190px;
-  padding: 0 6px;
-  background: var(--editor);
-  border: 1px solid var(--border);
+  padding: 0 8px;
+  background: var(--control-bg);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   flex: none;
 }
@@ -619,8 +687,8 @@
   appearance: none;
   height: 19px;
   padding: 0 18px 0 5px;
-  background: var(--editor);
-  border: 1px solid var(--border);
+  background: var(--control-bg);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   color: var(--fg);
   font-size: 11.5px;

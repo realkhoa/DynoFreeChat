@@ -27,8 +27,8 @@
 .editor-find-bar input {
   width: 220px;
   height: 22px;
-  padding: 0 6px;
-  background: var(--editor);
+  padding: 0 8px;
+  background: var(--control-bg);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   color: var(--fg);

@@ -3,7 +3,7 @@
 ## 1. Overview & Purpose
 The `web/src/game` module provides a pure TypeScript implementation of 3x3 Tic-Tac-Toe game mechanics, an unbeatable Minimax AI player with alpha-beta heuristic evaluation, and a real-time multiplayer network session coordinator running over Cloudflare Worker Durable Objects.
 
-This module powers the collaborative game feature in the **Collab** tab of DynoFreeChat, styled with the Visual Studio 2022 IDE aesthetic and responsive down to ultra-compact WebViews.
+This module powers the collaborative game feature in the **Collab** tab of DynoFreeChat, styled with the Visual Studio 2026 IDE aesthetic and responsive down to ultra-compact WebViews.
 
 ## 2. Prerequisites & Dependencies
 - **Runtime**: Modern browser environment supporting WebSockets and `HTMLDialogElement`.
@@ -15,7 +15,7 @@ This module powers the collaborative game feature in the **Collab** tab of DynoF
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                      GameDialog                         │
-│   (Modal Controller, VS 2022 Window & Input Handlers)    │
+│   (Modal Controller, VS 2026 Window & Input Handlers)    │
 └──────────────────────────┬──────────────────────────────┘
                            │
              ┌─────────────┴─────────────┐

@@ -5,14 +5,17 @@
   grid-area: content;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--sidebar-w);
+  column-gap: 1px;
   min-height: 0;
-  background: var(--editor);
+  background: var(--chrome);
 }
 
+/* VS 2026 frames the active document well with the Fluent accent. */
 .editor {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   background: var(--editor);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }

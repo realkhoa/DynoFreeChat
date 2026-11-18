@@ -1,0 +1,261 @@
+/* ASCII Garden: the tabs and the plot board are drawn in the code document.
+   Tabs live outside `stage-bar` so the Focus toggle keeps them reachable while
+   it hides comment lines. Cells are flat monospace blocks; the only colour that
+   changes at runtime is the white-to-green growth tint, applied inline. */
+
+.garden-root {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 6px;
+  overflow: auto;
+  color: #d4d4d4;
+  font: 9.5px/13px var(--font-mono);
+}
+
+.garden-root[data-busy="on"] {
+  cursor: progress;
+}
+
+.garden-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: #6a9955;
+  font: 10px/16px var(--font-mono);
+}
+
+.garden-tab {
+  padding: 0 3px;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  color: #6a9955;
+  font: inherit;
+  white-space: pre;
+  cursor: pointer;
+}
+
+.garden-tab:hover {
+  background: var(--hover-row);
+  color: #dcdcaa;
+}
+
+.garden-tab.is-active {
+  color: #ffffff;
+  background: var(--sel);
+}
+
+.garden-tab:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.garden-tabs-spacer {
+  flex: 1;
+}
+
+.garden-code {
+  color: #9cdcfe;
+  font: 9.5px/16px var(--font-mono);
+}
+
+.garden-garden,
+.garden-market,
+.garden-event {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.garden-layout {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.garden-board {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.garden-plot-row {
+  display: flex;
+  gap: 6px;
+}
+
+/* One plot: six monospace lines rendered as spans so a tick can repaint just
+   the countdown without rebuilding the button. */
+.garden-cell {
+  display: inline-flex;
+  flex-direction: column;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  color: #e6e6e6;
+  font: 9.5px/12px var(--font-mono);
+  text-align: left;
+  white-space: pre;
+  cursor: pointer;
+  user-select: none;
+}
+
+.garden-cell-line {
+  display: block;
+  white-space: pre;
+}
+
+.garden-cell:hover {
+  background: var(--hover-row);
+}
+
+.garden-cell:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.garden-cell.is-selected {
+  background: var(--sel);
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.garden-cell.is-empty,
+.garden-cell.is-locked {
+  color: #4b4b4b;
+}
+
+.garden-cell.is-empty:hover,
+.garden-cell.is-locked:hover {
+  color: #6a9955;
+}
+
+.garden-cell.is-ready {
+  color: #6fe3b5;
+  animation: garden-blink 1.1s step-end infinite;
+}
+
+.garden-cell.is-golden {
+  color: #d7ba7d;
+}
+
+.garden-cell.is-frozen {
+  color: #9cdcfe;
+}
+
+.garden-cell.is-wet {
+  color: #4ec9b0;
+}
+
+@keyframes garden-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .garden-cell.is-ready {
+    animation: none;
+  }
+}
+
+.garden-detail {
+  flex: 0 1 300px;
+  min-width: 220px;
+  max-width: 380px;
+}
+
+.garden-detail-text {
+  margin: 0;
+  color: #d4d4d4;
+  font: 9.5px/13px var(--font-mono);
+  white-space: pre;
+}
+
+.garden-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.garden-seeds {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.garden-row {
+  display: block;
+  padding: 0 2px;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  color: #ce9178;
+  font: 9.5px/13px var(--font-mono);
+  text-align: left;
+  white-space: pre;
+  cursor: pointer;
+}
+
+.garden-row:hover {
+  background: var(--hover-row);
+  color: #ffffff;
+}
+
+.garden-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.garden-market-panel,
+.garden-event-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 240px;
+}
+
+.garden-line {
+  white-space: pre;
+  color: #6a9955;
+}
+
+.garden-hint {
+  display: block;
+  color: #6a9955;
+  white-space: pre-wrap;
+}
+
+.garden-restore-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.garden-restore-input {
+  width: 150px;
+}
+
+.stage-status.is-ok {
+  color: #6a9955;
+}
+
+.stage-status.is-err {
+  color: #f48771;
+}
+
+.stage-status.is-info {
+  color: #9cdcfe;
+}
