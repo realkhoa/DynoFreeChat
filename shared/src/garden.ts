@@ -516,6 +516,12 @@ export interface ShopOffer {
   readonly stock: number;
 }
 
+/** Coins charged per plant watered by the bulk "water all" action. */
+export const WATER_ALL_COST = 5;
+
+/** Coins charged per ready plant harvested by "harvest all". */
+export const HARVEST_ALL_COST = 20;
+
 /** Market cycle length: prices retune every six minutes. */
 export const MARKET_CYCLE_MS = 6 * 60_000;
 
@@ -675,6 +681,8 @@ export type GardenAction =
   | { readonly kind: "uproot"; readonly slot: number; readonly tree: boolean }
   | { readonly kind: "buyTab" }
   | { readonly kind: "buyPatch"; readonly tab: number }
+  | { readonly kind: "waterAll" }
+  | { readonly kind: "harvestAll" }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
   | {
@@ -710,6 +718,7 @@ export type GardenErrorCode =
   | "NOTHING_TO_SELL"
   | "MAX_TABS"
   | "MAX_PATCHES"
+  | "NOTHING_TO_DO"
   | "CANNOT_VISIT_SELF";
 
 /** Successful response to a garden action. */
@@ -996,6 +1005,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return { kind, item: item.id as ItemId, effects: canonicalEffects(effects), qty };
   }
   if (kind === "buyTab") return { kind };
+  if (kind === "waterAll" || kind === "harvestAll") return { kind };
   if (kind === "buyPatch") {
     const tab = value.tab;
     if (typeof tab !== "number" || !Number.isInteger(tab) || tab < 0 || tab >= MAX_TABS) return null;

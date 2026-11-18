@@ -13,6 +13,8 @@ import {
   EFFECTS,
   FERTILIZERS,
   FRUIT_PATCHES_PER_TAB,
+  HARVEST_ALL_COST,
+  WATER_ALL_COST,
   MAX_TABS,
   PLOTS_PER_PATCH,
   TREES_PER_TAB,
@@ -1020,6 +1022,27 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return { ready, growing, free };
   }
 
+  /** @brief Counts for the bulk water/harvest buttons. */
+  function bulkCounts(at: number): { water: number; harvest: number } {
+    let water = 0;
+    let harvest = 0;
+    const plots = currentPlots() ?? [];
+    const trees = currentTrees() ?? [];
+    for (let slot = 0; slot < plots.length; slot += 1) {
+      if (cropSlotLocked(slot)) continue;
+      const plot = plots[slot] ?? null;
+      if (plot === null) continue;
+      if (at >= plot.readyAt) harvest += 1;
+      else if (!plot.watered) water += 1;
+    }
+    for (const tree of trees) {
+      if (tree === null) continue;
+      if (at >= tree.readyAt) harvest += 1;
+      else if (!tree.watered) water += 1;
+    }
+    return { water, harvest };
+  }
+
   /** @brief HUD comment line. */
   function hudText(): string {
     const at = now();
@@ -1497,6 +1520,28 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function buildGarden(): HTMLElement {
     const wrap = div("garden-garden");
     wrap.append(buildPager());
+    if (mode === "owner") {
+      const at = now();
+      const counts = bulkCounts(at);
+      const coins = state?.coins ?? 0;
+      const bulk = div("garden-bulk");
+      bulk.append(
+        actionButton(
+          t("garden.waterAll", { count: counts.water, cost: counts.water * WATER_ALL_COST }),
+          "waterAll",
+          counts.water > 0 && coins >= counts.water * WATER_ALL_COST,
+        ),
+        actionButton(
+          t("garden.harvestAll", {
+            count: counts.harvest,
+            cost: counts.harvest * HARVEST_ALL_COST,
+          }),
+          "harvestAll",
+          counts.harvest > 0 && coins >= counts.harvest * HARVEST_ALL_COST,
+        ),
+      );
+      wrap.append(bulk);
+    }
     const layout = div("garden-layout");
     const boards = div("garden-boards");
     const cropPanel = div("garden-board-panel");
@@ -1942,6 +1987,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         closeMenu();
         void buyTab();
         return;
+      case "waterAll": {
+        if (state === null) return;
+        const count = bulkCounts(now()).water;
+        void runAction({ kind: "waterAll" }, t("garden.wateredAll", { count, cost: count * WATER_ALL_COST }));
+        return;
+      }
+      case "harvestAll": {
+        if (state === null) return;
+        const count = bulkCounts(now()).harvest;
+        void runAction(
+          { kind: "harvestAll" },
+          t("garden.harvestedAll", { count, cost: count * HARVEST_ALL_COST }),
+        );
+        return;
+      }
       case "waterFriend": {
         if (selectedSlot !== null) void waterFriend(selectedSlot, selectedArea);
         closeMenu();

@@ -344,6 +344,30 @@ describe("garden tab", () => {
     expect(buy?.disabled).toBe(true);
   });
 
+  it("offers bulk water and harvest with per-plant prices", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 100,
+        plots: [RIPE_PLOT, GROWING_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 2).fill(null)],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const water = host.querySelector<HTMLButtonElement>('[data-act="waterAll"]');
+    const harvest = host.querySelector<HTMLButtonElement>('[data-act="harvestAll"]');
+    expect(water?.textContent).toContain("5c");
+    expect(harvest?.textContent).toContain("20c");
+
+    water?.click();
+    await settle();
+    // The action re-renders the tab, so re-query the second button.
+    host.querySelector<HTMLButtonElement>('[data-act="harvestAll"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "waterAll")).toBe(true);
+    expect(api.calls.some((call) => call.action?.kind === "harvestAll")).toBe(true);
+  });
+
   it("uproot needs two presses and confirms in the menu", async () => {
     const api = new FakeGardenApi(
       makeState({ plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)] }),

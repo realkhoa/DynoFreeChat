@@ -257,6 +257,58 @@ describe("garden ledger rules", () => {
     expect(uprooted.ledger.coins).toBe(planted.ledger.coins);
   });
 
+  it("waters every growing plant for 5c each", () => {
+    const ledger = makeLedger();
+    ledger.coins = 100;
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "tomato",
+      plantedAt: NOW,
+      readyAt: NOW + 8 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+    };
+    ledger.plots[1] = { ...ledger.plots[0], slot: 1 };
+    const result = run(ledger, { kind: "waterAll" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ledger.coins).toBe(90);
+    expect(result.ledger.plots[0]?.watered).toBe(true);
+    expect(result.ledger.plots[1]?.watered).toBe(true);
+
+    const again = run(result.ledger, { kind: "waterAll" });
+    expect(again).toMatchObject({ ok: false, code: "NOTHING_TO_DO" });
+  });
+
+  it("harvests every ripe plant for 20c each", () => {
+    const ledger = makeLedger();
+    ledger.coins = 100;
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW - 5 * 60_000,
+      readyAt: NOW - 1_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+    };
+    ledger.plots[1] = { ...ledger.plots[0], slot: 1, seed: "parsnip" };
+    const result = run(ledger, { kind: "harvestAll" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ledger.coins).toBe(60);
+    expect(result.ledger.bag.crops).toHaveLength(2);
+    expect(result.ledger.plots[0]).toBeNull();
+    expect(result.ledger.plots[1]).toBeNull();
+  });
+
   it("buys the next tab at the compounding price", () => {
     const ledger = makeLedger();
     ledger.coins = 400_000;

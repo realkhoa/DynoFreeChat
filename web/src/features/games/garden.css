@@ -621,3 +621,11 @@
   text-align: right;
   white-space: nowrap;
 }
+
+/* Bulk actions: water every growing plant, harvest every ripe one. */
+.garden-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0 6px;
+}

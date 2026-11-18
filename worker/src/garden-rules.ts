@@ -16,7 +16,9 @@ import {
   STARTING_TABS,
   STARTING_SEEDS,
   TREES_PER_TAB,
+  WATER_ALL_COST,
   WATER_CUT_RATIO,
+  HARVEST_ALL_COST,
   createRng,
   cropSellPrice,
   eventAt,
@@ -255,6 +257,10 @@ export function applyGardenAction(
       return buyTab(ledger, now);
     case "buyPatch":
       return buyPatch(ledger, action.tab, now);
+    case "waterAll":
+      return waterAll(ledger, now);
+    case "harvestAll":
+      return harvestAll(ledger, now, rng);
     case "buySeed":
       return buySeed(ledger, action.seed, action.qty, season, now);
     case "buySupply":
@@ -528,6 +534,80 @@ function uprootTree(ledger: GardenLedger, slot: number, now: number): RuleResult
   if (ledger.trees[slot] === null) return { ok: false, code: "PLOT_EMPTY" };
   const next = clone(ledger);
   next.trees[slot] = null;
+  return changed(next, now);
+}
+
+/** @brief Waters every growing, not-yet-watered plant for 5c each. */
+function waterAll(ledger: GardenLedger, now: number): RuleResult {
+  const crops: number[] = [];
+  for (let tab = 0; tab < ledger.tabs; tab += 1) {
+    const open = ledger.unlockedPatches[tab] ?? 1;
+    for (let patch = 0; patch < open; patch += 1) {
+      for (let plot = 0; plot < PLOTS_PER_PATCH; plot += 1) {
+        const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
+        const entry = ledger.plots[slot] ?? null;
+        if (entry !== null && now < entry.readyAt && !entry.watered) crops.push(slot);
+      }
+    }
+  }
+  const trees: number[] = [];
+  for (let slot = 0; slot < ledger.trees.length; slot += 1) {
+    const entry = ledger.trees[slot] ?? null;
+    if (entry !== null && now < entry.readyAt && !entry.watered) trees.push(slot);
+  }
+  const count = crops.length + trees.length;
+  if (count === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  const cost = count * WATER_ALL_COST;
+  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  let current = ledger;
+  for (const slot of crops) {
+    const result = water(current, slot, now);
+    if (result.ok) current = result.ledger;
+  }
+  for (const slot of trees) {
+    const result = waterTree(current, slot, now);
+    if (result.ok) current = result.ledger;
+  }
+  const next = clone(current);
+  next.coins -= cost;
+  return changed(next, now);
+}
+
+/** @brief Harvests every ready plant for 20c each. */
+function harvestAll(ledger: GardenLedger, now: number, rng: () => number): RuleResult {
+  const crops: number[] = [];
+  for (let tab = 0; tab < ledger.tabs; tab += 1) {
+    const open = ledger.unlockedPatches[tab] ?? 1;
+    for (let patch = 0; patch < open; patch += 1) {
+      for (let plot = 0; plot < PLOTS_PER_PATCH; plot += 1) {
+        const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
+        const entry = ledger.plots[slot] ?? null;
+        if (entry !== null && now >= entry.readyAt) crops.push(slot);
+      }
+    }
+  }
+  const trees: number[] = [];
+  for (let slot = 0; slot < ledger.trees.length; slot += 1) {
+    const entry = ledger.trees[slot] ?? null;
+    if (entry !== null && now >= entry.readyAt) trees.push(slot);
+  }
+  const count = crops.length + trees.length;
+  if (count === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  const cost = count * HARVEST_ALL_COST;
+  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  let current = ledger;
+  for (const slot of crops) {
+    const result = harvest(current, slot, now, rng);
+    if (result.ok) current = result.ledger;
+  }
+  for (const slot of trees) {
+    const result = harvestTree(current, slot, now, rng);
+    if (result.ok) current = result.ledger;
+  }
+  const next = clone(current);
+  next.coins -= cost;
   return changed(next, now);
 }
 
