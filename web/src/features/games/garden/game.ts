@@ -15,7 +15,9 @@ import {
   FRUIT_PATCHES_PER_TAB,
   HARVEST_ALL_COST,
   PEST_SPRAY_COST,
+  SKILL_MAX_LEVEL,
   SOIL_START,
+  skillThreshold,
   ACHIEVEMENTS,
   EGG_PRICE,
   GREENHOUSE_PRICES,
@@ -104,7 +106,8 @@ const POLL_MS = 60_000;
 const UPROOT_ARM_MS = 4_000;
 
 /** One active tab inside the document. */
-type Tab = "garden" | "market" | "event" | "chart" | "bots" | "rank" | "farm" | "warehouse" | "extras";
+type Tab =
+  "garden" | "market" | "event" | "chart" | "bots" | "rank" | "farm" | "warehouse" | "extras" | "levels";
 
 /** Whether the document is showing the owner's garden or a friend's. */
 type Mode = "owner" | "visit";
@@ -916,7 +919,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       savedTab === "rank" ||
       savedTab === "farm" ||
       savedTab === "warehouse" ||
-      savedTab === "extras"
+      savedTab === "extras" ||
+      savedTab === "levels"
     ) {
       tab = savedTab;
     }
@@ -1071,6 +1075,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       "farm",
       "warehouse",
       "extras",
+      "levels",
     ] as const) {
       const button = document.createElement("button");
       button.type = "button";
@@ -2130,6 +2135,29 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Builds the skill level tab with XP bars and perks. */
+  function buildLevels(): HTMLElement {
+    const wrap = div("garden-levels");
+    if (state === null) return lineBlock(t("common.loading"));
+    wrap.append(lineBlock(`// ${t("levels.title")}`));
+    for (const skill of ["farming", "ranching", "artisaning"] as const) {
+      const progress = state.skills[skill];
+      const next = progress.level >= SKILL_MAX_LEVEL ? 0 : skillThreshold(progress.level);
+      const ratio = progress.level >= SKILL_MAX_LEVEL || next <= 0 ? 1 : Math.min(1, progress.xp / next);
+      const filled = Math.min(20, Math.round(ratio * 20));
+      wrap.append(
+        lineBlock(
+          `// ${t(`skills.${skill}`)} — Lv ${progress.level}/${SKILL_MAX_LEVEL} · ${progress.xp}/${next} XP`,
+        ),
+      );
+      wrap.append(lineBlock(`[${"=".repeat(filled)}${"-".repeat(20 - filled)}]`));
+      wrap.append(lineBlock(`// ${t(`skills.${skill}.desc`)}`));
+      if (progress.level >= SKILL_MAX_LEVEL) wrap.append(lineBlock(`// ${t("levels.max")}`));
+      else wrap.append(lineBlock(`// ${t("levels.nextPerk")}`));
+    }
+    return wrap;
+  }
+
   /** @brief Loads the weekly tournament for the extras tab. */
   async function loadExtras(): Promise<void> {
     try {
@@ -2571,6 +2599,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (tab === "farm") return buildFarm();
     if (tab === "warehouse") return buildWarehouse();
     if (tab === "extras") return buildExtras();
+    if (tab === "levels") return buildLevels();
     return buildEvent();
   }
 

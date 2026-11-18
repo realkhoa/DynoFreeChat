@@ -1122,6 +1122,91 @@ export function staffHireCost(candidate: StaffDefinition): number {
   return 50_000 + candidate.speed * 10_000 + candidate.skill * 15_000;
 }
 
+/* ------------------------------------------------------------------ skills */
+
+/** Skill tracks. */
+export type SkillId = "farming" | "ranching" | "artisaning";
+
+/** Skill level cap. */
+export const SKILL_MAX_LEVEL = 10;
+
+/** Progress of one skill. */
+export interface SkillState {
+  /** Current level, 0..10. */
+  readonly level: number;
+  /** Experience inside the current level. */
+  readonly xp: number;
+}
+
+/** All skill progress. */
+export type SkillsState = Readonly<Record<SkillId, SkillState>>;
+
+/** Fresh skill progress for a new garden. */
+export const DEFAULT_SKILLS: SkillsState = {
+  farming: { level: 0, xp: 0 },
+  ranching: { level: 0, xp: 0 },
+  artisaning: { level: 0, xp: 0 },
+};
+
+/** @brief XP needed to leave one level, per the exponential formula.
+ * @details `next = 1000 + previous * 2^(level + 1)`; level 0 needs 1000 XP.
+ */
+export function skillThreshold(level: number): number {
+  if (level <= 0) return 1000;
+  let previous = 1000;
+  for (let current = 1; current <= level; current += 1) {
+    previous = 1000 + previous * 2 ** (current + 1);
+  }
+  return previous;
+}
+
+/** @brief Adds XP to one skill and returns the updated level/xp. */
+export function addSkillXp(state: SkillState, amount: number): SkillState {
+  if (amount <= 0) return state;
+  let level = state.level;
+  let xp = state.xp + Math.max(0, Math.floor(amount));
+  while (level < SKILL_MAX_LEVEL) {
+    const threshold = skillThreshold(level);
+    if (xp < threshold) break;
+    xp -= threshold;
+    level += 1;
+  }
+  if (level >= SKILL_MAX_LEVEL) xp = 0;
+  return { level, xp };
+}
+
+/** @brief Farming sale bonus: 2% per level plus milestones at 5 and 10. */
+export function farmingSellBonus(level: number): number {
+  return level * 0.02 + (level >= 5 ? 0.05 : 0) + (level >= 10 ? 0.15 : 0);
+}
+
+/** @brief Farming growth-speed factor (1 = unchanged). */
+export function farmingGrowFactor(level: number): number {
+  return Math.max(0.7, 1 - level * 0.01);
+}
+
+/** @brief Ranching animal-upkeep factor (1 = unchanged). */
+export function ranchingUpkeepFactor(level: number): number {
+  return Math.max(0.6, 1 - level * 0.02);
+}
+
+/** @brief Ranching product-price bonus. */
+export function ranchingSellBonus(level: number): number {
+  return level * 0.02 + (level >= 5 ? 0.05 : 0) + (level >= 10 ? 0.15 : 0);
+}
+
+/** @brief Artisaning machine-output bonus. */
+export function artisaningOutputBonus(level: number): number {
+  return level * 0.02 + (level >= 5 ? 0.05 : 0) + (level >= 10 ? 0.15 : 0);
+}
+
+/** @brief Perks unlocked at each milestone level. */
+export const SKILL_PERKS: Readonly<Record<SkillId, readonly number[]>> = {
+  farming: [2, 5, 8, 10],
+  ranching: [2, 5, 8, 10],
+  artisaning: [2, 5, 8, 10],
+};
+
 /** One NPC produce contract. */
 export interface ContractOffer {
   /** Stable id within the rotation window. */
@@ -1366,6 +1451,8 @@ export interface GardenSnapshot {
   readonly soil: readonly number[];
   /** All extra systems: streak, achievements, wheel, contracts, etc. */
   readonly extras: ExtrasSnapshot;
+  /** Farming, ranching and artisaning levels. */
+  readonly skills: SkillsState;
   /** Lifetime counters. */
   readonly stats: GardenStats;
   /** Revision bumped on every write; actions echo it to reject stale tabs. */
@@ -1404,6 +1491,8 @@ export interface VisitSnapshot {
   readonly soil: readonly number[];
   /** Extra systems snapshot. */
   readonly extras: ExtrasSnapshot;
+  /** Skill levels. */
+  readonly skills: SkillsState;
   /** Lifetime counters. */
   readonly stats: GardenStats;
   /** Server time of the last write. */
@@ -1761,7 +1850,7 @@ export interface LeaderboardEntry {
 export type GardenAction =
   | { readonly kind: "plant"; readonly slot: number; readonly seed: SeedId }
   | { readonly kind: "plantTree"; readonly slot: number; readonly tree: TreeId }
-  | { readonly kind: "harvest"; readonly slot: number; readonly tree: boolean }
+  | { readonly kind: "harvest"; readonly slot: number; readonly tree: boolean; readonly auto?: boolean }
   | { readonly kind: "water"; readonly slot: number; readonly tree: boolean }
   | {
       readonly kind: "fertilize";

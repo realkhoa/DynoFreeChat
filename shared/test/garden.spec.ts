@@ -67,6 +67,10 @@ import {
   equippedPetEffect,
   rollPet,
   staffHireCost,
+  skillThreshold,
+  addSkillXp,
+  farmingSellBonus,
+  DEFAULT_SKILLS,
   staffMarketAt,
   forecastEvents,
   eventsAt,
@@ -294,6 +298,19 @@ describe("soil fertility", () => {
     expect(soilRenovateCost(95)).toBe(10);
     expect(soilRenovateCost(50)).toBe(100);
     expect(soilRenovateCost(0)).toBe(200);
+  });
+});
+
+describe("skills", () => {
+  it("follows the exponential threshold formula", () => {
+    expect(skillThreshold(0)).toBe(1000);
+    expect(skillThreshold(1)).toBe(5000);
+    expect(skillThreshold(2)).toBe(41000);
+    expect(addSkillXp({ level: 0, xp: 0 }, 1000)).toEqual({ level: 1, xp: 0 });
+    expect(addSkillXp({ level: 0, xp: 0 }, 500)).toEqual({ level: 0, xp: 500 });
+    expect(farmingSellBonus(0)).toBe(0);
+    expect(farmingSellBonus(5)).toBeGreaterThan(0.1);
+    expect(DEFAULT_SKILLS.farming.level).toBe(0);
   });
 });
 

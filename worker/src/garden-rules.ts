@@ -41,6 +41,15 @@ import {
   type StaffRole,
   type StaffState,
   PET_MAX_LEVEL,
+  DEFAULT_SKILLS,
+  addSkillXp,
+  artisaningOutputBonus,
+  farmingGrowFactor,
+  farmingSellBonus,
+  ranchingSellBonus,
+  ranchingUpkeepFactor,
+  type SkillId,
+  type SkillState,
   contractOffers,
   equippedPetEffect,
   merchantOffers,
@@ -208,6 +217,8 @@ export interface GardenLedger {
   /** Egg counters. */
   eggCount: number;
   eggPity: number;
+  /** Skill progress. */
+  skills: Record<SkillId, SkillState>;
   /** Hired staff. */
   staff: StaffState[];
   /** Candidate ids already hired (prevents rehire after firing). */
@@ -315,6 +326,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     lastHatch: "",
     eggCount: 0,
     eggPity: 0,
+    skills: { ...DEFAULT_SKILLS },
     staff: [],
     staffClaims: [],
     insuranceUntil: 0,
@@ -422,6 +434,11 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     farmSettledAt: ledger.farmSettledAt,
     soil: [...ledger.soil],
     extras: extrasSnapshot(ledger),
+    skills: {
+      farming: { ...ledger.skills.farming },
+      ranching: { ...ledger.skills.ranching },
+      artisaning: { ...ledger.skills.artisaning },
+    },
     warehouse: {
       level: ledger.warehouse,
       machines: Object.fromEntries(
@@ -466,8 +483,8 @@ export function applyGardenAction(
       return plantTree(ledger, action.slot, action.tree, now, rng);
     case "harvest":
       return action.tree
-        ? harvestTree(ledger, action.slot, now, rng)
-        : harvest(ledger, action.slot, now, rng);
+        ? harvestTree(ledger, action.slot, now, rng, action.auto === true)
+        : harvest(ledger, action.slot, now, rng, action.auto === true);
     case "water":
       return action.tree ? waterTree(ledger, action.slot, now) : water(ledger, action.slot, now);
     case "fertilize":
@@ -630,7 +647,13 @@ function plantTree(
  * @details Root crops are pulled and leave empty soil; reharvest plants keep
  * the plant, reset the growth clock and roll a fresh effect for the next fruit.
  */
-function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => number): RuleResult {
+function harvest(
+  ledger: GardenLedger,
+  slot: number,
+  now: number,
+  rng: () => number,
+  auto = false,
+): RuleResult {
   const plot = ledger.plots[slot] ?? null;
   if (plot === null) return { ok: false, code: "PLOT_EMPTY" };
   if (now < plot.readyAt) return { ok: false, code: "NOT_READY" };
@@ -644,6 +667,11 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
   }
   for (const effect of harvestedEffects) collect(next, `effect:${effect}`);
   next.stats.harvested += 1;
+  grantXp(
+    next,
+    "farming",
+    auto ? 1 : 100 + Math.round((seedById(plot.seed)?.sell ?? 0) * 3) + harvestedEffects.length * 25,
+  );
   // One planting cycle always costs some fertility, even for reharvest plants.
   const fertility = Math.max(0, (next.soil[slot] ?? SOIL_START) - SOIL_STEP);
   next.soil[slot] = fertility;
@@ -680,7 +708,13 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
 }
 
 /** @brief Picks one tree fruit; the tree always stays and regrows. */
-function harvestTree(ledger: GardenLedger, slot: number, now: number, rng: () => number): RuleResult {
+function harvestTree(
+  ledger: GardenLedger,
+  slot: number,
+  now: number,
+  rng: () => number,
+  auto = false,
+): RuleResult {
   const tree = ledger.trees[slot] ?? null;
   if (tree === null) return { ok: false, code: "PLOT_EMPTY" };
   if (now < tree.readyAt) return { ok: false, code: "NOT_READY" };
@@ -927,11 +961,11 @@ function harvestAll(ledger: GardenLedger, now: number, rng: () => number): RuleR
 
   let current = ledger;
   for (const slot of crops) {
-    const result = harvest(current, slot, now, rng);
+    const result = harvest(current, slot, now, rng, true);
     if (result.ok) current = result.ledger;
   }
   for (const slot of trees) {
-    const result = harvestTree(current, slot, now, rng);
+    const result = harvestTree(current, slot, now, rng, true);
     if (result.ok) current = result.ledger;
   }
   const next = clone(current);
@@ -1120,6 +1154,7 @@ function patAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now
   if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
   const next = clone(ledger);
   next.animals[building][slot] = { ...animal, pats: animal.pats + 1 };
+  grantXp(next, "ranching", 15);
   return changed(next, now);
 }
 
@@ -1135,13 +1170,18 @@ function sellProduct(
   const products = ledger.bag.products ?? [];
   const stack = products.find((entry) => entry.product === product && entry.star === star);
   if (stack === undefined || stack.qty < qty) return { ok: false, code: "NO_PRODUCT" };
-  const gross = Math.round(productPrice(stack, season) * qty * (1 + petEffect(ledger, "sell")));
+  const crafted = ["mayo", "cheese", "pickles", "oil", "fabric"].includes(product);
+  const bonus = crafted
+    ? artisaningOutputBonus(ledger.skills.artisaning.level)
+    : ranchingSellBonus(ledger.skills.ranching.level);
+  const gross = Math.round(productPrice(stack, season) * qty * (1 + petEffect(ledger, "sell")) * (1 + bonus));
   const tax = Math.round(gross * SELL_TAX_RATE);
 
   const next = clone(ledger);
   next.coins += gross - tax;
   next.stats.earned += gross;
   next.stats.tax += tax;
+  grantXp(next, crafted ? "artisaning" : "ranching", 50 + Math.round(gross / 10));
   next.bag.products = (next.bag.products ?? [])
     .map((entry) =>
       entry.product === product && entry.star === star ? { ...entry, qty: entry.qty - qty } : entry,
@@ -1156,7 +1196,13 @@ function sellAllProducts(ledger: GardenLedger, season: SeasonSnapshot, now: numb
   if (products.length === 0) return { ok: false, code: "NO_PRODUCT" };
   let total = 0;
   for (const stack of products) {
-    total += Math.round(productPrice(stack, season) * stack.qty * (1 + petEffect(ledger, "sell")));
+    const crafted = ["mayo", "cheese", "pickles", "oil", "fabric"].includes(stack.product);
+    const bonus = crafted
+      ? artisaningOutputBonus(ledger.skills.artisaning.level)
+      : ranchingSellBonus(ledger.skills.ranching.level);
+    total += Math.round(
+      productPrice(stack, season) * stack.qty * (1 + petEffect(ledger, "sell")) * (1 + bonus),
+    );
   }
   if (total <= 0) return { ok: false, code: "NO_PRODUCT" };
   const tax = Math.round(total * SELL_TAX_RATE);
@@ -1193,6 +1239,7 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
 
   let upkeep = 0;
   for (const animal of animals) upkeep += (animalById(animal.kind)?.upkeep ?? 0) * cycles;
+  upkeep = Math.round(upkeep * ranchingUpkeepFactor(ledger.skills.ranching.level));
   const paid = Math.min(next.coins, upkeep);
   next.coins -= paid;
   next.stats.spent += paid;
@@ -1231,6 +1278,11 @@ function petEffect(
     { pets: ledger.pets, equippedPet: ledger.equippedPet, lastHatch: ledger.lastHatch },
     key,
   );
+}
+
+/** @brief Adds skill experience in place. */
+function grantXp(ledger: GardenLedger, skill: SkillId, amount: number): void {
+  ledger.skills[skill] = addSkillXp(ledger.skills[skill], amount);
 }
 
 /** @brief Adds a collection key once. */
@@ -1484,13 +1536,25 @@ function staffHarvest(ledger: GardenLedger, now: number, rng: () => number): Gar
   for (let slot = 0; slot < ledger.plots.length; slot += 1) {
     const plot = ledger.plots[slot] ?? null;
     if (plot === null || now < plot.readyAt) continue;
-    const result = applyGardenAction(ledger, { kind: "harvest", slot, tree: false }, seasonAt(now), now, rng);
+    const result = applyGardenAction(
+      ledger,
+      { kind: "harvest", slot, tree: false, auto: true },
+      seasonAt(now),
+      now,
+      rng,
+    );
     return result.ok ? result.ledger : null;
   }
   for (let slot = 0; slot < ledger.trees.length; slot += 1) {
     const tree = ledger.trees[slot] ?? null;
     if (tree === null || now < tree.readyAt) continue;
-    const result = applyGardenAction(ledger, { kind: "harvest", slot, tree: true }, seasonAt(now), now, rng);
+    const result = applyGardenAction(
+      ledger,
+      { kind: "harvest", slot, tree: true, auto: true },
+      seasonAt(now),
+      now,
+      rng,
+    );
     return result.ok ? result.ledger : null;
   }
   return null;
@@ -1851,7 +1915,13 @@ function craftMachine(
       )
       .filter((entry) => entry.qty > 0);
     if (definition.output.kind === "product") {
-      addProduct(next.bag.products, definition.output.product, star, converterOutput(machine.level));
+      const bonus = artisaningOutputBonus(next.skills.artisaning.level);
+      addProduct(
+        next.bag.products,
+        definition.output.product,
+        star,
+        Math.max(1, Math.round(converterOutput(machine.level) * (1 + bonus))),
+      );
     }
   } else {
     const seedId = item === undefined ? undefined : seedById(item);
@@ -1863,13 +1933,22 @@ function craftMachine(
     next.bag.crops = next.bag.crops
       .map((entry) => (entry === stack ? { ...entry, qty: entry.qty - 1 } : entry))
       .filter((entry) => entry.qty > 0);
+    const bonus = artisaningOutputBonus(next.skills.artisaning.level);
     if (definition.output.kind === "seeds") {
-      next.bag.seeds[seedId.id] = (next.bag.seeds[seedId.id] ?? 0) + seedMakerOutput(machine.level);
+      next.bag.seeds[seedId.id] =
+        (next.bag.seeds[seedId.id] ?? 0) +
+        Math.max(1, Math.round(seedMakerOutput(machine.level) * (1 + bonus)));
     } else {
-      addProduct(next.bag.products, definition.output.product, 1, converterOutput(machine.level));
+      addProduct(
+        next.bag.products,
+        definition.output.product,
+        1,
+        Math.max(1, Math.round(converterOutput(machine.level) * (1 + bonus))),
+      );
     }
   }
   next.machines[id] = { ...machine, lastCraftAt: now };
+  grantXp(next, "artisaning", 200);
   return changed(next, now);
 }
 
@@ -1964,7 +2043,11 @@ function sellCrop(
 
   const next = clone(ledger);
   // A locked future guarantees its price for the covered units.
-  const marketPrice = Math.round(cropSellPrice(stack, season) * (1 + petEffect(ledger, "sell")));
+  const marketPrice = Math.round(
+    cropSellPrice(stack, season) *
+      (1 + petEffect(ledger, "sell")) *
+      (1 + farmingSellBonus(ledger.skills.farming.level)),
+  );
   const future = ledger.futures.find(
     (entry) => entry.item === item && entry.expiresAt > now && entry.qty > 0,
   );
@@ -1990,7 +2073,11 @@ function sellAll(ledger: GardenLedger, season: SeasonSnapshot, now: number): Rul
   const next = clone(ledger);
   let total = 0;
   for (const stack of next.bag.crops) {
-    const base = Math.round(cropSellPrice(stack, season) * (1 + petEffect(ledger, "sell")));
+    const base = Math.round(
+      cropSellPrice(stack, season) *
+        (1 + petEffect(ledger, "sell")) *
+        (1 + farmingSellBonus(ledger.skills.farming.level)),
+    );
     const future = next.futures.find(
       (entry) => entry.item === stack.item && entry.expiresAt > now && entry.qty > 0,
     );
@@ -2040,6 +2127,11 @@ function clone(ledger: GardenLedger): GardenLedger {
     },
     farmSettledAt: ledger.farmSettledAt,
     soil: [...ledger.soil],
+    skills: {
+      farming: { ...ledger.skills.farming },
+      ranching: { ...ledger.skills.ranching },
+      artisaning: { ...ledger.skills.artisaning },
+    },
     lastCrop: [...ledger.lastCrop],
     achievements: [...ledger.achievements],
     collection: [...ledger.collection],

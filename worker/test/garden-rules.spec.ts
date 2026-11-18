@@ -67,6 +67,34 @@ describe("garden ledger rules", () => {
     expect(ledgerSnapshot(ledger).code).toBe("ABCDEF");
   });
 
+  it("awards skill XP for manual but not automatic harvests", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000;
+    ledger.bag.seeds = { carrot: 3 };
+    const planted = run(ledger, { kind: "plant", slot: 0, seed: "carrot" });
+    if (!planted.ok) throw new Error("plant failed");
+    const plot = planted.ledger.plots[0];
+    if (plot === null || plot === undefined) throw new Error("plot missing");
+
+    const manual = run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt);
+    if (!manual.ok) throw new Error("manual harvest failed");
+    const manualXp = manual.ledger.skills.farming.xp;
+    expect(manual.ledger.skills.farming.level).toBe(0);
+    expect(manualXp).toBeGreaterThan(100);
+
+    const replanted = run(manual.ledger, { kind: "plant", slot: 0, seed: "carrot" });
+    if (!replanted.ok) throw new Error("replant failed");
+    const nextPlot = replanted.ledger.plots[0];
+    if (nextPlot === null || nextPlot === undefined) throw new Error("plot missing");
+    const auto = run(
+      replanted.ledger,
+      { kind: "harvest", slot: 0, tree: false, auto: true },
+      nextPlot.readyAt,
+    );
+    if (!auto.ok) throw new Error("auto harvest failed");
+    expect(auto.ledger.skills.farming).toEqual({ level: 0, xp: manualXp + 1 });
+  });
+
   it("plants a bagged seed and rolls the effect deterministically", () => {
     const planted = run(makeLedger(), { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.01);
     expect(planted.ok).toBe(true);

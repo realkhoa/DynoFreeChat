@@ -171,7 +171,7 @@ export function planBotActions(
   }
   ready.sort((left, right) => right.value - left.value);
   for (const entry of ready.slice(0, Math.max(0, limit - 6))) {
-    push({ kind: "harvest", slot: entry.slot, tree: entry.tree });
+    push({ kind: "harvest", slot: entry.slot, tree: entry.tree, auto: true });
   }
 
   if (ledger.bag.crops.length > 0) push({ kind: "sellAll" });

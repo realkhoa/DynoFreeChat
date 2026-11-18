@@ -9,6 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_SKILLS,
   CROPS_PER_TAB,
   EPOCH_MS,
   EVENT_WAVE_MS,
@@ -133,6 +134,7 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     warehouse: { level: 0, machines: {} },
     soil: new Array<number>(CROPS_PER_TAB).fill(100),
     extras: EXTRAS,
+    skills: DEFAULT_SKILLS,
     rev: 7,
     updatedAt: CLOCK,
     ...overrides,
@@ -157,6 +159,7 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     warehouse: { level: 0, machines: {} },
     soil: new Array<number>(CROPS_PER_TAB).fill(100),
     extras: EXTRAS,
+    skills: DEFAULT_SKILLS,
     updatedAt: CLOCK,
     lastSeen: CLOCK - 1_000,
     online: true,
@@ -335,7 +338,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    expect(host.querySelectorAll(".garden-tab")).toHaveLength(9);
+    expect(host.querySelectorAll(".garden-tab")).toHaveLength(10);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
@@ -811,6 +814,21 @@ describe("farm tab", () => {
     row?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "sellProduct")).toBe(true);
+  });
+});
+
+describe("levels tab", () => {
+  it("shows farming, ranching and artisaning bars", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:levels"]')?.click();
+    await settle();
+    const text = host.querySelector(".garden-levels")?.textContent ?? "";
+    expect(text).toContain("Farming");
+    expect(text).toContain("Ranching");
+    expect(text).toContain("Artisaning");
+    expect(text).toContain("Lv 0/10");
   });
 });
 

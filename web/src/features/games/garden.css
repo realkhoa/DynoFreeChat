@@ -987,3 +987,16 @@
 .garden-staff .stage-btn.is-empty {
   color: #6a9955;
 }
+
+/* Level tab: monospace XP bars, one block per skill. */
+.garden-levels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 2px;
+  font: 10px/16px var(--font-mono);
+}
+
+.garden-levels .garden-line {
+  white-space: pre;
+}
