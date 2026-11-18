@@ -58,9 +58,15 @@ interface BoardState {
 
 /** @brief One global market board (sell prices + purchase prices). */
 export class MarketBoard extends DurableObject<Env> {
+  private schemaReady = false;
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.ensureSchema();
+    try {
+      this.ensureSchema();
+    } catch {
+      // Write quota exhausted: existing tables still serve reads.
+    }
   }
 
   private get sql(): SqlStorage {
@@ -68,6 +74,8 @@ export class MarketBoard extends DurableObject<Env> {
   }
 
   private ensureSchema(): void {
+    if (this.schemaReady) return;
+    this.schemaReady = true;
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sales (
@@ -254,8 +262,12 @@ export class MarketBoard extends DurableObject<Env> {
       state = { cycle: fromCycle + 1, sell, buy };
     }
 
-    this.writeState(state);
-    this.sql.exec("DELETE FROM sales WHERE cycle < ?", current - 1);
+    try {
+      this.writeState(state);
+      this.sql.exec("DELETE FROM sales WHERE cycle < ?", current - 1);
+    } catch {
+      // Out of write quota: keep serving the in-memory snapshot.
+    }
     this.sql.exec("DELETE FROM purchases WHERE cycle < ?", current - 1);
   }
 }

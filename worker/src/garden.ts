@@ -24,6 +24,7 @@ import {
   applyBuyMarket,
   applyMarket,
   seasonAt,
+  type BagState,
   type CropStack,
   type GardenAction,
   type GardenSnapshot,
@@ -180,6 +181,66 @@ type TreeRow = SqlRow<{
 
 type BagRow = SqlRow<{ kind: string; item: string; qty: number }>;
 
+/** @brief Comparable signature of a live crop row. */
+function plotStateKey(plot: PlotState): string {
+  return [
+    plot.seed,
+    plot.plantedAt,
+    plot.readyAt,
+    JSON.stringify(plot.effects),
+    plot.watered ? 1 : 0,
+    plot.fertilized ? 1 : 0,
+    plot.harvests,
+    plot.fertilizer === null ? "" : JSON.stringify(plot.fertilizer),
+    plot.spray === null ? "" : JSON.stringify(plot.spray),
+  ].join("|");
+}
+
+/** @brief Comparable signature of a stored crop row. */
+function plotRowKey(row: PlotRow): string {
+  return [
+    row.seed,
+    row.planted_at,
+    row.ready_at,
+    row.effect ?? "",
+    row.watered,
+    row.fertilized,
+    row.harvests,
+    row.fertilizer ?? "",
+    row.spray ?? "",
+  ].join("|");
+}
+
+/** @brief Comparable signature of a live fruit row. */
+function treeStateKey(tree: TreeState): string {
+  return [
+    tree.tree,
+    tree.plantedAt,
+    tree.readyAt,
+    JSON.stringify(tree.effects),
+    tree.watered ? 1 : 0,
+    tree.fertilized ? 1 : 0,
+    tree.harvests,
+    tree.fertilizer === null ? "" : JSON.stringify(tree.fertilizer),
+    tree.spray === null ? "" : JSON.stringify(tree.spray),
+  ].join("|");
+}
+
+/** @brief Comparable signature of a stored fruit row. */
+function treeRowKey(row: TreeRow): string {
+  return [
+    row.tree,
+    row.planted_at,
+    row.ready_at,
+    row.effect ?? "",
+    row.watered,
+    row.fertilized,
+    row.harvests,
+    row.fertilizer ?? "",
+    row.spray ?? "",
+  ].join("|");
+}
+
 type VisitorRow = SqlRow<{
   player_id: string;
   nick: string;
@@ -193,7 +254,11 @@ type VisitorRow = SqlRow<{
 export class Garden extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.ensureSchema();
+    try {
+      this.ensureSchema();
+    } catch {
+      // Write quota exhausted: existing tables still serve reads.
+    }
   }
 
   private get sql(): SqlStorage {
@@ -395,18 +460,51 @@ export class Garden extends DurableObject<Env> {
     this.ctx.storage.transactionSync(() => this.writeRows(ledger));
   }
 
-  /** @brief Replaces the plot and bag rows of one ledger. */
-  private writeRows(ledger: GardenLedger): void {
-    const { plots, trees, bag, ...meta } = ledger;
+  /** @brief Writes only metadata; used by presence stamps without touching plants. */
+  private writeMeta(ledger: GardenLedger): void {
+    const { plots: _plots, trees: _trees, bag: _bag, ...meta } = ledger;
     this.sql.exec(
       "INSERT INTO meta (key, value) VALUES ('ledger', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       JSON.stringify(meta),
     );
-    this.sql.exec("DELETE FROM plots");
+  }
+
+  /**
+   * @brief Persists the ledger by diffing against the stored rows.
+   * @details Every Durable Object write counts against the daily row quota, so
+   * the old delete-all-and-reinsert strategy burned it on every action (and on
+   * every presence stamp). Only changed rows are written now.
+   */
+  private writeRows(ledger: GardenLedger): void {
+    this.writeMeta(ledger);
+    this.syncPlots(ledger.plots);
+    this.syncTrees(ledger.trees);
+    this.syncBag(ledger.bag);
+  }
+
+  /** @brief Writes only the crop rows that actually changed. */
+  private syncPlots(plots: readonly (PlotState | null)[]): void {
+    const stored = new Map<number, string>();
+    for (const row of this.sql.exec<PlotRow>("SELECT * FROM plots").toArray()) {
+      stored.set(row.slot, plotRowKey(row));
+    }
+    const desired = new Map<number, PlotState>();
     for (const plot of plots) {
-      if (plot === null) continue;
+      if (plot !== null) desired.set(plot.slot, plot);
+    }
+    for (const slot of stored.keys()) {
+      if (!desired.has(slot)) this.sql.exec("DELETE FROM plots WHERE slot = ?", slot);
+    }
+    for (const [slot, plot] of desired) {
+      const key = plotStateKey(plot);
+      if (stored.get(slot) === key) continue;
       this.sql.exec(
-        "INSERT INTO plots (slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        `INSERT INTO plots (slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(slot) DO UPDATE SET seed = excluded.seed, planted_at = excluded.planted_at,
+           ready_at = excluded.ready_at, effect = excluded.effect, watered = excluded.watered,
+           fertilized = excluded.fertilized, harvests = excluded.harvests,
+           fertilizer = excluded.fertilizer, spray = excluded.spray`,
         plot.slot,
         plot.seed,
         plot.plantedAt,
@@ -419,11 +517,31 @@ export class Garden extends DurableObject<Env> {
         plot.spray === null ? null : JSON.stringify(plot.spray),
       );
     }
-    this.sql.exec("DELETE FROM trees");
+  }
+
+  /** @brief Writes only the fruit rows that actually changed. */
+  private syncTrees(trees: readonly (TreeState | null)[]): void {
+    const stored = new Map<number, string>();
+    for (const row of this.sql.exec<TreeRow>("SELECT * FROM trees").toArray()) {
+      stored.set(row.slot, treeRowKey(row));
+    }
+    const desired = new Map<number, TreeState>();
     for (const tree of trees) {
-      if (tree === null) continue;
+      if (tree !== null) desired.set(tree.slot, tree);
+    }
+    for (const slot of stored.keys()) {
+      if (!desired.has(slot)) this.sql.exec("DELETE FROM trees WHERE slot = ?", slot);
+    }
+    for (const [slot, tree] of desired) {
+      const key = treeStateKey(tree);
+      if (stored.get(slot) === key) continue;
       this.sql.exec(
-        "INSERT INTO trees (slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        `INSERT INTO trees (slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(slot) DO UPDATE SET tree = excluded.tree, planted_at = excluded.planted_at,
+           ready_at = excluded.ready_at, effect = excluded.effect, watered = excluded.watered,
+           fertilized = excluded.fertilized, harvests = excluded.harvests,
+           fertilizer = excluded.fertilizer, spray = excluded.spray`,
         tree.slot,
         tree.tree,
         tree.plantedAt,
@@ -436,18 +554,38 @@ export class Garden extends DurableObject<Env> {
         tree.spray === null ? null : JSON.stringify(tree.spray),
       );
     }
-    this.sql.exec("DELETE FROM bag");
+  }
+
+  /** @brief Writes only the bag rows that actually changed. */
+  private syncBag(bag: BagState): void {
+    const stored = new Map<string, number>();
+    for (const row of this.sql.exec<BagRow>("SELECT kind, item, qty FROM bag").toArray()) {
+      stored.set(`${row.kind}:${row.item}`, row.qty);
+    }
+    const desired = new Map<string, number>();
     for (const [supply, qty] of Object.entries(bag.supplies)) {
-      if (qty === undefined || qty <= 0) continue;
-      this.sql.exec("INSERT INTO bag (kind, item, qty) VALUES ('supply', ?, ?)", supply, qty);
+      if (qty !== undefined && qty > 0) desired.set(`supply:${supply}`, qty);
     }
     for (const [seed, qty] of Object.entries(bag.seeds)) {
-      if (qty === undefined || qty <= 0) continue;
-      this.sql.exec("INSERT INTO bag (kind, item, qty) VALUES ('seed', ?, ?)", seed, qty);
+      if (qty !== undefined && qty > 0) desired.set(`seed:${seed}`, qty);
     }
-    for (const stack of bag.crops) {
-      const item = cropKey(stack.item, stack.effects);
-      this.sql.exec("INSERT INTO bag (kind, item, qty) VALUES ('crop', ?, ?)", item, stack.qty);
+    for (const stack of bag.crops) desired.set(`crop:${cropKey(stack.item, stack.effects)}`, stack.qty);
+
+    for (const [key, qty] of desired) {
+      if (stored.get(key) === qty) continue;
+      const [kind, ...rest] = key.split(":");
+      this.sql.exec(
+        `INSERT INTO bag (kind, item, qty) VALUES (?, ?, ?)
+         ON CONFLICT(kind, item) DO UPDATE SET qty = excluded.qty`,
+        kind ?? "",
+        rest.join(":"),
+        qty,
+      );
+    }
+    for (const key of stored.keys()) {
+      if (desired.has(key)) continue;
+      const [kind, ...rest] = key.split(":");
+      this.sql.exec("DELETE FROM bag WHERE kind = ? AND item = ?", kind ?? "", rest.join(":"));
     }
   }
 
@@ -551,9 +689,14 @@ export class Garden extends DurableObject<Env> {
     if (ledger === null) return this.unauthorized();
 
     const now = Date.now();
-    if (now - ledger.lastSeen > 10_000) {
+    if (now - ledger.lastSeen > 60_000) {
+      // Presence stamps must not rewrite every plant row: one meta row is enough.
       ledger.lastSeen = now;
-      this.write(ledger);
+      try {
+        this.writeMeta(ledger);
+      } catch {
+        // Out of write quota: a read must still succeed.
+      }
     }
     return json({
       state: ledgerSnapshot(ledger),
@@ -580,7 +723,16 @@ export class Garden extends DurableObject<Env> {
     if (!result.ok) return json({ code: result.code }, 400);
 
     this.write(result.ledger);
-    await this.publish(result.ledger);
+    // Leaderboard writes cost a row each: water/fertilize/spray never change the
+    // published numbers, so only publish when coins, tabs or harvest stats move.
+    if (
+      result.ledger.coins !== ledger.coins ||
+      result.ledger.tabs !== ledger.tabs ||
+      result.ledger.stats.earned !== ledger.stats.earned ||
+      result.ledger.stats.harvested !== ledger.stats.harvested
+    ) {
+      await this.publish(result.ledger);
+    }
     return json({
       state: ledgerSnapshot(result.ledger),
       season,

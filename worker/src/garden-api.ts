@@ -159,21 +159,29 @@ async function ownerResponse(
   if (context !== null && path === "/act" && typeof bought === "object" && bought !== null) {
     for (const [item, qty] of Object.entries(bought as Record<string, unknown>)) {
       if (typeof qty !== "number" || qty < 1) continue;
-      await context.stub.fetch("https://market/purchase", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ item, qty }),
-      });
+      try {
+        await context.stub.fetch("https://market/purchase", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ item, qty }),
+        });
+      } catch {
+        // Accounting must never fail the player's purchase.
+      }
     }
   }
   if (context !== null && path === "/act" && typeof sold === "object" && sold !== null) {
     for (const [item, qty] of Object.entries(sold as Record<string, unknown>)) {
       if (typeof qty !== "number" || qty < 1) continue;
-      await context.stub.fetch("https://market/record", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ item, qty }),
-      });
+      try {
+        await context.stub.fetch("https://market/record", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ item, qty }),
+        });
+      } catch {
+        // Accounting must never fail the player's sale.
+      }
     }
   }
   if (context !== null) payload.market = context.snapshot;

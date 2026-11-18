@@ -81,7 +81,11 @@ export class Registry extends DurableObject<Env> {
   }
 
   override async fetch(request: Request): Promise<Response> {
-    this.ensureSchema();
+    try {
+      this.ensureSchema();
+    } catch {
+      // Write quota exhausted: existing tables still serve reads.
+    }
     const url = new URL(request.url);
 
     if (request.method === "POST" && url.pathname === "/create") return this.create(request);
