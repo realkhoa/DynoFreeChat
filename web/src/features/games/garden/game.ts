@@ -1918,8 +1918,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(qtyRow);
     wrap.append(lineBlock(`// ${t("market.taxHint")}`));
 
-    const buyGrid = div("garden-buy-grid");
-    const buyables: Array<{
+    const makeBuyCard = (item: {
       act: "buy" | "buySupply" | "buyTool";
       key: string;
       name: string;
@@ -1928,9 +1927,29 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       stock: number | null;
       owned: number;
       data: Record<string, string>;
-    }> = [];
+    }): HTMLButtonElement => {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "garden-buy-card";
+      card.dataset.act = item.act;
+      for (const [key, value] of Object.entries(item.data)) card.dataset[key] = value;
+      card.title = `${item.name} · ${formatNumber(item.price)}c × ${buyQty} = ${formatNumber(item.price * buyQty)}c`;
+      card.append(
+        span("garden-buy-line is-glyph", item.glyph),
+        span("garden-buy-line", fitText(item.name, 9).trim()),
+        span("garden-buy-line is-price", `${formatNumber(item.price)}c`),
+        span("garden-buy-line", `x${buyQty}=${formatNumber(item.price * buyQty)}c`),
+        span(
+          "garden-buy-line is-stock",
+          `${t("market.stock")} ${item.stock === null ? "\u221e" : item.stock} · ${item.owned}`,
+        ),
+      );
+      return card;
+    };
+
+    const seedItems: Parameters<typeof makeBuyCard>[0][] = [];
     for (const offer of season.shop.offers) {
-      buyables.push({
+      seedItems.push({
         act: "buy",
         key: `seed:${offer.seed}`,
         name: seedName(offer.seed),
@@ -1941,9 +1960,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         data: { seed: offer.seed },
       });
     }
+    const supplyItems: Parameters<typeof makeBuyCard>[0][] = [];
     for (const supply of [...FERTILIZERS, ...SPRAYS]) {
       const supplyDef = [...FERTILIZERS, ...SPRAYS].find((entry) => entry.id === supply.id);
-      buyables.push({
+      supplyItems.push({
         act: "buySupply",
         key: `supply:${supply.id}`,
         name: t(`supplies.${supply.id}`),
@@ -1954,8 +1974,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         data: { supply: supply.id },
       });
     }
-    for (const offer of season?.shop.tools ?? []) {
-      buyables.push({
+    const toolItems: Parameters<typeof makeBuyCard>[0][] = [];
+    for (const offer of season.shop.tools) {
+      toolItems.push({
         act: "buyTool",
         key: `tool:${offer.tool}`,
         name: t(`tools.${offer.tool}`),
@@ -1966,28 +1987,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         data: { tool: offer.tool },
       });
     }
-    buyables.sort((left, right) => left.price - right.price);
-    for (const item of buyables) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "garden-buy-card";
-      card.dataset.act = item.act;
-      for (const [key, value] of Object.entries(item.data)) card.dataset[key] = value;
-      card.title = `${item.name} · ${formatNumber(item.price)}c × ${buyQty}`;
-      card.append(
-        span("garden-buy-line is-glyph", item.glyph),
-        span("garden-buy-line", fitText(item.name, 9).trim()),
-        span("garden-buy-line is-price", `${formatNumber(item.price)}c`),
-        span("garden-buy-line", `x${buyQty}=${formatNumber(item.price * buyQty)}c`),
-        span(
-          "garden-buy-line is-stock",
-          `${t("market.stock")} ${item.stock === null ? "∞" : item.stock} · ${item.owned}`,
-        ),
-      );
-      buyGrid.append(card);
-    }
-    wrap.append(lineBlock(`// ${t("market.buySection")}`), buyGrid);
-    if (buyables.length === 0) wrap.append(lineBlock(t("market.empty")));
+
+    const addBuySection = (items: Parameters<typeof makeBuyCard>[0][]): void => {
+      items.sort((left, right) => left.price - right.price);
+      const grid = div("garden-buy-grid");
+      for (const item of items) grid.append(makeBuyCard(item));
+      wrap.append(grid);
+    };
+
+    wrap.append(lineBlock(`// ${t("market.shop")} · ${t("market.sortAsc")}`));
+    addBuySection(seedItems);
+    wrap.append(lineBlock(`// ${t("market.supplies")} · ${t("market.sortAsc")}`));
+    addBuySection(supplyItems);
+    wrap.append(lineBlock(`// ${t("market.tools")}`));
+    if (toolItems.length === 0) wrap.append(lineBlock(t("market.toolsEmpty")));
+    else addBuySection(toolItems);
 
     const exchange = div("garden-market-panel");
     exchange.append(lineBlock(`// ${t("market.exchange")}`));

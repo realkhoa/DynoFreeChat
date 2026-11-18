@@ -791,6 +791,11 @@ describe("market tab", () => {
     await settle();
     const cards = host.querySelectorAll<HTMLButtonElement>(".garden-buy-card");
     expect(cards.length).toBe(SEASON.shop.offers.length + 7 + SEASON.shop.tools.length);
+    // Supplies and rare tools keep their own labelled sections.
+    expect(host.querySelectorAll('.garden-buy-card[data-act="buySupply"]')).toHaveLength(7);
+    if (SEASON.shop.tools.length === 0) {
+      expect(host.querySelector(".garden-market")?.textContent).toContain("không có công cụ hiếm");
+    }
     const seedCard = host.querySelector<HTMLButtonElement>('.garden-buy-card[data-act="buy"]');
     seedCard?.click();
     await settle();
