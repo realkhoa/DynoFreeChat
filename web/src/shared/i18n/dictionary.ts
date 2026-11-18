@@ -119,6 +119,7 @@ export const VI: Dictionary = {
   "garden.buyTab": "Mở rộng +81 ô: {cost}c",
   "garden.tabBought": "Đã mở tab {tab}",
   "garden.tabMax": "Đã mở tối đa 4 tab",
+  "garden.previewTabHint": "Tab này chưa mở — bấm nút Mở rộng +81 ô để mua tab mới.",
   "garden.marketReadonly": "Đang ghé thăm vườn người khác — chợ chỉ mở cho chủ vườn.",
 
   "seeds.carrot": "Cà rốt",
@@ -449,6 +450,7 @@ export const EN: Dictionary = {
   "garden.buyTab": "Expand +81 slots: {cost}c",
   "garden.tabBought": "Tab {tab} unlocked",
   "garden.tabMax": "All 4 tabs unlocked",
+  "garden.previewTabHint": "This tab is not open yet — use Expand +81 to buy it.",
   "garden.marketReadonly": "Visiting someone else's garden - the market is owner-only.",
 
   "seeds.carrot": "Carrot",

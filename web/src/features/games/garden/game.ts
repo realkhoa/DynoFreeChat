@@ -624,9 +624,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (state === null || season === null) return;
     const definition = [...FERTILIZERS, ...SPRAYS].find((entry) => entry.id === supply);
     if (definition === undefined) return;
-    const unit = buyPriceOf(supply, definition.price);
-    const affordable = Math.floor(state.coins / Math.max(1, unit));
-    const qty = Math.max(1, Math.min(buyQty, affordable));
+    const qty = buyQty;
     void runAction(
       { kind: "buySupply", supply, qty },
       t("garden.boughtSupply", { supply: t(`supplies.${supply}`) }),
@@ -1125,7 +1123,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     cell.dataset.act = "plot";
     cell.dataset.area = area;
     cell.dataset.slot = String(slot);
-    if (isPreviewPage()) cell.disabled = true;
     for (let index = 0; index < 6; index += 1) {
       const line = document.createElement("span");
       line.className = "garden-cell-line";
@@ -1820,7 +1817,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const owned = state.bag.supplies[supply.id] ?? 0;
       const row = rowButton(
         "garden-market-row",
-        `${fitText(t(`supplies.${supply.id}`), 14)}${fitText(`${buyPriceOf(supply.id, supply.price)}c`, 5)}${fitText(`${t("garden.bag")} ${owned}`, 8)}[${t("market.buy")}]`,
+        `${fitText(t(`supplies.${supply.id}`), 14)}${fitText(`${buyPriceOf(supply.id, supply.price)}c×${buyQty}=${buyPriceOf(supply.id, supply.price) * buyQty}c`, 12)}${fitText(`${t("garden.bag")} ${owned}`, 8)}[${t("market.buy")}]`,
         "buySupply",
       );
       row.dataset.supply = supply.id;
@@ -2201,6 +2198,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const slot = Number(target.dataset.slot);
         const area = target.dataset.area === "tree" ? "tree" : "crop";
         if (!Number.isInteger(slot)) return;
+        if (isPreviewPage()) {
+          message = { text: t("garden.previewTabHint"), kind: "info" };
+          render();
+          return;
+        }
         if (tool !== null && mode === "owner") {
           // Tool mode: one click uses the picked supply, no menu in the way.
           const plant = area === "tree" ? treeAt(slot) : plotAt(slot);

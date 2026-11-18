@@ -375,6 +375,11 @@ describe("garden tab", () => {
     const buy = host.querySelector<HTMLButtonElement>('[data-act="buyTab"]');
     expect(buy).not.toBeNull();
     expect(buy?.disabled).toBe(true);
+
+    // A preview cell explains the locked tab instead of opening a menu silently.
+    host.querySelector<HTMLButtonElement>('.garden-cell[data-area="crop"]')?.click();
+    await settle();
+    expect(host.querySelector(".stage-status")?.textContent).toContain("chưa mở");
   });
 
   it("offers bulk water and harvest with per-plant prices", async () => {
@@ -517,6 +522,23 @@ describe("garden tab", () => {
     await settle();
     const applied = api.calls.find((call) => call.action?.kind === "fertilize");
     expect(applied?.action).toMatchObject({ kind: "fertilize", supply: "compost" });
+  });
+
+  it("opens locked patches on the second tab", async () => {
+    const api = new FakeGardenApi(makeState({ tabs: 2, unlockedPatches: [1, 1], coins: 1_000_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="nextPage"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-page")?.textContent).toContain("2/3");
+    // Slot 81 is the first cell of tab 2, patch 2 is locked there.
+    host.querySelector<HTMLButtonElement>('.garden-cell[data-area="crop"][data-slot="90"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="menuBuyPatch"]')?.click();
+    await settle();
+    const bought = api.calls.find((call) => call.action?.kind === "buyPatch");
+    expect(bought?.action).toMatchObject({ kind: "buyPatch", tab: 1 });
   });
 
   it("offers to open the next locked 3x3 patch", async () => {
@@ -704,13 +726,14 @@ describe("market tab", () => {
     const stock = SEASON.shop.offers[0]?.stock ?? 1;
     expect(seedBuy?.action).toMatchObject({ kind: "buySeed", qty: Math.min(10, stock) });
 
-    host.querySelector<HTMLButtonElement>('[data-act="setBuyQty"][data-qty="25"]')?.click();
-    await settle();
-    host.querySelector<HTMLButtonElement>('[data-act="buySupply"]')?.click();
-    await settle();
-    const supplyBuy = api.calls.find((call) => call.action?.kind === "buySupply");
-    expect(supplyBuy?.action?.kind).toBe("buySupply");
-    expect((supplyBuy?.action as { qty?: number } | undefined)?.qty).toBe(25);
+    for (const qty of [25, 50]) {
+      host.querySelector<HTMLButtonElement>(`[data-act="setBuyQty"][data-qty="${qty}"]`)?.click();
+      await settle();
+      host.querySelector<HTMLButtonElement>('[data-act="buySupply"]')?.click();
+      await settle();
+      const supplyBuy = api.calls.filter((call) => call.action?.kind === "buySupply").at(-1);
+      expect((supplyBuy?.action as { qty?: number } | undefined)?.qty).toBe(qty);
+    }
   });
 });
 
