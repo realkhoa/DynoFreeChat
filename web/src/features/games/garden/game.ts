@@ -1345,8 +1345,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(span("garden-hint", t("garden.pickSeed", { slot: plotLabel(slot, "crop").plot })));
     for (const seed of SEEDS) {
       const offer = season?.shop.offers.find((entry) => entry.seed === seed.id);
-      const price = buyPriceOf(seed.id, offer?.price ?? seed.buy);
       const owned = state?.bag.seeds[seed.id] ?? 0;
+      // Event seeds only show when owned or actually in stock.
+      if (seed.rare === true && owned < 1 && offer === undefined) continue;
+      const price = buyPriceOf(seed.id, offer?.price ?? seed.buy);
       const row = document.createElement("button");
       row.type = "button";
       row.className = "garden-row";
@@ -1514,8 +1516,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       rows.append(menuRow(t("garden.menuBack"), "menuBack"));
       for (const seed of SEEDS) {
         const offer = season?.shop.offers.find((entry) => entry.seed === seed.id);
-        const price = buyPriceOf(seed.id, offer?.price ?? seed.buy);
         const owned = state?.bag.seeds[seed.id] ?? 0;
+        if (seed.rare === true && owned < 1 && offer === undefined) continue;
+        const price = buyPriceOf(seed.id, offer?.price ?? seed.buy);
         rows.append(
           menuRow(
             `${fitText(seedName(seed.id), 9)} ${fitText(`${price}c`, 5)} ${t("garden.bag")} ${owned}`,

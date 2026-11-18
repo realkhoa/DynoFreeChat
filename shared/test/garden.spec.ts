@@ -99,6 +99,16 @@ describe("garden catalog", () => {
       "watermelon",
       "pineapple",
       "pitcher",
+      "mushroom",
+      "rice",
+      "chili",
+      "eggplant",
+      "bamboo",
+      "cacao",
+      "dragonFruit",
+      "ginseng",
+      "moonflower",
+      "frostberry",
     ]);
     for (const seed of SEEDS) {
       expect(seed.art).toHaveLength(4);
@@ -216,6 +226,31 @@ function buildingUpgradeCostForTest(id: "coop" | "barn"): number {
   return BUILDINGS.find((building) => building.id === id)?.upgrade ?? 0;
 }
 
+describe("event seeds", () => {
+  it("appears in about one percent of restocks", () => {
+    let withEventSeed = 0;
+    const samples = 300;
+    for (let index = 0; index < samples; index += 1) {
+      const at = EPOCH_MS + (index + 1) * SHOP_RESTOCK_MS + 1_000;
+      if (
+        seasonAt(at).shop.offers.some((offer) => SEEDS.find((seed) => seed.id === offer.seed)?.rare === true)
+      ) {
+        withEventSeed += 1;
+      }
+    }
+    expect(withEventSeed / samples).toBeLessThan(0.05);
+  });
+
+  it("triples moonflower during golden hour", () => {
+    const golden = seasonAt(EPOCH_MS + 2 * EVENT_WAVE_MS + 1_000);
+    const calm = seasonAt(EPOCH_MS + 1_000);
+    expect(golden.events.some((event) => event.id === "goldenHour")).toBe(true);
+    const moon = { item: "moonflower" as const, effects: [], qty: 1 };
+    expect(cropSellPrice(moon, golden)).toBe(Math.round((golden.prices.moonflower ?? 0) * 3));
+    expect(cropSellPrice(moon, calm)).toBe(calm.prices.moonflower ?? 0);
+  });
+});
+
 describe("rare tools", () => {
   it("appears in fewer than twenty percent of restocks", () => {
     const restock = Math.floor((EPOCH_MS - EPOCH_MS) / SHOP_RESTOCK_MS);
@@ -327,12 +362,17 @@ describe("garden season", () => {
   it("rotates the seed shop on the restock cadence", () => {
     const a = seasonAt(NOW).shop;
     const b = seasonAt(NOW + SHOP_RESTOCK_MS).shop;
-    expect(a.offers).toHaveLength(SEEDS.length);
+    const normalSeeds = SEEDS.filter((seed) => seed.rare !== true).length;
+    expect(
+      a.offers.filter((offer) => SEEDS.find((seed) => seed.id === offer.seed)?.rare !== true),
+    ).toHaveLength(normalSeeds);
     expect(a.restockAt).toBeGreaterThan(NOW);
     expect(a.offers).not.toEqual(b.offers);
     for (const offer of a.offers) {
+      const seed = SEEDS.find((entry) => entry.id === offer.seed);
       expect(offer.price).toBeGreaterThanOrEqual(1);
-      expect(offer.stock).toBeGreaterThanOrEqual(2);
+      if (seed?.rare === true) expect(offer.stock).toBe(1);
+      else expect(offer.stock).toBeGreaterThanOrEqual(2);
     }
   });
 

@@ -115,7 +115,17 @@ export type SeedId =
   | "lavender"
   | "watermelon"
   | "pineapple"
-  | "pitcher";
+  | "pitcher"
+  | "mushroom"
+  | "rice"
+  | "chili"
+  | "eggplant"
+  | "bamboo"
+  | "cacao"
+  | "dragonFruit"
+  | "ginseng"
+  | "moonflower"
+  | "frostberry";
 
 /** Fruit tree ids shipped in this build. */
 export type TreeId = "apple" | "grape" | "orange" | "plum" | "apricot" | "coconut" | "elderberry";
@@ -153,6 +163,10 @@ export interface SeedDefinition {
   readonly sell: number;
   /** Whether the plant stays after a harvest and regrows its fruit. */
   readonly regrow: boolean;
+  /** Rare event seed: only sold when a restock roll hits. */
+  readonly rare?: boolean;
+  /** Extra sell multiplier while one of these events runs. */
+  readonly eventBonus?: { readonly events: readonly EventId[]; readonly multiplier: number };
   /** Glyphs for the four stages: seed, sprout, young, ripe. */
   readonly art: readonly [string, string, string, string];
 }
@@ -178,7 +192,41 @@ export const SEEDS: readonly SeedDefinition[] = [
   { id: "watermelon", growMs: 22 * 60_000, buy: 80, sell: 120, art: [".", "v", "Y", "w"], regrow: true },
   { id: "pineapple", growMs: 28 * 60_000, buy: 100, sell: 160, art: [".", "v", "Y", "i"], regrow: true },
   { id: "pitcher", growMs: 35 * 60_000, buy: 120, sell: 200, art: [".", "v", "Y", "&"], regrow: true },
+  // Late-game expansion: one-shot crops pay a higher margin, multi-harvest ones
+  // keep paying but sell less per cycle.
+  { id: "mushroom", growMs: 5 * 60_000, buy: 35, sell: 75, art: [".", "v", "Y", "m"], regrow: false },
+  { id: "rice", growMs: 8 * 60_000, buy: 25, sell: 55, art: [".", "v", "Y", "r"], regrow: false },
+  { id: "chili", growMs: 14 * 60_000, buy: 35, sell: 65, art: [".", "v", "Y", "j"], regrow: true },
+  { id: "eggplant", growMs: 18 * 60_000, buy: 75, sell: 175, art: [".", "v", "Y", "e"], regrow: false },
+  { id: "bamboo", growMs: 22 * 60_000, buy: 90, sell: 150, art: [".", "v", "Y", "t"], regrow: true },
+  { id: "cacao", growMs: 24 * 60_000, buy: 140, sell: 330, art: [".", "v", "Y", "k"], regrow: false },
+  { id: "dragonFruit", growMs: 32 * 60_000, buy: 180, sell: 300, art: [".", "v", "Y", "D"], regrow: true },
+  { id: "ginseng", growMs: 40 * 60_000, buy: 300, sell: 800, art: [".", "v", "Y", "g"], regrow: false },
+  // Event seeds: only 1% of restocks carry them; their price spikes with weather.
+  {
+    id: "moonflower",
+    growMs: 26 * 60_000,
+    buy: 200,
+    sell: 260,
+    art: [".", "v", "Y", "M"],
+    regrow: true,
+    rare: true,
+    eventBonus: { events: ["goldenHour"], multiplier: 3 },
+  },
+  {
+    id: "frostberry",
+    growMs: 24 * 60_000,
+    buy: 220,
+    sell: 300,
+    art: [".", "v", "Y", "B"],
+    regrow: false,
+    rare: true,
+    eventBonus: { events: ["frost", "snowfall"], multiplier: 2 },
+  },
 ];
+
+/** Chance an event seed shows up in a restock. */
+export const EVENT_SEED_CHANCE = 0.01;
 
 /** Multiplier-aware fertilizer ids. */
 export type FertilizerId = "compost" | "speedGrow" | "superGrow";
@@ -1465,11 +1513,18 @@ export function seasonAt(now: number): SeasonSnapshot {
     }
   }
 
-  const offers: ShopOffer[] = SEEDS.map((seed) => {
+  const eventSeedRng = createRng(hash32(`garden:eventSeeds:${restockWave}`));
+  const offers: ShopOffer[] = SEEDS.filter((seed) => seed.rare !== true).map((seed) => {
     const price = Math.max(1, Math.round(seed.buy * (0.85 + shopRng() * 0.3)));
     const stock = 2 + Math.floor(shopRng() * 9);
     return { seed: seed.id, price, stock };
   });
+  for (const seed of SEEDS) {
+    if (seed.rare !== true) continue;
+    if (eventSeedRng() < EVENT_SEED_CHANCE) {
+      offers.push({ seed: seed.id, price: seed.buy, stock: 1 });
+    }
+  }
 
   const priceRng = createRng(hash32(`garden:price:${restockWave}`));
   const prices = {} as Record<SeedId, number>;
@@ -1748,7 +1803,13 @@ export function cropSellPrice(stack: CropStack, season: SeasonSnapshot): number 
         ? 0
         : (season.fruitPrices[tree.id as TreeId] ?? 0)
       : (season.prices[seed.id] ?? 0);
-  return Math.round(base * multiplier);
+  // Event seeds are worth a lot more while their weather runs.
+  const active = new Set(season.events.map((event) => event.id));
+  const bonus =
+    seed?.eventBonus !== undefined && seed.eventBonus.events.some((id) => active.has(id))
+      ? seed.eventBonus.multiplier
+      : 1;
+  return Math.round(base * multiplier * bonus);
 }
 
 /** @brief Total value of every crop in a bag. */

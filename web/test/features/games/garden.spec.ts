@@ -327,7 +327,10 @@ describe("garden tab", () => {
     host.querySelector<HTMLButtonElement>('[data-act="menuViewSeed"]')?.click();
     await settle();
     const seeds = host.querySelectorAll<HTMLButtonElement>('[data-act="menuSeed"]');
-    expect(seeds).toHaveLength(SEEDS.length);
+    const visible = SEEDS.filter(
+      (seed) => seed.rare !== true || SEASON.shop.offers.some((offer) => offer.seed === seed.id),
+    );
+    expect(seeds).toHaveLength(visible.length);
 
     seeds[0]?.click();
     await settle();
@@ -719,7 +722,7 @@ describe("market tab", () => {
     await settle();
     const shopPanel = host.querySelectorAll<HTMLElement>(".garden-market-panel")[0];
     const rows = shopPanel?.querySelectorAll<HTMLButtonElement>(".garden-row") ?? [];
-    expect(rows).toHaveLength(SEEDS.length);
+    expect(rows).toHaveLength(SEASON.shop.offers.length);
 
     rows[0]?.click();
     await settle();
