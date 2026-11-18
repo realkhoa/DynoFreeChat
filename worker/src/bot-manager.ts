@@ -17,8 +17,11 @@ import type { SqlRow } from "./sql";
 import { MARKET_BOARD_NAME } from "./market-board";
 import { randomCode, randomRecoveryKey, sha256Hex } from "./secrets";
 
-/** How many bots exist right now. */
+/** How many generic bots exist. */
 export const BOT_COUNT = 50;
+
+/** One extra bot that only ever plants carrots. */
+export const CARROT_BOT_NICK = "Bot Cà Rốt";
 
 /** Bot gardens created at most per tick, keeping the first cron under limits. */
 const BOT_CREATE_BATCH = 10;
@@ -37,6 +40,8 @@ interface BotRecord {
   earned: number;
   harvested: number;
   bag?: number;
+  /** Set on the specialist: it only plants this crop. */
+  focus?: "carrot";
 }
 
 type MetaRow = SqlRow<{ value: string }>;
@@ -50,6 +55,7 @@ export interface BotSummary {
   earned: number;
   harvested: number;
   bag: number;
+  focus?: string;
   online: boolean;
 }
 
@@ -113,6 +119,7 @@ export class BotManager extends DurableObject<Env> {
       earned: bot.earned,
       harvested: bot.harvested,
       bag: bot.bag ?? 0,
+      focus: bot.focus,
       online: true,
     }));
   }
@@ -121,8 +128,10 @@ export class BotManager extends DurableObject<Env> {
   private async ensureBots(bots: BotRecord[]): Promise<BotRecord[]> {
     const colors = ["#4ec9b0", "#d7ba7d", "#9cdcfe", "#ce9178", "#c586c0", "#6fe3b5"];
     let created = 0;
-    while (bots.length < BOT_COUNT && created < BOT_CREATE_BATCH) {
+    let generic = bots.filter((bot) => bot.focus === undefined).length;
+    while (generic < BOT_COUNT && created < BOT_CREATE_BATCH) {
       created += 1;
+      generic += 1;
       const index = bots.length + 1;
       const nick = `Bot ${String(index).padStart(2, "0")}`;
       const playerId = crypto.randomUUID();
@@ -179,6 +188,60 @@ export class BotManager extends DurableObject<Env> {
       });
       this.writeBots(bots);
     }
+
+    // The carrot specialist: same pipeline, but its brain only plants carrots.
+    const hasCarrotBot = bots.some((bot) => bot.focus === "carrot");
+    if (!hasCarrotBot && bots.length >= BOT_COUNT && created < BOT_CREATE_BATCH) {
+      const playerId = crypto.randomUUID();
+      const code = randomCode(GARDEN_CODE_LENGTH).toUpperCase();
+      const recoveryHash = await sha256Hex(randomRecoveryKey());
+      const hub = this.env.GARDEN_HUB.get(this.env.GARDEN_HUB.idFromName(HUB_NAME));
+      const registered = await hub.fetch("https://hub/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          playerId,
+          code,
+          recoveryHash,
+          nick: CARROT_BOT_NICK,
+          color: "#e8a33d",
+          bot: true,
+          ip: "bot-carrot",
+          now: Date.now(),
+        }),
+      });
+      if (registered.ok) {
+        const garden = this.env.GARDEN.get(this.env.GARDEN.idFromName(playerId));
+        const registeredGarden = await garden.fetch("https://garden/register", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            playerId,
+            code,
+            recoveryHash,
+            nick: CARROT_BOT_NICK,
+            color: "#e8a33d",
+          }),
+        });
+        if (registeredGarden.ok) {
+          const payload = (await registeredGarden.json()) as { token?: string };
+          if (typeof payload.token === "string") {
+            bots.push({
+              playerId,
+              token: payload.token,
+              code,
+              nick: CARROT_BOT_NICK,
+              color: "#e8a33d",
+              coins: 0,
+              earned: 0,
+              harvested: 0,
+              focus: "carrot",
+            });
+            this.writeBots(bots);
+          }
+        }
+      }
+    }
     return bots;
   }
 
@@ -224,7 +287,7 @@ export class BotManager extends DurableObject<Env> {
         const response = await garden.fetch("https://garden/bot-tick", {
           method: "POST",
           headers,
-          body: JSON.stringify({}),
+          body: JSON.stringify({ focus: bot.focus }),
         });
         if (!response.ok) continue;
         const result = (await response.json()) as {

@@ -119,16 +119,22 @@ describe("global market", () => {
 });
 
 describe("bots", () => {
-  it("creates fifty bot gardens and keeps them out of the human leaderboard", async () => {
-    for (let round = 0; round < 5; round += 1) {
+  it("creates fifty bots plus the carrot specialist and keeps them out of the human leaderboard", async () => {
+    for (let round = 0; round < 6; round += 1) {
       const tick = await SELF.fetch(`${BASE}/api/garden/bots/tick`, { method: "POST" });
       expect(tick.status).toBe(200);
     }
 
     const list = await SELF.fetch(`${BASE}/api/garden/bots`);
-    const listed = (await list.json()) as { bots: Array<{ code: string; nick: string }> };
-    expect(listed.bots).toHaveLength(50);
-    for (const bot of listed.bots) expect(bot.nick).toMatch(/^Bot \d\d$/);
+    const listed = (await list.json()) as {
+      bots: Array<{ code: string; nick: string; focus?: string }>;
+    };
+    expect(listed.bots).toHaveLength(51);
+    expect(listed.bots.some((bot) => bot.nick === "Bot Cà Rốt" && bot.focus === "carrot")).toBe(true);
+    for (const bot of listed.bots) {
+      if (bot.focus === "carrot") expect(bot.nick).toBe("Bot Cà Rốt");
+      else expect(bot.nick).toMatch(/^Bot \d\d$/);
+    }
 
     const board = await SELF.fetch(`${BASE}/api/garden/leaderboard`);
     const ranked = (await board.json()) as { entries: Array<{ nick: string }> };

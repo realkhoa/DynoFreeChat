@@ -730,8 +730,11 @@ export class Garden extends DurableObject<Env> {
 
     const now = Date.now();
     const season = this.seasonFor(request, now);
+    const body = await readJson(request);
+    const focusRaw = typeof body.focus === "string" ? body.focus : undefined;
+    const focus = focusRaw === undefined ? undefined : (["carrot"] as const).find((id) => id === focusRaw);
     const rng = createRng(hash32(`bot:${ledger.playerId}:${Math.floor(now / 60_000)}`));
-    const actions = planBotActions(ledger, season, now, rng);
+    const actions = planBotActions(ledger, season, now, rng, BOT_ACTION_LIMIT, focus);
     if (actions.length === 0) return json({ ok: true, actions: 0, coins: ledger.coins });
 
     let current = ledger;

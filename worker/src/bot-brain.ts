@@ -34,9 +34,10 @@ function seedBuyPrice(seedId: SeedId, season: SeasonSnapshot): number {
 }
 
 /** @brief Best net coin-per-minute seed the bot can afford right now. */
-function bestSeed(ledger: GardenLedger, season: SeasonSnapshot): SeedId | null {
+function bestSeed(ledger: GardenLedger, season: SeasonSnapshot, focus?: SeedId): SeedId | null {
   let best: { id: SeedId; score: number } | null = null;
   for (const seed of SEEDS) {
+    if (focus !== undefined && seed.id !== focus) continue;
     const owned = ledger.bag.seeds[seed.id] ?? 0;
     const offer = season.shop.offers.find((entry) => entry.seed === seed.id);
     const stock = ledger.shopStock[seed.id] ?? offer?.stock ?? 0;
@@ -101,6 +102,7 @@ export function planBotActions(
   now: number,
   rng: () => number,
   limit = BOT_ACTION_LIMIT,
+  focus?: SeedId,
 ): GardenAction[] {
   const actions: GardenAction[] = [];
   const push = (action: GardenAction): void => {
@@ -138,7 +140,7 @@ export function planBotActions(
   let planted = 0;
   while (planted < 4) {
     const slot = freeCropSlot(ledger);
-    const seedId = bestSeed(ledger, season);
+    const seedId = bestSeed(ledger, season, focus);
     if (slot === null || seedId === null) break;
     const owned = ledger.bag.seeds[seedId] ?? 0;
     if (owned < 1) {
@@ -154,7 +156,7 @@ export function planBotActions(
   // A fruit tree when there is spare money; trees keep paying forever.
   const treeSlot = freeTreeSlot(ledger);
   const affordableTree = TREES.find((tree) => ledger.coins > tree.buy * 3);
-  if (treeSlot !== null && affordableTree !== undefined && rng() < 0.35) {
+  if (focus === undefined && treeSlot !== null && affordableTree !== undefined && rng() < 0.35) {
     push({ kind: "plantTree", slot: treeSlot, tree: affordableTree.id });
   }
 

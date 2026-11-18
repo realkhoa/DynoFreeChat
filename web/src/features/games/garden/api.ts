@@ -33,6 +33,8 @@ export interface GardenBot {
   readonly earned: number;
   readonly harvested: number;
   readonly online: boolean;
+  /** Carrot specialist marker. */
+  readonly focus?: string;
 }
 
 /** Credentials the browser keeps for this player. */

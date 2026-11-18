@@ -2053,7 +2053,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (const bot of botGardens) {
       const row = rowButton(
         "garden-bot-row",
-        `${fitText(bot.nick, 12)}${fitText(`#${bot.code}`, 10)}${fitText(`${formatNumber(bot.coins)}c`, 10)}${bot.online ? t("common.online") : t("common.offlineUser")}`,
+        `${fitText(bot.nick, 12)}${fitText(bot.focus === undefined ? "" : `[${t("bots.focusCarrot")}]`, 10)}${fitText(`#${bot.code}`, 10)}${fitText(`${formatNumber(bot.coins)}c`, 10)}`,
         "visitBot",
       );
       row.dataset.code = bot.code;
