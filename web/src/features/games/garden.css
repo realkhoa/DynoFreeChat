@@ -416,12 +416,17 @@
   color: #f48771;
 }
 
-/* Patch boundaries inside the 9x9 crop grid and the fruit strip. */
-.garden-crop-grid .garden-mini-cell:nth-child(3n),
-.garden-tree-grid .garden-mini-cell:nth-child(3n) {
+/* Patch boundaries inside the 9x9 crop grid and the vertical fruit stack. */
+.garden-crop-grid .garden-mini-cell:nth-child(3n) {
   margin-right: 5px;
 }
 
-.garden-crop-grid .garden-mini-row:nth-child(3n) {
+.garden-crop-grid .garden-mini-row:nth-child(3n),
+.garden-tree-grid .garden-mini-row:nth-child(3n) {
   margin-bottom: 5px;
+}
+
+/* Large cells keep their 10-column width; the fruit stack stays 3 columns wide. */
+.garden-tree-grid .garden-mini-row {
+  width: max-content;
 }

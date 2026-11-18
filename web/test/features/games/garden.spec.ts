@@ -247,13 +247,13 @@ describe("garden tab", () => {
     mounted.push(game);
 
     expect(host.querySelectorAll(".garden-tab")).toHaveLength(3);
-    expect(host.querySelectorAll(".garden-mini-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
-    expect(host.querySelectorAll(".garden-mini-cell.is-ready")).toHaveLength(1);
+    expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
+    expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
-    const readyCell = host.querySelector(".garden-mini-cell.is-ready");
+    const readyCell = host.querySelector(".garden-cell.is-ready");
     expect(readyCell?.classList.contains("is-golden")).toBe(true);
     expect(readyCell?.classList.contains("is-wet")).toBe(true);
-    host.querySelectorAll<HTMLButtonElement>(".garden-mini-cell")[0]?.click();
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
     await settle();
     const detail = host.querySelector(".garden-detail-text")?.textContent ?? "";
     expect(detail).toContain("Vàng x5");
@@ -268,7 +268,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    const cells = host.querySelectorAll<HTMLButtonElement>(".garden-mini-cell");
+    const cells = host.querySelectorAll<HTMLButtonElement>(".garden-cell");
     cells[1]?.click();
     await settle();
     const seeds = host.querySelectorAll<HTMLButtonElement>(".garden-seeds .garden-row");
@@ -287,7 +287,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    host.querySelectorAll<HTMLButtonElement>(".garden-mini-cell")[0]?.click();
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
     await settle();
     const harvest = host.querySelector<HTMLButtonElement>('[data-act="harvest"]');
     expect(harvest).not.toBeNull();
@@ -310,7 +310,7 @@ describe("garden tab", () => {
     next?.click();
     await settle();
     expect(host.querySelector(".garden-page")?.textContent).toContain("2/3");
-    const secondPageCells = host.querySelectorAll<HTMLElement>(".garden-mini-cell");
+    const secondPageCells = host.querySelectorAll<HTMLElement>(".garden-cell");
     expect(secondPageCells[0]?.dataset.slot).toBe(String(CROPS_PER_TAB));
     expect(secondPageCells[0]?.dataset.area).toBe("crop");
 
@@ -328,7 +328,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    const treeCell = host.querySelector<HTMLButtonElement>('.garden-mini-cell[data-area="tree"]');
+    const treeCell = host.querySelector<HTMLButtonElement>('.garden-cell[data-area="tree"]');
     expect(treeCell?.dataset.area).toBe("tree");
     treeCell?.click();
     await settle();
@@ -350,7 +350,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    host.querySelectorAll<HTMLButtonElement>(".garden-mini-cell")[0]?.click();
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
     await settle();
     host.querySelector<HTMLButtonElement>('[data-act="pickFertilize"]')?.click();
     await settle();
@@ -372,7 +372,7 @@ describe("garden tab", () => {
     mounted.push(game);
 
     expect(host.querySelector(".garden-page")?.textContent).toContain("2/3");
-    const selected = host.querySelector<HTMLElement>(".garden-mini-cell.is-selected");
+    const selected = host.querySelector<HTMLElement>(".garden-cell.is-selected");
     expect(selected?.dataset.area).toBe("tree");
     expect(selected?.dataset.slot).toBe("36");
     expect(host.querySelector(".garden-detail-text")?.textContent).toContain("Táo");
@@ -434,7 +434,7 @@ describe("visit mode", () => {
     mounted.push(game);
 
     expect(host.querySelector(".stage-status")?.textContent).toContain("Chế độ xem");
-    host.querySelectorAll<HTMLButtonElement>(".garden-mini-cell")[0]?.click();
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
     await settle();
     const water = host.querySelector<HTMLButtonElement>('[data-act="waterFriend"]');
     expect(water).not.toBeNull();

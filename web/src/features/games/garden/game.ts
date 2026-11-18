@@ -886,75 +886,55 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return `${t("garden.coins")} ${formatNumber(state.coins)} | ${t("garden.ready")} ${counts.ready} | ${t("garden.growing")} ${counts.growing} | ${t("garden.free")} ${counts.free}`;
   }
 
-  /** @brief Builds one compact (one-glyph) cell button. */
-  function buildMiniCell(slot: number, area: "crop" | "tree"): HTMLButtonElement {
+  /** @brief Builds one large cell (glyph, name, effect, countdown). */
+  function buildCell(slot: number, area: "crop" | "tree"): HTMLButtonElement {
     const cell = document.createElement("button");
     cell.type = "button";
-    cell.className = "garden-mini-cell";
+    cell.className = "garden-cell";
     cell.dataset.act = "plot";
     cell.dataset.area = area;
     cell.dataset.slot = String(slot);
     if (isPreviewPage()) cell.disabled = true;
-    syncMiniCell(cell, slot, area, now());
+    for (let index = 0; index < 6; index += 1) {
+      const line = document.createElement("span");
+      line.className = "garden-cell-line";
+      cell.append(line);
+    }
+    syncCell(cell, slot, area, now());
     return cell;
   }
 
-  /** @brief One glyph for a planted crop. */
-  function cropGlyph(plot: PlotState, at: number): string {
-    const view = plotView(plot, at);
-    return view.seed.art[view.stage] ?? ".";
-  }
-
-  /** @brief One glyph for a planted tree. */
-  function treeGlyph(tree: TreeState, at: number): string {
-    const view = treeById(tree.tree);
-    const ready = at >= tree.readyAt;
-    const progress = Math.min(
-      1,
-      Math.max(0, (at - tree.plantedAt) / Math.max(1, tree.readyAt - tree.plantedAt)),
-    );
-    const stage = ready ? 3 : Math.min(2, Math.floor(progress * 3));
-    return view?.art[stage] ?? ".";
-  }
-
-  /** @brief Repaints one compact crop or tree cell. */
-  function syncMiniCell(cell: HTMLButtonElement, slot: number, area: "crop" | "tree", at: number): void {
+  /** @brief Repaints one large crop or tree cell from the snapshot and clock. */
+  function syncCell(cell: HTMLButtonElement, slot: number, area: "crop" | "tree", at: number): void {
     const preview = isPreviewPage();
     const plot = preview || area === "tree" ? null : plotAt(slot);
     const tree = preview || area === "crop" ? null : treeAt(slot);
-    const plant = area === "tree" ? tree : plot;
-    const effects = plant?.effects ?? [];
-    const ready = plant !== null && at >= plant.readyAt;
-    const growing = plant !== null && at < plant.readyAt;
-    const progress =
-      plant === null
-        ? 0
-        : Math.min(1, Math.max(0, (at - plant.plantedAt) / Math.max(1, plant.readyAt - plant.plantedAt)));
-    const strongest = strongestEffect(effects);
-    let glyph = ".";
-    if (preview) glyph = "+";
-    else if (plot !== null) glyph = cropGlyph(plot, at);
-    else if (tree !== null) glyph = treeGlyph(tree, at);
-
-    cell.textContent = glyph;
-    cell.classList.toggle("is-ready", ready);
-    cell.classList.toggle("is-growing", growing);
-    cell.classList.toggle("is-empty", plant === null);
-    cell.classList.toggle("is-locked", preview);
+    const local = area === "crop" ? slot - cropOffset() : slot - treeOffset();
+    const render =
+      area === "tree"
+        ? treeCellRender(tree, at, preview ? 0 : null, local % PLOTS_PER_PATCH)
+        : cellRender(plot, at, preview ? 0 : null, local % PLOTS_PER_PATCH);
+    for (let index = 0; index < 6; index += 1) {
+      const line = cell.children.item(index);
+      if (line instanceof HTMLElement) line.textContent = render.lines[index] ?? "";
+    }
+    cell.classList.toggle("is-ready", render.ready);
+    cell.classList.toggle("is-growing", render.growing);
+    cell.classList.toggle("is-empty", render.empty);
+    cell.classList.toggle("is-locked", render.locked);
     cell.classList.toggle("is-selected", selectedSlot === slot && selectedArea === area);
+    const effects = (area === "tree" ? tree?.effects : plot?.effects) ?? [];
     for (const definition of EFFECTS)
       cell.classList.toggle(`is-${definition.id}`, effects.includes(definition.id));
-    cell.style.color = growing ? growthColor(progress) : "";
+    cell.style.color = render.growing ? growthColor(render.progress) : "";
     const label = plotLabel(slot, area);
     cell.setAttribute(
       "aria-label",
       `${t("garden.tab", { tab: page + 1 })} ${t(area === "tree" ? "garden.trees" : "garden.crops")} ${t("garden.patch", { patch: label.patch })} ${t("garden.plot", { slot: label.plot })}`,
     );
-    if (preview) cell.textContent = "+";
-    void strongest;
   }
 
-  /** @brief Builds the 9x9 crop grid: nine 3x3 patches. */
+  /** @brief Builds the 9x9 crop grid: nine 3x3 patches of large cells. */
   function buildCropBoard(): HTMLElement {
     const board = div("garden-crop-grid");
     for (let row = 0; row < 9; row += 1) {
@@ -962,22 +942,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       for (let col = 0; col < 9; col += 1) {
         const patch = Math.floor(row / 3) * 3 + Math.floor(col / 3);
         const plot = (row % 3) * 3 + (col % 3);
-        line.append(buildMiniCell(cropOffset() + patch * PLOTS_PER_PATCH + plot, "crop"));
+        line.append(buildCell(cropOffset() + patch * PLOTS_PER_PATCH + plot, "crop"));
       }
       board.append(line);
     }
     return board;
   }
 
-  /** @brief Builds the three fruit patches as one 3x9 strip. */
+  /** @brief Builds the three fruit patches stacked vertically: 3 columns, 9 rows. */
   function buildTreeBoard(): HTMLElement {
     const board = div("garden-tree-grid");
-    for (let row = 0; row < 3; row += 1) {
+    for (let row = 0; row < FRUIT_PATCHES_PER_TAB * 3; row += 1) {
       const line = div("garden-mini-row");
-      for (let col = 0; col < FRUIT_PATCHES_PER_TAB * 3; col += 1) {
-        const patch = Math.floor(col / 3);
-        const plot = row * 3 + (col % 3);
-        line.append(buildMiniCell(treeOffset() + patch * PLOTS_PER_PATCH + plot, "tree"));
+      const patch = Math.floor(row / 3);
+      for (let col = 0; col < 3; col += 1) {
+        const plot = (row % 3) * 3 + col;
+        line.append(buildCell(treeOffset() + patch * PLOTS_PER_PATCH + plot, "tree"));
       }
       board.append(line);
     }
@@ -1443,10 +1423,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function refreshTimers(): void {
     if (root === null) return;
     const at = now();
-    for (const cell of root.querySelectorAll<HTMLElement>(".garden-mini-cell[data-slot]")) {
+    for (const cell of root.querySelectorAll<HTMLElement>(".garden-cell[data-slot]")) {
       const slot = Number(cell.dataset.slot);
       const area = cell.dataset.area === "tree" ? "tree" : "crop";
-      if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncMiniCell(cell, slot, area, at);
+      if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncCell(cell, slot, area, at);
     }
     if (detailPre !== null) fillDetail(detailPre, at);
     const hud = root.querySelector<HTMLElement>(".stage-hud");
