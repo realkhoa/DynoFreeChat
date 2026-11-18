@@ -970,13 +970,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (tab === id) button.classList.add("is-active");
       bar.append(button);
     }
+    bar.append(span("garden-tabs-spacer", ""));
+    const balance = mode === "visit" ? visiting?.coins : state?.coins;
+    if (balance !== undefined) {
+      const chip = span("garden-balance", `$ ${formatNumber(balance)}c`);
+      chip.title = t("garden.balance");
+      chip.setAttribute("aria-label", `${t("garden.balance")}: ${formatNumber(balance)} coins`);
+      bar.append(chip);
+    }
     const code = currentCode();
     if (code !== null) {
-      bar.append(
-        span("garden-tabs-spacer", ""),
-        span("garden-code", `#${code}`),
-        actionButton(t("garden.copyLink"), "share"),
-      );
+      bar.append(span("garden-code", `#${code}`), actionButton(t("garden.copyLink"), "share"));
     }
     if (mode === "visit") bar.append(actionButton(t("garden.backHome"), "home"));
     return bar;
@@ -1016,11 +1020,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const at = now();
     if (mode === "visit" && visiting !== null) {
       const counts = gardenSummary(at);
-      return `${t("garden.visitTitle", { nick: visiting.nick })} | ${t("garden.coins")} ${formatNumber(visiting.coins)} | ${t("garden.ready")} ${counts.ready} | ${visiting.online ? t("common.online") : t("common.offlineUser")}`;
+      return `${t("garden.visitTitle", { nick: visiting.nick })} | ${t("garden.ready")} ${counts.ready} | ${visiting.online ? t("common.online") : t("common.offlineUser")}`;
     }
     if (state === null) return "";
     const counts = gardenSummary(at);
-    return `${t("garden.coins")} ${formatNumber(state.coins)} | ${t("garden.ready")} ${counts.ready} | ${t("garden.growing")} ${counts.growing} | ${t("garden.free")} ${counts.free}`;
+    return `${t("garden.ready")} ${counts.ready} | ${t("garden.growing")} ${counts.growing} | ${t("garden.free")} ${counts.free}`;
   }
 
   /** @brief Builds one large cell (glyph, name, effect, countdown). */
@@ -1389,6 +1393,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         `${t(menuState.area === "tree" ? "garden.trees" : "garden.crops")} · ${t("garden.patch", { patch: label.patch })} · ${t("garden.plot", { slot: label.plot })}`,
       ),
     );
+    const coins = mode === "visit" ? visiting?.coins : state?.coins;
+    if (coins !== undefined) head.append(span("garden-menu-balance", `$ ${formatNumber(coins)}c`));
     const close = document.createElement("button");
     close.type = "button";
     close.className = "garden-menu-close";

@@ -261,7 +261,9 @@ describe("garden tab", () => {
     expect(detail).toContain("Vàng x5");
     expect(detail).toContain("Ướt x2");
     expect(detail).toContain("x10");
-    expect(host.querySelector(".stage-hud")?.textContent).toContain("coin");
+    // The balance lives in its own bright chip, not buried in the comment HUD.
+    expect(host.querySelector(".garden-balance")?.textContent).toContain("42c");
+    expect(host.querySelector(".stage-hud")?.textContent).not.toContain("coin");
     expect(host.querySelector(".garden-code")?.textContent).toBe("#ABCDEF");
   });
 
@@ -463,12 +465,12 @@ describe("garden tab", () => {
     const api = new FakeGardenApi(makeState());
     const { host, game } = await mountGame(api);
     mounted.push(game);
-    expect(host.querySelector(".stage-hud")?.textContent).toContain("coin");
+    expect(host.querySelector(".garden-balance")?.textContent).toContain("$");
 
     setLocale("en");
     await settle();
-    expect(host.querySelector(".stage-hud")?.textContent).toContain("coins");
-    expect(host.querySelector(".stage-status")?.textContent).toContain("1-9");
+    expect(host.querySelector(".garden-balance")?.textContent).toContain("$");
+    expect(host.querySelector(".stage-status")?.textContent).toContain("Click");
   });
 });
 
