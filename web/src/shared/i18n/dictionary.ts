@@ -262,6 +262,7 @@ export const VI: Dictionary = {
 
   "market.title": "Chợ",
   "market.shop": "Hạt giống",
+  "market.buySection": "Mua — giá tăng dần",
   "market.exchange": "Bán nông sản",
   "market.restock": "Đổi hàng sau {time}",
   "market.price": "Giá",
@@ -657,6 +658,7 @@ export const EN: Dictionary = {
 
   "market.title": "Market",
   "market.shop": "Seeds",
+  "market.buySection": "Buy — cheapest first",
   "market.exchange": "Sell produce",
   "market.restock": "Restock in {time}",
   "market.price": "Price",

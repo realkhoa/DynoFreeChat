@@ -767,3 +767,63 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Buy section: every purchasable item is one small cell, like a garden plot,
+   laid out in a dense grid and sorted by price (cheapest first). */
+.garden-buy-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 2px 0 10px;
+  grid-column: 1 / -1;
+}
+
+.garden-buy-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  width: 88px;
+  padding: 3px 2px;
+  gap: 1px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: transparent;
+  color: #d4d4d4;
+  font: 9px/12px var(--font-mono);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.garden-buy-card:hover {
+  border-color: var(--accent);
+  background: var(--hover-row);
+  color: #ffffff;
+}
+
+.garden-buy-card:focus-visible {
+  outline: 1px solid var(--accent);
+}
+
+.garden-buy-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  text-align: center;
+}
+
+.garden-buy-line.is-glyph {
+  font-size: 12px;
+  line-height: 14px;
+  color: #ce9178;
+}
+
+.garden-buy-line.is-price {
+  color: #f0d58c;
+  font-weight: 700;
+}
+
+.garden-buy-line.is-stock {
+  color: #8a8a8a;
+  font-size: 8.5px;
+}

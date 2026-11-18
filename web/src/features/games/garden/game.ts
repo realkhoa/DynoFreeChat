@@ -1918,22 +1918,76 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(qtyRow);
     wrap.append(lineBlock(`// ${t("market.taxHint")}`));
 
-    const shop = div("garden-market-panel");
-    shop.append(
-      lineBlock(
-        `// ${t("market.shop")} — ${t("market.restock", { time: formatDuration(season.shop.restockAt - now()) })}`,
-      ),
-    );
+    const buyGrid = div("garden-buy-grid");
+    const buyables: Array<{
+      act: "buy" | "buySupply" | "buyTool";
+      key: string;
+      name: string;
+      glyph: string;
+      price: number;
+      stock: number | null;
+      owned: number;
+      data: Record<string, string>;
+    }> = [];
     for (const offer of season.shop.offers) {
-      const owned = state.bag.seeds[offer.seed] ?? 0;
-      const row = rowButton(
-        "garden-market-row",
-        `${fitText(seedName(offer.seed), 9)}${fitText(`${offer.price}c`, 5)}${fitText(`${t("market.stock")} ${offer.stock}`, 10)}${fitText(`${t("garden.bag")} ${owned}`, 8)}[${t("market.buy")}]`,
-        "buy",
-      );
-      row.dataset.seed = offer.seed;
-      shop.append(row);
+      buyables.push({
+        act: "buy",
+        key: `seed:${offer.seed}`,
+        name: seedName(offer.seed),
+        glyph: seedById(offer.seed)?.art[3] ?? "?",
+        price: buyPriceOf(offer.seed, offer.price),
+        stock: offer.stock,
+        owned: state.bag.seeds[offer.seed] ?? 0,
+        data: { seed: offer.seed },
+      });
     }
+    for (const supply of [...FERTILIZERS, ...SPRAYS]) {
+      const supplyDef = [...FERTILIZERS, ...SPRAYS].find((entry) => entry.id === supply.id);
+      buyables.push({
+        act: "buySupply",
+        key: `supply:${supply.id}`,
+        name: t(`supplies.${supply.id}`),
+        glyph: supplyDef !== undefined && "growMultiplier" in supplyDef ? "f" : "s",
+        price: buyPriceOf(supply.id, supplyDef?.price ?? 0),
+        stock: null,
+        owned: state.bag.supplies[supply.id] ?? 0,
+        data: { supply: supply.id },
+      });
+    }
+    for (const offer of season?.shop.tools ?? []) {
+      buyables.push({
+        act: "buyTool",
+        key: `tool:${offer.tool}`,
+        name: t(`tools.${offer.tool}`),
+        glyph: "w",
+        price: offer.price,
+        stock: offer.stock,
+        owned: state.bag.tools?.[offer.tool] ?? 0,
+        data: { tool: offer.tool },
+      });
+    }
+    buyables.sort((left, right) => left.price - right.price);
+    for (const item of buyables) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "garden-buy-card";
+      card.dataset.act = item.act;
+      for (const [key, value] of Object.entries(item.data)) card.dataset[key] = value;
+      card.title = `${item.name} · ${formatNumber(item.price)}c × ${buyQty}`;
+      card.append(
+        span("garden-buy-line is-glyph", item.glyph),
+        span("garden-buy-line", fitText(item.name, 9).trim()),
+        span("garden-buy-line is-price", `${formatNumber(item.price)}c`),
+        span("garden-buy-line", `x${buyQty}=${formatNumber(item.price * buyQty)}c`),
+        span(
+          "garden-buy-line is-stock",
+          `${t("market.stock")} ${item.stock === null ? "∞" : item.stock} · ${item.owned}`,
+        ),
+      );
+      buyGrid.append(card);
+    }
+    wrap.append(lineBlock(`// ${t("market.buySection")}`), buyGrid);
+    if (buyables.length === 0) wrap.append(lineBlock(t("market.empty")));
 
     const exchange = div("garden-market-panel");
     exchange.append(lineBlock(`// ${t("market.exchange")}`));
@@ -1959,35 +2013,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       exchange.append(actionButton(t("market.sellAllValue", { coins: total }), "sellAll"));
     }
 
-    const supplies = div("garden-market-panel");
-    supplies.append(lineBlock(`// ${t("market.supplies")}`));
-    const supplyCatalog = [...FERTILIZERS, ...SPRAYS];
-    for (const supply of supplyCatalog) {
-      const owned = state.bag.supplies[supply.id] ?? 0;
-      const row = rowButton(
-        "garden-market-row",
-        `${fitText(t(`supplies.${supply.id}`), 14)}${fitText(`${buyPriceOf(supply.id, supply.price)}c×${buyQty}=${buyPriceOf(supply.id, supply.price) * buyQty}c`, 12)}${fitText(`${t("garden.bag")} ${owned}`, 8)}[${t("market.buy")}]`,
-        "buySupply",
-      );
-      row.dataset.supply = supply.id;
-      supplies.append(row);
-    }
-
-    const tools = div("garden-market-panel");
-    tools.append(lineBlock(`// ${t("market.tools")}`));
-    const toolOffers = season?.shop.tools ?? [];
-    if (toolOffers.length === 0) tools.append(lineBlock(t("market.toolsEmpty")));
-    for (const offer of toolOffers) {
-      const owned = state?.bag.tools?.[offer.tool] ?? 0;
-      const row = rowButton(
-        "garden-market-row",
-        `${fitText(t(`tools.${offer.tool}`), 18)}${fitText(`${formatNumber(offer.price)}c`, 11)}${fitText(`${t("market.stock")} ${offer.stock}`, 8)}${fitText(`${t("garden.bag")} ${owned}`, 8)}[${t("market.buy")}]`,
-        "buyTool",
-      );
-      row.dataset.tool = offer.tool;
-      tools.append(row);
-    }
-
     const products = div("garden-market-panel");
     products.append(lineBlock(`// ${t("farm.products")}`));
     const stacks = state.bag.products ?? [];
@@ -2005,7 +2030,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     if (stacks.length > 0) products.append(actionButton(t("farm.sellAllProducts"), "sellAllProducts"));
 
-    wrap.append(shop, exchange, supplies, tools, products);
+    wrap.append(exchange, products);
     return wrap;
   }
 

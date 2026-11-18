@@ -407,7 +407,7 @@ describe("garden tab", () => {
     host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
     await settle();
     const row = host.querySelector<HTMLButtonElement>('[data-act="buyTool"]');
-    expect(row?.textContent).toContain("Máy tưới tự động");
+    expect(row?.getAttribute("title")).toContain("Máy tưới tự động");
     row?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "buyTool")).toBe(true);
@@ -789,11 +789,10 @@ describe("market tab", () => {
 
     host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
     await settle();
-    const shopPanel = host.querySelectorAll<HTMLElement>(".garden-market-panel")[0];
-    const rows = shopPanel?.querySelectorAll<HTMLButtonElement>(".garden-row") ?? [];
-    expect(rows).toHaveLength(SEASON.shop.offers.length);
-
-    rows[0]?.click();
+    const cards = host.querySelectorAll<HTMLButtonElement>(".garden-buy-card");
+    expect(cards.length).toBe(SEASON.shop.offers.length + 7 + SEASON.shop.tools.length);
+    const seedCard = host.querySelector<HTMLButtonElement>('.garden-buy-card[data-act="buy"]');
+    seedCard?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "buySeed")).toBe(true);
   });
@@ -807,10 +806,7 @@ describe("market tab", () => {
 
     host.querySelector<HTMLButtonElement>('[data-act="setBuyQty"][data-qty="10"]')?.click();
     await settle();
-    host
-      .querySelectorAll<HTMLButtonElement>(".garden-market-panel")[0]
-      ?.querySelectorAll<HTMLButtonElement>(".garden-row")[0]
-      ?.click();
+    host.querySelector<HTMLButtonElement>('.garden-buy-card[data-act="buy"]')?.click();
     await settle();
     const seedBuy = api.calls.find((call) => call.action?.kind === "buySeed");
     const stock = SEASON.shop.offers[0]?.stock ?? 1;
