@@ -120,7 +120,8 @@ describe("global market", () => {
 
 describe("market self-heal", () => {
   it("unsticks a future cycle index", async () => {
-    const market = env.MARKET.get(env.MARKET.idFromName("board"));
+    const bindings = env as unknown as import("../src/env").Env;
+    const market = bindings.MARKET.get(bindings.MARKET.idFromName("board"));
     await runInDurableObject(market, (_instance, state) => {
       const sql = state.storage.sql;
       sql.exec(
