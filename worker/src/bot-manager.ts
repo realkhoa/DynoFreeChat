@@ -33,6 +33,7 @@ interface BotRecord {
   coins: number;
   earned: number;
   harvested: number;
+  bag?: number;
 }
 
 type MetaRow = SqlRow<{ value: string }>;
@@ -45,6 +46,7 @@ export interface BotSummary {
   coins: number;
   earned: number;
   harvested: number;
+  bag: number;
   online: boolean;
 }
 
@@ -107,6 +109,7 @@ export class BotManager extends DurableObject<Env> {
       coins: bot.coins,
       earned: bot.earned,
       harvested: bot.harvested,
+      bag: bot.bag ?? 0,
       online: true,
     }));
   }
@@ -222,6 +225,7 @@ export class BotManager extends DurableObject<Env> {
           coins?: number;
           earned?: number;
           harvested?: number;
+          bag?: number;
           sold?: Record<string, number>;
           bought?: Record<string, number>;
         };
@@ -229,6 +233,7 @@ export class BotManager extends DurableObject<Env> {
         if (typeof result.coins === "number") bot.coins = result.coins;
         if (typeof result.earned === "number") bot.earned = result.earned;
         if (typeof result.harvested === "number") bot.harvested = result.harvested;
+        if (typeof result.bag === "number") bot.bag = result.bag;
 
         // Bot trades feed the same market board as real players.
         for (const [item, qty] of Object.entries(result.sold ?? {})) {

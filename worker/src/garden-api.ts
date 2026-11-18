@@ -425,5 +425,16 @@ async function cheerVisit(request: Request, env: Env, code: string): Promise<Res
 /** @brief Top gardens by earned coins. */
 async function leaderboard(env: Env, url: URL): Promise<Response> {
   const limit = url.searchParams.get("limit") ?? "20";
-  return hubStub(env).fetch(`https://hub/leaderboard?limit=${encodeURIComponent(limit)}`);
+  const [hubResponse, botsResponse] = await Promise.all([
+    hubStub(env).fetch(`https://hub/leaderboard?limit=${encodeURIComponent(limit)}`),
+    botManagerStub(env).fetch("https://bots/list"),
+  ]);
+  if (!hubResponse.ok) return hubResponse;
+  const payload = (await hubResponse.json()) as { entries?: Array<{ code: string }> };
+  const bots = (await botsResponse.json()) as { bots?: Array<{ code: string }> };
+  const botCodes = new Set((bots.bots ?? []).map((bot) => bot.code));
+  // The hub may still hold bot rows written before the bot flag existed, so the
+  // API filters by the BotManager registry as the source of truth.
+  payload.entries = (payload.entries ?? []).filter((entry) => !botCodes.has(entry.code));
+  return json(payload);
 }

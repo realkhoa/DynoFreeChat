@@ -704,6 +704,7 @@ export class Garden extends DurableObject<Env> {
       coins: current.coins,
       earned: current.stats.earned,
       harvested: current.stats.harvested,
+      bag: current.bag.crops.length,
       sold,
       bought,
     });
