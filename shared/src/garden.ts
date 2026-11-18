@@ -38,12 +38,6 @@ export const PATCH_BASE_PRICE = 5_000;
 /** Each further crop patch costs this multiple of the previous one. */
 export const PATCH_PRICE_FACTOR = 2;
 
-/** Price of the second tab, in coins. */
-export const TAB_BASE_PRICE = 25_000;
-
-/** Each further tab costs this multiple of the previous one. */
-export const TAB_PRICE_FACTOR = 3;
-
 /** Absolute crop ceiling; action parsing uses it before the state is known. */
 export const MAX_CROPS = CROPS_PER_TAB * MAX_TABS;
 
@@ -855,11 +849,13 @@ export function nextPatchPrice(unlockedPatches: number): number {
 
 /**
  * @brief Price of the next tab.
- * @param tabsOwned Tabs already owned; the first bought tab is number 2.
- * @details The ladder compounds: 25,000 -> 75,000 -> 225,000 -> ...
+ * @param _tabsOwned Tabs already owned; kept so callers stay unchanged.
+ * @details A tab is priced as its last (ninth) crop patch: that patch is bought
+ * once eight are open, so it costs 5,000 * 2^7 = 640,000 coins and every tab
+ * expansion uses the same price.
  */
-export function nextTabPrice(tabsOwned: number): number {
-  return Math.round(TAB_BASE_PRICE * TAB_PRICE_FACTOR ** Math.max(0, tabsOwned - 1));
+export function nextTabPrice(_tabsOwned: number): number {
+  return nextPatchPrice(CROP_PATCHES_PER_TAB - 1);
 }
 
 /** @brief Wraps a number into `0..modulus-1` for clock math around the epoch. */

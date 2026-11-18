@@ -10,8 +10,7 @@ import {
   ACTIONS_PER_MINUTE,
   EPOCH_MS,
   EVENT_WAVE_MS,
-  TAB_BASE_PRICE,
-  TAB_PRICE_FACTOR,
+  nextTabPrice,
   seasonAt as seasonFor,
   type GardenAction,
 } from "@dyno/shared/garden";
@@ -310,25 +309,26 @@ describe("garden ledger rules", () => {
   });
 
   it("buys the next tab at the compounding price", () => {
+    const tabCost = nextTabPrice(1);
     const ledger = makeLedger();
-    ledger.coins = 400_000;
+    ledger.coins = 1_500_000;
     const first = run(ledger, { kind: "buyTab" });
     expect(first.ok).toBe(true);
     if (!first.ok) return;
     expect(first.ledger.tabs).toBe(2);
     expect(first.ledger.plots).toHaveLength(162);
     expect(first.ledger.trees).toHaveLength(54);
-    expect(first.ledger.coins).toBe(400_000 - TAB_BASE_PRICE);
+    expect(first.ledger.coins).toBe(1_500_000 - tabCost);
 
     const second = run(first.ledger, { kind: "buyTab" });
     expect(second.ok).toBe(true);
     if (!second.ok) return;
     expect(second.ledger.tabs).toBe(3);
     expect(second.ledger.plots).toHaveLength(243);
-    expect(second.ledger.coins).toBe(400_000 - TAB_BASE_PRICE - TAB_BASE_PRICE * TAB_PRICE_FACTOR);
+    expect(second.ledger.coins).toBe(1_500_000 - tabCost * 2);
 
     const broke = makeLedger();
-    broke.coins = TAB_BASE_PRICE - 1;
+    broke.coins = tabCost - 1;
     expect(run(broke, { kind: "buyTab" })).toMatchObject({ ok: false, code: "NOT_ENOUGH_COINS" });
   });
 

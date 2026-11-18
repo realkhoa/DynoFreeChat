@@ -11,10 +11,9 @@ import {
   EVENTS,
   EVENT_WAVE_MS,
   GARDEN_AUTH_HEADER,
+  CROP_PATCHES_PER_TAB,
   CROPS_PER_TAB,
   MAX_TABS,
-  TAB_BASE_PRICE,
-  TAB_PRICE_FACTOR,
   TREES_PER_TAB,
   PLOTS_PER_PATCH,
   RECOVERY_RE,
@@ -49,6 +48,7 @@ import {
   marketCycleAt,
   marketCycleEndsAt,
   nextMarketMultiplier,
+  nextPatchPrice,
   nextTabPrice,
   sprayById,
   supplyById,
@@ -102,9 +102,10 @@ describe("garden catalog", () => {
   });
 
   it("prices each new tab on the compounding ladder", () => {
-    expect(nextTabPrice(1)).toBe(TAB_BASE_PRICE);
-    expect(nextTabPrice(2)).toBe(TAB_BASE_PRICE * TAB_PRICE_FACTOR);
-    expect(nextTabPrice(3)).toBe(TAB_BASE_PRICE * TAB_PRICE_FACTOR ** 2);
+    // A tab costs the last (ninth) 3x3 patch: 5,000 * 2^7 = 640,000.
+    expect(nextTabPrice(1)).toBe(640_000);
+    expect(nextTabPrice(2)).toBe(640_000);
+    expect(nextTabPrice(1)).toBe(nextPatchPrice(CROP_PATCHES_PER_TAB - 1));
   });
 
   it("marks reharvest plants apart from root crops", () => {
