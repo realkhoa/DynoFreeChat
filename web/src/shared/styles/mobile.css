@@ -1,0 +1,247 @@
+/* Phone layout: the desktop IDE shell is a fixed grid with several toolbars and
+   a wide game document. On a phone the game boards and the editor are wider than
+   the viewport, so this layer (imported last) turns the shell into a vertical,
+   scrollable layout and lets every wide surface pan instead of being clipped. */
+
+@media (max-width: 760px) {
+  .ide {
+    --menubar-h: 26px;
+    --stdbar-h: 30px;
+    --tabstrip-h: 30px;
+    --breadcrumb-h: 0px;
+    --statusbar-h: 26px;
+    --titlebar-h: 30px;
+  }
+
+  /* Top chrome: the menu and quick-launch rows scroll sideways instead of
+     overflowing the screen. */
+  .menubar,
+  .toolbar-standard,
+  .tabstrip {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .menubar::-webkit-scrollbar,
+  .toolbar-standard::-webkit-scrollbar,
+  .tabstrip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .menubar {
+    flex-wrap: nowrap;
+  }
+
+  .menu-trigger {
+    white-space: nowrap;
+  }
+
+  .breadcrumb {
+    display: none;
+  }
+
+  .titlebar-window,
+  .titlebar-menu {
+    display: none;
+  }
+
+  /* Editor surface: keep the document scrollable in both directions. */
+  .content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor,
+  .logwrap,
+  .game-stage-host {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Game document: the generated code frame may be wider than the phone. */
+  .stage-code-frame {
+    width: max-content;
+    min-width: 100%;
+    max-width: none;
+    padding: 0 4px;
+  }
+
+  .stage-code {
+    font-size: 8px;
+    line-height: 10px;
+  }
+
+  .stage-code-line {
+    min-height: 10px;
+  }
+
+  .game-stage-host {
+    padding: 0;
+  }
+
+  .stage-freeedit-area {
+    min-height: 96px;
+    height: 120px;
+    font-size: 10px;
+  }
+
+  /* Garden: boards pan horizontally and the tab strip + bulk rows scroll. */
+  .garden-garden,
+  .garden-layout,
+  .garden-boards,
+  .garden-tabs,
+  .garden-market,
+  .garden-farm,
+  .garden-rank,
+  .garden-chart {
+    max-width: 100%;
+  }
+
+  .garden-tabs,
+  .garden-bulk,
+  .garden-tools,
+  .garden-market-qty {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .garden-tabs::-webkit-scrollbar,
+  .garden-bulk::-webkit-scrollbar,
+  .garden-tools::-webkit-scrollbar,
+  .garden-market-qty::-webkit-scrollbar {
+    display: none;
+  }
+
+  .garden-tab,
+  .garden-code,
+  .garden-balance,
+  .garden-bulk .stage-btn,
+  .garden-tools .stage-btn {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .garden-layout {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .garden-boards {
+    display: flex;
+    flex-wrap: nowrap;
+    width: max-content;
+    gap: 8px;
+    padding-bottom: 6px;
+  }
+
+  .garden-cell {
+    font-size: 8px !important;
+  }
+
+  .garden-garden {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Context menu: never wider than the viewport and easier to tap. */
+  .garden-menu {
+    width: min(330px, calc(100vw - 16px));
+    max-height: 70vh;
+  }
+
+  .garden-menu-row {
+    padding: 7px 8px;
+    font-size: 11px;
+  }
+
+  .garden-row,
+  .garden-market-row,
+  .garden-bot-row,
+  .garden-rank-row,
+  .garden-chart-row {
+    font-size: 9.5px;
+  }
+
+  .garden-rank-row {
+    grid-template-columns: 32px minmax(110px, 1fr) 74px 74px 54px 48px;
+    gap: 5px;
+  }
+
+  /* Bottom dock/composer: taller touch target and safe-area padding. */
+  .dock-body {
+    height: 44px;
+    font-size: 14px;
+    padding: 0 8px;
+  }
+
+  .dock-head {
+    padding-left: 6px;
+  }
+
+  .dock-head-room {
+    max-width: 10ch;
+  }
+
+  .statusbar {
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .statusbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .statusitem {
+    flex: none;
+  }
+
+  .statusitem--update {
+    position: sticky;
+    right: 0;
+  }
+
+  /* Chat: comfortable wrapping and room for the composer. */
+  .log {
+    padding: 2px 6px;
+  }
+
+  .log-row {
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+
+  .log-text {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .composer-meter {
+    display: none;
+  }
+
+  /* iOS zooms into inputs below 16px, which hides the whole IDE; keep the
+     composer at 16px so focus does not trigger that zoom. */
+  .dock-body input {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  .titlebar-room,
+  .statusitem--nick {
+    display: none;
+  }
+
+  .garden-cell {
+    font-size: 7.5px !important;
+  }
+
+  .dock-body {
+    font-size: 13px;
+  }
+}
