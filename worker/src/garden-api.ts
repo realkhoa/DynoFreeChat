@@ -11,6 +11,7 @@
 import {
   GARDEN_AUTH_HEADER,
   GARDEN_CODE_LENGTH,
+  applyBuyMarket,
   applyMarket,
   isGardenCode,
   isRecoveryKey,
@@ -122,9 +123,11 @@ async function marketContext(env: Env): Promise<MarketContext | null> {
     const response = await stub.fetch("https://market/snapshot");
     if (!response.ok) return null;
     const snapshot = (await response.json()) as MarketSnapshot;
-    const multipliers: Record<string, number> = {};
-    for (const item of snapshot.items) multipliers[item.item] = item.multiplier;
-    return { snapshot, header: encodeURIComponent(JSON.stringify(multipliers)), stub };
+    const sell: Record<string, number> = {};
+    for (const item of snapshot.items) sell[item.item] = item.multiplier;
+    const buy: Record<string, number> = {};
+    for (const offer of snapshot.offers) buy[offer.item] = offer.multiplier;
+    return { snapshot, header: encodeURIComponent(JSON.stringify({ sell, buy })), stub };
   } catch {
     return null;
   }
@@ -152,6 +155,17 @@ async function ownerResponse(
 
   const payload = (await response.json()) as Record<string, unknown>;
   const sold = payload.sold;
+  const bought = payload.bought;
+  if (context !== null && path === "/act" && typeof bought === "object" && bought !== null) {
+    for (const [item, qty] of Object.entries(bought as Record<string, unknown>)) {
+      if (typeof qty !== "number" || qty < 1) continue;
+      await context.stub.fetch("https://market/purchase", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ item, qty }),
+      });
+    }
+  }
   if (context !== null && path === "/act" && typeof sold === "object" && sold !== null) {
     for (const [item, qty] of Object.entries(sold as Record<string, unknown>)) {
       if (typeof qty !== "number" || qty < 1) continue;
@@ -171,9 +185,11 @@ async function seasonRoute(env: Env, now: number): Promise<Response> {
   const context = await marketContext(env);
   let season = seasonAt(now);
   if (context !== null) {
-    const multipliers: Record<string, number> = {};
-    for (const item of context.snapshot.items) multipliers[item.item] = item.multiplier;
-    season = applyMarket(season, multipliers);
+    const sell: Record<string, number> = {};
+    for (const item of context.snapshot.items) sell[item.item] = item.multiplier;
+    const buy: Record<string, number> = {};
+    for (const offer of context.snapshot.offers) buy[offer.item] = offer.multiplier;
+    season = applyBuyMarket(applyMarket(season, sell), buy);
   }
   return json({ season, market: context?.snapshot ?? null, serverNow: now });
 }

@@ -128,6 +128,7 @@ const MARKET = {
   cycle: 5,
   nextCycleAt: CLOCK + 120_000,
   soldTarget: 25,
+  offers: [],
   items: [
     { item: "carrot" as const, base: 9, multiplier: 1.5, previous: 1, price: 14, sold: 3 },
     { item: "tomato" as const, base: 28, multiplier: 0.5, previous: 1, price: 14, sold: 40 },

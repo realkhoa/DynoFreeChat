@@ -21,6 +21,7 @@ import {
   parseGardenAction,
   cropKey,
   parseCropKey,
+  applyBuyMarket,
   applyMarket,
   seasonAt,
   type CropStack,
@@ -118,6 +119,13 @@ export function deriveUnlockedPatches(stored: unknown, plots: (PlotState | null)
     patches.push(open);
   }
   return patches;
+}
+
+/** @brief Units of each seed/supply one purchase action bought. */
+export function boughtDiff(action: GardenAction): Record<string, number> {
+  if (action.kind === "buySeed") return { [action.seed]: action.qty };
+  if (action.kind === "buySupply") return { [action.supply]: action.qty };
+  return {};
 }
 
 /**
@@ -515,12 +523,23 @@ export class Garden extends DurableObject<Env> {
     const raw = request.headers.get(MARKET_HEADER);
     if (raw === null) return season;
     try {
-      const multipliers = JSON.parse(decodeURIComponent(raw)) as Partial<Record<string, number>>;
-      const typed: Partial<Record<string, number>> = {};
-      for (const [item, value] of Object.entries(multipliers)) {
-        if (typeof value === "number" && Number.isFinite(value)) typed[item] = value;
-      }
-      return applyMarket(season, typed);
+      const payload = JSON.parse(decodeURIComponent(raw)) as {
+        sell?: Partial<Record<string, number>>;
+        buy?: Partial<Record<string, number>>;
+      };
+      const clean = (
+        source: Partial<Record<string, number>> | undefined,
+      ): Partial<Record<string, number>> => {
+        const typed: Partial<Record<string, number>> = {};
+        for (const [item, value] of Object.entries(source ?? {})) {
+          if (typeof value === "number" && Number.isFinite(value)) typed[item] = value;
+        }
+        return typed;
+      };
+      let adjusted = applyMarket(season, clean(payload.sell));
+      const buy = clean(payload.buy);
+      if (Object.keys(buy).length > 0) adjusted = applyBuyMarket(adjusted, buy);
+      return adjusted;
     } catch {
       return season;
     }
@@ -567,6 +586,7 @@ export class Garden extends DurableObject<Env> {
       season,
       serverNow: now,
       sold: soldDiff(ledger.bag.crops, result.ledger.bag.crops),
+      bought: boughtDiff(action),
     });
   }
 

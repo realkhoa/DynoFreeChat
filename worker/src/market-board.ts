@@ -1,27 +1,29 @@
 /**
  * @file market-board.ts
- * @brief Global market pressure: one row per sellable item, retuned every six minutes.
- * @details Sales are reported by the garden objects; at each cycle boundary the
- * board moves every multiplier from the previous cycle's volume (no sales raise
- * the price, heavy sales crash it, floored at 30% and capped at 600%). The
- * board is a singleton Durable Object, so every player sees the same prices.
+ * @brief Global market pressure for sell prices and for seed/supply purchases.
+ * @details One singleton Durable Object owns both boards. Every six minutes it
+ * reads the previous cycle: sell prices fall when supply arrives (harder above
+ * 25 units) and only rise after two empty cycles in a row; purchase prices rise
+ * when players buy in bulk and drift back toward the base when demand is quiet.
  */
 
 import { DurableObject } from "cloudflare:workers";
 import {
-  MARKET_CYCLE_MS,
   MARKET_SOLD_TARGET,
-  MARKET_MAX_MULTIPLIER,
-  MARKET_MIN_MULTIPLIER,
   itemById,
   marketBaseItems,
+  marketBuyBaseItems,
   marketCycleAt,
   marketCycleEndsAt,
-  nextMarketMultiplier,
+  nextBuyMultiplier,
+  nextSellState,
   seasonAt,
   type ItemId,
+  type MarketOfferItem,
   type MarketQuoteItem,
   type MarketSnapshot,
+  type SeedId,
+  type SupplyId,
 } from "@dyno/shared/garden";
 import type { Env } from "./env";
 import { json, readJson } from "./http";
@@ -32,19 +34,29 @@ export const MARKET_BOARD_NAME = "board";
 
 type MetaRow = SqlRow<{ value: string }>;
 
-type SaleRow = SqlRow<{ item: string; qty: number }>;
+type VolumeRow = SqlRow<{ item: string; qty: number }>;
+
+/** Sell-side state of one item. */
+interface SellState {
+  multiplier: number;
+  previous: number;
+  emptyCycles: number;
+}
+
+/** Buy-side state of one seed/supply. */
+interface BuyState {
+  multiplier: number;
+  previous: number;
+}
 
 /** Persisted board state. */
 interface BoardState {
-  /** Cycle the multipliers belong to. */
   cycle: number;
-  /** Current multiplier per item. */
-  multipliers: Record<string, number>;
-  /** Multipliers from the cycle before, for the trend arrow. */
-  previous: Record<string, number>;
+  sell: Record<string, SellState>;
+  buy: Record<string, BuyState>;
 }
 
-/** @brief One global market board. */
+/** @brief One global market board (sell prices + purchase prices). */
 export class MarketBoard extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -64,57 +76,77 @@ export class MarketBoard extends DurableObject<Env> {
         qty INTEGER NOT NULL,
         PRIMARY KEY (cycle, item)
       );
+      CREATE TABLE IF NOT EXISTS purchases (
+        cycle INTEGER NOT NULL,
+        item TEXT NOT NULL,
+        qty INTEGER NOT NULL,
+        PRIMARY KEY (cycle, item)
+      );
     `);
   }
 
   override async fetch(request: Request): Promise<Response> {
     this.ensureSchema();
     const url = new URL(request.url);
-    if (request.method === "POST" && url.pathname === "/record") return this.record(request);
+    if (request.method === "POST" && url.pathname === "/record") return this.record(request, "sales");
+    if (request.method === "POST" && url.pathname === "/purchase") return this.record(request, "purchases");
     if (request.method === "GET" && url.pathname === "/snapshot") return json(this.snapshot(Date.now()));
     return json({ code: "NOT_FOUND" }, 404);
   }
 
-  /** @brief Records sold units for the running cycle. */
-  private async record(request: Request): Promise<Response> {
+  /** @brief Records sold or bought units for the running cycle. */
+  private async record(request: Request, table: "sales" | "purchases"): Promise<Response> {
     const body = await readJson(request);
     const item = typeof body.item === "string" ? itemById(body.item) : undefined;
+    const supply =
+      typeof body.item === "string" ? marketBuyBaseItems().find((row) => row.item === body.item) : undefined;
+    const id = item?.id ?? supply?.item;
     const qty = typeof body.qty === "number" && Number.isFinite(body.qty) ? Math.floor(body.qty) : 0;
-    if (item === undefined || qty < 1 || qty > 999) return json({ code: "BAD_REQUEST" }, 400);
+    if (id === undefined || qty < 1 || qty > 999) return json({ code: "BAD_REQUEST" }, 400);
 
     const now = Date.now();
     this.roll(now);
     this.sql.exec(
-      "INSERT INTO sales (cycle, item, qty) VALUES (?, ?, ?) ON CONFLICT(cycle, item) DO UPDATE SET qty = qty + excluded.qty",
+      `INSERT INTO ${table} (cycle, item, qty) VALUES (?, ?, ?)
+       ON CONFLICT(cycle, item) DO UPDATE SET qty = qty + excluded.qty`,
       marketCycleAt(now),
-      item.id,
+      id,
       qty,
     );
     return json({ ok: true });
   }
 
-  /** @brief Builds the public market snapshot. */
+  /** @brief Builds the public snapshot with both boards. */
   private snapshot(now: number): MarketSnapshot {
     this.roll(now);
     const state = this.readState(now);
     const cycle = marketCycleAt(now);
     const season = seasonAt(now);
-    const sold = new Map<string, number>();
-    for (const row of this.sql
-      .exec<SaleRow>("SELECT item, qty FROM sales WHERE cycle = ?", cycle)
-      .toArray()) {
-      sold.set(row.item, row.qty);
-    }
+    const sold = this.volumes("sales", cycle);
+    const bought = this.volumes("purchases", cycle);
 
     const items: MarketQuoteItem[] = marketBaseItems(season).map(({ item, base }) => {
-      const multiplier = state.multipliers[item] ?? 1;
+      const entry = state.sell[item] ?? { multiplier: 1, previous: 1, emptyCycles: 0 };
       return {
         item,
         base,
-        multiplier,
-        previous: state.previous[item] ?? multiplier,
-        price: Math.max(1, Math.round(base * multiplier)),
+        multiplier: entry.multiplier,
+        previous: entry.previous,
+        price: Math.max(1, Math.round(base * entry.multiplier)),
         sold: sold.get(item) ?? 0,
+      };
+    });
+
+    const offers: MarketOfferItem[] = marketBuyBaseItems(season).map(({ item, kind, base }) => {
+      const entry = state.buy[item] ?? { multiplier: 1, previous: 1 };
+      return {
+        item,
+        kind,
+        base,
+        multiplier: entry.multiplier,
+        previous: entry.previous,
+        price: Math.max(1, Math.round(base * entry.multiplier)),
+        bought: bought.get(item) ?? 0,
       };
     });
 
@@ -123,38 +155,63 @@ export class MarketBoard extends DurableObject<Env> {
       nextCycleAt: marketCycleEndsAt(now),
       soldTarget: MARKET_SOLD_TARGET,
       items,
+      offers,
     };
   }
 
-  /** @brief Reads the persisted board state, initializing a fresh one. */
+  /** @brief Volume per item for one cycle and table. */
+  private volumes(table: "sales" | "purchases", cycle: number): Map<string, number> {
+    const volumes = new Map<string, number>();
+    for (const row of this.sql
+      .exec<VolumeRow>(`SELECT item, qty FROM ${table} WHERE cycle = ?`, cycle)
+      .toArray()) {
+      volumes.set(row.item, row.qty);
+    }
+    return volumes;
+  }
+
+  /** @brief Reads persisted state, migrating the first sell-only board shape. */
   private readState(now: number): BoardState {
     const row = this.sql.exec<MetaRow>("SELECT value FROM meta WHERE key = 'board'").toArray()[0];
     if (row === undefined) {
-      const fresh: BoardState = {
-        cycle: marketCycleAt(now),
-        multipliers: {},
-        previous: {},
-      };
-      for (const { item } of marketBaseItems(seasonAt(now))) {
-        fresh.multipliers[item] = 1;
-        fresh.previous[item] = 1;
-      }
+      const fresh = this.freshState(now);
       this.writeState(fresh);
       return fresh;
     }
     try {
-      const parsed = JSON.parse(row.value) as BoardState;
-      return {
-        cycle: typeof parsed.cycle === "number" ? parsed.cycle : marketCycleAt(now),
-        multipliers: parsed.multipliers ?? {},
-        previous: parsed.previous ?? {},
+      const parsed = JSON.parse(row.value) as Partial<BoardState> & {
+        multipliers?: Record<string, number>;
+        previous?: Record<string, number>;
       };
+      if (parsed.sell !== undefined && parsed.buy !== undefined) {
+        return { cycle: parsed.cycle ?? marketCycleAt(now), sell: parsed.sell, buy: parsed.buy };
+      }
+      // Old shape: only sell multipliers and their previous values.
+      const sell: Record<string, SellState> = {};
+      const seasonNow = seasonAt(now);
+      for (const { item } of marketBaseItems(seasonNow)) {
+        const multiplier = parsed.multipliers?.[item] ?? 1;
+        sell[item] = { multiplier, previous: parsed.previous?.[item] ?? multiplier, emptyCycles: 0 };
+      }
+      const buy: Record<string, BuyState> = {};
+      for (const { item } of marketBuyBaseItems(seasonNow)) buy[item] = { multiplier: 1, previous: 1 };
+      return { cycle: marketCycleAt(now), sell, buy };
     } catch {
-      return { cycle: marketCycleAt(now), multipliers: {}, previous: {} };
+      return this.freshState(now);
     }
   }
 
-  /** @brief Persists the board state. */
+  /** @brief Brand new board at base prices. */
+  private freshState(now: number): BoardState {
+    const sell: Record<string, SellState> = {};
+    for (const { item } of marketBaseItems(seasonAt(now))) {
+      sell[item] = { multiplier: 1, previous: 1, emptyCycles: 0 };
+    }
+    const buy: Record<string, BuyState> = {};
+    for (const { item } of marketBuyBaseItems(seasonAt(now))) buy[item] = { multiplier: 1, previous: 1 };
+    return { cycle: marketCycleAt(now), sell, buy };
+  }
+
   private writeState(state: BoardState): void {
     this.sql.exec(
       "INSERT INTO meta (key, value) VALUES ('board', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -162,45 +219,46 @@ export class MarketBoard extends DurableObject<Env> {
     );
   }
 
-  /**
-   * @brief Advances the board across every elapsed cycle.
-   * @param now Server clock.
-   * @details Skipped cycles count as empty (no sales) and raise prices, matching
-   * "nobody sells this crop" pressure.
-   */
+  /** @brief Advances both boards across every elapsed cycle. */
   private roll(now: number): void {
     const current = marketCycleAt(now);
     let state = this.readState(now);
     if (state.cycle >= current) return;
 
-    const catalog = marketBaseItems(seasonAt(now));
+    const sellCatalog = marketBaseItems(seasonAt(now));
+    const buyCatalog = marketBuyBaseItems(seasonAt(now));
     const steps = Math.min(50, current - state.cycle);
     for (let step = 0; step < steps; step += 1) {
       const fromCycle = current - steps + step;
-      const sold = new Map<string, number>();
-      for (const row of this.sql
-        .exec<SaleRow>("SELECT item, qty FROM sales WHERE cycle = ?", fromCycle)
-        .toArray()) {
-        sold.set(row.item, row.qty);
+      const sold = this.volumes("sales", fromCycle);
+      const bought = this.volumes("purchases", fromCycle);
+
+      const sell: Record<string, SellState> = {};
+      for (const { item } of sellCatalog) {
+        const entry = state.sell[item] ?? { multiplier: 1, previous: 1, emptyCycles: 0 };
+        const next = nextSellState(entry.multiplier, entry.emptyCycles, sold.get(item) ?? 0);
+        sell[item] = {
+          multiplier: next.multiplier,
+          previous: entry.multiplier,
+          emptyCycles: next.emptyCycles,
+        };
       }
-      const multipliers: Record<string, number> = {};
-      for (const { item } of catalog) {
-        multipliers[item] = nextMarketMultiplier(state.multipliers[item] ?? 1, sold.get(item) ?? 0);
+      const buy: Record<string, BuyState> = {};
+      for (const { item } of buyCatalog) {
+        const entry = state.buy[item] ?? { multiplier: 1, previous: 1 };
+        buy[item] = {
+          multiplier: nextBuyMultiplier(entry.multiplier, bought.get(item) ?? 0),
+          previous: entry.multiplier,
+        };
       }
-      state = { cycle: fromCycle + 1, multipliers, previous: state.multipliers };
+      state = { cycle: fromCycle + 1, sell, buy };
     }
 
     this.writeState(state);
-    // Keep only the two cycles the next boundary can still read.
     this.sql.exec("DELETE FROM sales WHERE cycle < ?", current - 1);
+    this.sql.exec("DELETE FROM purchases WHERE cycle < ?", current - 1);
   }
 }
 
-/** Kept for tests and configuration that need the cycle length. */
-export const MARKET_BOARD_CYCLE_MS = MARKET_CYCLE_MS;
-
-/** Multiplier bounds re-exported for the chart labels. */
-export const MARKET_BOARD_LIMITS = {
-  min: MARKET_MIN_MULTIPLIER,
-  max: MARKET_MAX_MULTIPLIER,
-} as const;
+/** Re-exported for tests and tools that need the ids. */
+export type BoardItem = ItemId | SeedId | SupplyId;

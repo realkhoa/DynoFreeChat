@@ -41,14 +41,18 @@ import {
   SPRAYS,
   TREES,
   fertilizerById,
+  MARKET_BUY_MAX,
   MARKET_MAX_MULTIPLIER,
   MARKET_MIN_MULTIPLIER,
+  applyBuyMarket,
   applyMarket,
   marketBaseItems,
+  marketBuyBaseItems,
   marketCycleAt,
   marketCycleEndsAt,
-  nextMarketMultiplier,
+  nextBuyMultiplier,
   nextPatchPrice,
+  nextSellState,
   nextTabPrice,
   sprayById,
   supplyById,
@@ -136,31 +140,53 @@ describe("garden catalog", () => {
 });
 
 describe("market pressure", () => {
-  it("moves the multiplier from one cycle of sales", () => {
-    expect(nextMarketMultiplier(1, 0)).toBeCloseTo(1.25);
-    expect(nextMarketMultiplier(1, 10)).toBeCloseTo(1.1);
-    expect(nextMarketMultiplier(1, 50)).toBeCloseTo(0.5);
-    expect(nextMarketMultiplier(1, 1_000)).toBeCloseTo(0.5);
+  it("keeps light supply unchanged and cuts heavier supply", () => {
+    expect(nextSellState(1, 0, 5)).toEqual({ multiplier: 1, emptyCycles: 0 });
+    expect(nextSellState(1, 0, 10).multiplier).toBeCloseTo(0.95);
+    expect(nextSellState(1, 0, 40).multiplier).toBeCloseTo(0.75);
   });
 
-  it("clamps the price between -70% and +500%", () => {
-    expect(nextMarketMultiplier(0.31, 1_000)).toBe(MARKET_MIN_MULTIPLIER);
-    expect(nextMarketMultiplier(0.3, 1_000)).toBe(MARKET_MIN_MULTIPLIER);
-    expect(nextMarketMultiplier(5.9, 0)).toBe(MARKET_MAX_MULTIPLIER);
+  it("raises sell prices only after two empty cycles in a row", () => {
+    const first = nextSellState(1, 0, 0);
+    expect(first).toEqual({ multiplier: 1, emptyCycles: 1 });
+    const second = nextSellState(first.multiplier, first.emptyCycles, 0);
+    expect(second).toEqual({ multiplier: 1, emptyCycles: 2 });
+    const third = nextSellState(second.multiplier, second.emptyCycles, 0);
+    expect(third.multiplier).toBeCloseTo(1.2);
+    expect(third.emptyCycles).toBe(3);
   });
 
-  it("applies pressure to seed and fruit prices", () => {
+  it("clamps sell multipliers between -70% and +500%", () => {
+    expect(nextSellState(0.31, 3, 40).multiplier).toBe(MARKET_MIN_MULTIPLIER);
+    expect(nextSellState(5.9, 3, 0).multiplier).toBe(MARKET_MAX_MULTIPLIER);
+  });
+
+  it("raises buy prices on volume and decays quietly back to base", () => {
+    expect(nextBuyMultiplier(1, 40)).toBeCloseTo(1.1);
+    expect(nextBuyMultiplier(1.1, 40)).toBeCloseTo(1.21);
+    expect(nextBuyMultiplier(1, 5)).toBe(1);
+    expect(nextBuyMultiplier(2, 5)).toBeCloseTo(1.9);
+    expect(nextBuyMultiplier(3, 40)).toBe(MARKET_BUY_MAX);
+  });
+
+  it("applies sell and buy pressure to a season", () => {
     const season = seasonAt(EPOCH_MS);
     const pressured = applyMarket(season, { carrot: 2, apple: 0.5 });
     expect(pressured.prices.carrot).toBe(Math.max(1, Math.round((season.prices.carrot ?? 0) * 2)));
     expect(pressured.fruitPrices.apple).toBe(Math.max(1, Math.round((season.fruitPrices.apple ?? 0) * 0.5)));
     expect(pressured.prices.tomato).toBe(season.prices.tomato);
+
+    const bases = marketBuyBaseItems(pressured);
+    const carrotBase = bases.find((row) => row.item === "carrot")?.base ?? 0;
+    const compostBase = bases.find((row) => row.item === "compost")?.base ?? 0;
+    const buying = applyBuyMarket(pressured, { carrot: 1.5, compost: 2 });
+    expect(buying.buyPrices?.carrot).toBe(Math.round(carrotBase * 1.5));
+    expect(buying.buyPrices?.compost).toBe(Math.round(compostBase * 2));
   });
 
-  it("lists every sellable item with its base price", () => {
-    const rows = marketBaseItems(seasonAt(EPOCH_MS));
-    expect(rows).toHaveLength(SEEDS.length + TREES.length);
-    expect(rows.find((row) => row.item === "carrot")?.base).toBeGreaterThan(0);
+  it("lists every sellable and buyable item with a base price", () => {
+    expect(marketBaseItems(seasonAt(EPOCH_MS))).toHaveLength(SEEDS.length + TREES.length);
+    expect(marketBuyBaseItems(seasonAt(EPOCH_MS))).toHaveLength(SEEDS.length + 7);
   });
 
   it("uses six-minute aligned cycles", () => {

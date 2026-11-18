@@ -264,7 +264,7 @@ export function applyGardenAction(
     case "buySeed":
       return buySeed(ledger, action.seed, action.qty, season, now);
     case "buySupply":
-      return buySupply(ledger, action.supply, action.qty, now);
+      return buySupply(ledger, action.supply, action.qty, season, now);
     case "sellCrop":
       return sellCrop(ledger, action.item, action.effects, action.qty, season, now);
     case "sellAll":
@@ -497,10 +497,16 @@ function spray(ledger: GardenLedger, slot: number, supply: SprayId, now: number,
 }
 
 /** @brief Buys fertilizers or sprays at their fixed price. */
-function buySupply(ledger: GardenLedger, supply: SupplyId, qty: number, now: number): RuleResult {
+function buySupply(
+  ledger: GardenLedger,
+  supply: SupplyId,
+  qty: number,
+  season: SeasonSnapshot,
+  now: number,
+): RuleResult {
   const definition = fertilizerById(supply) ?? sprayById(supply);
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
-  const total = definition.price * qty;
+  const total = (season.buyPrices?.[supply] ?? definition.price) * qty;
   if (ledger.coins < total) return { ok: false, code: "NOT_ENOUGH_COINS" };
 
   const next = clone(ledger);
@@ -669,7 +675,9 @@ function buySeed(
   const stock = next.shopStock[seed.id] ?? offer.stock;
   if (stock < qty) return { ok: false, code: "SHOP_SOLD_OUT" };
 
-  const total = offer.price * qty;
+  // Market pressure can raise the seed price above the rotation offer.
+  const unit = season.buyPrices?.[seed.id] ?? offer.price;
+  const total = unit * qty;
   if (next.coins < total) return { ok: false, code: "NOT_ENOUGH_COINS" };
 
   next.coins -= total;

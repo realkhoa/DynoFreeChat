@@ -233,6 +233,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return t(`trees.${id}.short`);
   }
 
+  /** @brief Market-adjusted purchase price for a seed or supply. */
+  function buyPriceOf(item: string, base: number): number {
+    return season?.buyPrices?.[item] ?? base;
+  }
+
   /** @brief Localized full name of any bag item. */
   function itemName(id: ItemId): string {
     return seedById(id) === undefined ? t(`trees.${id}`) : t(`seeds.${id}`);
@@ -1279,7 +1284,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(span("garden-hint", t("garden.pickSeed", { slot: plotLabel(slot, "crop").plot })));
     for (const seed of SEEDS) {
       const offer = season?.shop.offers.find((entry) => entry.seed === seed.id);
-      const price = offer?.price ?? seed.buy;
+      const price = buyPriceOf(seed.id, offer?.price ?? seed.buy);
       const owned = state?.bag.seeds[seed.id] ?? 0;
       const row = document.createElement("button");
       row.type = "button";
@@ -1333,7 +1338,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         "growMultiplier" in supply
           ? `x${supply.growMultiplier} · ${supply.harvests}`
           : `+mut · ${supply.harvests}`;
-      row.textContent = `${fitText(t(`supplies.${supply.id}`), 14)}${fitText(`${owned}`, 3)}${fitText(`${supply.price}c`, 5)}${detail}`;
+      row.textContent = `${fitText(t(`supplies.${supply.id}`), 14)}${fitText(`${owned}`, 3)}${fitText(`${buyPriceOf(supply.id, supply.price)}c`, 5)}${detail}`;
       wrap.append(row);
     }
     return wrap;
@@ -1448,7 +1453,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       rows.append(menuRow(t("garden.menuBack"), "menuBack"));
       for (const seed of SEEDS) {
         const offer = season?.shop.offers.find((entry) => entry.seed === seed.id);
-        const price = offer?.price ?? seed.buy;
+        const price = buyPriceOf(seed.id, offer?.price ?? seed.buy);
         const owned = state?.bag.seeds[seed.id] ?? 0;
         rows.append(
           menuRow(
@@ -1477,7 +1482,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const owned = state?.bag.supplies[supply.id] ?? 0;
         rows.append(
           menuRow(
-            `${fitText(t(`supplies.${supply.id}`), 14)} ${t("garden.bag")} ${owned} · ${supply.price}c`,
+            `${fitText(t(`supplies.${supply.id}`), 14)} ${t("garden.bag")} ${owned} · ${buyPriceOf(supply.id, supply.price)}c`,
             act,
             { data: { supply: supply.id }, disabled: owned < 1 },
           ),
@@ -1610,7 +1615,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const owned = state.bag.supplies[supply.id] ?? 0;
       const row = rowButton(
         "garden-market-row",
-        `${fitText(t(`supplies.${supply.id}`), 14)}${fitText(`${supply.price}c`, 5)}${fitText(`${t("garden.bag")} ${owned}`, 8)}[${t("market.buy")}]`,
+        `${fitText(t(`supplies.${supply.id}`), 14)}${fitText(`${buyPriceOf(supply.id, supply.price)}c`, 5)}${fitText(`${t("garden.bag")} ${owned}`, 8)}[${t("market.buy")}]`,
         "buySupply",
       );
       row.dataset.supply = supply.id;
@@ -1675,6 +1680,28 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         span("garden-chart-sold", `${t("chart.sold")} ${item.sold}/${chartMarket.soldTarget}`),
       );
       wrap.append(row);
+    }
+    if (chartMarket.offers.length > 0) {
+      wrap.append(span("garden-chart-section", `// ${t("chart.buy")}`));
+      const offers = [...chartMarket.offers].sort((left, right) => right.multiplier - left.multiplier);
+      for (const offer of offers) {
+        const row = div("garden-chart-row is-buy");
+        const change = offer.previous === 0 ? 0 : (offer.multiplier / offer.previous - 1) * 100;
+        const isUp = offer.multiplier > offer.previous;
+        row.classList.add(isUp ? "is-up" : offer.multiplier < offer.previous ? "is-down" : "is-flat");
+        const name = offer.kind === "seed" ? seedName(offer.item as SeedId) : t(`supplies.${offer.item}`);
+        row.append(
+          span("garden-chart-name", name),
+          span("garden-chart-price", `${formatNumber(offer.price)}c`),
+          span("garden-chart-mult", `x${offer.multiplier.toFixed(2)}`),
+          span(
+            "garden-chart-trend",
+            `${isUp ? "^" : offer.multiplier < offer.previous ? "v" : "-"} ${change >= 0 ? "+" : ""}${change.toFixed(0)}%`,
+          ),
+          span("garden-chart-sold", `${t("chart.bought")} ${offer.bought}/${chartMarket.soldTarget}`),
+        );
+        wrap.append(row);
+      }
     }
     return wrap;
   }

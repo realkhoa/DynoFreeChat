@@ -522,6 +522,30 @@ export const MARKET_CYCLE_MS = 6 * 60_000;
 /** Units sold in a cycle that the market treats as "normal" demand. */
 export const MARKET_SOLD_TARGET = 25;
 
+/** Below this many units sold, the sell price stays unchanged. */
+export const MARKET_LOW_VOLUME = 10;
+
+/** Consecutive empty cycles before an unsold item starts gaining value. */
+export const MARKET_EMPTY_CYCLES = 2;
+
+/** Sell-price step when 10..25 units are sold. */
+export const MARKET_SELL_LIGHT_STEP = 0.95;
+
+/** Sell-price step when more than 25 units are sold. */
+export const MARKET_SELL_HEAVY_STEP = 0.75;
+
+/** Sell-price step once an item has been unsold for more than two cycles. */
+export const MARKET_SELL_RISE_STEP = 1.2;
+
+/** Purchase-price step when a seed/supply is bought in volume. */
+export const MARKET_BUY_RISE_STEP = 1.1;
+
+/** Purchase-price decay toward the base when buying slows down. */
+export const MARKET_BUY_DECAY = 0.9;
+
+/** Ceiling for purchase prices: at most 3x the base. */
+export const MARKET_BUY_MAX = 3;
+
 /** Floor for a crashed price: the base can lose at most 70%. */
 export const MARKET_MIN_MULTIPLIER = 0.3;
 
@@ -544,6 +568,24 @@ export interface MarketQuoteItem {
   readonly sold: number;
 }
 
+/** One buyable row (seed or supply) of the live market board. */
+export interface MarketOfferItem {
+  /** Seed or supply id. */
+  readonly item: SeedId | SupplyId;
+  /** Whether this row is a seed or a supply. */
+  readonly kind: "seed" | "supply";
+  /** Base purchase price before market pressure. */
+  readonly base: number;
+  /** Current purchase multiplier, never below 1. */
+  readonly multiplier: number;
+  /** Previous cycle multiplier, for the trend arrow. */
+  readonly previous: number;
+  /** Effective purchase price. */
+  readonly price: number;
+  /** Units bought in the running cycle. */
+  readonly bought: number;
+}
+
 /** Global market pressure snapshot. */
 export interface MarketSnapshot {
   /** Running market cycle index. */
@@ -554,6 +596,8 @@ export interface MarketSnapshot {
   readonly soldTarget: number;
   /** One row per sellable item. */
   readonly items: readonly MarketQuoteItem[];
+  /** Purchase rows for seeds and supplies. */
+  readonly offers: readonly MarketOfferItem[];
 }
 
 /** @brief Market cycle index for one server time. */
@@ -567,19 +611,77 @@ export function marketCycleEndsAt(now: number): number {
 }
 
 /**
- * @brief Computes the next multiplier from one cycle of sales.
+ * @brief Next sell-side state from one cycle of sales.
  * @param previous Current multiplier (clamped 0.3..6).
+ * @param emptyCycles Consecutive cycles with no sales so far.
  * @param sold Units sold during the cycle.
- * @details No sales raise the price 25%; light sales raise it 10%; heavy sales
- * cut it proportionally, never below 30% of base or above 600%.
+ * @details Any supply pushes the price down (light under 25, heavy over 25);
+ * under ten units it stays put. Only the third empty cycle in a row starts
+ * raising it, 20% per cycle.
  */
-export function nextMarketMultiplier(previous: number, sold: number): number {
+export function nextSellState(
+  previous: number,
+  emptyCycles: number,
+  sold: number,
+): { multiplier: number; emptyCycles: number } {
   const clamp = (value: number): number =>
     Math.min(MARKET_MAX_MULTIPLIER, Math.max(MARKET_MIN_MULTIPLIER, value));
-  if (sold <= 0) return clamp(previous * 1.25);
-  if (sold < MARKET_SOLD_TARGET) return clamp(previous * 1.1);
-  const ratio = MARKET_SOLD_TARGET / sold;
-  return clamp(previous * Math.max(0.5, ratio));
+  if (sold <= 0) {
+    const nextEmpty = emptyCycles + 1;
+    const multiplier = nextEmpty > MARKET_EMPTY_CYCLES ? clamp(previous * MARKET_SELL_RISE_STEP) : previous;
+    return { multiplier, emptyCycles: nextEmpty };
+  }
+  const step =
+    sold > MARKET_SOLD_TARGET
+      ? MARKET_SELL_HEAVY_STEP
+      : sold >= MARKET_LOW_VOLUME
+        ? MARKET_SELL_LIGHT_STEP
+        : 1;
+  return { multiplier: clamp(previous * step), emptyCycles: 0 };
+}
+
+/**
+ * @brief Next purchase multiplier from one cycle of buys.
+ * @param previous Current multiplier (1..3).
+ * @param bought Units bought during the cycle.
+ * @details High demand raises the price 10%; quiet demand decays it 10% back
+ * toward the base. It never falls below the base price.
+ */
+export function nextBuyMultiplier(previous: number, bought: number): number {
+  if (bought > MARKET_SOLD_TARGET) {
+    return Math.min(MARKET_BUY_MAX, previous * MARKET_BUY_RISE_STEP);
+  }
+  if (bought >= MARKET_LOW_VOLUME) return previous;
+  return Math.max(1, 1 + (previous - 1) * MARKET_BUY_DECAY);
+}
+
+/** @brief Every buyable seed/supply with its base purchase price. */
+export function marketBuyBaseItems(
+  season?: SeasonSnapshot,
+): Array<{ item: SeedId | SupplyId; kind: "seed" | "supply"; base: number }> {
+  const rows: Array<{ item: SeedId | SupplyId; kind: "seed" | "supply"; base: number }> = [];
+  for (const seed of SEEDS) {
+    // The rotation discount is part of the base; market pressure stacks on it.
+    const offer = season?.shop.offers.find((entry) => entry.seed === seed.id);
+    rows.push({ item: seed.id, kind: "seed", base: offer?.price ?? seed.buy });
+  }
+  for (const supply of [...FERTILIZERS, ...SPRAYS]) {
+    rows.push({ item: supply.id, kind: "supply", base: supply.price });
+  }
+  return rows;
+}
+
+/** @brief Applies purchase pressure to a season snapshot. */
+export function applyBuyMarket(
+  season: SeasonSnapshot,
+  multipliers: Readonly<Partial<Record<string, number>>>,
+): SeasonSnapshot {
+  const buyPrices: Record<string, number> = {};
+  for (const row of marketBuyBaseItems(season)) {
+    const pressure = multipliers[row.item] ?? 1;
+    buyPrices[row.item] = Math.max(1, Math.round(row.base * pressure));
+  }
+  return { ...season, buyPrices };
 }
 
 /** @brief Base exchange price of one item before market pressure. */
@@ -641,6 +743,8 @@ export interface SeasonSnapshot {
   readonly prices: Readonly<Record<SeedId, number>>;
   /** Exchange price per tree for one plain fruit. */
   readonly fruitPrices: Readonly<Record<TreeId, number>>;
+  /** Market-adjusted purchase prices for seeds and supplies, when known. */
+  readonly buyPrices?: Readonly<Record<string, number>>;
 }
 
 /** One leaderboard row. */
@@ -727,6 +831,8 @@ export interface GardenActResponse {
   readonly market?: MarketSnapshot;
   /** Units of each item this action sold into the market. */
   readonly sold?: Readonly<Record<string, number>>;
+  /** Units of each seed/supply this action bought from the market. */
+  readonly bought?: Readonly<Record<string, number>>;
 }
 
 /** Successful response to a state read. */
