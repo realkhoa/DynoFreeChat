@@ -255,7 +255,14 @@ describe("event seeds", () => {
   });
 
   it("triples moonflower during golden hour", () => {
-    const golden = seasonAt(EPOCH_MS + 2 * EVENT_WAVE_MS + 1_000);
+    let golden = seasonAt(EPOCH_MS + 1_000);
+    for (let wave = 1; wave < 40; wave += 1) {
+      const candidate = seasonAt(EPOCH_MS + wave * EVENT_WAVE_MS + 1_000);
+      if (candidate.events.some((event) => event.id === "goldenHour")) {
+        golden = candidate;
+        break;
+      }
+    }
     const calm = seasonAt(EPOCH_MS + 1_000);
     expect(golden.events.some((event) => event.id === "goldenHour")).toBe(true);
     const moon = { item: "moonflower" as const, effects: [], qty: 1 };
@@ -512,7 +519,7 @@ describe("garden growth math", () => {
     const goldenHour = EVENTS.find((event) => event.id === "goldenHour");
     const frost = EVENTS.find((event) => event.id === "frost");
     if (goldenHour === undefined || frost === undefined) throw new Error("catalog");
-    expect(rollEffects(goldenHour, () => 0.01)).toEqual(["golden", "frozen"]);
+    expect(rollEffects(goldenHour, () => 0.01)).toEqual(["golden", "frozen", "moonlit", "shriveled", "pale"]);
     expect(rollEffects(goldenHour, () => 0.1)).toEqual(["golden"]);
     expect(rollEffects(frost, () => 0.05)).toEqual(["frozen"]);
     expect(rollEffects(frost, () => 0.5)).toEqual([]);

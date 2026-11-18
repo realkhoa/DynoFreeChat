@@ -135,7 +135,25 @@ export type ItemId = SeedId | TreeId;
 
 /** Luck effects a crop can carry. */
 export type EffectId =
-  "wet" | "golden" | "frozen" | "snow" | "chill" | "sunray" | "smoked" | "cracked" | "onfire";
+  | "wet"
+  | "golden"
+  | "frozen"
+  | "snow"
+  | "chill"
+  | "sunray"
+  | "smoked"
+  | "cracked"
+  | "onfire"
+  | "aurora"
+  | "meteor"
+  | "moonlit"
+  | "toxic"
+  | "plasma"
+  | "gilded"
+  | "crystal"
+  | "rainbow"
+  | "shriveled"
+  | "pale";
 
 /** Global events that rotate over time. */
 export type EventId =
@@ -149,7 +167,16 @@ export type EventId =
   | "heatwave"
   | "smoke"
   | "drought"
-  | "wildfire";
+  | "wildfire"
+  | "meteorShower"
+  | "auroraNight"
+  | "moonlight"
+  | "toxicRain"
+  | "plasmaStorm"
+  | "goldenFog"
+  | "crystalFrost"
+  | "rainbowSky"
+  | "blightWind";
 
 /** One plantable seed and its economy. */
 export interface SeedDefinition {
@@ -345,12 +372,26 @@ export const EFFECTS: readonly EffectDefinition[] = [
   { id: "smoked", mark: "%", multiplier: 4, natural: true },
   { id: "cracked", mark: "/", multiplier: 4.5, natural: true },
   { id: "onfire", mark: "!", multiplier: 6, natural: true },
+  { id: "aurora", mark: "&", multiplier: 3.2, natural: true },
+  { id: "meteor", mark: "^", multiplier: 5.5, natural: true },
+  { id: "moonlit", mark: "o", multiplier: 3.8, natural: true },
+  { id: "toxic", mark: "x", multiplier: 4.2, natural: true },
+  { id: "plasma", mark: "@", multiplier: 7, natural: true },
+  { id: "gilded", mark: "G", multiplier: 4.8, natural: true },
+  { id: "crystal", mark: "C", multiplier: 3.6, natural: true },
+  { id: "rainbow", mark: "R", multiplier: 6.5, natural: true },
+  // Bad mutations: cheap, not dangerous, but they can ruin an otherwise good pick.
+  { id: "shriveled", mark: "-", multiplier: 0.5, natural: true },
+  { id: "pale", mark: ".", multiplier: 0.7, natural: true },
 ];
 
 /** Effects every planting can roll even under a calm sky. */
 export const BASE_EFFECT_CHANCES: Readonly<Partial<Record<EffectId, number>>> = {
   golden: 0.03,
   frozen: 0.02,
+  moonlit: 0.015,
+  pale: 0.02,
+  shriveled: 0.015,
 };
 
 /** One global event and its modifiers. */
@@ -386,6 +427,15 @@ export const EVENTS: readonly EventDefinition[] = [
   { id: "smoke", growScale: 1, sellBonus: 1, effectChances: { smoked: 0.12 } },
   { id: "drought", growScale: 0.8, sellBonus: 1, effectChances: { cracked: 0.12 } },
   { id: "wildfire", growScale: 0.95, sellBonus: 1.15, effectChances: { onfire: 0.08 } },
+  { id: "meteorShower", growScale: 0.95, sellBonus: 1.2, effectChances: { meteor: 0.1 } },
+  { id: "auroraNight", growScale: 1.05, sellBonus: 1.1, effectChances: { aurora: 0.12 } },
+  { id: "moonlight", growScale: 1.05, sellBonus: 1, effectChances: { moonlit: 0.15 } },
+  { id: "toxicRain", growScale: 1, sellBonus: 1.05, effectChances: { toxic: 0.1 } },
+  { id: "plasmaStorm", growScale: 0.9, sellBonus: 1.25, effectChances: { plasma: 0.04 } },
+  { id: "goldenFog", growScale: 1, sellBonus: 1.1, effectChances: { gilded: 0.12 } },
+  { id: "crystalFrost", growScale: 0.95, sellBonus: 1.1, effectChances: { crystal: 0.12 } },
+  { id: "rainbowSky", growScale: 1.1, sellBonus: 1.15, effectChances: { rainbow: 0.05 } },
+  { id: "blightWind", growScale: 0.9, sellBonus: 0.9, effectChances: { shriveled: 0.15, pale: 0.1 } },
 ];
 
 /** Length of one animal upkeep/production cycle: six minutes. */
