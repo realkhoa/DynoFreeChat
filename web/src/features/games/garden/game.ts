@@ -1942,6 +1942,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     wrap.append(qtyRow);
     wrap.append(lineBlock(`// ${t("market.taxHint")}`));
+    const restock = div("garden-line");
+    restock.dataset.restockTimer = "now";
+    restock.textContent = `// ${t("market.restockLine", {
+      time: formatDuration(Math.max(0, season.shop.restockAt - now())),
+    })}`;
+    wrap.append(restock);
 
     const makeBuyCard = (item: {
       act: "buy" | "buySupply" | "buyTool";
@@ -2386,6 +2392,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const slot = Number(cell.dataset.slot);
       const area = cell.dataset.area === "tree" ? "tree" : "crop";
       if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncCell(cell, slot, area, at);
+    }
+    if (season !== null) {
+      for (const element of root.querySelectorAll<HTMLElement>("[data-restock-timer]")) {
+        element.textContent = `// ${t("market.restockLine", {
+          time: formatDuration(Math.max(0, season.shop.restockAt - at)),
+        })}`;
+      }
     }
     for (const element of root.querySelectorAll<HTMLElement>("[data-market-timer]")) {
       if (chartMarket !== null) {
