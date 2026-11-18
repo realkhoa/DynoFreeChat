@@ -60,6 +60,12 @@ describe("garden catalog", () => {
       "cauliflower",
       "blueberry",
       "pumpkin",
+      "potato",
+      "sunflower",
+      "lavender",
+      "watermelon",
+      "pineapple",
+      "pitcher",
     ]);
     for (const seed of SEEDS) {
       expect(seed.art).toHaveLength(4);
@@ -82,6 +88,12 @@ describe("garden catalog", () => {
     expect(seedById("carrot")?.regrow).toBe(false);
     expect(seedById("parsnip")?.regrow).toBe(false);
     expect(seedById("cauliflower")?.regrow).toBe(false);
+    expect(seedById("watermelon")?.regrow).toBe(true);
+    expect(seedById("pineapple")?.regrow).toBe(true);
+    expect(seedById("pitcher")?.regrow).toBe(true);
+    expect(seedById("potato")?.regrow).toBe(false);
+    expect(seedById("sunflower")?.regrow).toBe(false);
+    expect(seedById("lavender")?.regrow).toBe(false);
   });
 
   it("starts a garden with one 3x3 patch", () => {

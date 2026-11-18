@@ -94,7 +94,13 @@ export type SeedId =
   | "hop"
   | "cauliflower"
   | "blueberry"
-  | "pumpkin";
+  | "pumpkin"
+  | "potato"
+  | "sunflower"
+  | "lavender"
+  | "watermelon"
+  | "pineapple"
+  | "pitcher";
 
 /** Luck effects a crop can carry. */
 export type EffectId = "wet" | "golden" | "frozen";
@@ -130,6 +136,12 @@ export const SEEDS: readonly SeedDefinition[] = [
   { id: "cauliflower", growMs: 20 * 60_000, buy: 90, sell: 220, art: [".", "v", "Y", "f"], regrow: false },
   { id: "blueberry", growMs: 25 * 60_000, buy: 180, sell: 260, art: [".", "v", "Y", "b"], regrow: true },
   { id: "pumpkin", growMs: 30 * 60_000, buy: 120, sell: 280, art: [".", "v", "Y", "@"], regrow: true },
+  { id: "potato", growMs: 7 * 60_000, buy: 16, sell: 36, art: [".", "v", "Y", "t"], regrow: false },
+  { id: "sunflower", growMs: 14 * 60_000, buy: 55, sell: 130, art: [".", "v", "Y", "X"], regrow: false },
+  { id: "lavender", growMs: 16 * 60_000, buy: 70, sell: 160, art: [".", "v", "Y", "l"], regrow: false },
+  { id: "watermelon", growMs: 22 * 60_000, buy: 130, sell: 210, art: [".", "v", "Y", "w"], regrow: true },
+  { id: "pineapple", growMs: 28 * 60_000, buy: 200, sell: 320, art: [".", "v", "Y", "i"], regrow: true },
+  { id: "pitcher", growMs: 35 * 60_000, buy: 250, sell: 380, art: [".", "v", "Y", "&"], regrow: true },
 ];
 
 /** One luck effect and how it changes a crop's value. */
