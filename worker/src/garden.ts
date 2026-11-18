@@ -60,6 +60,7 @@ import {
   settleTools,
   settlePest,
   settleExtras,
+  settleStaff,
   extrasSnapshot,
   ledgerSnapshot,
   type GardenLedger,
@@ -416,6 +417,8 @@ export class Garden extends DurableObject<Env> {
       lastHatch: raw.lastHatch ?? "",
       eggCount: raw.eggCount ?? 0,
       eggPity: raw.eggPity ?? 0,
+      staff: raw.staff ?? [],
+      staffClaims: raw.staffClaims ?? [],
       insuranceUntil: raw.insuranceUntil ?? 0,
       spliceBonus: raw.spliceBonus ?? 0,
       streak: raw.streak ?? 0,
@@ -858,7 +861,10 @@ export class Garden extends DurableObject<Env> {
     if (ledger === null) return this.unauthorized();
 
     const now = Date.now();
-    const settled = settleExtras(settlePest(settleTools(settleFarm(ledger, now), now), now), now);
+    const settled = settleStaff(
+      settleExtras(settlePest(settleTools(settleFarm(ledger, now), now), now), now),
+      now,
+    );
     if (settled !== ledger) this.write(settled);
     const ledgerNow = settled;
     if (now - ledgerNow.lastSeen > 60_000) {
@@ -891,7 +897,10 @@ export class Garden extends DurableObject<Env> {
 
     const now = Date.now();
     const season = this.seasonFor(request, now);
-    const settled = settleExtras(settlePest(settleTools(settleFarm(ledger, now), now), now), now);
+    const settled = settleStaff(
+      settleExtras(settlePest(settleTools(settleFarm(ledger, now), now), now), now),
+      now,
+    );
     const result = applyGardenAction(settled, action as GardenAction, season, now);
     if (!result.ok) return json({ code: result.code }, 400);
 

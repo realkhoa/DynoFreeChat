@@ -66,6 +66,8 @@ import {
   contractOffers,
   equippedPetEffect,
   rollPet,
+  staffHireCost,
+  staffMarketAt,
   forecastEvents,
   eventsAt,
   merchantOffers,
@@ -285,6 +287,19 @@ describe("soil fertility", () => {
     expect(soilRenovateCost(95)).toBe(10);
     expect(soilRenovateCost(50)).toBe(100);
     expect(soilRenovateCost(0)).toBe(200);
+  });
+});
+
+describe("staff", () => {
+  it("offers a deterministic labour market with hiring fees", () => {
+    const market = staffMarketAt("p1", EPOCH_MS);
+    expect(market).toHaveLength(3);
+    expect(staffMarketAt("p1", EPOCH_MS)).toEqual(market);
+    for (const candidate of market) {
+      expect(candidate.wage).toBeGreaterThan(0);
+      expect(candidate.traits.length).toBeGreaterThan(0);
+      expect(staffHireCost(candidate)).toBeGreaterThan(50_000);
+    }
   });
 });
 

@@ -962,3 +962,28 @@
 .garden-extras .garden-line {
   white-space: pre-wrap;
 }
+
+/* Staff slots sit right in the garden so hires are visible at a glance. */
+.garden-staff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0 6px;
+}
+
+.garden-staff .garden-line {
+  white-space: pre;
+}
+
+.garden-staff .stage-btn {
+  white-space: nowrap;
+}
+
+.garden-staff .stage-btn.is-filled {
+  color: #dcdcaa;
+}
+
+.garden-staff .stage-btn.is-empty {
+  color: #6a9955;
+}

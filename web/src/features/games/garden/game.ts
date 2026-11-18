@@ -22,6 +22,9 @@ import {
   INSURANCE_PRICE,
   PETS,
   PET_MAX_LEVEL,
+  STAFF_SLOTS,
+  staffHireCost,
+  staffMarketAt,
   WHEEL_PRICE,
   petById,
   contractOffers,
@@ -1217,6 +1220,30 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /** @brief Builds the 9x9 crop grid: nine 3x3 patches of large cells. */
+  /** @brief Builds the staff slot strip shown directly in the garden. */
+  function buildStaffBar(): HTMLElement {
+    const bar = div("garden-staff");
+    bar.append(lineBlock(`// ${t("staff.title")} ${state?.extras.staff.length ?? 0}/${STAFF_SLOTS}`));
+    const staff = state?.extras.staff ?? [];
+    for (let index = 0; index < STAFF_SLOTS; index += 1) {
+      const worker = staff[index];
+      if (worker === undefined) {
+        const empty = actionButton(`[ ${t("staff.emptySlot")} ]`, "staffOpen");
+        empty.classList.add("is-empty");
+        bar.append(empty);
+        continue;
+      }
+      const traitNames = worker.traits.map((trait) => t(`staffTrait.${trait}`)).join(",");
+      const button = actionButton(
+        `[ ${worker.name} · ${t(`staffRole.${worker.role}`)} · ${worker.speed}⚡ · ${worker.wage}c · ${traitNames} ]`,
+        "staffOpen",
+      );
+      button.classList.add("is-filled");
+      bar.append(button);
+    }
+    return bar;
+  }
+
   function buildCropBoard(): HTMLElement {
     const board = div("garden-crop-grid");
     for (let row = 0; row < 9; row += 1) {
@@ -1754,6 +1781,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }
       }
     }
+    wrap.append(buildStaffBar());
     const layout = div("garden-layout");
     const boards = div("garden-boards");
     const cropPanel = div("garden-board-panel");
@@ -2167,6 +2195,32 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(actionButton(t("extras.compost"), "extrasCompost"));
     if (extras.wheelLast.length > 0)
       wrap.append(lineBlock(`// ${t("extras.wheelLast")}: ${extras.wheelLast}`));
+
+    wrap.append(lineBlock(`// ${t("staff.market")}`));
+    for (const candidate of staffMarketAt(state.playerId, at)) {
+      const traits = candidate.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
+      const label = `${candidate.name} · ${candidate.speed}⚡ · ${candidate.wage}c/lương · ${traits} · ${t("staff.hireFee", { cost: formatNumber(staffHireCost(candidate)) })}`;
+      const hire = actionButton(label, "staffHire", extras.staff.length < STAFF_SLOTS);
+      hire.dataset.id = candidate.id;
+      wrap.append(hire);
+    }
+    wrap.append(lineBlock(`// ${t("staff.roster")}`));
+    if (extras.staff.length === 0) wrap.append(lineBlock(t("staff.none")));
+    extras.staff.forEach((worker, index) => {
+      const traits = worker.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
+      wrap.append(
+        lineBlock(
+          `// ${worker.name} · ${t(`staffRole.${worker.role}`)} · ${worker.speed}⚡ · ${worker.wage}c · ${traits}`,
+        ),
+      );
+      const gardener = actionButton(t("staffRole.gardener"), "staffRoleGardener");
+      gardener.dataset.index = String(index);
+      const waterer = actionButton(t("staffRole.waterer"), "staffRoleWaterer");
+      waterer.dataset.index = String(index);
+      const fire = actionButton(t("staff.fire"), "staffFire");
+      fire.dataset.index = String(index);
+      wrap.append(gardener, waterer, fire);
+    });
 
     wrap.append(lineBlock(`// ${t("extras.contracts")}`));
     for (const offer of contractOffers(state.playerId, at)) {
@@ -2963,6 +3017,28 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         localStorage.setItem("dyno.garden.stealth", stealth ? "1" : "0");
         render();
         return;
+      case "staffOpen":
+        switchTab("extras");
+        return;
+      case "staffHire": {
+        const id = target.dataset.id;
+        if (id !== undefined) void runAction({ kind: "hireStaff", id }, t("staff.hired"));
+        return;
+      }
+      case "staffFire": {
+        const index = Number(target.dataset.index);
+        if (Number.isInteger(index)) void runAction({ kind: "fireStaff", index }, t("staff.fired"));
+        return;
+      }
+      case "staffRoleGardener":
+      case "staffRoleWaterer": {
+        const index = Number(target.dataset.index);
+        if (Number.isInteger(index)) {
+          const role = target.dataset.act === "staffRoleWaterer" ? "waterer" : "gardener";
+          void runAction({ kind: "setStaffRole", index, role }, t("staff.roleSet"));
+        }
+        return;
+      }
       case "extrasInsurance":
         void runAction({ kind: "buyInsurance" }, t("extras.insuranceBought"));
         return;

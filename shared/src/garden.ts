@@ -972,6 +972,106 @@ export function rollPet(
   return { pet: pet ?? PETS[0]!, pity: rare ? 0 : pity + 1, rare };
 }
 
+/* ------------------------------------------------------------------ staff */
+
+/** Staff job roles. */
+export type StaffRole = "gardener" | "waterer";
+
+/** Staff personality traits. */
+export type StaffTrait = "lazy" | "slow" | "clumsy" | "greedy" | "diligent" | "greenThumb";
+
+/** One staff candidate on the labour market. */
+export interface StaffDefinition {
+  /** Id within the current market window. */
+  readonly id: string;
+  /** Display name. */
+  readonly name: string;
+  /** Work speed, 1..5 (higher is faster). */
+  readonly speed: number;
+  /** Skill, 1..5 (higher means fewer clumsy mistakes). */
+  readonly skill: number;
+  /** Coins paid every cycle. */
+  readonly wage: number;
+  /** Personality traits. */
+  readonly traits: readonly StaffTrait[];
+}
+
+/** One hired worker. */
+export interface StaffState {
+  /** Candidate id. */
+  readonly id: string;
+  readonly name: string;
+  readonly speed: number;
+  readonly skill: number;
+  readonly wage: number;
+  readonly traits: readonly StaffTrait[];
+  /** Current job. */
+  readonly role: StaffRole;
+  /** Last time this worker performed a job. */
+  readonly lastWorkAt: number;
+  /** Last time wages were settled. */
+  readonly lastPaidAt: number;
+  /** Consecutive unpaid settles; three and the worker quits. */
+  readonly unpaid: number;
+}
+
+/** Labour market rotation and slot rules. */
+export const STAFF_MARKET_MS = 4 * 60 * 60_000;
+export const STAFF_SLOTS = 1;
+export const STAFF_QUIT_UNPAID = 3;
+
+/** Names used by the deterministic labour market. */
+export const STAFF_NAMES: readonly string[] = [
+  "Minh",
+  "Lan",
+  "Hùng",
+  "Trang",
+  "Dũng",
+  "Hoa",
+  "Tuấn",
+  "Mai",
+  "Phúc",
+  "Linh",
+  "Sơn",
+  "Thảo",
+];
+
+/** @brief Current labour market window. */
+export function staffWindowAt(now: number): number {
+  return Math.floor((now - EPOCH_MS) / STAFF_MARKET_MS);
+}
+
+/** @brief Deterministic labour market for one player (three candidates). */
+export function staffMarketAt(playerId: string, now: number): StaffDefinition[] {
+  const window = staffWindowAt(now);
+  const rng = createRng(hash32(`staff:${playerId}:${window}`));
+  const badTraits: StaffTrait[] = ["lazy", "slow", "clumsy", "greedy"];
+  const goodTraits: StaffTrait[] = ["diligent", "greenThumb"];
+  const candidates: StaffDefinition[] = [];
+  for (let index = 0; index < 3; index += 1) {
+    const name = STAFF_NAMES[Math.floor(rng() * STAFF_NAMES.length)] ?? "Minh";
+    const speed = 1 + Math.floor(rng() * 5);
+    const skill = 1 + Math.floor(rng() * 5);
+    const wage = 400 + speed * 80 + skill * 80;
+    const traits: StaffTrait[] = [];
+    for (let pick = 0; pick < 2; pick += 1) {
+      const trait = badTraits[Math.floor(rng() * badTraits.length)];
+      if (trait !== undefined && !traits.includes(trait)) traits.push(trait);
+    }
+    if (rng() < 0.3) {
+      const good = goodTraits[Math.floor(rng() * goodTraits.length)];
+      if (good !== undefined) traits.push(good);
+    }
+    candidates.push({ id: `s${window}-${index}`, name, speed, skill, wage, traits });
+  }
+  return candidates;
+}
+
+/** @brief One-off hiring fee for a candidate. */
+export function staffHireCost(candidate: StaffDefinition): number {
+  return 50_000 + candidate.speed * 10_000 + candidate.skill * 15_000;
+}
+
 /** One NPC produce contract. */
 export interface ContractOffer {
   /** Stable id within the rotation window. */
@@ -1084,6 +1184,8 @@ export interface ExtrasSnapshot {
   readonly weekKey: number;
   readonly weekEarned: number;
   readonly weekHarvested: number;
+  /** Hired staff and their slots. */
+  readonly staff: readonly StaffState[];
 }
 
 /** @brief Day index since epoch. */
@@ -1645,6 +1747,9 @@ export type GardenAction =
   | { readonly kind: "compostCrops" }
   | { readonly kind: "buyGreenhouse" }
   | { readonly kind: "hatchEgg" }
+  | { readonly kind: "hireStaff"; readonly id: string }
+  | { readonly kind: "fireStaff"; readonly index: number }
+  | { readonly kind: "setStaffRole"; readonly index: number; readonly role: StaffRole }
   | { readonly kind: "equipPet"; readonly pet: PetId }
   | { readonly kind: "spinWheel" }
   | {
@@ -1710,6 +1815,8 @@ export type GardenErrorCode =
   | "MERCHANT_GONE"
   | "ALREADY_CLAIMED"
   | "NO_PET"
+  | "STAFF_FULL"
+  | "NO_CANDIDATE"
   | "CANNOT_VISIT_SELF";
 
 /** Successful response to a garden action. */
@@ -2015,6 +2122,24 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   if (kind === "buyInsurance") return { kind };
   if (kind === "compostCrops") return { kind };
   if (kind === "buyGreenhouse" || kind === "hatchEgg") return { kind };
+  if (kind === "hireStaff") {
+    const id = typeof value.id === "string" ? value.id : "";
+    return id.length === 0 || id.length > 40 ? null : { kind, id };
+  }
+  if (kind === "fireStaff") {
+    const index = value.index;
+    return typeof index === "number" && Number.isInteger(index) && index >= 0 && index < STAFF_SLOTS
+      ? { kind, index }
+      : null;
+  }
+  if (kind === "setStaffRole") {
+    const index = value.index;
+    const role = value.role === "waterer" ? "waterer" : value.role === "gardener" ? "gardener" : undefined;
+    if (role === undefined) return null;
+    return typeof index === "number" && Number.isInteger(index) && index >= 0 && index < STAFF_SLOTS
+      ? { kind, index, role }
+      : null;
+  }
   if (kind === "equipPet") {
     const pet = typeof value.pet === "string" ? petById(value.pet) : undefined;
     return pet === undefined ? null : { kind, pet: pet.id };

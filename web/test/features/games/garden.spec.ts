@@ -98,6 +98,7 @@ const EXTRAS: ExtrasSnapshot = {
   pets: {},
   equippedPet: null,
   lastHatch: "",
+  staff: [],
   insuranceUntil: 0,
   spliceBonus: 0,
   wheelSpins: 0,
@@ -810,6 +811,23 @@ describe("farm tab", () => {
     row?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "sellProduct")).toBe(true);
+  });
+});
+
+describe("staff", () => {
+  it("shows a staff slot in the garden and hires from the extras tab", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 1_000_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    expect(host.querySelector(".garden-staff")?.textContent).toContain("Trống");
+    host.querySelector<HTMLButtonElement>('[data-act="tab:extras"]')?.click();
+    await settle();
+    const hire = host.querySelector<HTMLButtonElement>('[data-act="staffHire"]');
+    expect(hire).not.toBeNull();
+    hire?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "hireStaff")).toBe(true);
   });
 });
 
