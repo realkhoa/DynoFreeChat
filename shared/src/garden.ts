@@ -317,6 +317,14 @@ export interface EventDefinition {
   readonly sellBonus: number;
 }
 
+/** How many weather events run at once, and how often each count happens. */
+const EVENT_COUNT_WEIGHTS: readonly { count: number; weight: number }[] = [
+  { count: 0, weight: 20 },
+  { count: 1, weight: 55 },
+  { count: 2, weight: 20 },
+  { count: 3, weight: 5 },
+];
+
 /** Event catalog; the rotation walks this list in order. */
 export const EVENTS: readonly EventDefinition[] = [
   { id: "calm", growScale: 1, sellBonus: 1, effectChances: {} },
@@ -728,8 +736,12 @@ export function applyMarket(
 export interface SeasonSnapshot {
   /** Rotation index of the current event wave. */
   readonly wave: number;
-  /** Current event window. */
+  /** Current event window (primary event for labels). */
   readonly event: EventSnapshot;
+  /** Every weather event running right now; empty on a calm wave. */
+  readonly events: readonly EventSnapshot[];
+  /** Every weather event that will run in the next window. */
+  readonly nextEvents: readonly EventSnapshot[];
   /** Event window after this one, for the countdown. */
   readonly next: EventSnapshot;
   /** Seed shop offers and when they rotate. */
@@ -1160,14 +1172,13 @@ export function createRng(seed: number): () => number {
  */
 export function seasonAt(now: number): SeasonSnapshot {
   const wave = Math.floor((now - EPOCH_MS) / EVENT_WAVE_MS);
-  const eventIndex = modulo(wave, EVENTS.length);
-  const current = EVENTS[eventIndex];
-  if (current === undefined) throw new Error("Garden event catalog is empty");
   const nextWave = wave + 1;
-  const next = EVENTS[modulo(nextWave, EVENTS.length)] ?? current;
-
   const waveStart = EPOCH_MS + wave * EVENT_WAVE_MS;
   const nextStart = EPOCH_MS + nextWave * EVENT_WAVE_MS;
+  const currentEvents = eventsAt(waveStart);
+  const nextEvents = eventsAt(nextStart);
+  const current = currentEvents[0] ?? CALM_EVENT;
+  const next = nextEvents[0] ?? CALM_EVENT;
 
   const restockWave = Math.floor((now - EPOCH_MS) / SHOP_RESTOCK_MS);
   const restockAt = EPOCH_MS + (restockWave + 1) * SHOP_RESTOCK_MS;
@@ -1181,16 +1192,32 @@ export function seasonAt(now: number): SeasonSnapshot {
   const priceRng = createRng(hash32(`garden:price:${restockWave}`));
   const prices = {} as Record<SeedId, number>;
   for (const seed of SEEDS) {
-    prices[seed.id] = Math.max(1, Math.round(seed.sell * (0.85 + priceRng() * 0.3) * current.sellBonus));
+    prices[seed.id] = Math.max(
+      1,
+      Math.round(seed.sell * (0.85 + priceRng() * 0.3) * combinedSellBonus(currentEvents)),
+    );
   }
   const fruitPrices = {} as Record<TreeId, number>;
   for (const tree of TREES) {
-    fruitPrices[tree.id] = Math.max(1, Math.round(tree.sell * (0.85 + priceRng() * 0.3) * current.sellBonus));
+    fruitPrices[tree.id] = Math.max(
+      1,
+      Math.round(tree.sell * (0.85 + priceRng() * 0.3) * combinedSellBonus(currentEvents)),
+    );
   }
 
   return {
     wave,
     event: { id: current.id, startedAt: waveStart, endsAt: waveStart + EVENT_WAVE_MS },
+    events: currentEvents.map((event) => ({
+      id: event.id,
+      startedAt: waveStart,
+      endsAt: waveStart + EVENT_WAVE_MS,
+    })),
+    nextEvents: nextEvents.map((event) => ({
+      id: event.id,
+      startedAt: nextStart,
+      endsAt: nextStart + EVENT_WAVE_MS,
+    })),
     next: { id: next.id, startedAt: nextStart, endsAt: nextStart + EVENT_WAVE_MS },
     shop: { restockAt, offers },
     prices,
@@ -1200,16 +1227,76 @@ export function seasonAt(now: number): SeasonSnapshot {
 
 /** @brief Current event definition for a server time. */
 export function eventAt(now: number): EventDefinition {
-  const index = modulo(Math.floor((now - EPOCH_MS) / EVENT_WAVE_MS), EVENTS.length);
-  return (
-    EVENTS[index] ??
-    EVENTS[0] ?? {
-      id: "calm",
-      growScale: 1,
-      sellBonus: 1,
-      effectChances: {},
+  return eventsAt(now)[0] ?? CALM_EVENT;
+}
+
+/** Fallback event used when a wave rolls no weather. */
+const CALM_EVENT: EventDefinition = { id: "calm", growScale: 1, sellBonus: 1, effectChances: {} };
+
+/**
+ * @brief Weather events active at one instant.
+ * @param now Server time.
+ * @details Each six-minute wave rolls how many events run at once (one event is
+ * the most likely outcome, two and three are rarer) and then picks that many
+ * different events deterministically, so every client and the server agree.
+ * The result is in catalog order and may be empty (a calm wave).
+ */
+export function eventsAt(now: number): EventDefinition[] {
+  const wave = Math.floor((now - EPOCH_MS) / EVENT_WAVE_MS);
+  const rng = createRng(hash32(`garden:events:${wave}`));
+  const total = EVENT_COUNT_WEIGHTS.reduce((sum, entry) => sum + entry.weight, 0);
+  let roll = rng() * total;
+  let count = 0;
+  for (const entry of EVENT_COUNT_WEIGHTS) {
+    roll -= entry.weight;
+    if (roll < 0) {
+      count = entry.count;
+      break;
     }
-  );
+  }
+  if (count === 0) return [];
+  const pool = EVENTS.filter((event) => event.id !== "calm");
+  const picked = new Set<EventId>();
+  while (picked.size < Math.min(count, pool.length)) {
+    const candidate = pool[Math.floor(rng() * pool.length)];
+    if (candidate !== undefined) picked.add(candidate.id);
+  }
+  return EVENTS.filter((event) => picked.has(event.id));
+}
+
+/** @brief Combined growth speed of every active event. */
+export function combinedGrowScale(events: readonly EventDefinition[]): number {
+  const product = events.reduce((scale, event) => scale * event.growScale, 1);
+  return Math.min(2.5, Math.max(0.4, product));
+}
+
+/** @brief Combined sell bonus of every active event. */
+export function combinedSellBonus(events: readonly EventDefinition[]): number {
+  const product = events.reduce((bonus, event) => bonus * event.sellBonus, 1);
+  return Math.min(3, Math.max(0.5, product));
+}
+
+/** @brief Rolls the mutation chances of every active event. */
+export function rollEffectsFor(
+  events: readonly EventDefinition[],
+  rng: () => number,
+  bonus: Readonly<Partial<Record<EffectId, number>>> = {},
+): EffectId[] {
+  const rolled = new Set<EffectId>();
+  for (const event of events) {
+    for (const id of rollEffects(event, rng, bonus)) rolled.add(id);
+  }
+  return canonicalEffects([...rolled]);
+}
+
+/** @brief Growth time under several simultaneous events. */
+export function growTimeForEvents(
+  plant: { readonly growMs: number },
+  events: readonly EventDefinition[],
+  fertilizer: ActiveFertilizer | null = null,
+): number {
+  const multiplier = fertilizer === null ? 1 : (fertilizerById(fertilizer.id)?.growMultiplier ?? 1);
+  return Math.max(5_000, Math.round((plant.growMs / combinedGrowScale(events)) * multiplier));
 }
 
 /** @brief Growth time for one planting under one event. */
@@ -1261,9 +1348,9 @@ export function weatherEffects(kindId: string, slot: number, plantedAt: number, 
   const last = Math.floor((end - EPOCH_MS) / EVENT_WAVE_MS);
   const effects = new Set<EffectId>();
   for (let wave = first; wave <= last && wave - first < 200; wave += 1) {
-    const event = eventAt(EPOCH_MS + wave * EVENT_WAVE_MS);
+    const events = eventsAt(EPOCH_MS + wave * EVENT_WAVE_MS);
     const rng = createRng(hash32(`${kindId}:${slot}:${wave}`));
-    for (const id of rollEffects(event, rng)) effects.add(id);
+    for (const id of rollEffectsFor(events, rng)) effects.add(id);
   }
   return canonicalEffects([...effects]);
 }

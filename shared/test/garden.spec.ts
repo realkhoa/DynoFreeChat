@@ -52,8 +52,11 @@ import {
   marketCycleEndsAt,
   nextBuyMultiplier,
   nextPatchPrice,
+  combinedGrowScale,
+  eventsAt,
   nextSellState,
   nextTabPrice,
+  rollEffectsFor,
   resolvedCropEffects,
   weatherEffects,
   sprayById,
@@ -236,15 +239,30 @@ describe("garden season", () => {
     expect(seasonAt(NOW)).toEqual(seasonAt(NOW));
   });
 
-  it("walks the event list in order", () => {
-    const seen = new Set<string>();
-    for (let wave = 0; wave < EVENTS.length; wave += 1) {
-      const snapshot = seasonAt(EPOCH_MS + wave * EVENT_WAVE_MS + 12);
-      seen.add(snapshot.event.id);
-      expect(snapshot.event.startedAt).toBe(EPOCH_MS + wave * EVENT_WAVE_MS);
-      expect(snapshot.event.endsAt).toBe(EPOCH_MS + (wave + 1) * EVENT_WAVE_MS);
+  it("rolls one to three simultaneous events, one being the most common", () => {
+    const counts = new Map<number, number>();
+    for (let wave = 0; wave < 120; wave += 1) {
+      const at = EPOCH_MS + wave * EVENT_WAVE_MS + 12;
+      const events = eventsAt(at);
+      expect(events).toEqual(eventsAt(at));
+      expect(events.length).toBeLessThanOrEqual(3);
+      expect(new Set(events.map((event) => event.id)).size).toBe(events.length);
+      for (const event of events) expect(event.id).not.toBe("calm");
+      const order = EVENTS.map((event) => event.id);
+      const indices = events.map((event) => order.indexOf(event.id));
+      expect([...indices].sort((a, b) => a - b)).toEqual(indices);
+      counts.set(events.length, (counts.get(events.length) ?? 0) + 1);
     }
-    expect(seen.size).toBe(EVENTS.length);
+    expect(counts.get(1) ?? 0).toBeGreaterThan(counts.get(0) ?? 0);
+    expect(counts.get(1) ?? 0).toBeGreaterThan(counts.get(2) ?? 0);
+  });
+
+  it("exposes the whole active event set on the season", () => {
+    const waveStart = EPOCH_MS + 5 * EVENT_WAVE_MS;
+    const snapshot = seasonAt(waveStart + 12);
+    expect(snapshot.events).toHaveLength(eventsAt(waveStart).length);
+    expect(snapshot.event.id).toBe(snapshot.events[0]?.id ?? "calm");
+    expect(snapshot.event.startedAt).toBe(waveStart);
   });
 
   it("keeps the same wave across one window and changes at the boundary", () => {
@@ -313,15 +331,18 @@ describe("garden growth math", () => {
   it("speeds up under rain and slows under frost", () => {
     const seed = seedById("tomato");
     if (seed === undefined) throw new Error("catalog");
-    const rain = growTimeFor(seed, eventAt(EPOCH_MS + EVENT_WAVE_MS));
-    const frost = growTimeFor(seed, eventAt(EPOCH_MS + 3 * EVENT_WAVE_MS));
-    expect(rain).toBeLessThan(seed.growMs);
-    expect(frost).toBeGreaterThan(seed.growMs);
+    const rain = EVENTS.find((event) => event.id === "rain");
+    const frost = EVENTS.find((event) => event.id === "frost");
+    if (rain === undefined || frost === undefined) throw new Error("catalog");
+    expect(growTimeFor(seed, rain)).toBeLessThan(seed.growMs);
+    expect(growTimeFor(seed, frost)).toBeGreaterThan(seed.growMs);
+    expect(combinedGrowScale([rain, frost])).toBeCloseTo(rain.growScale * frost.growScale, 6);
   });
 
   it("rolls golden and frozen from the event chances deterministically", () => {
-    const goldenHour = eventAt(EPOCH_MS + 2 * EVENT_WAVE_MS);
-    const frost = eventAt(EPOCH_MS + 3 * EVENT_WAVE_MS);
+    const goldenHour = EVENTS.find((event) => event.id === "goldenHour");
+    const frost = EVENTS.find((event) => event.id === "frost");
+    if (goldenHour === undefined || frost === undefined) throw new Error("catalog");
     expect(rollEffects(goldenHour, () => 0.01)).toEqual(["golden", "frozen"]);
     expect(rollEffects(goldenHour, () => 0.1)).toEqual(["golden"]);
     expect(rollEffects(frost, () => 0.05)).toEqual(["frozen"]);
@@ -329,24 +350,19 @@ describe("garden growth math", () => {
   });
 
   it("rolls the new weather effects during their own event", () => {
-    const snowfall = eventAt(EPOCH_MS + 5 * EVENT_WAVE_MS + 100);
-    expect(snowfall.id).toBe("snowfall");
-    expect(rollEffects(snowfall, () => 0.1)).toEqual(["snow"]);
+    const byId = (id: string): (typeof EVENTS)[number] => {
+      const event = EVENTS.find((entry) => entry.id === id);
+      if (event === undefined) throw new Error(`catalog ${id}`);
+      return event;
+    };
+    expect(rollEffects(byId("snowfall"), () => 0.1)).toEqual(["snow"]);
+    expect(rollEffects(byId("coldSnap"), () => 0.1)).toEqual(["chill"]);
+    expect(rollEffects(byId("heatwave"), () => 0.1)).toEqual(["sunray"]);
+    expect(rollEffects(byId("drought"), () => 0.1)).toEqual(["cracked"]);
+    expect(rollEffects(byId("wildfire"), () => 0.05)).toEqual(["onfire"]);
 
-    const coldSnap = eventAt(EPOCH_MS + 6 * EVENT_WAVE_MS + 100);
-    expect(rollEffects(coldSnap, () => 0.1)).toEqual(["chill"]);
-
-    const heatwave = eventAt(EPOCH_MS + 7 * EVENT_WAVE_MS + 100);
-    expect(rollEffects(heatwave, () => 0.1)).toEqual(["sunray"]);
-
-    const drought = eventAt(EPOCH_MS + 9 * EVENT_WAVE_MS + 100);
-    expect(rollEffects(drought, () => 0.1)).toEqual(["cracked"]);
-
-    const wildfire = eventAt(EPOCH_MS + 10 * EVENT_WAVE_MS + 100);
-    expect(rollEffects(wildfire, () => 0.05)).toEqual(["onfire"]);
-
-    // A calm sky still leaves most plantings plain.
-    expect(rollEffects(eventAt(EPOCH_MS + 100), () => 0.9)).toEqual([]);
+    // Several events can roll their effects in one go.
+    expect(rollEffectsFor([byId("snowfall"), byId("coldSnap")], () => 0.1)).toEqual(["snow", "chill"]);
   });
 
   it("keeps every weather effect rollable except water", () => {

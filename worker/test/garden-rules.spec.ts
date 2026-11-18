@@ -11,7 +11,11 @@ import {
   EPOCH_MS,
   EVENT_WAVE_MS,
   nextTabPrice,
+  eventsAt,
+  resolvedCropEffects,
   resolvedTreeEffects,
+  rollEffectsFor,
+  sprayById,
   seasonAt as seasonFor,
   type GardenAction,
 } from "@dyno/shared/garden";
@@ -157,8 +161,10 @@ describe("garden ledger rules", () => {
     expect(first.ledger.plots[0]).not.toBeNull();
     expect(first.ledger.plots[0]?.harvests).toBe(1);
     expect(first.ledger.plots[0]?.readyAt).toBeGreaterThan(plot.readyAt);
-    expect(first.ledger.plots[0]?.effects).toEqual(["frozen"]);
-    expect(first.ledger.bag.crops).toEqual([{ item: "tomato", effects: [], qty: 1 }]);
+    expect(first.ledger.plots[0]?.effects).toEqual(rollEffectsFor(eventsAt(plot.readyAt), () => 0.1));
+    expect(first.ledger.bag.crops).toEqual([
+      { item: "tomato", effects: resolvedCropEffects(plot, plot.readyAt), qty: 1 },
+    ]);
 
     expect(run(first.ledger, { kind: "harvest", slot: 0, tree: false })).toMatchObject({
       ok: false,
@@ -245,7 +251,9 @@ describe("garden ledger rules", () => {
     const picked = run(sprayed.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt, 0.1);
     expect(picked.ok).toBe(true);
     if (!picked.ok) return;
-    expect(picked.ledger.plots[0]?.effects).toEqual(["frozen", "snow"]);
+    expect(picked.ledger.plots[0]?.effects).toEqual(
+      rollEffectsFor(eventsAt(plot.readyAt), () => 0.1, sprayById("snowSpray")?.effectChances ?? {}),
+    );
     expect(picked.ledger.plots[0]?.spray).toEqual({ id: "snowSpray", left: 1 });
   });
 

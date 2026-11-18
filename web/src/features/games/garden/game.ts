@@ -1799,17 +1799,26 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const seasonPanel = div("garden-event-panel");
     seasonPanel.append(lineBlock(`// ${t("event.now")}`));
     if (season !== null) {
-      seasonPanel.append(
-        lineBlock(`${t(`events.${season.event.id}`)} — ${t(`events.${season.event.id}.desc`)}`),
-      );
+      const active = season.events;
+      if (active.length === 0) {
+        seasonPanel.append(lineBlock(`${t("events.calm")} — ${t("events.calm.desc")}`));
+      } else {
+        for (const event of active) {
+          seasonPanel.append(lineBlock(`${t(`events.${event.id}`)} — ${t(`events.${event.id}.desc`)}`));
+        }
+      }
       const countdown = div("garden-line");
       countdown.dataset.eventTimer = "now";
       seasonPanel.append(countdown);
       seasonPanel.append(lineBlock(""));
       seasonPanel.append(lineBlock(`// ${t("event.next")}`));
-      seasonPanel.append(
-        lineBlock(`${t(`events.${season.next.id}`)} — ${t(`events.${season.next.id}.desc`)}`),
-      );
+      if (season.nextEvents.length === 0) {
+        seasonPanel.append(lineBlock(`${t("events.calm")} — ${t("events.calm.desc")}`));
+      } else {
+        for (const event of season.nextEvents) {
+          seasonPanel.append(lineBlock(`${t(`events.${event.id}`)} — ${t(`events.${event.id}.desc`)}`));
+        }
+      }
       const next = div("garden-line");
       next.dataset.eventTimer = "next";
       seasonPanel.append(next);

@@ -21,8 +21,9 @@ import {
   HARVEST_ALL_COST,
   createRng,
   cropSellPrice,
-  eventAt,
-  growTimeFor,
+  eventsAt,
+  growTimeForEvents,
+  rollEffectsFor,
   hash32,
   nextPatchPrice,
   nextTabPrice,
@@ -294,13 +295,13 @@ function plant(
 
   const next = clone(ledger);
   next.bag.seeds[seed.id] = owned - 1;
-  const event = eventAt(now);
+  const events = eventsAt(now);
   next.plots[slot] = {
     slot,
     seed: seed.id,
     plantedAt: now,
-    readyAt: now + growTimeFor(seed, event),
-    effects: rollEffects(event, rng),
+    readyAt: now + growTimeForEvents(seed, events),
+    effects: rollEffectsFor(events, rng),
     watered: false,
     fertilized: false,
     harvests: 0,
@@ -327,13 +328,13 @@ function plantTree(
 
   const next = clone(ledger);
   next.coins -= tree.buy;
-  const event = eventAt(now);
+  const events = eventsAt(now);
   next.trees[slot] = {
     slot,
     tree: tree.id,
     plantedAt: now,
-    readyAt: now + growTimeFor(tree, event),
-    effects: rollEffects(event, rng),
+    readyAt: now + growTimeForEvents(tree, events),
+    effects: rollEffectsFor(events, rng),
     watered: false,
     fertilized: false,
     harvests: 0,
@@ -360,14 +361,14 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
 
   const seed = seedById(plot.seed);
   if (seed !== undefined && seed.regrow) {
-    const event = eventAt(now);
+    const events = eventsAt(now);
     const sprayBonus = plot.spray === null ? {} : (sprayById(plot.spray.id)?.effectChances ?? {});
     next.plots[slot] = {
       slot,
       seed: plot.seed,
       plantedAt: now,
-      readyAt: now + growTimeFor(seed, event, plot.fertilizer),
-      effects: rollEffects(event, rng, sprayBonus),
+      readyAt: now + growTimeForEvents(seed, events, plot.fertilizer),
+      effects: rollEffectsFor(events, rng, sprayBonus),
       watered: false,
       fertilized: false,
       harvests: plot.harvests + 1,
@@ -391,14 +392,14 @@ function harvestTree(ledger: GardenLedger, slot: number, now: number, rng: () =>
   const next = clone(ledger);
   addCrop(next.bag.crops, tree.tree, resolvedTreeEffects(tree, now), 1);
   next.stats.harvested += 1;
-  const event = eventAt(now);
+  const events = eventsAt(now);
   const sprayBonus = tree.spray === null ? {} : (sprayById(tree.spray.id)?.effectChances ?? {});
   next.trees[slot] = {
     slot,
     tree: tree.tree,
     plantedAt: now,
-    readyAt: now + growTimeFor(definition, event, tree.fertilizer),
-    effects: rollEffects(event, rng, sprayBonus),
+    readyAt: now + growTimeForEvents(definition, events, tree.fertilizer),
+    effects: rollEffectsFor(events, rng, sprayBonus),
     watered: false,
     fertilized: false,
     harvests: tree.harvests + 1,
