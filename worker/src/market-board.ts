@@ -231,6 +231,20 @@ export class MarketBoard extends DurableObject<Env> {
   private roll(now: number): void {
     const current = marketCycleAt(now);
     let state = this.readState(now);
+    if (state.cycle > current) {
+      // A corrupt/future cycle index would freeze the board forever (every roll
+      // would early-return). Heal to base prices at the real current cycle and
+      // clear the volume tables so the market starts moving again.
+      state = this.freshState(now);
+      try {
+        this.writeState(state);
+        this.sql.exec("DELETE FROM sales");
+        this.sql.exec("DELETE FROM purchases");
+      } catch {
+        // Reads stay available even if the repair write cannot land.
+      }
+      return;
+    }
     if (state.cycle >= current) return;
 
     const sellCatalog = marketBaseItems(seasonAt(now));

@@ -7,7 +7,7 @@
  * new device.
  */
 
-import { SELF, env } from "cloudflare:test";
+import { SELF, env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type {
   GardenActResponse,
@@ -115,6 +115,24 @@ describe("global market", () => {
     const after = await snapshot();
     const now = after.offers.find((offer) => offer.item === "compost")?.bought ?? 0;
     expect(now).toBeGreaterThanOrEqual(start + 25);
+  });
+});
+
+describe("market self-heal", () => {
+  it("unsticks a future cycle index", async () => {
+    const market = env.MARKET.get(env.MARKET.idFromName("board"));
+    await runInDurableObject(market, (_instance, state) => {
+      const sql = state.storage.sql;
+      sql.exec(
+        "INSERT INTO meta (key, value) VALUES ('board', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        JSON.stringify({ cycle: 99_999_999, sell: {}, buy: {} }),
+      );
+    });
+    const response = await market.fetch("https://market/snapshot");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { cycle: number; items: Array<{ multiplier: number }> };
+    expect(body.cycle).toBeLessThan(99_999_999);
+    expect(body.items.every((item) => item.multiplier === 1)).toBe(true);
   });
 });
 
