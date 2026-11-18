@@ -17,6 +17,7 @@ import {
   TREES,
   TREES_PER_TAB,
   seasonAt,
+  type ExtrasSnapshot,
   type GardenAction,
   type GardenSnapshot,
   type PlotState,
@@ -86,6 +87,27 @@ const GROWING_PLOT: PlotState = {
   protectedUntil: 0,
 };
 
+/** Extras defaults for fixtures. */
+const EXTRAS: ExtrasSnapshot = {
+  streak: 1,
+  lastStreakDay: 0,
+  achievements: [],
+  collection: [],
+  greenhouse: 0,
+  pet: 0,
+  insuranceUntil: 0,
+  spliceBonus: 0,
+  wheelSpins: 0,
+  wheelPity: 0,
+  wheelLast: "",
+  futures: [],
+  contractClaims: [],
+  merchantClaims: [],
+  weekKey: 0,
+  weekEarned: 0,
+  weekHarvested: 0,
+};
+
 /** Builds one owner snapshot. */
 function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
   return {
@@ -106,6 +128,7 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     farmSettledAt: CLOCK,
     warehouse: { level: 0, machines: {} },
     soil: new Array<number>(CROPS_PER_TAB).fill(100),
+    extras: EXTRAS,
     rev: 7,
     updatedAt: CLOCK,
     ...overrides,
@@ -129,6 +152,7 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     animals: { coop: [], barn: [] },
     warehouse: { level: 0, machines: {} },
     soil: new Array<number>(CROPS_PER_TAB).fill(100),
+    extras: EXTRAS,
     updatedAt: CLOCK,
     lastSeen: CLOCK - 1_000,
     online: true,
@@ -307,7 +331,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    expect(host.querySelectorAll(".garden-tab")).toHaveLength(8);
+    expect(host.querySelectorAll(".garden-tab")).toHaveLength(9);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
@@ -783,6 +807,28 @@ describe("farm tab", () => {
     row?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "sellProduct")).toBe(true);
+  });
+});
+
+describe("extras tab", () => {
+  it("renders the extended systems and buys insurance plus a wheel spin", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 1_000_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:extras"]')?.click();
+    await settle();
+    expect(host.querySelector('[data-act="extrasInsurance"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="extrasWheel"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="extrasContract"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="extrasMerchant"]')).not.toBeNull();
+
+    host.querySelector<HTMLButtonElement>('[data-act="extrasInsurance"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "buyInsurance")).toBe(true);
+    host.querySelector<HTMLButtonElement>('[data-act="extrasWheel"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "spinWheel")).toBe(true);
   });
 });
 

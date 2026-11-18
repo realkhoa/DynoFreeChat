@@ -16,6 +16,13 @@ import {
   HARVEST_ALL_COST,
   PEST_SPRAY_COST,
   SOIL_START,
+  ACHIEVEMENTS,
+  GREENHOUSE_PRICES,
+  INSURANCE_PRICE,
+  PET_PRICES,
+  WHEEL_PRICE,
+  contractOffers,
+  merchantOffers,
   soilRenovateCost,
   WATER_ALL_COST,
   MAX_TABS,
@@ -91,7 +98,7 @@ const POLL_MS = 60_000;
 const UPROOT_ARM_MS = 4_000;
 
 /** One active tab inside the document. */
-type Tab = "garden" | "market" | "event" | "chart" | "bots" | "rank" | "farm" | "warehouse";
+type Tab = "garden" | "market" | "event" | "chart" | "bots" | "rank" | "farm" | "warehouse" | "extras";
 
 /** Whether the document is showing the owner's garden or a friend's. */
 type Mode = "owner" | "visit";
@@ -159,6 +166,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let menu: MenuState | null = null;
   let chartMarket: MarketSnapshot | null = null;
   let botGardens: GardenBot[] = [];
+  let tournament: Array<{ nick: string; code: string; earned: number; harvested: number }> = [];
   // Work-safe look by default: no bright game colours unless the player opts in.
   let stealth = localStorage.getItem("dyno.garden.stealth") !== "0";
   let farmPicker: { building: BuildingId; slot: number } | null = null;
@@ -875,6 +883,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (next === "chart") void loadChart();
     if (next === "bots") void loadBots();
     if (next === "rank") void loadLeaderboard();
+    if (next === "extras") void loadExtras();
     syncGardenQuery();
     render();
   }
@@ -900,7 +909,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       savedTab === "bots" ||
       savedTab === "rank" ||
       savedTab === "farm" ||
-      savedTab === "warehouse"
+      savedTab === "warehouse" ||
+      savedTab === "extras"
     ) {
       tab = savedTab;
     }
@@ -1045,7 +1055,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Builds the tab strip with the garden code and share action. */
   function buildTabs(): HTMLElement {
     const bar = div("garden-tabs");
-    for (const id of ["garden", "market", "event", "chart", "bots", "rank", "farm", "warehouse"] as const) {
+    for (const id of [
+      "garden",
+      "market",
+      "event",
+      "chart",
+      "bots",
+      "rank",
+      "farm",
+      "warehouse",
+      "extras",
+    ] as const) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "garden-tab";
@@ -2079,6 +2099,134 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Loads the weekly tournament for the extras tab. */
+  async function loadExtras(): Promise<void> {
+    try {
+      tournament = await api.tournament();
+    } catch {
+      // A missing tournament never blocks the garden.
+    }
+    if (!disposed && tab === "extras") render();
+  }
+
+  /** @brief Builds the extras tab: streak, contracts, merchant, upgrades. */
+  function buildExtras(): HTMLElement {
+    const wrap = div("garden-extras");
+    if (state === null) return lineBlock(t("common.loading"));
+    const extras = state.extras;
+    const at = now();
+    wrap.append(lineBlock(`// ${t("extras.title")}`));
+    const info = [
+      t("extras.streak", { count: extras.streak }),
+      t("extras.greenhouseLine", { level: extras.greenhouse }),
+      t("extras.petLine", { level: extras.pet }),
+      t("extras.spliceLine", { bonus: extras.spliceBonus }),
+      t("extras.collectionLine", { count: extras.collection.length }),
+      t("extras.weekLine", {
+        earned: formatNumber(extras.weekEarned),
+        harvested: extras.weekHarvested,
+      }),
+      extras.insuranceUntil > at
+        ? t("extras.insured", { time: formatDuration(extras.insuranceUntil - at, "short") })
+        : t("extras.notInsured"),
+    ];
+    for (const line of info) wrap.append(lineBlock(`// ${line}`));
+    wrap.append(lineBlock(""));
+
+    wrap.append(lineBlock(`// ${t("extras.actions")}`));
+    let cost = INSURANCE_PRICE;
+    const insurance = actionButton(t("extras.insurance", { cost }), "extrasInsurance", state.coins >= cost);
+    wrap.append(insurance);
+    cost = GREENHOUSE_PRICES[extras.greenhouse] ?? 0;
+    if (cost > 0) {
+      wrap.append(
+        actionButton(
+          t("extras.greenhouse", { cost: formatNumber(cost) }),
+          "extrasGreenhouse",
+          state.coins >= cost,
+        ),
+      );
+    }
+    cost = PET_PRICES[extras.pet] ?? 0;
+    if (cost > 0) {
+      wrap.append(
+        actionButton(t("extras.pet", { cost: formatNumber(cost) }), "extrasPet", state.coins >= cost),
+      );
+    }
+    wrap.append(
+      actionButton(
+        t("extras.wheel", { cost: formatNumber(WHEEL_PRICE) }),
+        "extrasWheel",
+        state.coins >= WHEEL_PRICE,
+      ),
+    );
+    wrap.append(actionButton(t("extras.compost"), "extrasCompost"));
+    if (extras.wheelLast.length > 0)
+      wrap.append(lineBlock(`// ${t("extras.wheelLast")}: ${extras.wheelLast}`));
+
+    wrap.append(lineBlock(`// ${t("extras.contracts")}`));
+    for (const offer of contractOffers(state.playerId, at)) {
+      const claimed = extras.contractClaims.includes(offer.id);
+      const label = `${t(`products.${offer.product}`)} ≥${offer.star}★ x${offer.qty} → ${formatNumber(offer.reward)}c`;
+      if (claimed) wrap.append(lineBlock(`// ${label} [${t("extras.claimed")}]`));
+      else {
+        const button = actionButton(label, "extrasContract");
+        button.dataset.id = offer.id;
+        wrap.append(button);
+      }
+    }
+
+    wrap.append(lineBlock(`// ${t("extras.merchant")}`));
+    for (const offer of merchantOffers(state.playerId, at)) {
+      const claimed = extras.merchantClaims.includes(offer.id);
+      const name = offer.kind === "seed" ? seedName(offer.item as SeedId) : t(`tools.${offer.item}`);
+      const label = `${name} x${offer.stock} — ${formatNumber(offer.price)}c`;
+      if (claimed) wrap.append(lineBlock(`// ${label} [${t("extras.claimed")}]`));
+      else {
+        const button = actionButton(label, "extrasMerchant");
+        button.dataset.id = offer.id;
+        button.disabled = state.coins < offer.price;
+        wrap.append(button);
+      }
+    }
+
+    wrap.append(lineBlock(`// ${t("extras.futures")}`));
+    if (extras.futures.length === 0) wrap.append(lineBlock(t("extras.noFutures")));
+    for (const future of extras.futures) {
+      wrap.append(lineBlock(`// ${itemName(future.item)} x${future.qty} @ ${formatNumber(future.price)}c`));
+    }
+    for (const item of new Set((state.bag.crops ?? []).map((stack) => stack.item))) {
+      const button = actionButton(t("extras.lockFuture", { item: itemName(item) }), "extrasFuture");
+      button.dataset.item = item;
+      wrap.append(button);
+    }
+
+    const cropItems = [...new Set((state.bag.crops ?? []).map((stack) => stack.item))];
+    if (cropItems.length > 0) wrap.append(lineBlock(`// ${t("extras.splice")}`));
+    for (const item of cropItems) {
+      const button = actionButton(t("extras.spliceItem", { item: itemName(item) }), "extrasSplice");
+      button.dataset.item = item;
+      wrap.append(button);
+    }
+
+    wrap.append(lineBlock(`// ${t("extras.achievements")}`));
+    for (const achievement of ACHIEVEMENTS) {
+      const done = extras.achievements.includes(achievement.id);
+      wrap.append(lineBlock(`${done ? "[x]" : "[ ]"} ${t(`achievements.${achievement.id}`)}`));
+    }
+
+    wrap.append(lineBlock(`// ${t("extras.tournament")}`));
+    if (tournament.length === 0) wrap.append(lineBlock(t("extras.tournamentEmpty")));
+    tournament.forEach((entry, index) => {
+      wrap.append(
+        lineBlock(
+          `#${index + 1} ${entry.nick} — ${formatNumber(entry.earned)}c · ${entry.harvested} ${t("rank.harvested")}`,
+        ),
+      );
+    });
+    return wrap;
+  }
+
   /** @brief Loads the bot garden list for the bots tab. */
   async function loadBots(): Promise<void> {
     if (disposed) return;
@@ -2261,6 +2409,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const next = div("garden-line");
       next.dataset.eventTimer = "next";
       seasonPanel.append(next);
+      seasonPanel.append(lineBlock(""));
+      seasonPanel.append(lineBlock(`// ${t("event.forecast")}`));
+      for (const wave of season.forecast) {
+        const names =
+          wave.length === 0 ? t("events.calm") : wave.map((event) => t(`events.${event.id}`)).join(" + ");
+        seasonPanel.append(lineBlock(`// ${names}`));
+      }
     } else {
       seasonPanel.append(lineBlock(t("common.loading")));
     }
@@ -2329,6 +2484,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (tab === "rank") return buildRank();
     if (tab === "farm") return buildFarm();
     if (tab === "warehouse") return buildWarehouse();
+    if (tab === "extras") return buildExtras();
     return buildEvent();
   }
 
@@ -2775,6 +2931,42 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         localStorage.setItem("dyno.garden.stealth", stealth ? "1" : "0");
         render();
         return;
+      case "extrasInsurance":
+        void runAction({ kind: "buyInsurance" }, t("extras.insuranceBought"));
+        return;
+      case "extrasGreenhouse":
+        void runAction({ kind: "buyGreenhouse" }, t("extras.greenhouseBought"));
+        return;
+      case "extrasPet":
+        void runAction({ kind: "buyPet" }, t("extras.petBought"));
+        return;
+      case "extrasWheel":
+        void runAction({ kind: "spinWheel" }, t("extras.wheelSpun"));
+        return;
+      case "extrasCompost":
+        void runAction({ kind: "compostCrops" }, t("extras.composted"));
+        return;
+      case "extrasContract": {
+        const id = target.dataset.id;
+        if (id !== undefined) void runAction({ kind: "fulfillContract", id }, t("extras.contractDone"));
+        return;
+      }
+      case "extrasMerchant": {
+        const id = target.dataset.id;
+        if (id !== undefined) void runAction({ kind: "buyMerchant", id }, t("extras.merchantBought"));
+        return;
+      }
+      case "extrasFuture": {
+        const item = target.dataset.item as ItemId | undefined;
+        if (item !== undefined)
+          void runAction({ kind: "lockFuture", item, qty: 1 }, t("extras.futureLocked"));
+        return;
+      }
+      case "extrasSplice": {
+        const item = target.dataset.item as ItemId | undefined;
+        if (item !== undefined) void runAction({ kind: "spliceCrops", item }, t("extras.spliced"));
+        return;
+      }
       case "setBuyQty": {
         const qty = Number(target.dataset.qty);
         if (Number.isInteger(qty) && qty >= 1 && qty <= 99) buyQty = qty;
@@ -2994,6 +3186,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (tab === "chart") void loadChart();
         if (tab === "bots") void loadBots();
         if (tab === "rank") void loadLeaderboard();
+        if (tab === "extras") void loadExtras();
       }
     }, POLL_MS);
 

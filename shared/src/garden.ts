@@ -797,6 +797,249 @@ export interface WarehouseState {
   readonly machines: Readonly<Partial<Record<MachineId, MachineState>>>;
 }
 
+/* ===================================================================== *
+ *  Extras: weather forecast, rotation, greenhouse, pets, insurance,
+ *  contracts, merchant, futures, genetics, compost, achievements,
+ *  streak, collection, lucky wheel and weekly tournament.
+ * ===================================================================== */
+
+/** Milliseconds in one day. */
+export const DAY_MS = 24 * 60 * 60_000;
+
+/** Contract board rotation. */
+export const CONTRACT_WINDOW_MS = 2 * 60 * 60_000;
+
+/** Traveling merchant rotation. */
+export const MERCHANT_WINDOW_MS = 4 * 60 * 60_000;
+
+/** Weekly tournament window. */
+export const WEEK_MS = 7 * DAY_MS;
+
+/** Insurance price and payout per infested plant. */
+export const INSURANCE_PRICE = 2_500;
+export const INSURANCE_DURATION_MS = DAY_MS;
+export const INSURANCE_PAYOUT = 150;
+
+/** Greenhouse levels: prices and pest-chance reduction per level. */
+export const GREENHOUSE_PRICES: readonly number[] = [2_000_000, 4_000_000, 8_000_000];
+
+/** Pet levels: prices and extra pest-chance reduction per level. */
+export const PET_PRICES: readonly number[] = [100_000, 300_000, 800_000];
+
+/** Genetics: maximum splice bonus in percentage points. */
+export const SPLICE_MAX_BONUS = 20;
+
+/** Compost: harvested crops needed per fertilizer. */
+export const COMPOST_RATIO = 2;
+
+/** Lucky wheel price and pity spins. */
+export const WHEEL_PRICE = 10_000;
+export const WHEEL_PITY = 20;
+
+/** Futures: fee rate and lock length. */
+export const FUTURE_FEE_RATE = 0.05;
+export const FUTURE_LOCK_MS = 2 * 60 * 60_000;
+
+/** One NPC produce contract. */
+export interface ContractOffer {
+  /** Stable id within the rotation window. */
+  readonly id: string;
+  /** Required product. */
+  readonly product: ProductId;
+  /** Required quality stars. */
+  readonly star: number;
+  /** Required units. */
+  readonly qty: number;
+  /** Coin reward. */
+  readonly reward: number;
+  /** Server time the board rotates. */
+  readonly endsAt: number;
+}
+
+/** One traveling-merchant offer. */
+export interface MerchantOffer {
+  /** Stable id within the rotation window. */
+  readonly id: string;
+  /** Either a seed or a rare tool. */
+  readonly kind: "seed" | "tool";
+  /** Seed/tool id. */
+  readonly item: SeedId | ToolId;
+  /** Units available. */
+  readonly stock: number;
+  /** Price per unit. */
+  readonly price: number;
+  /** Server time the merchant leaves. */
+  readonly endsAt: number;
+}
+
+/** One locked sale price. */
+export interface FutureLock {
+  /** Crop/fruit id. */
+  readonly item: ItemId;
+  /** Guaranteed unit price. */
+  readonly price: number;
+  /** Units still locked. */
+  readonly qty: number;
+  /** Expiry. */
+  readonly expiresAt: number;
+}
+
+/** One achievement definition. */
+export interface AchievementDefinition {
+  /** Stable id. */
+  readonly id: string;
+  /** Coin reward. */
+  readonly coins: number;
+  /** Optional seed reward. */
+  readonly seed?: SeedId;
+  /** Optional seed quantity. */
+  readonly seedQty?: number;
+}
+
+/** Achievements tracked from the lifetime stats. */
+export const ACHIEVEMENTS: readonly AchievementDefinition[] = [
+  { id: "firstMillion", coins: 50_000 },
+  { id: "hundredHarvests", coins: 20_000, seed: "pumpkin", seedQty: 2 },
+  { id: "fiveStars", coins: 30_000 },
+  { id: "allTabs", coins: 100_000, seed: "ginseng", seedQty: 1 },
+  { id: "collector", coins: 60_000 },
+];
+
+/** One wheel prize. */
+export interface WheelPrize {
+  /** Prize label used by the client. */
+  readonly kind: "coins" | "seed" | "supply" | "tool";
+  /** Amount/id payload. */
+  readonly value: string | number;
+}
+
+/** Extras state carried by every snapshot. */
+export interface ExtrasSnapshot {
+  /** Consecutive daily logins. */
+  readonly streak: number;
+  /** Last day index counted. */
+  readonly lastStreakDay: number;
+  /** Claimed achievement ids. */
+  readonly achievements: readonly string[];
+  /** Discovered collection keys, e.g. `seed:carrot`, `effect:golden`. */
+  readonly collection: readonly string[];
+  /** Greenhouse level, 0..3. */
+  readonly greenhouse: number;
+  /** Pet level, 0..3. */
+  readonly pet: number;
+  /** Insurance expiry. */
+  readonly insuranceUntil: number;
+  /** Society genetics bonus in percentage points. */
+  readonly spliceBonus: number;
+  /** Wheel spins so far and spins without a rare prize. */
+  readonly wheelSpins: number;
+  readonly wheelPity: number;
+  /** Last wheel prize key, for the client toast. */
+  readonly wheelLast: string;
+  /** Active sale-price locks. */
+  readonly futures: readonly FutureLock[];
+  /** Claimed contract ids for the current board. */
+  readonly contractClaims: readonly string[];
+  /** Claimed merchant ids for the current rotation. */
+  readonly merchantClaims: readonly string[];
+  /** Current weekly tournament bucket and its stats. */
+  readonly weekKey: number;
+  readonly weekEarned: number;
+  readonly weekHarvested: number;
+}
+
+/** @brief Day index since epoch. */
+export function dayIndexAt(now: number): number {
+  return Math.floor((now - EPOCH_MS) / DAY_MS);
+}
+
+/** @brief Current contract rotation window. */
+export function contractWindowAt(now: number): number {
+  return Math.floor((now - EPOCH_MS) / CONTRACT_WINDOW_MS);
+}
+
+/** @brief Current merchant rotation window. */
+export function merchantWindowAt(now: number): number {
+  return Math.floor((now - EPOCH_MS) / MERCHANT_WINDOW_MS);
+}
+
+/** @brief Current weekly tournament key. */
+export function weekKeyAt(now: number): number {
+  return Math.floor((now - EPOCH_MS) / WEEK_MS);
+}
+
+/** @brief Deterministic NPC contract board for one player. */
+export function contractOffers(playerId: string, now: number): ContractOffer[] {
+  const window = contractWindowAt(now);
+  const rng = createRng(hash32(`contracts:${playerId}:${window}`));
+  const products = PRODUCTS.filter((product) => product.base > 0);
+  const offers: ContractOffer[] = [];
+  for (let index = 0; index < 3; index += 1) {
+    const product = products[Math.floor(rng() * products.length)];
+    if (product === undefined) continue;
+    const star = 1 + Math.floor(rng() * 3);
+    const qty = 3 + Math.floor(rng() * 10);
+    const reward = Math.round(product.base * 2 ** (star - 1) * qty * 1.5);
+    offers.push({
+      id: `c${window}-${index}`,
+      product: product.id,
+      star,
+      qty,
+      reward,
+      endsAt: EPOCH_MS + (window + 1) * CONTRACT_WINDOW_MS,
+    });
+  }
+  return offers;
+}
+
+/** @brief Deterministic traveling merchant for one player. */
+export function merchantOffers(playerId: string, now: number): MerchantOffer[] {
+  const window = merchantWindowAt(now);
+  const rng = createRng(hash32(`merchant:${playerId}:${window}`));
+  const pool = SEEDS.filter((seed) => seed.rare === true);
+  const offers: MerchantOffer[] = [];
+  const seed = pool[Math.floor(rng() * Math.max(1, pool.length))];
+  if (seed !== undefined) {
+    offers.push({
+      id: `m${window}-seed`,
+      kind: "seed",
+      item: seed.id,
+      stock: 1,
+      price: seed.buy * 4,
+      endsAt: EPOCH_MS + (window + 1) * MERCHANT_WINDOW_MS,
+    });
+  }
+  const tool = TOOLS[Math.floor(rng() * TOOLS.length)];
+  if (tool !== undefined) {
+    offers.push({
+      id: `m${window}-tool`,
+      kind: "tool",
+      item: tool.id,
+      stock: 1,
+      price: tool.price * 2,
+      endsAt: EPOCH_MS + (window + 1) * MERCHANT_WINDOW_MS,
+    });
+  }
+  return offers;
+}
+
+/** @brief Next event windows for the toolbar forecast. */
+export function forecastEvents(now: number, waves = 3): EventSnapshot[][] {
+  const wave = Math.floor((now - EPOCH_MS) / EVENT_WAVE_MS);
+  const out: EventSnapshot[][] = [];
+  for (let step = 0; step < waves; step += 1) {
+    const start = EPOCH_MS + (wave + 1 + step) * EVENT_WAVE_MS;
+    out.push(
+      eventsAt(start).map((event) => ({
+        id: event.id,
+        startedAt: start,
+        endsAt: start + EVENT_WAVE_MS,
+      })),
+    );
+  }
+  return out;
+}
+
 /** Full owner snapshot; every response carries one. */
 export interface GardenSnapshot {
   /** Wire protocol version. */
@@ -831,6 +1074,8 @@ export interface GardenSnapshot {
   readonly warehouse: WarehouseState;
   /** Fertility percent per crop cell, index = absolute slot. */
   readonly soil: readonly number[];
+  /** All extra systems: streak, achievements, wheel, contracts, etc. */
+  readonly extras: ExtrasSnapshot;
   /** Lifetime counters. */
   readonly stats: GardenStats;
   /** Revision bumped on every write; actions echo it to reject stale tabs. */
@@ -867,6 +1112,8 @@ export interface VisitSnapshot {
   readonly warehouse: WarehouseState;
   /** Fertility percent per crop cell. */
   readonly soil: readonly number[];
+  /** Extra systems snapshot. */
+  readonly extras: ExtrasSnapshot;
   /** Lifetime counters. */
   readonly stats: GardenStats;
   /** Server time of the last write. */
@@ -1179,6 +1426,8 @@ export interface SeasonSnapshot {
   readonly events: readonly EventSnapshot[];
   /** Every weather event that will run in the next window. */
   readonly nextEvents: readonly EventSnapshot[];
+  /** Event sets for the next few windows, for the forecast panel. */
+  readonly forecast: readonly (readonly EventSnapshot[])[];
   /** Event window after this one, for the countdown. */
   readonly next: EventSnapshot;
   /** Seed shop offers and when they rotate. */
@@ -1250,6 +1499,15 @@ export type GardenAction =
   | { readonly kind: "buyTool"; readonly tool: ToolId; readonly qty: number }
   | { readonly kind: "buildWarehouse" }
   | { readonly kind: "renovateSoil" }
+  | { readonly kind: "fulfillContract"; readonly id: string }
+  | { readonly kind: "buyMerchant"; readonly id: string }
+  | { readonly kind: "buyInsurance" }
+  | { readonly kind: "lockFuture"; readonly item: ItemId; readonly qty: number }
+  | { readonly kind: "spliceCrops"; readonly item: ItemId }
+  | { readonly kind: "compostCrops" }
+  | { readonly kind: "buyGreenhouse" }
+  | { readonly kind: "buyPet" }
+  | { readonly kind: "spinWheel" }
   | {
       readonly kind: "sellCrop";
       readonly item: ItemId;
@@ -1309,6 +1567,9 @@ export type GardenErrorCode =
   | "MACHINE_COOLDOWN"
   | "NO_INPUT"
   | "NOTHING_TO_RENOVATE"
+  | "NO_CONTRACT"
+  | "MERCHANT_GONE"
+  | "ALREADY_CLAIMED"
   | "CANNOT_VISIT_SELF";
 
 /** Successful response to a garden action. */
@@ -1607,6 +1868,25 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   if (kind === "buyTab") return { kind };
   if (kind === "buildWarehouse") return { kind };
   if (kind === "renovateSoil") return { kind };
+  if (kind === "fulfillContract" || kind === "buyMerchant") {
+    const id = typeof value.id === "string" ? value.id : "";
+    return id.length === 0 || id.length > 40 ? null : { kind, id };
+  }
+  if (kind === "buyInsurance") return { kind };
+  if (kind === "compostCrops") return { kind };
+  if (kind === "buyGreenhouse" || kind === "buyPet") return { kind };
+  if (kind === "spinWheel") return { kind };
+  if (kind === "lockFuture") {
+    const item = typeof value.item === "string" ? itemById(value.item) : undefined;
+    const qty = value.qty;
+    if (item === undefined) return null;
+    if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 99) return null;
+    return { kind, item: item.id as ItemId, qty };
+  }
+  if (kind === "spliceCrops") {
+    const item = typeof value.item === "string" ? itemById(value.item) : undefined;
+    return item === undefined ? null : { kind, item: item.id as ItemId };
+  }
   if (kind === "sprayPestAll") return { kind };
   if (kind === "sprayPest") {
     const isTree = value.tree === true;
@@ -1776,6 +2056,7 @@ export function seasonAt(now: number): SeasonSnapshot {
       startedAt: nextStart,
       endsAt: nextStart + EVENT_WAVE_MS,
     })),
+    forecast: forecastEvents(waveStart, 3),
     next: { id: next.id, startedAt: nextStart, endsAt: nextStart + EVENT_WAVE_MS },
     shop: { restockAt, offers, tools },
     prices,

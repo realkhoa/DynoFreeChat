@@ -26,6 +26,7 @@ import {
   seasonAt,
   SOIL_START,
   totalCrops,
+  weekKeyAt,
   type BagState,
   type CropStack,
   type ProductStack,
@@ -58,6 +59,8 @@ import {
   settleFarm,
   settleTools,
   settlePest,
+  settleExtras,
+  extrasSnapshot,
   ledgerSnapshot,
   type GardenLedger,
 } from "./garden-rules";
@@ -405,6 +408,26 @@ export class Garden extends DurableObject<Env> {
       toolsSettledAt: raw.toolsSettledAt ?? raw.updatedAt ?? 0,
       pestSettledAt: raw.pestSettledAt ?? raw.updatedAt ?? 0,
       soil: this.readSoil(tabs, raw.soil),
+      lastCrop: raw.lastCrop ?? new Array<SeedId | null>(totalCrops(tabs)).fill(null),
+      greenhouse: raw.greenhouse ?? 0,
+      pet: raw.pet ?? 0,
+      insuranceUntil: raw.insuranceUntil ?? 0,
+      spliceBonus: raw.spliceBonus ?? 0,
+      streak: raw.streak ?? 0,
+      lastStreakDay: raw.lastStreakDay ?? 0,
+      achievements: raw.achievements ?? [],
+      collection: raw.collection ?? [],
+      wheelSpins: raw.wheelSpins ?? 0,
+      wheelPity: raw.wheelPity ?? 0,
+      wheelLast: raw.wheelLast ?? "",
+      futures: raw.futures ?? [],
+      contractClaims: raw.contractClaims ?? [],
+      merchantClaims: raw.merchantClaims ?? [],
+      weekKey: raw.weekKey ?? weekKeyAt(Date.now()),
+      weekEarned: raw.weekEarned ?? 0,
+      weekHarvested: raw.weekHarvested ?? 0,
+      lastEarned: raw.lastEarned ?? stats.earned,
+      lastHarvested: raw.lastHarvested ?? stats.harvested,
       warehouse: raw.warehouse ?? 0,
       machines: raw.machines ?? {},
       // Saves written before ROI tracking have no spent counter.
@@ -830,7 +853,7 @@ export class Garden extends DurableObject<Env> {
     if (ledger === null) return this.unauthorized();
 
     const now = Date.now();
-    const settled = settlePest(settleTools(settleFarm(ledger, now), now), now);
+    const settled = settleExtras(settlePest(settleTools(settleFarm(ledger, now), now), now), now);
     if (settled !== ledger) this.write(settled);
     const ledgerNow = settled;
     if (now - ledgerNow.lastSeen > 60_000) {
@@ -863,7 +886,7 @@ export class Garden extends DurableObject<Env> {
 
     const now = Date.now();
     const season = this.seasonFor(request, now);
-    const settled = settlePest(settleTools(settleFarm(ledger, now), now), now);
+    const settled = settleExtras(settlePest(settleTools(settleFarm(ledger, now), now), now), now);
     const result = applyGardenAction(settled, action as GardenAction, season, now);
     if (!result.ok) return json({ code: result.code }, 400);
 
@@ -985,6 +1008,7 @@ export class Garden extends DurableObject<Env> {
         machines: { ...ledger.machines },
       },
       soil: [...ledger.soil],
+      extras: extrasSnapshot(ledger),
       stats: { ...ledger.stats },
       updatedAt: ledger.updatedAt,
       lastSeen: ledger.lastSeen,
@@ -1116,6 +1140,9 @@ export class Garden extends DurableObject<Env> {
           harvested: ledger.stats.harvested,
           coins: ledger.coins,
           spent: ledger.stats.spent,
+          weekKey: ledger.weekKey,
+          weekEarned: ledger.weekEarned,
+          weekHarvested: ledger.weekHarvested,
           now: ledger.updatedAt,
         }),
       });
@@ -1213,6 +1240,15 @@ export class GardenHub extends DurableObject<Env> {
         window_start INTEGER NOT NULL,
         count INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS tournament (
+        player_id TEXT PRIMARY KEY,
+        week_key INTEGER NOT NULL,
+        nick TEXT NOT NULL,
+        code TEXT NOT NULL,
+        earned INTEGER NOT NULL DEFAULT 0,
+        harvested INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      );
     `);
     // Bots live in the same table but never reach the human leaderboard.
     const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(gardens)").toArray();
@@ -1235,6 +1271,7 @@ export class GardenHub extends DurableObject<Env> {
     if (request.method === "GET" && url.pathname === "/by-recovery") return this.byRecovery(url);
     if (request.method === "GET" && url.pathname === "/leaderboard") return this.leaderboard(url);
     if (request.method === "GET" && url.pathname === "/bots") return this.botList();
+    if (request.method === "GET" && url.pathname === "/tournament") return this.tournament(url);
     if (request.method === "POST" && url.pathname === "/remove") return this.remove(request);
     if (request.method === "GET" && url.pathname === "/info") return this.info();
 
@@ -1282,6 +1319,10 @@ export class GardenHub extends DurableObject<Env> {
     const coins = typeof body.coins === "number" ? Math.max(0, Math.floor(body.coins)) : 0;
     const spent = typeof body.spent === "number" ? Math.max(0, Math.floor(body.spent)) : 0;
     const now = typeof body.now === "number" ? body.now : Date.now();
+    const weekKey = typeof body.weekKey === "number" ? Math.floor(body.weekKey) : 0;
+    const weekEarned = typeof body.weekEarned === "number" ? Math.max(0, Math.floor(body.weekEarned)) : 0;
+    const weekHarvested =
+      typeof body.weekHarvested === "number" ? Math.max(0, Math.floor(body.weekHarvested)) : 0;
     this.sql.exec(
       "UPDATE gardens SET nick = ?, color = ?, earned = ?, harvested = ?, coins = ?, spent = ?, updated_at = ? WHERE player_id = ?",
       nick.ok ? nick.nick : "",
@@ -1293,7 +1334,44 @@ export class GardenHub extends DurableObject<Env> {
       now,
       playerId,
     );
+    if (weekKey > 0) {
+      this.sql.exec(
+        `INSERT INTO tournament (player_id, week_key, nick, code, earned, harvested, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(player_id) DO UPDATE SET week_key = excluded.week_key,
+           nick = excluded.nick, code = excluded.code, earned = excluded.earned,
+           harvested = excluded.harvested, updated_at = excluded.updated_at`,
+        playerId,
+        weekKey,
+        nick.ok ? nick.nick : "",
+        typeof body.code === "string" ? body.code : "",
+        weekEarned,
+        weekHarvested,
+        now,
+      );
+    }
     return json({ ok: true });
+  }
+
+  /** @brief Weekly tournament standings. */
+  private tournament(url: URL): Response {
+    const raw = Number(url.searchParams.get("limit") ?? "20");
+    const limit = Number.isInteger(raw) ? Math.min(100, Math.max(1, raw)) : 20;
+    const rows = this.sql
+      .exec<SqlRow<{ nick: string; code: string; earned: number; harvested: number; week_key: number }>>(
+        "SELECT nick, code, earned, harvested, week_key FROM tournament ORDER BY week_key DESC, earned DESC LIMIT ?",
+        limit,
+      )
+      .toArray();
+    return json({
+      entries: rows.map((row) => ({
+        nick: row.nick,
+        code: row.code,
+        earned: row.earned,
+        harvested: row.harvested,
+        weekKey: row.week_key,
+      })),
+    });
   }
 
   /** @brief Looks a garden up by its public share code. */

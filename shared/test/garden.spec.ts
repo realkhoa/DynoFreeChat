@@ -61,7 +61,10 @@ import {
   FARM_CYCLE_MS,
   animalQuality,
   buildingSlots,
+  contractOffers,
+  forecastEvents,
   eventsAt,
+  merchantOffers,
   nextSellState,
   productPrice,
   nextTabPrice,
@@ -278,6 +281,18 @@ describe("soil fertility", () => {
     expect(soilRenovateCost(95)).toBe(10);
     expect(soilRenovateCost(50)).toBe(100);
     expect(soilRenovateCost(0)).toBe(200);
+  });
+});
+
+describe("extras boards", () => {
+  it("keeps contracts, merchant and forecast deterministic", () => {
+    expect(contractOffers("p1", EPOCH_MS)).toEqual(contractOffers("p1", EPOCH_MS));
+    expect(contractOffers("p1", EPOCH_MS)).toHaveLength(3);
+    expect(merchantOffers("p1", EPOCH_MS)).toEqual(merchantOffers("p1", EPOCH_MS));
+    expect(merchantOffers("p1", EPOCH_MS).length).toBeGreaterThan(0);
+    const forecast = forecastEvents(EPOCH_MS, 3);
+    expect(forecast).toHaveLength(3);
+    expect(forecast[0]).toEqual(forecastEvents(EPOCH_MS, 3)[0]);
   });
 });
 

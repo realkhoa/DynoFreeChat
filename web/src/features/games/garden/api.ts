@@ -180,6 +180,16 @@ export class GardenApi {
     return this.request<GardenStateResponse>("/api/garden/state", { method: "GET" });
   }
 
+  /** @brief Weekly tournament standings. */
+  async tournament(): Promise<
+    Array<{ nick: string; code: string; earned: number; harvested: number; weekKey: number }>
+  > {
+    const response = await this.request<{
+      entries: Array<{ nick: string; code: string; earned: number; harvested: number; weekKey: number }>;
+    }>("/api/garden/tournament", { method: "GET" });
+    return Array.isArray(response.entries) ? response.entries : [];
+  }
+
   /** @brief Lists the server-side bot gardens. */
   async bots(): Promise<{ bots: GardenBot[] }> {
     return this.request<{ bots: GardenBot[] }>("/api/garden/bots", { method: "GET" });

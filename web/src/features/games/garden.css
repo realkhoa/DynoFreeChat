@@ -941,3 +941,24 @@
   border-color: var(--border-subtle);
   color: #9cdcfe;
 }
+
+/* Extras tab: compact stacked sections like the rest of the document. */
+.garden-extras {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 4px 2px;
+  font: 10px/16px var(--font-mono);
+  max-width: 100%;
+}
+
+.garden-extras .stage-btn {
+  white-space: normal;
+  text-align: left;
+}
+
+/* Timetable rows for contracts/merchant stay readable on phones. */
+.garden-extras .garden-line {
+  white-space: pre-wrap;
+}

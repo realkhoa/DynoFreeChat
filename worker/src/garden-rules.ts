@@ -20,6 +20,26 @@ import {
   WATER_ALL_COST,
   SELL_TAX_RATE,
   SOIL_START,
+  ACHIEVEMENTS,
+  COMPOST_RATIO,
+  FUTURE_FEE_RATE,
+  FUTURE_LOCK_MS,
+  GREENHOUSE_PRICES,
+  INSURANCE_DURATION_MS,
+  INSURANCE_PAYOUT,
+  INSURANCE_PRICE,
+  PET_PRICES,
+  SPLICE_MAX_BONUS,
+  WHEEL_PITY,
+  WHEEL_PRICE,
+  contractOffers,
+  merchantOffers,
+  basePriceOf,
+  FERTILIZERS,
+  SPRAYS,
+  SEEDS,
+  dayIndexAt,
+  weekKeyAt,
   SOIL_STEP,
   soilGrowthFactor,
   soilRenovateCost,
@@ -81,6 +101,7 @@ import {
   type SupplyId,
   type PlotState,
   type ProductId,
+  type FutureLock,
   type MachineId,
   type MachineState,
   type ProductStack,
@@ -158,6 +179,37 @@ export interface GardenLedger {
   pestSettledAt: number;
   /** Fertility percent per crop cell. */
   soil: number[];
+  /** Last crop planted on each cell, for rotation. */
+  lastCrop: (SeedId | null)[];
+  /** Greenhouse level. */
+  greenhouse: number;
+  /** Pet level. */
+  pet: number;
+  /** Insurance expiry. */
+  insuranceUntil: number;
+  /** Genetics bonus in percentage points. */
+  spliceBonus: number;
+  /** Daily streak state. */
+  streak: number;
+  lastStreakDay: number;
+  /** Claimed achievements. */
+  achievements: string[];
+  /** Collection keys. */
+  collection: string[];
+  /** Wheel counters. */
+  wheelSpins: number;
+  wheelPity: number;
+  wheelLast: string;
+  /** Locked sale prices. */
+  futures: FutureLock[];
+  contractClaims: string[];
+  merchantClaims: string[];
+  /** Weekly tournament bucket. */
+  weekKey: number;
+  weekEarned: number;
+  weekHarvested: number;
+  lastEarned: number;
+  lastHarvested: number;
   /** Warehouse level: 0 not built. */
   warehouse: number;
   /** Built machines. */
@@ -228,6 +280,27 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     toolsSettledAt: input.now,
     pestSettledAt: input.now,
     soil: new Array<number>(totalCrops(STARTING_TABS)).fill(SOIL_START),
+    lastCrop: new Array<SeedId | null>(totalCrops(STARTING_TABS)).fill(null),
+    greenhouse: 0,
+    pet: 0,
+    insuranceUntil: 0,
+    spliceBonus: 0,
+    streak: 0,
+    // A new garden starts counted for today; the first reward lands tomorrow.
+    lastStreakDay: dayIndexAt(input.now),
+    achievements: [],
+    collection: [],
+    wheelSpins: 0,
+    wheelPity: 0,
+    wheelLast: "",
+    futures: [],
+    contractClaims: [],
+    merchantClaims: [],
+    weekKey: weekKeyAt(input.now),
+    weekEarned: 0,
+    weekHarvested: 0,
+    lastEarned: 0,
+    lastHarvested: 0,
     warehouse: 0,
     machines: {},
     rev: 1,
@@ -261,6 +334,29 @@ export function emptyTrees(tabs: number): (TreeState | null)[] {
  * @brief Projects the stored ledger onto the wire snapshot.
  * @param ledger Stored garden.
  */
+/** @brief Public extras projection for snapshots and visits. */
+export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
+  return {
+    streak: ledger.streak,
+    lastStreakDay: ledger.lastStreakDay,
+    achievements: [...ledger.achievements],
+    collection: [...ledger.collection],
+    greenhouse: ledger.greenhouse,
+    pet: ledger.pet,
+    insuranceUntil: ledger.insuranceUntil,
+    spliceBonus: ledger.spliceBonus,
+    wheelSpins: ledger.wheelSpins,
+    wheelPity: ledger.wheelPity,
+    wheelLast: ledger.wheelLast,
+    futures: ledger.futures.map((future) => ({ ...future })),
+    contractClaims: [...ledger.contractClaims],
+    merchantClaims: [...ledger.merchantClaims],
+    weekKey: ledger.weekKey,
+    weekEarned: ledger.weekEarned,
+    weekHarvested: ledger.weekHarvested,
+  };
+}
+
 export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
   return {
     version: 1,
@@ -287,6 +383,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     },
     farmSettledAt: ledger.farmSettledAt,
     soil: [...ledger.soil],
+    extras: extrasSnapshot(ledger),
     warehouse: {
       level: ledger.warehouse,
       machines: Object.fromEntries(
@@ -369,6 +466,24 @@ export function applyGardenAction(
       return sprayPestAll(ledger, now);
     case "renovateSoil":
       return renovateSoil(ledger, now);
+    case "fulfillContract":
+      return fulfillContract(ledger, action.id, season, now);
+    case "buyMerchant":
+      return buyMerchant(ledger, action.id, now);
+    case "buyInsurance":
+      return buyInsurance(ledger, now);
+    case "lockFuture":
+      return lockFuture(ledger, action.item, action.qty, season, now);
+    case "spliceCrops":
+      return spliceCrops(ledger, action.item, now);
+    case "compostCrops":
+      return compostCrops(ledger, now);
+    case "buyGreenhouse":
+      return buyGreenhouse(ledger, now);
+    case "buyPet":
+      return buyPet(ledger, now);
+    case "spinWheel":
+      return spinWheel(ledger, now);
     case "buildMachine":
       return buildMachine(ledger, action.machine, now);
     case "upgradeMachine":
@@ -475,7 +590,9 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
   if (now < plot.readyAt) return { ok: false, code: "NOT_READY" };
 
   const next = clone(ledger);
-  addCrop(next.bag.crops, plot.seed, resolvedCropEffects(plot, now), 1, plot.pest);
+  const harvestedEffects = resolvedCropEffects(plot, now);
+  addCrop(next.bag.crops, plot.seed, harvestedEffects, 1, plot.pest);
+  for (const effect of harvestedEffects) collect(next, `effect:${effect}`);
   next.stats.harvested += 1;
   // One planting cycle always costs some fertility, even for reharvest plants.
   const fertility = Math.max(0, (next.soil[slot] ?? SOIL_START) - SOIL_STEP);
@@ -786,6 +903,7 @@ function buyTool(
   next.coins -= total;
   next.stats.spent += total;
   next.bag.tools[tool] = (next.bag.tools[tool] ?? 0) + qty;
+  collect(next, `tool:${tool}`);
   return changed(next, now);
 }
 
@@ -1036,12 +1154,268 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
     if (produced <= 0) continue;
     const star = animalQuality(entry.animal, now);
     addProduct((next.bag.products ??= []), definition.product, star, produced);
+    collect(next, `product:${definition.product}`);
+    if (star >= 5) collect(next, "star:5");
     next.animals[entry.building][entry.slot] = {
       ...entry.animal,
       lastProduceAt: entry.animal.lastProduceAt + produced * interval,
     };
   }
   return next;
+}
+
+/** @brief Adds a collection key once. */
+function collect(ledger: GardenLedger, key: string): void {
+  if (!ledger.collection.includes(key)) ledger.collection.push(key);
+}
+
+/** @brief Delivers one NPC contract from the rotated board. */
+function fulfillContract(ledger: GardenLedger, id: string, season: SeasonSnapshot, now: number): RuleResult {
+  const offer = contractOffers(ledger.playerId, now).find((entry) => entry.id === id);
+  if (offer === undefined) return { ok: false, code: "NO_CONTRACT" };
+  if (ledger.contractClaims.includes(offer.id)) return { ok: false, code: "ALREADY_CLAIMED" };
+
+  let available = 0;
+  for (const stack of ledger.bag.products) {
+    if (stack.product === offer.product && stack.star >= offer.star) available += stack.qty;
+  }
+  if (available < offer.qty) return { ok: false, code: "NO_PRODUCT" };
+
+  const next = clone(ledger);
+  let left = offer.qty;
+  next.bag.products = next.bag.products
+    .map((stack) => {
+      if (left <= 0 || stack.product !== offer.product || stack.star < offer.star) return stack;
+      const take = Math.min(left, stack.qty);
+      left -= take;
+      collect(next, `product:${stack.product}`);
+      return { ...stack, qty: stack.qty - take };
+    })
+    .filter((stack) => stack.qty > 0);
+  next.coins += offer.reward;
+  next.stats.earned += offer.reward;
+  next.weekEarned += offer.reward;
+  next.contractClaims.push(offer.id);
+  return changed(next, now);
+}
+
+/** @brief Buys one traveling-merchant offer. */
+function buyMerchant(ledger: GardenLedger, id: string, now: number): RuleResult {
+  const offer = merchantOffers(ledger.playerId, now).find((entry) => entry.id === id);
+  if (offer === undefined) return { ok: false, code: "MERCHANT_GONE" };
+  if (ledger.merchantClaims.includes(offer.id)) return { ok: false, code: "ALREADY_CLAIMED" };
+  if (ledger.coins < offer.price) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= offer.price;
+  next.stats.spent += offer.price;
+  if (offer.kind === "seed") {
+    next.bag.seeds[offer.item as SeedId] = (next.bag.seeds[offer.item as SeedId] ?? 0) + offer.stock;
+    collect(next, `seed:${offer.item}`);
+  } else {
+    next.bag.tools[offer.item as ToolId] = (next.bag.tools[offer.item as ToolId] ?? 0) + offer.stock;
+    collect(next, `tool:${offer.item}`);
+  }
+  next.merchantClaims.push(offer.id);
+  return changed(next, now);
+}
+
+/** @brief Buys one day of crop insurance. */
+function buyInsurance(ledger: GardenLedger, now: number): RuleResult {
+  if (now < ledger.insuranceUntil) return { ok: false, code: "ALREADY_CLAIMED" };
+  if (ledger.coins < INSURANCE_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= INSURANCE_PRICE;
+  next.stats.spent += INSURANCE_PRICE;
+  next.insuranceUntil = now + INSURANCE_DURATION_MS;
+  return changed(next, now);
+}
+
+/** @brief Locks the current market price for qty units of one item. */
+function lockFuture(
+  ledger: GardenLedger,
+  item: ItemId,
+  qty: number,
+  season: SeasonSnapshot,
+  now: number,
+): RuleResult {
+  const price = basePriceOf(item, season);
+  if (price <= 0) return { ok: false, code: "BAD_REQUEST" };
+  const fee = Math.max(1, Math.round(price * qty * FUTURE_FEE_RATE));
+  if (ledger.coins < fee) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= fee;
+  next.stats.spent += fee;
+  next.futures = next.futures.filter((future) => future.expiresAt > now);
+  next.futures.push({ item, price, qty, expiresAt: now + FUTURE_LOCK_MS });
+  return changed(next, now);
+}
+
+/** @brief Splices two crops into genetics progress. */
+function spliceCrops(ledger: GardenLedger, item: ItemId, now: number): RuleResult {
+  const total = ledger.bag.crops
+    .filter((stack) => stack.item === item)
+    .reduce((sum, stack) => sum + stack.qty, 0);
+  if (total < 2) return { ok: false, code: "NO_CROP" };
+  if (ledger.spliceBonus >= SPLICE_MAX_BONUS) return { ok: false, code: "MAX_LEVEL" };
+
+  const next = clone(ledger);
+  let left = 2;
+  next.bag.crops = next.bag.crops
+    .map((stack) => {
+      if (left <= 0 || stack.item !== item) return stack;
+      const take = Math.min(left, stack.qty);
+      left -= take;
+      return { ...stack, qty: stack.qty - take };
+    })
+    .filter((stack) => stack.qty > 0);
+  next.spliceBonus += 1;
+  return changed(next, now);
+}
+
+/** @brief Composts infested crops into fertilizer. */
+function compostCrops(ledger: GardenLedger, now: number): RuleResult {
+  const bad = ledger.bag.crops.filter((stack) => stack.pest === true);
+  const total = bad.reduce((sum, stack) => sum + stack.qty, 0);
+  if (total < COMPOST_RATIO) return { ok: false, code: "NOTHING_TO_DO" };
+  const fertilizer = Math.floor(total / COMPOST_RATIO);
+  const next = clone(ledger);
+  next.bag.crops = next.bag.crops.filter((stack) => stack.pest !== true);
+  next.bag.supplies.compost = (next.bag.supplies.compost ?? 0) + fertilizer;
+  return changed(next, now);
+}
+
+/** @brief Builds or upgrades the greenhouse. */
+function buyGreenhouse(ledger: GardenLedger, now: number): RuleResult {
+  const level = ledger.greenhouse;
+  if (level >= GREENHOUSE_PRICES.length) return { ok: false, code: "MAX_LEVEL" };
+  const cost = GREENHOUSE_PRICES[level] ?? 0;
+  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= cost;
+  next.stats.spent += cost;
+  next.greenhouse = level + 1;
+  return changed(next, now);
+}
+
+/** @brief Buys or upgrades the pet. */
+function buyPet(ledger: GardenLedger, now: number): RuleResult {
+  const level = ledger.pet;
+  if (level >= PET_PRICES.length) return { ok: false, code: "MAX_LEVEL" };
+  const cost = PET_PRICES[level] ?? 0;
+  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= cost;
+  next.stats.spent += cost;
+  next.pet = level + 1;
+  return changed(next, now);
+}
+
+/** @brief Spins the lucky wheel; one rare seed every twenty spins guaranteed. */
+function spinWheel(ledger: GardenLedger, now: number): RuleResult {
+  if (ledger.coins < WHEEL_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= WHEEL_PRICE;
+  const spin = next.wheelSpins;
+  const rng = createRng(hash32(`wheel:${ledger.playerId}:${spin}`));
+  const pity = next.wheelPity + 1 >= WHEEL_PITY;
+  const roll = rng();
+  let prizeKey = "coins:5000";
+  if (pity || roll < 0.1) {
+    const rare = SEEDS.filter((seed) => seed.rare === true);
+    const seed = rare[Math.floor(rng() * Math.max(1, rare.length))];
+    if (seed !== undefined) {
+      next.bag.seeds[seed.id] = (next.bag.seeds[seed.id] ?? 0) + 1;
+      collect(next, `seed:${seed.id}`);
+      prizeKey = `seed:${seed.id}`;
+    }
+    next.wheelPity = 0;
+  } else if (roll < 0.3) {
+    const seed = SEEDS[Math.floor(rng() * SEEDS.length)];
+    if (seed !== undefined) next.bag.seeds[seed.id] = (next.bag.seeds[seed.id] ?? 0) + 3;
+    prizeKey = `seeds3:${seed?.id ?? "carrot"}`;
+    next.wheelPity += 1;
+  } else if (roll < 0.5) {
+    const supply = [...FERTILIZERS, ...SPRAYS][Math.floor(rng() * (FERTILIZERS.length + SPRAYS.length))];
+    if (supply !== undefined) next.bag.supplies[supply.id] = (next.bag.supplies[supply.id] ?? 0) + 5;
+    prizeKey = `supply:${supply?.id ?? "compost"}`;
+    next.wheelPity += 1;
+  } else if (roll < 0.75) {
+    next.coins += 20_000;
+    prizeKey = "coins:20000";
+    next.wheelPity += 1;
+  } else {
+    next.coins += 5_000;
+    prizeKey = "coins:5000";
+    next.wheelPity += 1;
+  }
+  next.wheelSpins = spin + 1;
+  next.wheelLast = prizeKey;
+  return changed(next, now);
+}
+
+/**
+ * @brief Settles daily streak, achievements and the weekly tournament bucket.
+ * @param ledger Garden before settlement.
+ * @param now Server clock.
+ */
+export function settleExtras(ledger: GardenLedger, now: number): GardenLedger {
+  let changedAny = false;
+  const next = clone(ledger);
+
+  // Weekly bucket tracks only progress made this week.
+  const week = weekKeyAt(now);
+  if (next.weekKey !== week) {
+    next.weekKey = week;
+    next.weekEarned = 0;
+    next.weekHarvested = 0;
+    next.lastEarned = next.stats.earned;
+    next.lastHarvested = next.stats.harvested;
+    changedAny = true;
+  }
+  if (next.stats.earned > next.lastEarned) {
+    next.weekEarned += next.stats.earned - next.lastEarned;
+    next.lastEarned = next.stats.earned;
+    changedAny = true;
+  }
+  if (next.stats.harvested > next.lastHarvested) {
+    next.weekHarvested += next.stats.harvested - next.lastHarvested;
+    next.lastHarvested = next.stats.harvested;
+    changedAny = true;
+  }
+
+  // Daily streak: one reward per day, resets gently after a gap.
+  const day = dayIndexAt(now);
+  if (next.lastStreakDay < day) {
+    next.streak = next.lastStreakDay === day - 1 ? next.streak + 1 : 1;
+    next.lastStreakDay = day;
+    next.coins += Math.min(7, next.streak) * 500;
+    changedAny = true;
+  }
+
+  // Achievements evaluated from lifetime stats and the collection.
+  for (const achievement of ACHIEVEMENTS) {
+    if (next.achievements.includes(achievement.id)) continue;
+    const earned =
+      achievement.id === "firstMillion"
+        ? next.stats.earned >= 1_000_000
+        : achievement.id === "hundredHarvests"
+          ? next.stats.harvested >= 100
+          : achievement.id === "fiveStars"
+            ? next.collection.includes("star:5")
+            : achievement.id === "allTabs"
+              ? next.tabs >= MAX_TABS
+              : next.collection.length >= 30;
+    if (!earned) continue;
+    next.achievements.push(achievement.id);
+    next.coins += achievement.coins;
+    if (achievement.seed !== undefined) {
+      next.bag.seeds[achievement.seed] = (next.bag.seeds[achievement.seed] ?? 0) + (achievement.seedQty ?? 1);
+    }
+    changedAny = true;
+  }
+
+  return changedAny ? next : ledger;
 }
 
 /** @brief Sprays pesticide on one plant: cures pests and protects one day. */
@@ -1125,7 +1499,9 @@ export function settlePest(ledger: GardenLedger, now: number): GardenLedger {
           const plant = next.plots[slot] ?? null;
           if (plant === null || plant.pest || plant.protectedUntil > now) continue;
           const rng = createRng(hash32(`pest:${ledger.playerId}:c${slot}:${cycle}`));
-          if (rng() >= PEST_CHANCE_PER_CYCLE) continue;
+          const shield = (1 - 0.12 * ledger.greenhouse) * (1 - 0.15 * ledger.pet);
+          if (rng() >= PEST_CHANCE_PER_CYCLE * shield) continue;
+          if (now < ledger.insuranceUntil) next.coins += INSURANCE_PAYOUT;
           const remaining = Math.max(0, plant.readyAt - now);
           next.plots[slot] = {
             ...plant,
@@ -1267,6 +1643,7 @@ function buyTab(ledger: GardenLedger, now: number): RuleResult {
   for (let index = 0; index < CROPS_PER_TAB; index += 1) {
     next.plots.push(null);
     next.soil.push(SOIL_START);
+    next.lastCrop.push(null);
   }
   for (let index = 0; index < TREES_PER_TAB; index += 1) next.trees.push(null);
   return changed(next, now);
@@ -1394,6 +1771,12 @@ function clone(ledger: GardenLedger): GardenLedger {
     },
     farmSettledAt: ledger.farmSettledAt,
     soil: [...ledger.soil],
+    lastCrop: [...ledger.lastCrop],
+    achievements: [...ledger.achievements],
+    collection: [...ledger.collection],
+    futures: ledger.futures.map((future) => ({ ...future })),
+    contractClaims: [...ledger.contractClaims],
+    merchantClaims: [...ledger.merchantClaims],
     warehouse: ledger.warehouse,
     machines: Object.fromEntries(
       Object.entries(ledger.machines).map(([id, machine]) => [

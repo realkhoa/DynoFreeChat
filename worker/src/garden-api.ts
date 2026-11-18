@@ -55,6 +55,11 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   if (name === "season" && request.method === "GET") return seasonRoute(env, now);
   if (name === "market" && request.method === "GET") return marketRoute(env);
   if (name === "leaderboard" && request.method === "GET") return leaderboard(env, url);
+  if (name === "tournament" && request.method === "GET") {
+    return hubStub(env).fetch(
+      `https://hub/tournament?limit=${encodeURIComponent(url.searchParams.get("limit") ?? "20")}`,
+    );
+  }
   if (name === "bots") {
     const action = parts[3];
     if (request.method === "GET" && action === undefined) return botsList(env);

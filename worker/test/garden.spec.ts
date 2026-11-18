@@ -164,6 +164,15 @@ describe("bots", () => {
   });
 });
 
+describe("tournament", () => {
+  it("serves weekly standings", async () => {
+    const response = await SELF.fetch(`${BASE}/api/garden/tournament`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { entries: unknown[] };
+    expect(Array.isArray(body.entries)).toBe(true);
+  });
+});
+
 describe("legacy saves", () => {
   it("keeps old patch data as usable tabs", () => {
     expect(deriveTabs({ unlocked: 4 })).toBe(1);
