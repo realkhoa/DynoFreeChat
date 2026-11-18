@@ -32,8 +32,14 @@ import {
   SPLICE_MAX_BONUS,
   WHEEL_PITY,
   WHEEL_PRICE,
+  EGG_PRICE,
+  EFFECTS,
+  PET_MAX_LEVEL,
   contractOffers,
+  equippedPetEffect,
   merchantOffers,
+  petById,
+  rollPet,
   basePriceOf,
   FERTILIZERS,
   SPRAYS,
@@ -102,6 +108,7 @@ import {
   type PlotState,
   type ProductId,
   type FutureLock,
+  type PetId,
   type MachineId,
   type MachineState,
   type ProductStack,
@@ -183,8 +190,17 @@ export interface GardenLedger {
   lastCrop: (SeedId | null)[];
   /** Greenhouse level. */
   greenhouse: number;
-  /** Pet level. */
+  /** Pet level (legacy, ignored by the gacha pets). */
   pet: number;
+  /** Owned pet copies by id. */
+  pets: Partial<Record<PetId, number>>;
+  /** Equipped pet. */
+  equippedPet: PetId | null;
+  /** Last hatched pet id. */
+  lastHatch: string;
+  /** Egg counters. */
+  eggCount: number;
+  eggPity: number;
   /** Insurance expiry. */
   insuranceUntil: number;
   /** Genetics bonus in percentage points. */
@@ -283,6 +299,11 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     lastCrop: new Array<SeedId | null>(totalCrops(STARTING_TABS)).fill(null),
     greenhouse: 0,
     pet: 0,
+    pets: {},
+    equippedPet: null,
+    lastHatch: "",
+    eggCount: 0,
+    eggPity: 0,
     insuranceUntil: 0,
     spliceBonus: 0,
     streak: 0,
@@ -354,6 +375,9 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
     weekKey: ledger.weekKey,
     weekEarned: ledger.weekEarned,
     weekHarvested: ledger.weekHarvested,
+    pets: { ...ledger.pets },
+    equippedPet: ledger.equippedPet,
+    lastHatch: ledger.lastHatch,
   };
 }
 
@@ -480,8 +504,10 @@ export function applyGardenAction(
       return compostCrops(ledger, now);
     case "buyGreenhouse":
       return buyGreenhouse(ledger, now);
-    case "buyPet":
-      return buyPet(ledger, now);
+    case "hatchEgg":
+      return hatchEgg(ledger, now);
+    case "equipPet":
+      return equipPet(ledger, action.pet, now);
     case "spinWheel":
       return spinWheel(ledger, now);
     case "buildMachine":
@@ -592,6 +618,10 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
   const next = clone(ledger);
   const harvestedEffects = resolvedCropEffects(plot, now);
   addCrop(next.bag.crops, plot.seed, harvestedEffects, 1, plot.pest);
+  if (rng() < petEffect(ledger, "extraHarvest")) {
+    addCrop(next.bag.crops, plot.seed, harvestedEffects, 1, plot.pest);
+    next.weekHarvested += 1;
+  }
   for (const effect of harvestedEffects) collect(next, `effect:${effect}`);
   next.stats.harvested += 1;
   // One planting cycle always costs some fertility, even for reharvest plants.
@@ -602,13 +632,19 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
   if (seed !== undefined && seed.regrow) {
     const events = eventsAt(now);
     const sprayBonus = plot.spray === null ? {} : (sprayById(plot.spray.id)?.effectChances ?? {});
+    const petMutation = petEffect(ledger, "mutation");
+    const mutationBonus = { ...sprayBonus };
+    if (petMutation > 0) {
+      for (const effect of EFFECTS)
+        if (effect.natural) mutationBonus[effect.id] = (mutationBonus[effect.id] ?? 0) + petMutation;
+    }
     next.plots[slot] = {
       slot,
       seed: plot.seed,
       plantedAt: now,
       readyAt:
         now + Math.round(growTimeForEvents(seed, events, plot.fertilizer) * soilGrowthFactor(fertility)),
-      effects: rollEffectsFor(events, rng, sprayBonus),
+      effects: rollEffectsFor(events, rng, mutationBonus),
       pest: false,
       protectedUntil: plot.protectedUntil,
       watered: false,
@@ -1079,7 +1115,7 @@ function sellProduct(
   const products = ledger.bag.products ?? [];
   const stack = products.find((entry) => entry.product === product && entry.star === star);
   if (stack === undefined || stack.qty < qty) return { ok: false, code: "NO_PRODUCT" };
-  const gross = productPrice(stack, season) * qty;
+  const gross = Math.round(productPrice(stack, season) * qty * (1 + petEffect(ledger, "sell")));
   const tax = Math.round(gross * SELL_TAX_RATE);
 
   const next = clone(ledger);
@@ -1099,7 +1135,9 @@ function sellAllProducts(ledger: GardenLedger, season: SeasonSnapshot, now: numb
   const products = ledger.bag.products ?? [];
   if (products.length === 0) return { ok: false, code: "NO_PRODUCT" };
   let total = 0;
-  for (const stack of products) total += productPrice(stack, season) * stack.qty;
+  for (const stack of products) {
+    total += Math.round(productPrice(stack, season) * stack.qty * (1 + petEffect(ledger, "sell")));
+  }
   if (total <= 0) return { ok: false, code: "NO_PRODUCT" };
   const tax = Math.round(total * SELL_TAX_RATE);
 
@@ -1162,6 +1200,17 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
     };
   }
   return next;
+}
+
+/** @brief Equipped-pet effect shortcut. */
+function petEffect(
+  ledger: GardenLedger,
+  key: "pestShield" | "mutation" | "grow" | "sell" | "extraHarvest",
+): number {
+  return equippedPetEffect(
+    { pets: ledger.pets, equippedPet: ledger.equippedPet, lastHatch: ledger.lastHatch },
+    key,
+  );
 }
 
 /** @brief Adds a collection key once. */
@@ -1298,16 +1347,29 @@ function buyGreenhouse(ledger: GardenLedger, now: number): RuleResult {
   return changed(next, now);
 }
 
-/** @brief Buys or upgrades the pet. */
-function buyPet(ledger: GardenLedger, now: number): RuleResult {
-  const level = ledger.pet;
-  if (level >= PET_PRICES.length) return { ok: false, code: "MAX_LEVEL" };
-  const cost = PET_PRICES[level] ?? 0;
-  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
+/** @brief Hatches one gacha egg; pets are never sold directly. */
+function hatchEgg(ledger: GardenLedger, now: number): RuleResult {
+  if (ledger.coins < EGG_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
   const next = clone(ledger);
-  next.coins -= cost;
-  next.stats.spent += cost;
-  next.pet = level + 1;
+  next.coins -= EGG_PRICE;
+  next.stats.spent += EGG_PRICE;
+  const rng = createRng(hash32(`egg:${ledger.playerId}:${ledger.eggCount}`));
+  const rolled = rollPet(rng, ledger.eggPity);
+  next.pets[rolled.pet.id] = Math.min(PET_MAX_LEVEL * 3, (next.pets[rolled.pet.id] ?? 0) + 1);
+  if (next.equippedPet === null) next.equippedPet = rolled.pet.id;
+  next.lastHatch = rolled.pet.id;
+  next.eggCount += 1;
+  next.eggPity = rolled.pity;
+  collect(next, `pet:${rolled.pet.id}`);
+  return changed(next, now);
+}
+
+/** @brief Equips one owned pet. */
+function equipPet(ledger: GardenLedger, pet: PetId, now: number): RuleResult {
+  const owned = ledger.pets[pet] ?? 0;
+  if (owned < 1) return { ok: false, code: "NO_PET" };
+  const next = clone(ledger);
+  next.equippedPet = pet;
   return changed(next, now);
 }
 
@@ -1499,7 +1561,8 @@ export function settlePest(ledger: GardenLedger, now: number): GardenLedger {
           const plant = next.plots[slot] ?? null;
           if (plant === null || plant.pest || plant.protectedUntil > now) continue;
           const rng = createRng(hash32(`pest:${ledger.playerId}:c${slot}:${cycle}`));
-          const shield = (1 - 0.12 * ledger.greenhouse) * (1 - 0.15 * ledger.pet);
+          const shield =
+            (1 - 0.12 * ledger.greenhouse) * (1 - (ledger.pet * 0.15 + petEffect(ledger, "pestShield")));
           if (rng() >= PEST_CHANCE_PER_CYCLE * shield) continue;
           if (now < ledger.insuranceUntil) next.coins += INSURANCE_PAYOUT;
           const remaining = Math.max(0, plant.readyAt - now);
@@ -1720,7 +1783,7 @@ function sellCrop(
 
   const next = clone(ledger);
   // A locked future guarantees its price for the covered units.
-  const marketPrice = cropSellPrice(stack, season);
+  const marketPrice = Math.round(cropSellPrice(stack, season) * (1 + petEffect(ledger, "sell")));
   const future = ledger.futures.find(
     (entry) => entry.item === item && entry.expiresAt > now && entry.qty > 0,
   );
@@ -1746,7 +1809,7 @@ function sellAll(ledger: GardenLedger, season: SeasonSnapshot, now: number): Rul
   const next = clone(ledger);
   let total = 0;
   for (const stack of next.bag.crops) {
-    const base = cropSellPrice(stack, season);
+    const base = Math.round(cropSellPrice(stack, season) * (1 + petEffect(ledger, "sell")));
     const future = next.futures.find(
       (entry) => entry.item === stack.item && entry.expiresAt > now && entry.qty > 0,
     );

@@ -17,10 +17,13 @@ import {
   PEST_SPRAY_COST,
   SOIL_START,
   ACHIEVEMENTS,
+  EGG_PRICE,
   GREENHOUSE_PRICES,
   INSURANCE_PRICE,
-  PET_PRICES,
+  PETS,
+  PET_MAX_LEVEL,
   WHEEL_PRICE,
+  petById,
   contractOffers,
   merchantOffers,
   soilRenovateCost,
@@ -2147,17 +2150,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         ),
       );
     }
-    cost = PET_PRICES[extras.pet] ?? 0;
-    if (cost > 0) {
-      wrap.append(
-        actionButton(t("extras.pet", { cost: formatNumber(cost) }), "extrasPet", state.coins >= cost),
-      );
-    }
     wrap.append(
       actionButton(
         t("extras.wheel", { cost: formatNumber(WHEEL_PRICE) }),
         "extrasWheel",
         state.coins >= WHEEL_PRICE,
+      ),
+    );
+    wrap.append(
+      actionButton(
+        t("extras.hatch", { cost: formatNumber(EGG_PRICE) }),
+        "extrasHatch",
+        state.coins >= EGG_PRICE,
       ),
     );
     wrap.append(actionButton(t("extras.compost"), "extrasCompost"));
@@ -2207,6 +2211,34 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const button = actionButton(t("extras.spliceItem", { item: itemName(item) }), "extrasSplice");
       button.dataset.item = item;
       wrap.append(button);
+    }
+
+    wrap.append(lineBlock(`// ${t("extras.pets")}`));
+    if (extras.lastHatch.length > 0) {
+      wrap.append(lineBlock(`// ${t("extras.lastHatch")}: ${t(`pets.${extras.lastHatch}`)}`));
+    }
+    for (const pet of PETS) {
+      const copies = Math.min(PET_MAX_LEVEL, extras.pets[pet.id] ?? 0);
+      const parts: string[] = [];
+      if (pet.pestShield !== undefined)
+        parts.push(t("petEffects.pestShield", { value: Math.round(pet.pestShield * 100) }));
+      if (pet.mutation !== undefined)
+        parts.push(t("petEffects.mutation", { value: Math.round(pet.mutation * 100) }));
+      if (pet.grow !== undefined) parts.push(t("petEffects.grow", { value: Math.round(pet.grow * 100) }));
+      if (pet.sell !== undefined) parts.push(t("petEffects.sell", { value: Math.round(pet.sell * 100) }));
+      if (pet.extraHarvest !== undefined)
+        parts.push(t("petEffects.extraHarvest", { value: Math.round(pet.extraHarvest * 100) }));
+      const equipped = extras.equippedPet === pet.id;
+      wrap.append(
+        lineBlock(
+          `${copies > 0 ? "*" : " "} ${t(`pets.${pet.id}`)} [${t(`petRarity.${pet.rarity}`)}] lv${copies}${equipped ? " " + t("extras.equippedLabel") : ""} — ${parts.join(", ")}`,
+        ),
+      );
+      if (copies > 0 && !equipped) {
+        const equip = actionButton(t("extras.equip"), "extrasEquip");
+        equip.dataset.pet = pet.id;
+        wrap.append(equip);
+      }
     }
 
     wrap.append(lineBlock(`// ${t("extras.achievements")}`));
@@ -2937,9 +2969,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "extrasGreenhouse":
         void runAction({ kind: "buyGreenhouse" }, t("extras.greenhouseBought"));
         return;
-      case "extrasPet":
-        void runAction({ kind: "buyPet" }, t("extras.petBought"));
+      case "extrasHatch":
+        void runAction({ kind: "hatchEgg" }, t("extras.hatched"));
         return;
+      case "extrasEquip": {
+        const pet = target.dataset.pet;
+        if (pet !== undefined) void runAction({ kind: "equipPet", pet: pet as never }, t("extras.equipped"));
+        return;
+      }
       case "extrasWheel":
         void runAction({ kind: "spinWheel" }, t("extras.wheelSpun"));
         return;

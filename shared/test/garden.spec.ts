@@ -61,7 +61,11 @@ import {
   FARM_CYCLE_MS,
   animalQuality,
   buildingSlots,
+  EGG_PITY,
+  PETS,
   contractOffers,
+  equippedPetEffect,
+  rollPet,
   forecastEvents,
   eventsAt,
   merchantOffers,
@@ -281,6 +285,22 @@ describe("soil fertility", () => {
     expect(soilRenovateCost(95)).toBe(10);
     expect(soilRenovateCost(50)).toBe(100);
     expect(soilRenovateCost(0)).toBe(200);
+  });
+});
+
+describe("pets", () => {
+  it("ships a rarity ladder and rolls legendary early", () => {
+    expect(PETS.length).toBeGreaterThanOrEqual(10);
+    const legendary = rollPet(() => 0.01, 0);
+    expect(legendary.pet.rarity).toBe("legendary");
+    const pity = rollPet(() => 0.99, EGG_PITY - 1);
+    expect(["epic", "legendary"]).toContain(pity.pet.rarity);
+  });
+
+  it("scales equipped effects by level", () => {
+    const collection = { pets: { dragon: 2 }, equippedPet: "dragon" as const, lastHatch: "" };
+    expect(equippedPetEffect(collection, "grow")).toBeCloseTo(0.2);
+    expect(equippedPetEffect({ ...collection, equippedPet: null }, "grow")).toBe(0);
   });
 });
 

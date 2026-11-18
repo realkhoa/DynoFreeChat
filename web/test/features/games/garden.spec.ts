@@ -95,6 +95,9 @@ const EXTRAS: ExtrasSnapshot = {
   collection: [],
   greenhouse: 0,
   pet: 0,
+  pets: {},
+  equippedPet: null,
+  lastHatch: "",
   insuranceUntil: 0,
   spliceBonus: 0,
   wheelSpins: 0,
@@ -822,6 +825,7 @@ describe("extras tab", () => {
     expect(host.querySelector('[data-act="extrasWheel"]')).not.toBeNull();
     expect(host.querySelector('[data-act="extrasContract"]')).not.toBeNull();
     expect(host.querySelector('[data-act="extrasMerchant"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="extrasHatch"]')).not.toBeNull();
 
     host.querySelector<HTMLButtonElement>('[data-act="extrasInsurance"]')?.click();
     await settle();
@@ -829,6 +833,9 @@ describe("extras tab", () => {
     host.querySelector<HTMLButtonElement>('[data-act="extrasWheel"]')?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "spinWheel")).toBe(true);
+    host.querySelector<HTMLButtonElement>('[data-act="extrasHatch"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "hatchEgg")).toBe(true);
   });
 });
 

@@ -840,6 +840,138 @@ export const WHEEL_PITY = 20;
 export const FUTURE_FEE_RATE = 0.05;
 export const FUTURE_LOCK_MS = 2 * 60 * 60_000;
 
+/* ------------------------------------------------------------------ pets */
+
+/** Pet ids (gacha only, never sold directly). */
+export type PetId =
+  | "dog"
+  | "cat"
+  | "bunny"
+  | "fox"
+  | "duck"
+  | "chicken"
+  | "owl"
+  | "deer"
+  | "goldenRetriever"
+  | "panda"
+  | "dragon"
+  | "phoenix";
+
+/** Pet rarity tiers. */
+export type PetRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+
+/** One pet definition; every effect value is per owned level. */
+export interface PetDefinition {
+  /** Stable id. */
+  readonly id: PetId;
+  /** Rarity tier. */
+  readonly rarity: PetRarity;
+  /** Lower pest chance per level. */
+  readonly pestShield?: number;
+  /** Extra mutation chance per level. */
+  readonly mutation?: number;
+  /** Faster growth per level. */
+  readonly grow?: number;
+  /** Higher sale value per level. */
+  readonly sell?: number;
+  /** Chance for one extra fruit per level. */
+  readonly extraHarvest?: number;
+}
+
+/** Egg price, level cap and pity threshold. */
+export const EGG_PRICE = 1_000_000;
+export const PET_MAX_LEVEL = 5;
+export const EGG_PITY = 10;
+
+/** Pet catalog with Grow-a-Garden style rarity and perks. */
+export const PETS: readonly PetDefinition[] = [
+  { id: "dog", rarity: "common", pestShield: 0.06 },
+  { id: "cat", rarity: "common", pestShield: 0.05, extraHarvest: 0.02 },
+  { id: "bunny", rarity: "common", grow: 0.04 },
+  { id: "fox", rarity: "uncommon", mutation: 0.01 },
+  { id: "duck", rarity: "uncommon", pestShield: 0.04, grow: 0.02 },
+  { id: "chicken", rarity: "uncommon", extraHarvest: 0.05 },
+  { id: "owl", rarity: "rare", mutation: 0.02 },
+  { id: "deer", rarity: "rare", grow: 0.06 },
+  { id: "goldenRetriever", rarity: "epic", sell: 0.05, mutation: 0.01 },
+  { id: "panda", rarity: "epic", sell: 0.04, extraHarvest: 0.03 },
+  { id: "dragon", rarity: "legendary", grow: 0.1, mutation: 0.02 },
+  { id: "phoenix", rarity: "legendary", sell: 0.1, extraHarvest: 0.05 },
+];
+
+/** Egg odds per rarity. */
+export const PET_RARITY_ODDS: Readonly<Record<PetRarity, number>> = {
+  common: 0.6,
+  uncommon: 0.25,
+  rare: 0.1,
+  epic: 0.04,
+  legendary: 0.01,
+};
+
+/** @brief Pet definition by id. */
+export function petById(id: string): PetDefinition | undefined {
+  return PETS.find((pet) => pet.id === id);
+}
+
+/** @brief Pets of one rarity. */
+export function petsOfRarity(rarity: PetRarity): PetDefinition[] {
+  return PETS.filter((pet) => pet.rarity === rarity);
+}
+
+/** Owned pets and the equipped one. */
+export interface PetCollection {
+  /** Copies owned per pet id; level equals copies (capped at five). */
+  readonly pets: Readonly<Partial<Record<PetId, number>>>;
+  /** Pet currently active. */
+  readonly equippedPet: PetId | null;
+  /** Last pet hatched, for the client toast. */
+  readonly lastHatch: string;
+}
+
+/** @brief Effective effect value of the equipped pet. */
+export function equippedPetEffect(
+  collection: PetCollection,
+  key: "pestShield" | "mutation" | "grow" | "sell" | "extraHarvest",
+): number {
+  const id = collection.equippedPet;
+  if (id === null) return 0;
+  const definition = petById(id);
+  if (definition === undefined) return 0;
+  const level = Math.min(PET_MAX_LEVEL, collection.pets[id] ?? 0);
+  return (definition[key] ?? 0) * level;
+}
+
+/** @brief Rolls one egg.
+ * @param rng Deterministic source.
+ * @param pity Eggs since the last epic+ hatch.
+ * @details Pity forces an epic-or-better pet on the tenth egg.
+ */
+export function rollPet(
+  rng: () => number,
+  pity: number,
+): { pet: PetDefinition; pity: number; rare: boolean } {
+  const force = pity + 1 >= EGG_PITY;
+  const roll = rng();
+  let rarity: PetRarity = "common";
+  if (force) {
+    rarity = rng() < 0.2 ? "legendary" : "epic";
+  } else {
+    let cursor = 0;
+    const order: PetRarity[] = ["legendary", "epic", "rare", "uncommon", "common"];
+    for (const tier of order) {
+      cursor += PET_RARITY_ODDS[tier];
+      if (roll < cursor) {
+        rarity = tier;
+        break;
+      }
+    }
+  }
+  const pool = petsOfRarity(rarity);
+  const pet = pool[Math.floor(rng() * Math.max(1, pool.length))] ?? PETS[0];
+  const rare = rarity === "epic" || rarity === "legendary";
+  return { pet: pet ?? PETS[0]!, pity: rare ? 0 : pity + 1, rare };
+}
+
 /** One NPC produce contract. */
 export interface ContractOffer {
   /** Stable id within the rotation window. */
@@ -925,8 +1057,14 @@ export interface ExtrasSnapshot {
   readonly collection: readonly string[];
   /** Greenhouse level, 0..3. */
   readonly greenhouse: number;
-  /** Pet level, 0..3. */
+  /** Pet level (legacy field, unused by the gacha system). */
   readonly pet: number;
+  /** Owned pets by id (level = copies). */
+  readonly pets: Readonly<Partial<Record<PetId, number>>>;
+  /** Currently equipped pet. */
+  readonly equippedPet: PetId | null;
+  /** Last hatched pet id. */
+  readonly lastHatch: string;
   /** Insurance expiry. */
   readonly insuranceUntil: number;
   /** Society genetics bonus in percentage points. */
@@ -1506,7 +1644,8 @@ export type GardenAction =
   | { readonly kind: "spliceCrops"; readonly item: ItemId }
   | { readonly kind: "compostCrops" }
   | { readonly kind: "buyGreenhouse" }
-  | { readonly kind: "buyPet" }
+  | { readonly kind: "hatchEgg" }
+  | { readonly kind: "equipPet"; readonly pet: PetId }
   | { readonly kind: "spinWheel" }
   | {
       readonly kind: "sellCrop";
@@ -1570,6 +1709,7 @@ export type GardenErrorCode =
   | "NO_CONTRACT"
   | "MERCHANT_GONE"
   | "ALREADY_CLAIMED"
+  | "NO_PET"
   | "CANNOT_VISIT_SELF";
 
 /** Successful response to a garden action. */
@@ -1874,7 +2014,11 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   }
   if (kind === "buyInsurance") return { kind };
   if (kind === "compostCrops") return { kind };
-  if (kind === "buyGreenhouse" || kind === "buyPet") return { kind };
+  if (kind === "buyGreenhouse" || kind === "hatchEgg") return { kind };
+  if (kind === "equipPet") {
+    const pet = typeof value.pet === "string" ? petById(value.pet) : undefined;
+    return pet === undefined ? null : { kind, pet: pet.id };
+  }
   if (kind === "spinWheel") return { kind };
   if (kind === "lockFuture") {
     const item = typeof value.item === "string" ? itemById(value.item) : undefined;

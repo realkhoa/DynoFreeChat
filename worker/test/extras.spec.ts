@@ -76,13 +76,19 @@ describe("extras", () => {
     if (!greenhouse.ok) return;
     expect(greenhouse.ledger.greenhouse).toBe(1);
 
-    const pet = run(greenhouse.ledger, { kind: "buyPet" });
-    expect(pet.ok).toBe(true);
-    if (!pet.ok) return;
-    expect(pet.ledger.pet).toBe(1);
+    const eggCoins = greenhouse.ledger.coins;
+    const hatched = run(greenhouse.ledger, { kind: "hatchEgg" });
+    expect(hatched.ok).toBe(true);
+    if (!hatched.ok) return;
+    expect(Object.keys(hatched.ledger.pets).length).toBeGreaterThan(0);
+    expect(hatched.ledger.equippedPet).not.toBeNull();
+    expect(hatched.ledger.coins).toBe(eggCoins - 1_000_000);
 
-    pet.ledger.bag.crops = [{ item: "carrot", effects: [], qty: 4, pest: true }];
-    const spliced = run(pet.ledger, { kind: "spliceCrops", item: "carrot" });
+    const petId = Object.keys(hatched.ledger.pets)[0];
+    expect(run(hatched.ledger, { kind: "equipPet", pet: petId as never }).ok).toBe(true);
+
+    hatched.ledger.bag.crops = [{ item: "carrot", effects: [], qty: 4, pest: true }];
+    const spliced = run(hatched.ledger, { kind: "spliceCrops", item: "carrot" });
     expect(spliced.ok).toBe(true);
     if (!spliced.ok) return;
     expect(spliced.ledger.spliceBonus).toBe(1);
@@ -122,6 +128,12 @@ describe("extras", () => {
     if (!sold.ok) return;
     const tax = Math.round(lockPrice * 0.1);
     expect(sold.ledger.coins).toBe(locked.ledger.coins + lockPrice - tax);
+  });
+
+  it("never hatches without a million coins", () => {
+    const ledger = makeLedger();
+    ledger.coins = 999_999;
+    expect(run(ledger, { kind: "hatchEgg" })).toMatchObject({ ok: false, code: "NOT_ENOUGH_COINS" });
   });
 
   it("guarantees a rare wheel prize at pity", () => {
