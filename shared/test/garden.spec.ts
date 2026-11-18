@@ -141,9 +141,9 @@ describe("garden catalog", () => {
 
 describe("market pressure", () => {
   it("keeps light supply unchanged and cuts heavier supply", () => {
-    expect(nextSellState(1, 0, 5)).toEqual({ multiplier: 1, emptyCycles: 0 });
-    expect(nextSellState(1, 0, 10).multiplier).toBeCloseTo(0.95);
-    expect(nextSellState(1, 0, 40).multiplier).toBeCloseTo(0.75);
+    expect(nextSellState(1, 0, 2)).toEqual({ multiplier: 1, emptyCycles: 0 });
+    expect(nextSellState(1, 0, 5).multiplier).toBeCloseTo(0.95);
+    expect(nextSellState(1, 0, 20).multiplier).toBeCloseTo(0.75);
   });
 
   it("raises sell prices only after two empty cycles in a row", () => {
@@ -162,11 +162,11 @@ describe("market pressure", () => {
   });
 
   it("raises buy prices on volume and decays quietly back to base", () => {
-    expect(nextBuyMultiplier(1, 40)).toBeCloseTo(1.1);
-    expect(nextBuyMultiplier(1.1, 40)).toBeCloseTo(1.21);
-    expect(nextBuyMultiplier(1, 5)).toBe(1);
-    expect(nextBuyMultiplier(2, 5)).toBeCloseTo(1.9);
-    expect(nextBuyMultiplier(3, 40)).toBe(MARKET_BUY_MAX);
+    expect(nextBuyMultiplier(1, 20)).toBeCloseTo(1.1);
+    expect(nextBuyMultiplier(1.1, 20)).toBeCloseTo(1.21);
+    expect(nextBuyMultiplier(1, 2)).toBe(1);
+    expect(nextBuyMultiplier(2, 2)).toBeCloseTo(1.9);
+    expect(nextBuyMultiplier(3, 20)).toBe(MARKET_BUY_MAX);
   });
 
   it("applies sell and buy pressure to a season", () => {

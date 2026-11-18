@@ -88,7 +88,7 @@ describe("global market", () => {
       market: { cycle: number; nextCycleAt: number; soldTarget: number; items: unknown[] };
     };
     expect(body.market.items.length).toBeGreaterThan(20);
-    expect(body.market.soldTarget).toBe(25);
+    expect(body.market.soldTarget).toBe(8);
     expect(body.market.nextCycleAt).toBeGreaterThan(Date.now());
     const first = body.market.items[0] as { item: string; multiplier: number; price: number };
     expect(first.multiplier).toBe(1);

@@ -127,11 +127,11 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
 const MARKET = {
   cycle: 5,
   nextCycleAt: CLOCK + 120_000,
-  soldTarget: 25,
+  soldTarget: 8,
   offers: [],
   items: [
     { item: "carrot" as const, base: 9, multiplier: 1.5, previous: 1, price: 14, sold: 3 },
-    { item: "tomato" as const, base: 28, multiplier: 0.5, previous: 1, price: 14, sold: 40 },
+    { item: "tomato" as const, base: 28, multiplier: 0.5, previous: 1, price: 14, sold: 12 },
   ],
 };
 
@@ -529,7 +529,7 @@ describe("chart tab", () => {
     expect(rows[0]?.classList.contains("is-up")).toBe(true);
     expect(rows[0]?.textContent).toContain("x1.50");
     expect(rows[1]?.classList.contains("is-down")).toBe(true);
-    expect(rows[1]?.textContent).toContain("40/25");
+    expect(rows[1]?.textContent).toContain("12/8");
   });
 });
 

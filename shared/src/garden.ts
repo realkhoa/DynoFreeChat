@@ -520,10 +520,10 @@ export const HARVEST_ALL_COST = 20;
 export const MARKET_CYCLE_MS = 6 * 60_000;
 
 /** Units sold in a cycle that the market treats as "normal" demand. */
-export const MARKET_SOLD_TARGET = 25;
+export const MARKET_SOLD_TARGET = 8;
 
 /** Below this many units sold, the sell price stays unchanged. */
-export const MARKET_LOW_VOLUME = 10;
+export const MARKET_LOW_VOLUME = 3;
 
 /** Consecutive empty cycles before an unsold item starts gaining value. */
 export const MARKET_EMPTY_CYCLES = 2;
@@ -615,8 +615,8 @@ export function marketCycleEndsAt(now: number): number {
  * @param previous Current multiplier (clamped 0.3..6).
  * @param emptyCycles Consecutive cycles with no sales so far.
  * @param sold Units sold during the cycle.
- * @details Any supply pushes the price down (light under 25, heavy over 25);
- * under ten units it stays put. Only the third empty cycle in a row starts
+ * @details Any supply pushes the price down (light under 8, heavy over 8);
+ * under three units it stays put. Only the third empty cycle in a row starts
  * raising it, 20% per cycle.
  */
 export function nextSellState(
