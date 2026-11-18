@@ -13,6 +13,9 @@ import type { GameContext, GameFactory, GameMount } from "./mount";
 /** Storage key remembering the Focus toggle. */
 export const FOCUS_STORAGE_KEY = "dyno.game.focus";
 
+/** Prefix for the per-document free-edit scratchpad. */
+export const FREEEDIT_STORAGE_KEY_PREFIX = "dyno.game.freeedit.";
+
 /** Trailing code printed after the generated board literal. */
 const FOOTER_LINES = [
   "};",
@@ -209,7 +212,7 @@ export class GameStage {
     const inner = document.createElement("div");
     inner.className = "stage-game-host";
 
-    frame.append(codeBlock(headerLines(title)), inner, codeBlock(FOOTER_LINES));
+    frame.append(codeBlock(headerLines(title)), inner, codeBlock(FOOTER_LINES), this.freeEdit(id));
     this.elements.host.append(frame);
 
     mount.mount(inner, context);
@@ -217,6 +220,46 @@ export class GameStage {
     this.active = { id, mount };
     this.applyFocus();
     return true;
+  }
+
+  /**
+   * @brief Builds the free-edit scratchpad printed at the bottom of the file.
+   * @param id Game id, used for its storage slot.
+   * @details The area is a plain textarea so any text can be typed; keystrokes
+   * stop propagating so game hotkeys never fire while writing here.
+   */
+  private freeEdit(id: string): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "stage-freeedit";
+
+    const label = document.createElement("div");
+    label.className = "stage-code-line is-comment";
+    label.textContent = "// free edit — gõ gì cũng được, kéo viền dưới để kéo dài";
+    wrap.append(label);
+
+    const area = document.createElement("textarea");
+    area.className = "stage-freeedit-area";
+    area.rows = 8;
+    area.spellcheck = false;
+    area.placeholder = "// ...";
+    const key = `${FREEEDIT_STORAGE_KEY_PREFIX}${id}`;
+    const stored = this.storage?.getItem(key) ?? null;
+    if (stored !== null) area.value = stored;
+
+    const save = (): void => this.storage?.setItem(key, area.value);
+    area.addEventListener("input", save);
+    area.addEventListener("keydown", (event) => {
+      // Never let a game hotkey steal a keystroke meant for the scratchpad.
+      event.stopPropagation();
+      if (event.key === "Tab") {
+        event.preventDefault();
+        area.setRangeText("  ", area.selectionStart, area.selectionEnd, "end");
+        save();
+      }
+    });
+    area.addEventListener("keyup", (event) => event.stopPropagation());
+    wrap.append(area);
+    return wrap;
   }
 
   /**

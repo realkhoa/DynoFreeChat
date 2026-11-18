@@ -330,3 +330,40 @@
 .stage-game-host .chess-board .stage-cell.is-good {
   background: rgba(220, 220, 170, 0.14);
 }
+
+/* Free-edit scratchpad printed after the generated code. It is a real textarea
+   so any text can be typed; the bottom-right handle stretches it taller. */
+.stage-freeedit {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
+}
+
+.stage-freeedit-area {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 120px;
+  height: 160px;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 2px);
+  background: var(--editor);
+  color: #d4d4d4;
+  caret-color: #aeafad;
+  font: 10.5px/15px var(--font-mono);
+  outline: none;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+}
+
+.stage-freeedit-area:focus {
+  border-color: var(--accent);
+}
+
+.stage-freeedit-area::placeholder {
+  color: #5a5a5a;
+}

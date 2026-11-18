@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { GAME_FACTORIES } from "@/features/games/factories";
 import type { GameMount } from "@/features/games/mount";
 import { GAMES } from "@/features/games/registry";
-import { GameStage, type StageElements } from "@/features/games/stage";
+import { FREEEDIT_STORAGE_KEY_PREFIX, GameStage, type StageElements } from "@/features/games/stage";
 
 /** Builds a stage with the supplied factories. */
 function makeStage(
@@ -67,6 +67,37 @@ describe("GameStage", () => {
 
     expect(elements.host.querySelector(".stage-game-host")?.textContent).toBe("board");
     expect(elements.host.querySelector(".stage-code-layer")).toBeNull();
+  });
+
+  it("keeps a free-edit scratchpad per document", () => {
+    localStorage.clear();
+    const elements = makeElements();
+    const stage = makeStage(elements, { demo: () => fakeGame() }, localStorage);
+    stage.open("demo", "Demo.cs", "local simulation");
+
+    const area = elements.host.querySelector<HTMLTextAreaElement>(".stage-freeedit-area");
+    expect(area).not.toBeNull();
+    area!.value = "int x = 1;";
+    area!.dispatchEvent(new Event("input"));
+    expect(localStorage.getItem(`${FREEEDIT_STORAGE_KEY_PREFIX}demo`)).toBe("int x = 1;");
+
+    stage.open("demo", "Demo.cs", "local simulation");
+    expect(elements.host.querySelector<HTMLTextAreaElement>(".stage-freeedit-area")?.value).toBe(
+      "int x = 1;",
+    );
+  });
+
+  it("does not leak scratchpad keystrokes to game hotkeys", () => {
+    const elements = makeElements();
+    const stage = makeStage(elements, { demo: () => fakeGame() }, localStorage);
+    stage.open("demo", "Demo.cs", "local simulation");
+    const spy = vi.fn();
+    window.addEventListener("keydown", spy);
+    elements.host
+      .querySelector<HTMLTextAreaElement>(".stage-freeedit-area")
+      ?.dispatchEvent(new KeyboardEvent("keydown", { key: "w", bubbles: true }));
+    expect(spy).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", spy);
   });
 
   it("dims the board and hides the comments when Focus is on", () => {
