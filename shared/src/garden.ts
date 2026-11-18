@@ -1245,6 +1245,45 @@ export function rollEffects(
   return rolled;
 }
 
+/**
+ * @brief Effects the weather adds while a plant grows.
+ * @param kindId Seed or tree id; part of the deterministic roll.
+ * @param slot Slot index inside its grid; part of the deterministic roll.
+ * @param plantedAt Growth start.
+ * @param until Growth end (ready time, or now when still growing).
+ * @details Every event wave between the plant time and the growth end rolls its
+ * own chances independently, and every rolled mutation stacks on the fruit, so
+ * one plant can collect every weather effect if it lives long enough.
+ */
+export function weatherEffects(kindId: string, slot: number, plantedAt: number, until: number): EffectId[] {
+  const end = Math.max(plantedAt, until);
+  const first = Math.floor((plantedAt - EPOCH_MS) / EVENT_WAVE_MS) + 1;
+  const last = Math.floor((end - EPOCH_MS) / EVENT_WAVE_MS);
+  const effects = new Set<EffectId>();
+  for (let wave = first; wave <= last && wave - first < 200; wave += 1) {
+    const event = eventAt(EPOCH_MS + wave * EVENT_WAVE_MS);
+    const rng = createRng(hash32(`${kindId}:${slot}:${wave}`));
+    for (const id of rollEffects(event, rng)) effects.add(id);
+  }
+  return canonicalEffects([...effects]);
+}
+
+/** @brief All mutations on a crop: manual ones plus accumulated weather. */
+export function resolvedCropEffects(plot: PlotState, until: number): EffectId[] {
+  return canonicalEffects([
+    ...plot.effects,
+    ...weatherEffects(plot.seed, plot.slot, plot.plantedAt, Math.min(until, plot.readyAt)),
+  ]);
+}
+
+/** @brief All mutations on a fruit tree: manual ones plus accumulated weather. */
+export function resolvedTreeEffects(tree: TreeState, until: number): EffectId[] {
+  return canonicalEffects([
+    ...tree.effects,
+    ...weatherEffects(tree.tree, tree.slot, tree.plantedAt, Math.min(until, tree.readyAt)),
+  ]);
+}
+
 /** Live view of one plot for rendering. */
 export interface PlotView {
   /** Seed planted here. */
@@ -1276,7 +1315,7 @@ export function plotView(plot: PlotState, now: number): PlotView {
   const stage = ready ? 3 : Math.min(2, Math.floor(progress * 3));
   return {
     seed,
-    effects: plot.effects
+    effects: resolvedCropEffects(plot, now)
       .map((id) => effectById(id))
       .filter((effect): effect is EffectDefinition => effect !== undefined),
     ready,

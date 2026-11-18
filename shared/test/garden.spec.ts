@@ -54,6 +54,8 @@ import {
   nextPatchPrice,
   nextSellState,
   nextTabPrice,
+  resolvedCropEffects,
+  weatherEffects,
   sprayById,
   supplyById,
   seasonAt,
@@ -136,6 +138,40 @@ describe("garden catalog", () => {
     expect(TREES_PER_TAB).toBe(27);
     expect(MAX_TABS).toBe(4);
     expect(totalCrops(STARTING_TABS)).toBe(CROPS_PER_TAB);
+  });
+});
+
+describe("weather effect stacking", () => {
+  it("adds one roll per weather wave during growth and is deterministic", () => {
+    const plantedAt = EPOCH_MS + EVENT_WAVE_MS + 1_000;
+    const until = plantedAt + EVENT_WAVE_MS * 3;
+    const first = weatherEffects("tomato", 5, plantedAt, until);
+    const second = weatherEffects("tomato", 5, plantedAt, until);
+    expect(first).toEqual(second);
+    for (const id of first) expect(effectById(id)).toBeDefined();
+    expect(new Set(first).size).toBe(first.length);
+  });
+
+  it("lets a crop accumulate weather on top of manual effects", () => {
+    const plantedAt = EPOCH_MS + EVENT_WAVE_MS + 1_000;
+    const readyAt = plantedAt + EVENT_WAVE_MS * 4;
+    const plot = {
+      slot: 0,
+      seed: "tomato" as const,
+      plantedAt,
+      readyAt,
+      effects: ["wet" as const],
+      watered: true,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+    };
+    const resolved = resolvedCropEffects(plot, readyAt + 10_000);
+    expect(resolved).toContain("wet");
+    for (const id of weatherEffects("tomato", 0, plantedAt, readyAt)) {
+      expect(resolved).toContain(id);
+    }
   });
 });
 

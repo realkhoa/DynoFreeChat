@@ -28,6 +28,8 @@ import {
   nextTabPrice,
   canonicalEffects,
   rollEffects,
+  resolvedCropEffects,
+  resolvedTreeEffects,
   seedById,
   fertilizerById,
   sprayById,
@@ -250,7 +252,7 @@ export function applyGardenAction(
     case "fertilize":
       return fertilize(ledger, action.slot, action.supply, now, action.tree);
     case "spray":
-      return spray(ledger, action.slot, action.supply, now, action.tree);
+      return spray(ledger, action.slot, action.supply, now, action.tree, rng);
     case "uproot":
       return action.tree ? uprootTree(ledger, action.slot, now) : uproot(ledger, action.slot, now);
     case "buyTab":
@@ -353,7 +355,7 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
   if (now < plot.readyAt) return { ok: false, code: "NOT_READY" };
 
   const next = clone(ledger);
-  addCrop(next.bag.crops, plot.seed, plot.effects, 1);
+  addCrop(next.bag.crops, plot.seed, resolvedCropEffects(plot, now), 1);
   next.stats.harvested += 1;
 
   const seed = seedById(plot.seed);
@@ -387,7 +389,7 @@ function harvestTree(ledger: GardenLedger, slot: number, now: number, rng: () =>
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
 
   const next = clone(ledger);
-  addCrop(next.bag.crops, tree.tree, tree.effects, 1);
+  addCrop(next.bag.crops, tree.tree, resolvedTreeEffects(tree, now), 1);
   next.stats.harvested += 1;
   const event = eventAt(now);
   const sprayBonus = tree.spray === null ? {} : (sprayById(tree.spray.id)?.effectChances ?? {});
@@ -480,7 +482,14 @@ function fertilize(
 }
 
 /** @brief Applies one spray: the next rolls carry its mutation bonus. */
-function spray(ledger: GardenLedger, slot: number, supply: SprayId, now: number, tree: boolean): RuleResult {
+function spray(
+  ledger: GardenLedger,
+  slot: number,
+  supply: SprayId,
+  now: number,
+  tree: boolean,
+  rng: () => number,
+): RuleResult {
   const definition = sprayById(supply);
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
   const plant = tree ? (ledger.trees[slot] ?? null) : (ledger.plots[slot] ?? null);
@@ -488,9 +497,19 @@ function spray(ledger: GardenLedger, slot: number, supply: SprayId, now: number,
   const owned = ledger.bag.supplies[supply] ?? 0;
   if (owned < 1) return { ok: false, code: "NO_SUPPLY" };
 
+  // A spray immediately rolls its mutation chances onto the growing fruit, so
+  // the player sees the effect now, while the charge still boosts regrowth rolls.
+  const added: EffectId[] = [];
+  for (const [id, chance] of Object.entries(definition.effectChances)) {
+    if (typeof chance === "number" && chance > 0 && rng() < chance) added.push(id as EffectId);
+  }
   const next = clone(ledger);
   next.bag.supplies[supply] = owned - 1;
-  const updated = { ...plant, spray: { id: supply, left: definition.harvests } };
+  const updated = {
+    ...plant,
+    effects: canonicalEffects([...plant.effects, ...added]),
+    spray: { id: supply, left: definition.harvests },
+  };
   if (tree) next.trees[slot] = updated as (typeof next.trees)[number];
   else next.plots[slot] = updated as (typeof next.plots)[number];
   return changed(next, now);

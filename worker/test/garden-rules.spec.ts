@@ -11,6 +11,7 @@ import {
   EPOCH_MS,
   EVENT_WAVE_MS,
   nextTabPrice,
+  resolvedTreeEffects,
   seasonAt as seasonFor,
   type GardenAction,
 } from "@dyno/shared/garden";
@@ -102,7 +103,9 @@ describe("garden ledger rules", () => {
     if (!picked.ok) return;
     expect(picked.ledger.trees[0]?.harvests).toBe(1);
     expect(picked.ledger.trees[0]?.readyAt).toBeGreaterThan(tree.readyAt);
-    expect(picked.ledger.bag.crops).toEqual([{ item: "apple", effects: [], qty: 1 }]);
+    expect(picked.ledger.bag.crops).toEqual([
+      { item: "apple", effects: resolvedTreeEffects(tree, tree.readyAt), qty: 1 },
+    ]);
   });
 
   it("refuses a tree it cannot afford and an occupied tree slot", () => {

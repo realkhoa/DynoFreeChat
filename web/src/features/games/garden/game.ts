@@ -27,6 +27,8 @@ import {
   effectsMultiplier,
   nextPatchPrice,
   nextTabPrice,
+  resolvedCropEffects,
+  resolvedTreeEffects,
   plotView,
   seedById,
   strongestEffect,
@@ -535,7 +537,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         render();
         return;
       }
-      const gain = cropSellPrice({ item: tree.tree, effects: tree.effects, qty: 1 }, season);
+      const gain = cropSellPrice(
+        { item: tree.tree, effects: resolvedTreeEffects(tree, now()), qty: 1 },
+        season,
+      );
       void runAction(
         { kind: "harvest", slot, tree: true },
         t("garden.harvestedTree", { tree: itemName(tree.tree), coins: gain }),
@@ -550,7 +555,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       render();
       return;
     }
-    const gain = cropSellPrice({ item: plot.seed, effects: plot.effects, qty: 1 }, season);
+    const gain = cropSellPrice(
+      { item: plot.seed, effects: resolvedCropEffects(plot, now()), qty: 1 },
+      season,
+    );
     void runAction(
       { kind: "harvest", slot, tree: false },
       t("garden.harvested", { seed: itemName(plot.seed), coins: gain }),
@@ -1121,7 +1129,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     cell.classList.toggle("is-empty", render.empty);
     cell.classList.toggle("is-locked", render.locked);
     cell.classList.toggle("is-selected", selectedSlot === slot && selectedArea === area);
-    const effects = (area === "tree" ? tree?.effects : plot?.effects) ?? [];
+    const effects =
+      area === "tree"
+        ? tree === null
+          ? []
+          : resolvedTreeEffects(tree, at)
+        : plot === null
+          ? []
+          : resolvedCropEffects(plot, at);
     for (const definition of EFFECTS)
       cell.classList.toggle(`is-${definition.id}`, effects.includes(definition.id));
     cell.style.color = render.growing ? growthColor(render.progress) : "";
@@ -1211,7 +1226,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             ready ? (stages[3] ?? "") : `${stages[stageIndex] ?? ""} (${stageIndex + 1}/3)`,
           ),
         );
-        lines.push(labelValue(t("garden.effect"), effectListText(tree.effects)));
+        lines.push(labelValue(t("garden.effect"), effectListText(resolvedTreeEffects(tree, at))));
         if (tree.fertilizer !== null) {
           lines.push(
             labelValue(
@@ -1238,7 +1253,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           lines.push(
             labelValue(
               t("garden.finalSell"),
-              `${formatNumber(cropSellPrice({ item: tree.tree, effects: tree.effects, qty: 1 }, season))}c`,
+              `${formatNumber(cropSellPrice({ item: tree.tree, effects: resolvedTreeEffects(tree, at), qty: 1 }, season))}c`,
             ),
           );
         }
@@ -1285,7 +1300,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         lines.push(
           labelValue(
             t("garden.finalSell"),
-            `${formatNumber(cropSellPrice({ item: plot.seed, effects: plot.effects, qty: 1 }, season))}c`,
+            `${formatNumber(cropSellPrice({ item: plot.seed, effects: resolvedCropEffects(plot, at), qty: 1 }, season))}c`,
           ),
         );
       }

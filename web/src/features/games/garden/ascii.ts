@@ -6,7 +6,14 @@
  * measured in code points, which keeps Vietnamese labels inside the frame.
  */
 
-import { plotView, strongestEffect, treeById, type PlotState, type TreeState } from "@dyno/shared/garden";
+import {
+  plotView,
+  resolvedTreeEffects,
+  strongestEffect,
+  treeById,
+  type PlotState,
+  type TreeState,
+} from "@dyno/shared/garden";
 import { formatDuration, t } from "@/shared/i18n";
 
 /** Columns of one plot cell, borders included. */
@@ -186,7 +193,7 @@ export function treeCellRender(
   const total = Math.max(1, tree.readyAt - tree.plantedAt);
   const progress = Math.min(1, Math.max(0, now - tree.plantedAt) / total);
   const ready = now >= tree.readyAt;
-  const treeStrongest = strongestEffect(tree.effects);
+  const treeStrongest = strongestEffect(resolvedTreeEffects(tree, now));
   const effect = treeStrongest === null ? null : t(`effects.${treeStrongest.id}`);
   const tail = ready ? t("garden.ready") : formatDuration(Math.max(0, tree.readyAt - now), "short");
   return {
