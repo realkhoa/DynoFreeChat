@@ -96,7 +96,8 @@ describe("global market", () => {
   });
 
   it("counts bulk purchases globally for the next cycle", async () => {
-    const market = env.MARKET.get(env.MARKET.idFromName("board"));
+    const bindings = env as unknown as import("../src/env").Env;
+    const market = bindings.MARKET.get(bindings.MARKET.idFromName("board"));
     const snapshot = () =>
       market
         .fetch("https://market/snapshot")
