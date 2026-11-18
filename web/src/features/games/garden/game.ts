@@ -1825,10 +1825,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           craft.dataset.machine = machine.id;
           panel.append(craft);
         } else {
+          const allowed = machine.input.seeds;
           const items = (state.bag.crops ?? [])
             .filter((stack) => seedById(stack.item) !== undefined)
+            .filter((stack) => allowed === undefined || allowed.includes(stack.item as SeedId))
             .map((stack) => stack.item);
-          panel.append(span("garden-hint", t("warehouse.pickCrop")));
+          panel.append(
+            span(
+              "garden-hint",
+              allowed === undefined
+                ? t("warehouse.pickCrop")
+                : `${t("warehouse.needs")}: ${allowed.map((seed) => seedName(seed)).join(", ")}`,
+            ),
+          );
           for (const item of new Set(items)) {
             const craft = actionButton(`[ ${seedName(item as SeedId)} ]`, "craftMachine");
             craft.dataset.machine = machine.id;

@@ -483,7 +483,9 @@ export interface MachineDefinition {
   /** Stable id. */
   readonly id: MachineId;
   /** What it consumes. */
-  readonly input: { readonly kind: "seedCrop" } | { readonly kind: "product"; readonly product: ProductId };
+  readonly input:
+    | { readonly kind: "seedCrop"; readonly seeds?: readonly SeedId[] }
+    | { readonly kind: "product"; readonly product: ProductId };
   /** What it produces. */
   readonly output: { readonly kind: "seeds" } | { readonly kind: "product"; readonly product: ProductId };
   /** Output multiplier, purely informative for labels. */
@@ -526,14 +528,14 @@ export const MACHINES: readonly MachineDefinition[] = [
   },
   {
     id: "pickleJar",
-    input: { kind: "seedCrop" },
+    input: { kind: "seedCrop", seeds: ["cucumber"] },
     output: { kind: "product", product: "pickles" },
     multiplier: 10,
     cooldownCycles: 2,
   },
   {
     id: "oilPress",
-    input: { kind: "seedCrop" },
+    input: { kind: "seedCrop", seeds: ["sunflower"] },
     output: { kind: "product", product: "oil" },
     multiplier: 20,
     cooldownCycles: 2,

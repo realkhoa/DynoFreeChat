@@ -1074,6 +1074,8 @@ function craftMachine(
   } else {
     const seedId = item === undefined ? undefined : seedById(item);
     if (seedId === undefined) return { ok: false, code: "NO_INPUT" };
+    const allowed = definition.input.seeds;
+    if (allowed !== undefined && !allowed.includes(seedId.id)) return { ok: false, code: "NO_INPUT" };
     const stack = next.bag.crops.find((entry) => entry.item === seedId.id);
     if (stack === undefined || stack.qty < 1) return { ok: false, code: "NO_INPUT" };
     next.bag.crops = next.bag.crops
