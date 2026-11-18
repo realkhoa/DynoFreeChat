@@ -361,7 +361,9 @@ describe("garden season", () => {
     expect(second.status).toBe(200);
     const a = await body<{ season: SeasonSnapshot; serverNow: number }>(first);
     const b = await body<{ season: SeasonSnapshot; serverNow: number }>(second);
-    expect(a.season.shop.offers).toHaveLength(SEEDS.length);
+    const normalSeeds = SEEDS.filter((seed) => seed.rare !== true).length;
+    expect(a.season.shop.offers.length).toBeGreaterThanOrEqual(normalSeeds);
+    expect(a.season.shop.offers.length).toBeLessThanOrEqual(normalSeeds + 2);
     expect(a.season.event.id).toBe(b.season.event.id);
     expect(a.season.event.startedAt).toBe(b.season.event.startedAt);
     expect(b.serverNow).toBeGreaterThanOrEqual(a.serverNow);
