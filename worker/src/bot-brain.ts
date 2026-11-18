@@ -102,10 +102,10 @@ function cropSlotOpen(ledger: GardenLedger, slot: number): boolean {
 
 /** @brief Expected gross value of one growing plant with its mutations. */
 function expectedCropValue(plot: PlotState, season: SeasonSnapshot, now: number): number {
+  // First-pick value only: a reharvest crop that cannot cover its seed price on
+  // the first pick is still a loss, so bots should replace it.
   const effects = resolvedCropEffects(plot, now);
-  const value = cropSellPrice({ item: plot.seed, effects, pest: plot.pest, qty: 1 } as CropStack, season);
-  const seed = seedById(plot.seed);
-  return seed?.regrow === true ? value * 3 : value;
+  return cropSellPrice({ item: plot.seed, effects, pest: plot.pest, qty: 1 } as CropStack, season);
 }
 
 /** @brief First free fruit slot, if any. */
@@ -186,13 +186,12 @@ export function planBotActions(
       const plot = ledger.plots[slot] ?? null;
       if (plot === null || now >= plot.readyAt) continue;
       if (cropSlotOpen(ledger, slot) === false) continue;
+      // Only a genuine loss justifies uprooting: the first fruit of the current
+      // plant would sell for less than (or exactly) the seed price. Merely
+      // suboptimal crops stay in the ground until harvested.
       const value = expectedCropValue(plot, season, now);
       const seedCost = seedBuyPrice(plot.seed, season);
-      const progress = (now - plot.plantedAt) / Math.max(1, plot.readyAt - plot.plantedAt);
-      const wrongFocus = focus !== undefined && plot.seed !== focus;
-      const losing = value < seedCost * 0.8;
-      const weak = progress < 0.55 && value / Math.max(1, seedCost) < 1.2;
-      if (!wrongFocus && !losing && !weak) continue;
+      if (value > seedCost) continue;
       uprootTargets.push(slot);
       push({ kind: "uproot", slot, tree: false });
     }

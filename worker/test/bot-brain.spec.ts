@@ -28,7 +28,7 @@ function weakPlot(slot: number, seed: SeedId): PlotState {
   return {
     slot,
     seed,
-    plantedAt: NOW - 10_000,
+    plantedAt: NOW - 500,
     readyAt: NOW + 600_000,
     effects: [],
     pest: true,
@@ -53,14 +53,13 @@ describe("bot brain", () => {
     expect(actions.some((action) => action.kind === "plant" || action.kind === "buySeed")).toBe(true);
   });
 
-  it("the carrot bot uproots other crops to plant carrots", () => {
+  it("does not uproot a profitable non-carrot crop", () => {
     const ledger = makeLedger();
     ledger.coins = 50_000;
     ledger.bag.seeds = { carrot: 3 };
-    ledger.plots[0] = weakPlot(0, "tomato");
+    ledger.plots[0] = { ...weakPlot(0, "tomato"), pest: false, plantedAt: NOW - 500 };
     const actions = planBotActions(ledger, seasonAt(NOW), NOW, () => 0.5, 12, "carrot");
-    expect(actions.some((action) => action.kind === "uproot" && action.slot === 0)).toBe(true);
-    expect(actions.some((action) => action.kind === "plant" && action.seed === "carrot")).toBe(true);
+    expect(actions.some((action) => action.kind === "uproot")).toBe(false);
   });
 
   it("does not uproot a profitable but suboptimal crop", () => {
@@ -71,6 +70,32 @@ describe("bot brain", () => {
     ledger.plots[0] = { ...ledger.plots[0], pest: false };
     const actions = planBotActions(ledger, seasonAt(NOW), NOW, () => 0.5);
     expect(actions.some((action) => action.kind === "uproot")).toBe(false);
+  });
+
+  it("uproots a reharvest crop even for a tiny first-pick loss", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000;
+    ledger.bag.seeds = { carrot: 3 };
+    ledger.plots[0] = weakPlot(0, "cucumber");
+    // Force a one-coin loss to prove even a tiny loss triggers the uproot.
+    const base = seasonAt(NOW);
+    const season = {
+      ...base,
+      prices: { ...base.prices, cucumber: 1 },
+      buyPrices: { ...base.buyPrices, cucumber: 2 },
+    };
+    const actions = planBotActions(ledger, season, NOW, () => 0.5);
+    console.warn(
+      "TINY2",
+      JSON.stringify(actions),
+      "plot",
+      JSON.stringify(ledger.plots[0]),
+      "cucumber price",
+      season.prices.cucumber,
+      "buy",
+      season.buyPrices?.cucumber,
+    );
+    expect(actions.some((action) => action.kind === "uproot" && action.slot === 0)).toBe(true);
   });
 
   it("keeps a healthy crop untouched", () => {
