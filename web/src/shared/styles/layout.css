@@ -10,7 +10,7 @@
   background: var(--chrome);
 }
 
-/* VS 2026 frames the active document well with the Fluent accent. */
+/* VS 2022 frames the active document well with the chrome-blue accent. */
 .editor {
   display: grid;
   grid-template-rows: minmax(0, 1fr);

@@ -1,6 +1,6 @@
 /**
  * @file toolbar.ts
- * @brief Quick-launch action group for the Visual Studio 2026 standard toolbar.
+ * @brief Quick-launch action group for the Visual Studio 2022 standard toolbar.
  * @details Groups the documents and log controls right of the Start button,
  *          mirroring the icon groups a real VS toolbar puts beside its combos.
  */
@@ -31,7 +31,7 @@ export interface ToolbarItemSpec {
 }
 
 /**
- * @brief Compact Standard Toolbar component matching Visual Studio 2026 aesthetics.
+ * @brief Compact Standard Toolbar component matching Visual Studio 2022 aesthetics.
  * @details Renders action buttons directly within the top chrome and forwards clicks
  *          to a unified action handler.
  */

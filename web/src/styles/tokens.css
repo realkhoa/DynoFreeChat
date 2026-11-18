@@ -1,7 +1,7 @@
-/* Visual Studio 2026 Fluent shell palettes.
+/* Visual Studio 2022 shell palettes.
    Dark is the default; `:root[data-theme="light"]` overrides the colour tokens.
-   Values follow the shell tokens Microsoft ships with VS 2026: the Fluent
-   purple accent, layered solid surfaces, and a dark status bar in both themes.
+   Values follow the classic VS 2022 dark shell: #2d2d30 chrome, #252526
+   tool-window surfaces, the #007acc chrome-blue accent and the blue status bar.
    Every colour in the app comes from here — no component hardcodes a value. */
 
 :root {
@@ -9,53 +9,53 @@
 
   /* surfaces */
   --editor: #1e1e1e;
-  --panel: #282828;
-  --chrome: #1c1c1c;
-  --titlebar: #1c1c1c;
-  --section: #2c2c2c;
-  --menu: #2c2c2c;
-  --dock-bg: #1f1f1f;
-  --control-bg: #353535;
-  --control-hover: #3e3e3e;
+  --panel: #252526;
+  --chrome: #2d2d30;
+  --titlebar: #2d2d30;
+  --section: #333337;
+  --menu: #2d2d30;
+  --dock-bg: #252526;
+  --control-bg: #2d2d30;
+  --control-hover: #3f3f46;
 
   /* lines */
-  --border: #454545;
-  --border-subtle: #333333;
+  --border: #3f3f46;
+  --border-subtle: #333337;
   --hairline: #ffffff12;
 
   /* text */
-  --fg: #ffffff;
+  --fg: #f1f1f1;
   --fg-muted: #c8c8c8;
   --fg-dim: #9d9d9d;
   --fg-faint: #6d6d6d;
 
-  /* interaction — the VS 2026 Fluent accent is purple, not chrome blue */
-  --accent: #9184ee;
-  --accent-hover: #a79cf1;
-  --accent-fg: #000000;
-  --accent-soft: #9184ee1f;
-  --hover-row: #2f2f2f;
-  --hover-chrome: #333333;
-  --tree-selected: #353535;
-  --sel: #005fb7;
+  /* interaction — the VS 2022 chrome accent is blue */
+  --accent: #007acc;
+  --accent-hover: #1c97ea;
+  --accent-fg: #ffffff;
+  --accent-soft: #007acc1f;
+  --hover-row: #2a2d2e;
+  --hover-chrome: #3f3f46;
+  --tree-selected: #094771;
+  --sel: #264f78;
   --sel-fg: #ffffff;
 
   /* state */
-  --ok: #6ccb5f;
+  --ok: #6bc46d;
   --warn: #d7ba7d;
-  --err: #f1707b;
-  --info: #60cdff;
+  --err: #f14c4c;
+  --info: #569cd6;
 
   /* filesystem-ish accents, from the VS icon set */
   --folder: #dcb67a;
-  --project: #9184ee;
+  --project: #4b8ed6;
 
-  /* status bar — VS 2026 keeps a dark status bar in both themes */
-  --statusbar: #141414;
+  /* status bar — VS 2022 keeps the chrome-blue bar in both themes */
+  --statusbar: #007acc;
   --statusbar-fg: #ffffff;
-  --statusbar-dim: #c8c8c8;
-  --statusbar-edge: #000000;
-  --statusbar-chip: #2b2b2b;
+  --statusbar-dim: #ffffffb8;
+  --statusbar-edge: #00629c;
+  --statusbar-chip: #00629c;
 
   /* type */
   --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
@@ -63,72 +63,72 @@
 
   /* metrics */
   --titlebar-h: 32px;
-  --menubar-h: 28px;
-  --stdbar-h: 30px;
+  --menubar-h: 30px;
+  --stdbar-h: 28px;
   --tabstrip-h: 28px;
   --breadcrumb-h: 24px;
   --statusbar-h: 22px;
   --sidebar-w: 288px;
   --row-h: 22px;
 
-  --radius: 4px;
-  --radius-lg: 8px;
+  --radius: 2px;
+  --radius-lg: 2px;
   --log-size: 12.5px;
   --log-line: 1.5;
-  --mention-bg: #9184ee33;
+  --mention-bg: #007acc2e;
   --mention-row: #d7ba7d14;
 
-  --scroll-thumb: #4d4d4d;
-  --scroll-thumb-hover: #7a7a7a;
+  --scroll-thumb: #686868;
+  --scroll-thumb-hover: #9e9e9e;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
 
   --editor: #ffffff;
-  --panel: #f9f9f9;
-  --chrome: #eeeeee;
-  --titlebar: #eeeeee;
-  --section: #f3f3f3;
+  --panel: #f5f5f5;
+  --chrome: #f0f0f0;
+  --titlebar: #f0f0f0;
+  --section: #eeeef2;
   --menu: #ffffff;
   --dock-bg: #f5f5f5;
   --control-bg: #ffffff;
   --control-hover: #f5f5f5;
 
-  --border: #d6d6d6;
+  --border: #cccccc;
   --border-subtle: #e5e5e5;
   --hairline: #00000012;
 
-  --fg: #1b1b1b;
+  --fg: #1e1e1e;
   --fg-muted: #3a3a3a;
   --fg-dim: #6b6b6b;
   --fg-faint: #9b9b9b;
 
-  --accent: #5649b0;
-  --accent-hover: #3f3682;
+  --accent: #007acc;
+  --accent-hover: #0067c0;
   --accent-fg: #ffffff;
-  --accent-soft: #5649b01f;
-  --hover-row: #f0f0f0;
-  --hover-chrome: #e5e5e5;
-  --tree-selected: #eaeaea;
-  --sel: #0078d4;
-  --sel-fg: #ffffff;
+  --accent-soft: #007acc1f;
+  --hover-row: #e8f1fb;
+  --hover-chrome: #dadada;
+  --tree-selected: #cce4f7;
+  --sel: #cce4f7;
+  --sel-fg: #1e1e1e;
 
-  --ok: #0f7b0f;
-  --warn: #9d5d00;
+  --ok: #107c10;
+  --warn: #a86a00;
   --err: #c42b1c;
-  --info: #005fb8;
+  --info: #0f6cbd;
 
   --folder: #c09553;
-  --project: #5649b0;
+  --project: #3b6fb6;
 
-  --statusbar: #6c6c6c;
+  --statusbar: #007acc;
   --statusbar-fg: #ffffff;
-  --statusbar-dim: #e6e6e6;
-  --statusbar-edge: #5a5a5a;
-  --statusbar-chip: #7e7e7e;
+  --statusbar-dim: #ffffffb8;
+  --statusbar-edge: #00629c;
+  --statusbar-chip: #00629c;
 
-  --mention-bg: #5649b01f;
+  --mention-bg: #007acc1f;
   --mention-row: #fff4ce;
 
   --scroll-thumb: #c2c2c2;

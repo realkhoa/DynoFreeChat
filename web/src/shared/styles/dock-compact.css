@@ -2,7 +2,7 @@
 /* ------------------------------------------- Output dock: compact + closable */
 
 .dock-body {
-  height: 26px;
+  height: 36px;
 }
 
 :root[data-dock="closed"] .ide {
