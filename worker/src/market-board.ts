@@ -9,6 +9,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import {
+  MARKET_CYCLE_MS,
   MARKET_SOLD_TARGET,
   itemById,
   marketBaseItems,
@@ -54,6 +55,8 @@ interface BoardState {
   cycle: number;
   sell: Record<string, SellState>;
   buy: Record<string, BuyState>;
+  /** When the board last advanced a cycle; zero means legacy/unknown. */
+  updatedAt: number;
 }
 
 /** @brief One global market board (sell prices + purchase prices). */
@@ -192,18 +195,23 @@ export class MarketBoard extends DurableObject<Env> {
         previous?: Record<string, number>;
       };
       if (parsed.sell !== undefined && parsed.buy !== undefined) {
-        return { cycle: parsed.cycle ?? marketCycleAt(now), sell: parsed.sell, buy: parsed.buy };
+        return {
+          cycle: parsed.cycle ?? marketCycleAt(now),
+          sell: parsed.sell,
+          buy: parsed.buy,
+          updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
+        };
       }
       // Old shape: only sell multipliers and their previous values.
-      const sell: Record<string, SellState> = {};
-      const seasonNow = seasonAt(now);
-      for (const { item } of marketBaseItems(seasonNow)) {
-        const multiplier = parsed.multipliers?.[item] ?? 1;
-        sell[item] = { multiplier, previous: parsed.previous?.[item] ?? multiplier, emptyCycles: 0 };
+      // Legacy shape: convert to the current one at base prices and persist it so
+      // the board can advance again (the old cycle field would freeze the roll).
+      const fresh = this.freshState(now);
+      try {
+        this.writeState(fresh);
+      } catch {
+        // Reads still work; the next successful write repairs it.
       }
-      const buy: Record<string, BuyState> = {};
-      for (const { item } of marketBuyBaseItems(seasonNow)) buy[item] = { multiplier: 1, previous: 1 };
-      return { cycle: marketCycleAt(now), sell, buy };
+      return fresh;
     } catch {
       return this.freshState(now);
     }
@@ -217,7 +225,7 @@ export class MarketBoard extends DurableObject<Env> {
     }
     const buy: Record<string, BuyState> = {};
     for (const { item } of marketBuyBaseItems(seasonAt(now))) buy[item] = { multiplier: 1, previous: 1 };
-    return { cycle: marketCycleAt(now), sell, buy };
+    return { cycle: marketCycleAt(now), sell, buy, updatedAt: now };
   }
 
   private writeState(state: BoardState): void {
@@ -231,6 +239,19 @@ export class MarketBoard extends DurableObject<Env> {
   private roll(now: number): void {
     const current = marketCycleAt(now);
     let state = this.readState(now);
+    if (state.updatedAt === 0 || now - state.updatedAt > MARKET_CYCLE_MS * 2) {
+      // The board stopped advancing for more than two cycles (legacy migration,
+      // corrupt state or a stalled instance): reset to base and clear volumes.
+      state = this.freshState(now);
+      try {
+        this.writeState(state);
+        this.sql.exec("DELETE FROM sales");
+        this.sql.exec("DELETE FROM purchases");
+      } catch {
+        // Reads stay available even if the repair write cannot land.
+      }
+      return;
+    }
     if (state.cycle > current) {
       // A corrupt/future cycle index would freeze the board forever (every roll
       // would early-return). Heal to base prices at the real current cycle and
@@ -273,7 +294,7 @@ export class MarketBoard extends DurableObject<Env> {
           previous: entry.multiplier,
         };
       }
-      state = { cycle: fromCycle + 1, sell, buy };
+      state = { cycle: fromCycle + 1, sell, buy, updatedAt: now };
     }
 
     try {
