@@ -1936,7 +1936,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       card.title = `${item.name} · ${formatNumber(item.price)}c × ${buyQty} = ${formatNumber(item.price * buyQty)}c`;
       card.append(
         span("garden-buy-line is-glyph", item.glyph),
-        span("garden-buy-line", fitText(item.name, 9).trim()),
+        span("garden-buy-line is-name", item.name),
         span("garden-buy-line is-price", `${formatNumber(item.price)}c`),
         span("garden-buy-line", `x${buyQty}=${formatNumber(item.price * buyQty)}c`),
         span(
@@ -2010,7 +2010,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const value = cropSellPrice(stack, season) * stack.qty;
       const row = rowButton(
         "garden-market-row",
-        `${fitText(itemName(stack.item), 9)}${fitText(effectBadge(stack.effects), 8)}${stack.pest === true ? "[sâu]" : ""}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
+        `${itemName(stack.item)} ${fitText(effectBadge(stack.effects), 8)}${stack.pest === true ? "[sâu]" : ""}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
         "sell",
       );
       row.dataset.item = stack.item;
@@ -2035,7 +2035,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const unit = season === null ? 0 : productPrice(stack, season);
       const row = rowButton(
         "garden-market-row",
-        `${fitText(t(`products.${stack.product}`), 10)}${fitText(`${"*".repeat(stack.star)}`, 6)}${fitText(`x${stack.qty}`, 5)}${fitText(`${unit}c`, 7)}[${t("market.sell")}]`,
+        `${t(`products.${stack.product}`)} ${fitText(`${"*".repeat(stack.star)}`, 6)}${fitText(`x${stack.qty}`, 5)}${fitText(`${unit}c`, 7)}[${t("market.sell")}]`,
         "sellProduct",
       );
       row.dataset.product = stack.product;
