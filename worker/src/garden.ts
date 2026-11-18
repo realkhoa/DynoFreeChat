@@ -26,6 +26,7 @@ import {
   seasonAt,
   type BagState,
   type CropStack,
+  type ProductStack,
   type GardenAction,
   type GardenSnapshot,
   type LeaderboardEntry,
@@ -51,6 +52,7 @@ import {
   createLedger,
   emptyCrops,
   emptyTrees,
+  settleFarm,
   ledgerSnapshot,
   type GardenLedger,
 } from "./garden-rules";
@@ -376,6 +378,9 @@ export class Garden extends DurableObject<Env> {
       ...raw,
       tabs,
       unlockedPatches: deriveUnlockedPatches(raw.unlockedPatches, plots, tabs),
+      buildings: raw.buildings ?? { coop: 0, barn: 0 },
+      animals: raw.animals ?? { coop: [], barn: [] },
+      farmSettledAt: raw.farmSettledAt ?? raw.updatedAt ?? 0,
       // Saves written before ROI tracking have no spent counter.
       stats: {
         planted: stats.planted ?? 0,
@@ -448,11 +453,12 @@ export class Garden extends DurableObject<Env> {
     return trees;
   }
 
-  /** @brief Reads the bag rows into seeds plus crop stacks. */
+  /** @brief Reads the bag rows into seeds, crops, supplies and products. */
   private readBag(): GardenLedger["bag"] {
     const seeds: Partial<Record<SeedId, number>> = {};
     const crops: CropStack[] = [];
     const supplies: Partial<Record<SupplyId, number>> = {};
+    const products: ProductStack[] = [];
     const rows = this.sql.exec<BagRow>("SELECT kind, item, qty FROM bag").toArray();
     for (const row of rows) {
       if (row.kind === "seed") {
@@ -463,10 +469,18 @@ export class Garden extends DurableObject<Env> {
         supplies[row.item as SupplyId] = row.qty;
         continue;
       }
+      if (row.kind === "product") {
+        const [product, starPart] = row.item.split(":");
+        const star = Number(starPart);
+        if (product !== undefined && Number.isInteger(star) && star >= 1 && star <= 5) {
+          products.push({ product: product as ProductStack["product"], star, qty: row.qty });
+        }
+        continue;
+      }
       const parsed = parseCropKey(row.item);
       if (parsed !== null) crops.push({ item: parsed.item, effects: parsed.effects, qty: row.qty });
     }
-    return { seeds, crops, supplies };
+    return { seeds, crops, supplies, products };
   }
 
   /** @brief Writes a complete ledger atomically, so a crash cannot lose the old one. */
@@ -584,6 +598,7 @@ export class Garden extends DurableObject<Env> {
       if (qty !== undefined && qty > 0) desired.set(`seed:${seed}`, qty);
     }
     for (const stack of bag.crops) desired.set(`crop:${cropKey(stack.item, stack.effects)}`, stack.qty);
+    for (const stack of bag.products ?? []) desired.set(`product:${stack.product}:${stack.star}`, stack.qty);
 
     for (const [key, qty] of desired) {
       if (stored.get(key) === qty) continue;
@@ -758,17 +773,20 @@ export class Garden extends DurableObject<Env> {
     if (ledger === null) return this.unauthorized();
 
     const now = Date.now();
-    if (now - ledger.lastSeen > 60_000) {
+    const settled = settleFarm(ledger, now);
+    if (settled !== ledger) this.write(settled);
+    const ledgerNow = settled;
+    if (now - ledgerNow.lastSeen > 60_000) {
       // Presence stamps must not rewrite every plant row: one meta row is enough.
-      ledger.lastSeen = now;
+      ledgerNow.lastSeen = now;
       try {
-        this.writeMeta(ledger);
+        this.writeMeta(ledgerNow);
       } catch {
         // Out of write quota: a read must still succeed.
       }
     }
     return json({
-      state: ledgerSnapshot(ledger),
+      state: ledgerSnapshot(ledgerNow),
       season: this.seasonFor(request, now),
       serverNow: now,
     });
@@ -788,7 +806,8 @@ export class Garden extends DurableObject<Env> {
 
     const now = Date.now();
     const season = this.seasonFor(request, now);
-    const result = applyGardenAction(ledger, action as GardenAction, season, now);
+    const settled = settleFarm(ledger, now);
+    const result = applyGardenAction(settled, action as GardenAction, season, now);
     if (!result.ok) return json({ code: result.code }, 400);
 
     this.write(result.ledger);
@@ -896,6 +915,12 @@ export class Garden extends DurableObject<Env> {
         seeds: { ...ledger.bag.seeds },
         crops: ledger.bag.crops.map((stack) => ({ ...stack })),
         supplies: { ...ledger.bag.supplies },
+        products: (ledger.bag.products ?? []).map((stack) => ({ ...stack })),
+      },
+      buildings: { ...ledger.buildings },
+      animals: {
+        coop: ledger.animals.coop.map((animal) => (animal === null ? null : { ...animal })),
+        barn: ledger.animals.barn.map((animal) => (animal === null ? null : { ...animal })),
       },
       stats: { ...ledger.stats },
       updatedAt: ledger.updatedAt,

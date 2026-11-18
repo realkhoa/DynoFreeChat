@@ -95,6 +95,9 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     trees: new Array<TreeState | null>(TREES_PER_TAB).fill(null),
     bag: { seeds: { carrot: 3 }, crops: [], supplies: {} },
     stats: { planted: 0, harvested: 0, earned: 0, spent: 0 },
+    buildings: { coop: 0, barn: 0 },
+    animals: { coop: [], barn: [] },
+    farmSettledAt: CLOCK,
     rev: 7,
     updatedAt: CLOCK,
     ...overrides,
@@ -114,6 +117,8 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     trees: new Array<TreeState | null>(TREES_PER_TAB).fill(null),
     bag: { seeds: {}, crops: [], supplies: {} },
     stats: { planted: 1, harvested: 0, earned: 0, spent: 0 },
+    buildings: { coop: 0, barn: 0 },
+    animals: { coop: [], barn: [] },
     updatedAt: CLOCK,
     lastSeen: CLOCK - 1_000,
     online: true,
@@ -291,7 +296,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    expect(host.querySelectorAll(".garden-tab")).toHaveLength(6);
+    expect(host.querySelectorAll(".garden-tab")).toHaveLength(7);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
@@ -589,6 +594,45 @@ describe("rank tab", () => {
     expect(row?.textContent).toContain("1.000c");
     expect(row?.textContent).toContain("+100%");
     expect(row?.textContent).toContain("12");
+  });
+});
+
+describe("farm tab", () => {
+  it("shows buildings, animals and sells animal products", async () => {
+    const animal = {
+      kind: "chicken" as const,
+      bornAt: CLOCK - 3_600_000,
+      pats: 2,
+      lastProduceAt: CLOCK - 60_000,
+    };
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 4_000_000,
+        buildings: { coop: 1, barn: 0 },
+        animals: { coop: [animal, null, null, null], barn: [] },
+        bag: { seeds: {}, crops: [], supplies: {}, products: [{ product: "egg", star: 2, qty: 3 }] },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:farm"]')?.click();
+    await settle();
+    expect(host.querySelector('[data-act="buildBuilding"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="upgradeBuilding"]')).not.toBeNull();
+    const pat = host.querySelector<HTMLButtonElement>('[data-act="patAnimal"]');
+    expect(pat?.textContent).toContain("Gà");
+    pat?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "patAnimal")).toBe(true);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
+    await settle();
+    const row = host.querySelector<HTMLButtonElement>('[data-act="sellProduct"]');
+    expect(row?.textContent).toContain("Trứng");
+    row?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "sellProduct")).toBe(true);
   });
 });
 

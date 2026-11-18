@@ -29,6 +29,20 @@ import {
   nextTabPrice,
   resolvedCropEffects,
   resolvedTreeEffects,
+  ANIMALS,
+  BUILDINGS,
+  animalById,
+  animalIntervalMs,
+  animalQuality,
+  buildingSlots,
+  buildingUpgradeCost,
+  buildingById,
+  maxBuildingLevel,
+  productById,
+  productPrice,
+  type AnimalId,
+  type BuildingId,
+  type ProductId,
   plotView,
   seedById,
   strongestEffect,
@@ -67,7 +81,7 @@ const POLL_MS = 60_000;
 const UPROOT_ARM_MS = 4_000;
 
 /** One active tab inside the document. */
-type Tab = "garden" | "market" | "event" | "chart" | "bots" | "rank";
+type Tab = "garden" | "market" | "event" | "chart" | "bots" | "rank" | "farm";
 
 /** Whether the document is showing the owner's garden or a friend's. */
 type Mode = "owner" | "visit";
@@ -135,6 +149,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let menu: MenuState | null = null;
   let chartMarket: MarketSnapshot | null = null;
   let botGardens: GardenBot[] = [];
+  let farmPicker: { building: BuildingId; slot: number } | null = null;
   let buyQty = 1;
   let tool: { kind: "fertilize" | "spray"; supply: SupplyId } | null = null;
   let toolPicker: "fertilize" | "spray" | null = null;
@@ -868,7 +883,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       savedTab === "event" ||
       savedTab === "chart" ||
       savedTab === "bots" ||
-      savedTab === "rank"
+      savedTab === "rank" ||
+      savedTab === "farm"
     ) {
       tab = savedTab;
     }
@@ -1013,7 +1029,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Builds the tab strip with the garden code and share action. */
   function buildTabs(): HTMLElement {
     const bar = div("garden-tabs");
-    for (const id of ["garden", "market", "event", "chart", "bots", "rank"] as const) {
+    for (const id of ["garden", "market", "event", "chart", "bots", "rank", "farm"] as const) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "garden-tab";
@@ -1647,6 +1663,98 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Builds one animal cell or its empty buy slot. */
+  function farmSlot(building: BuildingId, slot: number): HTMLElement {
+    const animal = state?.animals[building][slot] ?? null;
+    if (animal === null) {
+      const empty = actionButton(`+ ${t("farm.emptySlot")}`, "pickAnimal");
+      empty.dataset.building = building;
+      empty.dataset.slot = String(slot);
+      return empty;
+    }
+    const stars = animalQuality(animal, now());
+    const interval = animalIntervalMs(animal.kind);
+    const readyAt = animal.lastProduceAt + interval;
+    const glyph = { chicken: "c", duck: "d", cow: "C", goat: "G", sheep: "S" }[animal.kind];
+    const button = actionButton(
+      `${glyph} ${t(`animals.${animal.kind}`)} ${"*".repeat(stars)} (${t("farm.pats")} ${animal.pats})`,
+      "patAnimal",
+    );
+    button.dataset.building = building;
+    button.dataset.slot = String(slot);
+    button.title = `${t("farm.quality")}: ${stars}/5 · ${formatDuration(Math.max(0, readyAt - now()), "short")}`;
+    return button;
+  }
+
+  /** @brief Builds the construction tab: coop, barn and their animals. */
+  function buildFarm(): HTMLElement {
+    const wrap = div("garden-farm");
+    if (state === null) return lineBlock(t("common.loading"));
+    wrap.append(lineBlock(`// ${t("farm.title")}`));
+    for (const building of ["coop", "barn"] as const) {
+      const definition = buildingById(building);
+      if (definition === undefined) continue;
+      const level = state.buildings[building];
+      const panel = div("garden-farm-panel");
+      panel.append(
+        span(
+          "garden-farm-title",
+          `${t(`farm.${building}`)} · ${level > 0 ? `${t("farm.level")} ${level}/${maxBuildingLevel(building)} · ${state.animals[building].length} ${t("farm.slots")}` : t("farm.notBuilt")}`,
+        ),
+      );
+      if (level === 0) {
+        panel.append(
+          actionButton(
+            t("farm.build", { cost: formatNumber(definition.price) }),
+            "buildBuilding",
+            (state.coins ?? 0) >= definition.price,
+          ).cloneNode(true) as HTMLButtonElement,
+        );
+        // dataset must be set on the real button
+        const last = panel.lastElementChild as HTMLButtonElement;
+        last.dataset.building = building;
+        last.dataset.act = "buildBuilding";
+      } else {
+        const upgradeCost = buildingUpgradeCost(building);
+        const upgrade = actionButton(
+          level >= maxBuildingLevel(building)
+            ? t("farm.maxLevel")
+            : t("farm.upgrade", { cost: formatNumber(upgradeCost) }),
+          "upgradeBuilding",
+          level < maxBuildingLevel(building) && (state.coins ?? 0) >= upgradeCost,
+        );
+        upgrade.dataset.building = building;
+        panel.append(upgrade);
+      }
+      const slots = level > 0 ? state.animals[building].length : 0;
+      if (slots > 0) {
+        const grid = div("garden-farm-slots");
+        for (let slot = 0; slot < slots; slot += 1) {
+          const cell = farmSlot(building, slot);
+          const holder = div("garden-farm-slot");
+          holder.append(cell);
+          if (farmPicker !== null && farmPicker.building === building && farmPicker.slot === slot) {
+            for (const animal of ANIMALS.filter((entry) => entry.building === building)) {
+              const buy = actionButton(
+                `${t(`animals.${animal.id}`)} ${formatNumber(animal.buy)}c`,
+                "buyAnimal",
+                (state.coins ?? 0) >= animal.buy,
+              );
+              buy.dataset.building = building;
+              buy.dataset.slot = String(slot);
+              buy.dataset.animal = animal.id;
+              holder.append(buy);
+            }
+          }
+          grid.append(holder);
+        }
+        panel.append(grid);
+      }
+      wrap.append(panel);
+    }
+    return wrap;
+  }
+
   /** @brief Builds the market tab. */
   function buildMarket(): HTMLElement {
     const wrap = div("garden-market");
@@ -1719,7 +1827,24 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       supplies.append(row);
     }
 
-    wrap.append(shop, exchange, supplies);
+    const products = div("garden-market-panel");
+    products.append(lineBlock(`// ${t("farm.products")}`));
+    const stacks = state.bag.products ?? [];
+    if (stacks.length === 0) products.append(lineBlock(t("farm.noProducts")));
+    for (const stack of stacks) {
+      const unit = season === null ? 0 : productPrice(stack, season);
+      const row = rowButton(
+        "garden-market-row",
+        `${fitText(t(`products.${stack.product}`), 10)}${fitText(`${"*".repeat(stack.star)}`, 6)}${fitText(`x${stack.qty}`, 5)}${fitText(`${unit}c`, 7)}[${t("market.sell")}]`,
+        "sellProduct",
+      );
+      row.dataset.product = stack.product;
+      row.dataset.star = String(stack.star);
+      products.append(row);
+    }
+    if (stacks.length > 0) products.append(actionButton(t("farm.sellAllProducts"), "sellAllProducts"));
+
+    wrap.append(shop, exchange, supplies, products);
     return wrap;
   }
 
@@ -1971,6 +2096,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (tab === "chart") return buildChart();
     if (tab === "bots") return buildBots();
     if (tab === "rank") return buildRank();
+    if (tab === "farm") return buildFarm();
     return buildEvent();
   }
 
@@ -2225,6 +2351,57 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (code !== undefined) openVisit(code);
         return;
       }
+      case "buildBuilding": {
+        const building = target.dataset.building as BuildingId | undefined;
+        if (building !== undefined) void runAction({ kind: "buildBuilding", building }, t("farm.built"));
+        return;
+      }
+      case "upgradeBuilding": {
+        const building = target.dataset.building as BuildingId | undefined;
+        if (building !== undefined) void runAction({ kind: "upgradeBuilding", building }, t("farm.upgraded"));
+        return;
+      }
+      case "pickAnimal": {
+        const building = target.dataset.building as BuildingId | undefined;
+        const slot = Number(target.dataset.slot);
+        if (building !== undefined && Number.isInteger(slot)) {
+          farmPicker = { building, slot };
+          render();
+        }
+        return;
+      }
+      case "buyAnimal": {
+        const building = target.dataset.building as BuildingId | undefined;
+        const animal = target.dataset.animal as AnimalId | undefined;
+        const slot = Number(target.dataset.slot);
+        if (building !== undefined && animal !== undefined && Number.isInteger(slot)) {
+          farmPicker = null;
+          void runAction(
+            { kind: "buyAnimal", building, slot, animal },
+            t("farm.boughtAnimal", { animal: t(`animals.${animal}`) }),
+          );
+        }
+        return;
+      }
+      case "patAnimal": {
+        const building = target.dataset.building as BuildingId | undefined;
+        const slot = Number(target.dataset.slot);
+        if (building !== undefined && Number.isInteger(slot)) {
+          void runAction({ kind: "patAnimal", building, slot }, t("farm.patted"));
+        }
+        return;
+      }
+      case "sellProduct": {
+        const product = target.dataset.product as ProductId | undefined;
+        const star = Number(target.dataset.star);
+        if (product !== undefined && Number.isInteger(star)) {
+          void runAction({ kind: "sellProduct", product, star, qty: 1 }, t("farm.soldProduct"));
+        }
+        return;
+      }
+      case "sellAllProducts":
+        void runAction({ kind: "sellAllProducts" }, t("farm.soldAllProducts"));
+        return;
       case "setBuyQty": {
         const qty = Number(target.dataset.qty);
         if (Number.isInteger(qty) && qty >= 1 && qty <= 99) buyQty = qty;

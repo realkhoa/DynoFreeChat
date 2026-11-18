@@ -16,7 +16,18 @@ import {
   STARTING_TABS,
   STARTING_SEEDS,
   TREES_PER_TAB,
+  FARM_CYCLE_MS,
   WATER_ALL_COST,
+  ANIMALS,
+  animalById,
+  animalIntervalMs,
+  animalQuality,
+  buildingById,
+  buildingSlots,
+  buildingUpgradeCost,
+  maxBuildingLevel,
+  productById,
+  productPrice,
   WATER_CUT_RATIO,
   HARVEST_ALL_COST,
   createRng,
@@ -39,6 +50,9 @@ import {
   treeById,
   type ActiveFertilizer,
   type ActiveSpray,
+  type AnimalId,
+  type AnimalState,
+  type BuildingId,
   type CropStack,
   type EffectId,
   type FertilizerId,
@@ -49,6 +63,8 @@ import {
   type ItemId,
   type SupplyId,
   type PlotState,
+  type ProductId,
+  type ProductStack,
   type SeasonSnapshot,
   type SeedId,
   type TreeId,
@@ -63,6 +79,8 @@ export interface LedgerBag {
   crops: CropStack[];
   /** Owned fertilizers and sprays. */
   supplies: Partial<Record<SupplyId, number>>;
+  /** Animal products waiting to be sold. */
+  products: ProductStack[];
 }
 
 /** Mutable counters used by the rules. */
@@ -105,6 +123,12 @@ export interface GardenLedger {
   bag: LedgerBag;
   /** Lifetime counters, mutable while a rule runs. */
   stats: LedgerStats;
+  /** Building levels (0 = not built). */
+  buildings: Record<BuildingId, number>;
+  /** Animals per building slot. */
+  animals: Record<BuildingId, (AnimalState | null)[]>;
+  /** Last farm upkeep/production settlement. */
+  farmSettledAt: number;
   /** Revision bumped on every successful write. */
   rev: number;
   /** Creation time, server clock. */
@@ -163,8 +187,11 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     unlockedPatches: new Array<number>(STARTING_TABS).fill(1),
     plots: emptyCrops(STARTING_TABS),
     trees: emptyTrees(STARTING_TABS),
-    bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {} },
+    bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {}, products: [] },
     stats: { planted: 0, harvested: 0, earned: 0, spent: 0 },
+    buildings: { coop: 0, barn: 0 },
+    animals: { coop: [], barn: [] },
+    farmSettledAt: input.now,
     rev: 1,
     createdAt: input.now,
     updatedAt: input.now,
@@ -212,7 +239,14 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
       seeds: { ...ledger.bag.seeds },
       crops: ledger.bag.crops.map((stack) => ({ ...stack })),
       supplies: { ...ledger.bag.supplies },
+      products: (ledger.bag.products ?? []).map((stack) => ({ ...stack })),
     },
+    buildings: { ...ledger.buildings },
+    animals: {
+      coop: ledger.animals.coop.map((animal) => (animal === null ? null : { ...animal })),
+      barn: ledger.animals.barn.map((animal) => (animal === null ? null : { ...animal })),
+    },
+    farmSettledAt: ledger.farmSettledAt,
     stats: { ...ledger.stats },
     rev: ledger.rev,
     updatedAt: ledger.updatedAt,
@@ -264,6 +298,18 @@ export function applyGardenAction(
       return buyPatch(ledger, action.tab, now);
     case "waterAll":
       return waterAll(ledger, now);
+    case "buildBuilding":
+      return buildBuilding(ledger, action.building, now);
+    case "upgradeBuilding":
+      return upgradeBuilding(ledger, action.building, now);
+    case "buyAnimal":
+      return buyAnimal(ledger, action.building, action.slot, action.animal, now);
+    case "patAnimal":
+      return patAnimal(ledger, action.building, action.slot, now);
+    case "sellProduct":
+      return sellProduct(ledger, action.product, action.star, action.qty, season, now);
+    case "sellAllProducts":
+      return sellAllProducts(ledger, season, now);
     case "harvestAll":
       return harvestAll(ledger, now, rng);
     case "buySeed":
@@ -643,6 +689,189 @@ function harvestAll(ledger: GardenLedger, now: number, rng: () => number): RuleR
   return changed(next, now);
 }
 
+/** @brief Empty animal vector for one building. */
+function emptyAnimalSlots(count: number): (AnimalState | null)[] {
+  return new Array<AnimalState | null>(count).fill(null);
+}
+
+/** @brief Adds one product unit to a mutable bag, merging equal star levels. */
+function addProduct(products: ProductStack[], product: ProductId, star: number, qty: number): void {
+  const index = products.findIndex((stack) => stack.product === product && stack.star === star);
+  if (index < 0) {
+    products.push({ product, star, qty });
+    return;
+  }
+  const stack = products[index];
+  if (stack === undefined) return;
+  products[index] = { product, star, qty: stack.qty + qty };
+}
+
+/** @brief Builds one animal building at level 1. */
+function buildBuilding(ledger: GardenLedger, building: BuildingId, now: number): RuleResult {
+  const definition = buildingById(building);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+  if (ledger.buildings[building] > 0) return { ok: false, code: "MAX_LEVEL" };
+  if (ledger.coins < definition.price) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= definition.price;
+  next.stats.spent += definition.price;
+  next.buildings[building] = 1;
+  next.animals[building] = emptyAnimalSlots(buildingSlots(building, 1));
+  next.farmSettledAt = now;
+  return changed(next, now);
+}
+
+/** @brief Upgrades one building by one level, adding its new slots. */
+function upgradeBuilding(ledger: GardenLedger, building: BuildingId, now: number): RuleResult {
+  const level = ledger.buildings[building];
+  if (level <= 0) return { ok: false, code: "BUILDING_LOCKED" };
+  if (level >= maxBuildingLevel(building)) return { ok: false, code: "MAX_LEVEL" };
+  const cost = buildingUpgradeCost(building);
+  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= cost;
+  next.stats.spent += cost;
+  next.buildings[building] = level + 1;
+  const slots = buildingSlots(building, level + 1);
+  const animals = next.animals[building];
+  while (animals.length < slots) animals.push(null);
+  return changed(next, now);
+}
+
+/** @brief Buys one animal into an empty building slot. */
+function buyAnimal(
+  ledger: GardenLedger,
+  building: BuildingId,
+  slot: number,
+  animalId: AnimalId,
+  now: number,
+): RuleResult {
+  const definition = animalById(animalId);
+  if (definition === undefined || definition.building !== building) {
+    return { ok: false, code: "BAD_REQUEST" };
+  }
+  const level = ledger.buildings[building];
+  if (level <= 0) return { ok: false, code: "BUILDING_LOCKED" };
+  const slots = buildingSlots(building, level);
+  if (slot < 0 || slot >= slots) return { ok: false, code: "SLOT_OUT_OF_RANGE" };
+  if ((ledger.animals[building][slot] ?? null) !== null) return { ok: false, code: "SLOT_OCCUPIED" };
+  if (ledger.coins < definition.buy) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= definition.buy;
+  next.stats.spent += definition.buy;
+  next.animals[building][slot] = { kind: animalId, bornAt: now, pats: 0, lastProduceAt: now };
+  if (
+    next.animals.coop.every((entry) => entry === null) &&
+    next.animals.barn.every((entry) => entry === null)
+  ) {
+    next.farmSettledAt = now;
+  }
+  return changed(next, now);
+}
+
+/** @brief Pets one animal: quality grows with attention. */
+function patAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now: number): RuleResult {
+  const animal = ledger.animals[building]?.[slot] ?? null;
+  if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
+  const next = clone(ledger);
+  next.animals[building][slot] = { ...animal, pats: animal.pats + 1 };
+  return changed(next, now);
+}
+
+/** @brief Sells one product stack at its quality and event price. */
+function sellProduct(
+  ledger: GardenLedger,
+  product: ProductId,
+  star: number,
+  qty: number,
+  season: SeasonSnapshot,
+  now: number,
+): RuleResult {
+  const products = ledger.bag.products ?? [];
+  const stack = products.find((entry) => entry.product === product && entry.star === star);
+  if (stack === undefined || stack.qty < qty) return { ok: false, code: "NO_PRODUCT" };
+  const total = productPrice(stack, season) * qty;
+
+  const next = clone(ledger);
+  next.coins += total;
+  next.stats.earned += total;
+  next.bag.products = (next.bag.products ?? [])
+    .map((entry) =>
+      entry.product === product && entry.star === star ? { ...entry, qty: entry.qty - qty } : entry,
+    )
+    .filter((entry) => entry.qty > 0);
+  return changed(next, now);
+}
+
+/** @brief Sells every animal product in the bag. */
+function sellAllProducts(ledger: GardenLedger, season: SeasonSnapshot, now: number): RuleResult {
+  const products = ledger.bag.products ?? [];
+  if (products.length === 0) return { ok: false, code: "NO_PRODUCT" };
+  let total = 0;
+  for (const stack of products) total += productPrice(stack, season) * stack.qty;
+  if (total <= 0) return { ok: false, code: "NO_PRODUCT" };
+
+  const next = clone(ledger);
+  next.coins += total;
+  next.stats.earned += total;
+  next.bag.products = [];
+  return changed(next, now);
+}
+
+/**
+ * @brief Settles animal upkeep and production up to now.
+ * @param ledger Garden before settlement.
+ * @param now Server clock.
+ * @details Every elapsed cycle costs the sum of the animals' upkeep. When the
+ * wallet covers it, each animal advances its production timer and drops items
+ * at its current quality; when it does not, animals go unfed and produce
+ * nothing for those cycles.
+ */
+export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
+  const animals = [...ledger.animals.coop, ...ledger.animals.barn].filter(
+    (animal): animal is AnimalState => animal !== null,
+  );
+  if (animals.length === 0) return ledger;
+  const elapsed = now - ledger.farmSettledAt;
+  if (elapsed < FARM_CYCLE_MS) return ledger;
+
+  const cycles = Math.min(100, Math.floor(elapsed / FARM_CYCLE_MS));
+  if (cycles <= 0) return ledger;
+  const next = clone(ledger);
+  next.farmSettledAt = ledger.farmSettledAt + cycles * FARM_CYCLE_MS;
+
+  let upkeep = 0;
+  for (const animal of animals) upkeep += (animalById(animal.kind)?.upkeep ?? 0) * cycles;
+  const paid = Math.min(next.coins, upkeep);
+  next.coins -= paid;
+  next.stats.spent += paid;
+  if (paid < upkeep) return next;
+
+  const collections: Array<{ building: BuildingId; slot: number; animal: AnimalState }> = [];
+  for (const building of ["coop", "barn"] as const) {
+    next.animals[building].forEach((animal, slot) => {
+      if (animal !== null) collections.push({ building, slot, animal });
+    });
+  }
+  for (const entry of collections) {
+    const definition = animalById(entry.animal.kind);
+    if (definition === undefined) continue;
+    const interval = animalIntervalMs(entry.animal.kind);
+    const produced = Math.min(50, Math.floor((now - entry.animal.lastProduceAt) / interval));
+    if (produced <= 0) continue;
+    const star = animalQuality(entry.animal, now);
+    addProduct((next.bag.products ??= []), definition.product, star, produced);
+    next.animals[entry.building][entry.slot] = {
+      ...entry.animal,
+      lastProduceAt: entry.animal.lastProduceAt + produced * interval,
+    };
+  }
+  return next;
+}
+
 /** @brief Buys the next tab at the compounding ladder price. */
 function buyTab(ledger: GardenLedger, now: number): RuleResult {
   if (ledger.tabs >= MAX_TABS) return { ok: false, code: "MAX_TABS" };
@@ -766,7 +995,14 @@ function clone(ledger: GardenLedger): GardenLedger {
       seeds: { ...ledger.bag.seeds },
       crops: ledger.bag.crops.map((stack) => ({ ...stack })),
       supplies: { ...ledger.bag.supplies },
+      products: (ledger.bag.products ?? []).map((stack) => ({ ...stack })),
     },
+    buildings: { ...ledger.buildings },
+    animals: {
+      coop: ledger.animals.coop.map((animal) => (animal === null ? null : { ...animal })),
+      barn: ledger.animals.barn.map((animal) => (animal === null ? null : { ...animal })),
+    },
+    farmSettledAt: ledger.farmSettledAt,
     stats: { ...ledger.stats },
     shopStock: { ...ledger.shopStock },
   };

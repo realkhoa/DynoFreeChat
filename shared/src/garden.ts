@@ -340,6 +340,170 @@ export const EVENTS: readonly EventDefinition[] = [
   { id: "wildfire", growScale: 0.95, sellBonus: 1.15, effectChances: { onfire: 0.08 } },
 ];
 
+/** Length of one animal upkeep/production cycle: six minutes. */
+export const FARM_CYCLE_MS = 6 * 60_000;
+
+/** The two animal buildings. */
+export type BuildingId = "coop" | "barn";
+
+/** Animals a building can host. */
+export type AnimalId = "chicken" | "duck" | "cow" | "goat" | "sheep";
+
+/** Products animals produce. */
+export type ProductId = "egg" | "duckEgg" | "milk" | "goatMilk" | "wool";
+
+/** One animal definition. */
+export interface AnimalDefinition {
+  /** Stable id. */
+  readonly id: AnimalId;
+  /** Which building hosts it. */
+  readonly building: BuildingId;
+  /** Coins charged every cycle while it lives. */
+  readonly upkeep: number;
+  /** Cycles between two products. */
+  readonly intervalCycles: number;
+  /** Product id it yields. */
+  readonly product: ProductId;
+  /** Purchase price, in coins. */
+  readonly buy: number;
+}
+
+/** One product definition. */
+export interface ProductDefinition {
+  /** Stable id. */
+  readonly id: ProductId;
+  /** Base sell price for a one-star item. */
+  readonly base: number;
+}
+
+/** One building definition. */
+export interface BuildingDefinition {
+  /** Stable id. */
+  readonly id: BuildingId;
+  /** Price of the first level. */
+  readonly price: number;
+  /** Price of every upgrade step. */
+  readonly upgrade: number;
+  /** Slots per level; index 0 is level 1. */
+  readonly slots: readonly number[];
+  /** Animals this building accepts. */
+  readonly animals: readonly AnimalId[];
+}
+
+/** Buildings and their ladders: three upgrades, up to twelve slots. */
+export const BUILDINGS: readonly BuildingDefinition[] = [
+  { id: "coop", price: 3_000_000, upgrade: 3_000_000, slots: [4, 6, 9, 12], animals: ["chicken", "duck"] },
+  {
+    id: "barn",
+    price: 4_000_000,
+    upgrade: 4_000_000,
+    slots: [4, 6, 9, 12],
+    animals: ["cow", "goat", "sheep"],
+  },
+];
+
+/** Animal catalog with upkeep, production cadence and shop prices. */
+export const ANIMALS: readonly AnimalDefinition[] = [
+  { id: "chicken", building: "coop", upkeep: 40, intervalCycles: 2, product: "egg", buy: 5_000 },
+  { id: "duck", building: "coop", upkeep: 40, intervalCycles: 3, product: "duckEgg", buy: 8_000 },
+  { id: "cow", building: "barn", upkeep: 100, intervalCycles: 1, product: "milk", buy: 20_000 },
+  { id: "goat", building: "barn", upkeep: 100, intervalCycles: 3, product: "goatMilk", buy: 25_000 },
+  { id: "sheep", building: "barn", upkeep: 100, intervalCycles: 7, product: "wool", buy: 40_000 },
+];
+
+/** Product base prices; every quality star doubles the value. */
+export const PRODUCTS: readonly ProductDefinition[] = [
+  { id: "egg", base: 160 },
+  { id: "duckEgg", base: 180 },
+  { id: "milk", base: 120 },
+  { id: "goatMilk", base: 400 },
+  { id: "wool", base: 1_000 },
+];
+
+/** @brief Building definition by id. */
+export function buildingById(id: string): BuildingDefinition | undefined {
+  return BUILDINGS.find((building) => building.id === id);
+}
+
+/** @brief Animal definition by id. */
+export function animalById(id: string): AnimalDefinition | undefined {
+  return ANIMALS.find((animal) => animal.id === id);
+}
+
+/** @brief Product definition by id. */
+export function productById(id: string): ProductDefinition | undefined {
+  return PRODUCTS.find((product) => product.id === id);
+}
+
+/** @brief Open slots at one building level (0 means not built). */
+export function buildingSlots(building: BuildingId, level: number): number {
+  const definition = buildingById(building);
+  if (definition === undefined || level <= 0) return 0;
+  return definition.slots[Math.min(level, definition.slots.length) - 1] ?? 0;
+}
+
+/** @brief Highest building level. */
+export function maxBuildingLevel(building: BuildingId): number {
+  return buildingById(building)?.slots.length ?? 0;
+}
+
+/** @brief Price of the next upgrade step. */
+export function buildingUpgradeCost(building: BuildingId): number {
+  return buildingById(building)?.upgrade ?? 0;
+}
+
+/** @brief One animal living in a building slot. */
+export interface AnimalState {
+  /** Species. */
+  readonly kind: AnimalId;
+  /** Server time the animal was bought. */
+  readonly bornAt: number;
+  /** How many times it was petted. */
+  readonly pats: number;
+  /** Server time of the last produced item. */
+  readonly lastProduceAt: number;
+}
+
+/** One stack of animal products in the bag. */
+export interface ProductStack {
+  /** Product id. */
+  readonly product: ProductId;
+  /** Quality stars, `1..5`. */
+  readonly star: number;
+  /** Units owned. */
+  readonly qty: number;
+}
+
+/** @brief Miliseconds between two products of one animal. */
+export function animalIntervalMs(animal: AnimalId): number {
+  const definition = animalById(animal);
+  return Math.max(1, definition?.intervalCycles ?? 1) * FARM_CYCLE_MS;
+}
+
+/**
+ * @brief Quality stars of an animal.
+ * @param animal Living animal.
+ * @param now Server clock.
+ * @details One star at birth; each completed day of age (24 cycles) adds one
+ * star and every six pats add one, capped at five.
+ */
+export function animalQuality(animal: AnimalState, now: number): number {
+  const ageCycles = Math.max(0, Math.floor((now - animal.bornAt) / FARM_CYCLE_MS));
+  const stars = 1 + Math.floor(ageCycles / 24) + Math.floor(animal.pats / 6);
+  return Math.min(5, Math.max(1, stars));
+}
+
+/** @brief Sell value of one product stack, after quality and event bonus. */
+export function productPrice(stack: ProductStack, season: SeasonSnapshot): number {
+  const definition = productById(stack.product);
+  if (definition === undefined) return 0;
+  const quality = 2 ** Math.max(0, Math.min(5, stack.star) - 1);
+  const bonus = combinedSellBonus(
+    season.events.length > 0 ? eventsAt(season.event.startedAt) : eventsAt(season.event.startedAt),
+  );
+  return Math.max(1, Math.round(definition.base * quality * bonus));
+}
+
 /** One occupied plot on the wire. */
 export interface PlotState {
   /** Absolute plot index, `0..MAX_PLOTS-1`. */
@@ -406,6 +570,8 @@ export interface BagState {
   readonly crops: readonly CropStack[];
   /** Owned fertilizers and sprays; missing ids are zero. */
   readonly supplies: Readonly<Partial<Record<SupplyId, number>>>;
+  /** Animal products waiting to be sold; absent on old saves. */
+  readonly products?: readonly ProductStack[];
 }
 
 /** Lifetime counters used by the HUD and the leaderboard. */
@@ -444,6 +610,12 @@ export interface GardenSnapshot {
   readonly trees: readonly (TreeState | null)[];
   /** Seeds and harvested crops. */
   readonly bag: BagState;
+  /** Building levels: 0 means not built. */
+  readonly buildings: Readonly<Record<BuildingId, number>>;
+  /** Animals per building slot. */
+  readonly animals: Readonly<Record<BuildingId, readonly (AnimalState | null)[]>>;
+  /** Last time farm upkeep and production were settled. */
+  readonly farmSettledAt: number;
   /** Lifetime counters. */
   readonly stats: GardenStats;
   /** Revision bumped on every write; actions echo it to reject stale tabs. */
@@ -472,6 +644,10 @@ export interface VisitSnapshot {
   readonly trees: readonly (TreeState | null)[];
   /** Seeds and harvested crops. */
   readonly bag: BagState;
+  /** Building levels: 0 means not built. */
+  readonly buildings: Readonly<Record<BuildingId, number>>;
+  /** Animals per building slot. */
+  readonly animals: Readonly<Record<BuildingId, readonly (AnimalState | null)[]>>;
   /** Lifetime counters. */
   readonly stats: GardenStats;
   /** Server time of the last write. */
@@ -799,6 +975,17 @@ export type GardenAction =
   | { readonly kind: "buyPatch"; readonly tab: number }
   | { readonly kind: "waterAll" }
   | { readonly kind: "harvestAll" }
+  | { readonly kind: "buildBuilding"; readonly building: BuildingId }
+  | { readonly kind: "upgradeBuilding"; readonly building: BuildingId }
+  | {
+      readonly kind: "buyAnimal";
+      readonly building: BuildingId;
+      readonly slot: number;
+      readonly animal: AnimalId;
+    }
+  | { readonly kind: "patAnimal"; readonly building: BuildingId; readonly slot: number }
+  | { readonly kind: "sellProduct"; readonly product: ProductId; readonly star: number; readonly qty: number }
+  | { readonly kind: "sellAllProducts" }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
   | {
@@ -835,6 +1022,12 @@ export type GardenErrorCode =
   | "MAX_TABS"
   | "MAX_PATCHES"
   | "NOTHING_TO_DO"
+  | "BUILDING_LOCKED"
+  | "MAX_LEVEL"
+  | "SLOT_OUT_OF_RANGE"
+  | "SLOT_OCCUPIED"
+  | "SLOT_EMPTY"
+  | "NO_PRODUCT"
   | "CANNOT_VISIT_SELF";
 
 /** Successful response to a garden action. */
@@ -1126,6 +1319,35 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   }
   if (kind === "buyTab") return { kind };
   if (kind === "waterAll" || kind === "harvestAll") return { kind };
+  if (kind === "sellAllProducts") return { kind };
+  if (kind === "buildBuilding" || kind === "upgradeBuilding") {
+    const building = typeof value.building === "string" ? buildingById(value.building) : undefined;
+    return building === undefined ? null : { kind, building: building.id };
+  }
+  if (kind === "buyAnimal") {
+    const building = typeof value.building === "string" ? buildingById(value.building) : undefined;
+    const animal = typeof value.animal === "string" ? animalById(value.animal) : undefined;
+    const slot = value.slot;
+    if (building === undefined || animal === undefined || animal.building !== building.id) return null;
+    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= 12) return null;
+    return { kind, building: building.id, slot, animal: animal.id };
+  }
+  if (kind === "patAnimal") {
+    const building = typeof value.building === "string" ? buildingById(value.building) : undefined;
+    const slot = value.slot;
+    if (building === undefined) return null;
+    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= 12) return null;
+    return { kind, building: building.id, slot };
+  }
+  if (kind === "sellProduct") {
+    const product = typeof value.product === "string" ? productById(value.product) : undefined;
+    const star = value.star;
+    const qty = value.qty;
+    if (product === undefined) return null;
+    if (typeof star !== "number" || !Number.isInteger(star) || star < 1 || star > 5) return null;
+    if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 99) return null;
+    return { kind, product: product.id, star, qty };
+  }
   if (kind === "buyPatch") {
     const tab = value.tab;
     if (typeof tab !== "number" || !Number.isInteger(tab) || tab < 0 || tab >= MAX_TABS) return null;

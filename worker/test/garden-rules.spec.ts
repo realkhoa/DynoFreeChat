@@ -10,16 +10,23 @@ import {
   ACTIONS_PER_MINUTE,
   EPOCH_MS,
   EVENT_WAVE_MS,
-  nextTabPrice,
+  FARM_CYCLE_MS,
   eventsAt,
+  nextTabPrice,
   resolvedCropEffects,
   resolvedTreeEffects,
   rollEffectsFor,
-  sprayById,
   seasonAt as seasonFor,
+  sprayById,
   type GardenAction,
 } from "@dyno/shared/garden";
-import { applyGardenAction, createLedger, ledgerSnapshot, type GardenLedger } from "../src/garden-rules";
+import {
+  applyGardenAction,
+  createLedger,
+  ledgerSnapshot,
+  settleFarm,
+  type GardenLedger,
+} from "../src/garden-rules";
 
 /** Server time inside the golden-hour wave, so growth is unmodified by rain. */
 const NOW = EPOCH_MS + 2 * EVENT_WAVE_MS + 1_000;
@@ -317,6 +324,40 @@ describe("garden ledger rules", () => {
     expect(result.ledger.bag.crops).toHaveLength(2);
     expect(result.ledger.plots[0]).toBeNull();
     expect(result.ledger.plots[1]).toBeNull();
+  });
+
+  it("builds a coop, buys animals, settles upkeep and collects products", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "coop" });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.ledger.buildings.coop).toBe(1);
+    expect(built.ledger.coins).toBe(7_000_000);
+
+    const upgraded = run(built.ledger, { kind: "upgradeBuilding", building: "coop" });
+    expect(upgraded.ok).toBe(true);
+    if (!upgraded.ok) return;
+    expect(upgraded.ledger.animals.coop).toHaveLength(6);
+    expect(upgraded.ledger.coins).toBe(4_000_000);
+
+    const bought = run(upgraded.ledger, { kind: "buyAnimal", building: "coop", slot: 0, animal: "chicken" });
+    expect(bought.ok).toBe(true);
+    if (!bought.ok) return;
+    expect(bought.ledger.animals.coop[0]?.kind).toBe("chicken");
+
+    // Three cycles later: upkeep of 120 and one egg (every two cycles).
+    const later = settleFarm(bought.ledger, NOW + 3 * FARM_CYCLE_MS);
+    expect(later.coins).toBe(bought.ledger.coins - 120);
+    expect(later.bag.products?.length).toBe(1);
+    expect(later.bag.products?.[0]?.product).toBe("egg");
+    expect(later.bag.products?.[0]?.qty).toBe(1);
+
+    const sold = run(later, { kind: "sellAllProducts" }, NOW + 3 * FARM_CYCLE_MS);
+    expect(sold.ok).toBe(true);
+    if (!sold.ok) return;
+    expect(sold.ledger.coins).toBeGreaterThan(later.coins);
+    expect(sold.ledger.bag.products).toHaveLength(0);
   });
 
   it("buys the next tab at the compounding price", () => {

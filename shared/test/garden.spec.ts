@@ -53,8 +53,14 @@ import {
   nextBuyMultiplier,
   nextPatchPrice,
   combinedGrowScale,
+  ANIMALS,
+  BUILDINGS,
+  FARM_CYCLE_MS,
+  animalQuality,
+  buildingSlots,
   eventsAt,
   nextSellState,
+  productPrice,
   nextTabPrice,
   rollEffectsFor,
   resolvedCropEffects,
@@ -177,6 +183,37 @@ describe("weather effect stacking", () => {
     }
   });
 });
+
+describe("farm buildings", () => {
+  it("has a four-to-twelve slot ladder for both buildings", () => {
+    for (const building of BUILDINGS) {
+      expect(building.slots[0]).toBe(4);
+      expect(building.slots.at(-1)).toBe(12);
+      expect(building.slots).toHaveLength(4);
+      expect(buildingUpgradeCostForTest(building.id)).toBe(building.upgrade);
+    }
+    expect(buildingSlots("coop", 0)).toBe(0);
+    expect(buildingSlots("coop", 1)).toBe(4);
+    expect(buildingSlots("coop", 4)).toBe(12);
+  });
+
+  it("raises animal quality with age and pats, and doubles product value", () => {
+    const animal = { kind: "chicken" as const, bornAt: EPOCH_MS, pats: 0, lastProduceAt: EPOCH_MS };
+    expect(animalQuality(animal, EPOCH_MS)).toBe(1);
+    const aged = { ...animal, pats: 12 };
+    expect(animalQuality(aged, EPOCH_MS + 24 * FARM_CYCLE_MS)).toBe(4);
+    const season = seasonAt(EPOCH_MS);
+    const one = productPrice({ product: "egg", star: 1, qty: 1 }, season);
+    const three = productPrice({ product: "egg", star: 3, qty: 1 }, season);
+    expect(three).toBeGreaterThan(one);
+    expect(ANIMALS.some((entry) => entry.product === "wool" && entry.intervalCycles === 7)).toBe(true);
+  });
+});
+
+// Small local helper so the test does not import another symbol by mistake.
+function buildingUpgradeCostForTest(id: "coop" | "barn"): number {
+  return BUILDINGS.find((building) => building.id === id)?.upgrade ?? 0;
+}
 
 describe("market pressure", () => {
   it("keeps light supply unchanged and cuts heavier supply", () => {
