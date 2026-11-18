@@ -31,6 +31,7 @@ import { Outbox } from "@/shared/lib/outbox";
 import { formatAge } from "@/shared/lib/format";
 import { loadIdentity, saveNick, type Identity } from "@/shared/lib/identity";
 import { initLocale, setLocale } from "@/shared/i18n";
+import { readList, readParam, writeParams } from "@/shared/lib/urlstate";
 import { Notifier } from "@/shared/lib/notify";
 import { SoundPlayer } from "@/shared/lib/sound";
 import { PassVault } from "@/shared/lib/passvault";
@@ -508,14 +509,38 @@ const workspaceView = new WorkspaceView(
   },
 );
 
+let stageGameId: string | null = null;
+
+/**
+ * @brief Mirrors the open documents into the URL query.
+ * @details A reload reopens the same strip and the same active document; the
+ * current game stage also remembers which game was mounted.
+ */
+function syncDocQuery(): void {
+  const ids = docTabs.ids().filter((id) => id !== "match" && id !== "lock");
+  writeParams({
+    docs: ids.length === 0 ? null : ids.join(","),
+    doc: docTabs.activeId,
+    game: stageGameId,
+  });
+}
+
 const docTabs = new DocTabs(tabstripEl, editorEl, tabNew, {
   onActivate: (_id, label) => {
     showDocView(label);
+    syncDocQuery();
     syncPresence();
   },
-  onDeactivate: () => syncPresence(),
+  onDeactivate: () => {
+    syncDocQuery();
+    syncPresence();
+  },
   onClose: (id) => {
-    if (id === "game-stage") onlineStageGame = null;
+    if (id === "game-stage") {
+      onlineStageGame = null;
+      stageGameId = null;
+    }
+    syncDocQuery();
     selectRoomTab();
     syncPresence();
   },
@@ -1040,11 +1065,13 @@ function openGameStage(id: string, online?: OnlineBridge, gardenCode?: string): 
   const game = findGame(id);
   if (game === undefined) return;
 
+  stageGameId = id;
   onlineStageGame = online === undefined ? null : id;
   docTabs.open({ id: "game-stage", label: game.documentTitle, panel: gameStageViewEl, icon: game.icon });
   docTabs.setLabel("game-stage", game.documentTitle);
   const context = online !== undefined ? { online } : gardenCode !== undefined ? { gardenCode } : undefined;
   gameStage.open(id, game.documentTitle, game.summary, context);
+  syncDocQuery();
 }
 
 /**
@@ -1065,6 +1092,39 @@ function closeMatchStage(): void {
 function openMatchTab(): void {
   docTabs.open({ id: "match", label: "Match.cs", panel: matchViewEl, icon: "play" });
   matchView.start();
+}
+
+/** Document id -> the opener that recreates it on reload. */
+const DOC_RESTORE: Record<string, () => void> = {
+  rooms: () => openRoomsTab(),
+  settings: () => openSettingsTab(),
+  games: () => openGamesTab(),
+  "game-stage": () => {
+    if (stageGameId !== null && findGame(stageGameId) !== undefined) openGameStage(stageGameId);
+  },
+  market: () => openMarketTab(),
+  "market-quotes": () => openQuotesTab(),
+  "market-depth": () => openDepthTab(),
+  "market-chart": () => openChartTab(),
+  "market-feed": () => openFeedTab(),
+  workspace: () => openWorkspaceTab(),
+};
+
+/**
+ * @brief Reopens the documents saved in the URL after a reload.
+ * @details Order is preserved, the active document is restored, and an empty
+ * `doc` value means the chat tab was in front when the page reloaded.
+ */
+function restoreDocsFromUrl(): void {
+  const ids = readList("docs").filter((id) => DOC_RESTORE[id] !== undefined);
+  if (ids.length === 0) return;
+  const savedActive = readParam("doc");
+  const savedGame = readParam("game");
+  stageGameId = savedGame;
+  for (const id of ids) DOC_RESTORE[id]?.();
+  if (savedActive !== null) docTabs.activate(savedActive);
+  else docTabs.deactivate();
+  syncDocQuery();
 }
 
 /**
@@ -1164,6 +1224,8 @@ function enterRoom(slug: string, pass?: string): void {
 
   current = { slug, locked: false };
   joinPass = pass;
+  // The room lives in the URL so a reload rejoins the same chat.
+  writeParams({ r: slug });
 
   store.addSystem(`đang vào #${slug}…`);
   setMode("room");
@@ -1206,11 +1268,7 @@ function leaveRoom(updateUrl = true): void {
   updateChrome();
   render();
 
-  if (updateUrl) {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("r");
-    window.history.replaceState(null, "", url);
-  }
+  if (updateUrl) writeParams({ r: null });
 
   void refreshRooms();
 }
@@ -1960,6 +2018,10 @@ function boot(): void {
     render();
     void refreshRooms();
   }
+
+  // Restoring last: the saved documents decide the visible view, while the
+  // room above already rejoined the chat socket in the background.
+  restoreDocsFromUrl();
 
   if (window.location.protocol === "https:" && wsUrl.startsWith("ws:")) {
     store.addSystem("bản deploy chưa có VITE_WS_URL — đang trỏ vào localhost, không chat được", "error");

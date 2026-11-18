@@ -42,6 +42,7 @@ import {
 } from "@dyno/shared/garden";
 import { formatDuration, formatNumber, onLocaleChange, t, tList, translateError } from "@/shared/i18n";
 import { loadIdentity, type Identity } from "@/shared/lib/identity";
+import { readParam, writeParams } from "@/shared/lib/urlstate";
 import type { GameContext, GameMount } from "../mount";
 import { cellRender, fitText, growthColor, labelValue, treeCellRender } from "./ascii";
 import { GardenApi, GardenApiError } from "./api";
@@ -105,6 +106,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let selectedArea: "crop" | "tree" = "crop";
   let supplyPicker: "fertilize" | "spray" | null = null;
   let page = 0;
+  let pendingSelection: { area: "crop" | "tree"; slot: number } | null = null;
+  let pendingPage: number | null = null;
   let message: Message | null = null;
   let loading = true;
   let offline = false;
@@ -345,6 +348,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     message = null;
     selectedSlot = null;
     page = 0;
+    pendingPage = null;
+    pendingSelection = null;
+    readGardenQuery();
     uprootArmed = false;
     render();
     try {
@@ -362,6 +368,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       if (disposed) return;
       offline = false;
+      applyPendingView();
+      syncGardenQuery();
     } catch (error) {
       if (disposed) return;
       applyApiError(error);
@@ -736,7 +744,46 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     selectedSlot = null;
     uprootArmed = false;
     if (next === "event") void loadLeaderboard();
+    syncGardenQuery();
     render();
+  }
+
+  /** @brief Writes the garden view state into the URL query. */
+  function syncGardenQuery(): void {
+    writeParams({
+      gtab: tab,
+      gpage: page > 0 ? String(page) : null,
+      garea: selectedSlot === null ? null : selectedArea,
+      gslot: selectedSlot === null ? null : String(selectedSlot),
+    });
+  }
+
+  /** @brief Restores tab, page and selection saved in the URL. */
+  function readGardenQuery(): void {
+    const savedTab = readParam("gtab");
+    if (savedTab === "garden" || savedTab === "market" || savedTab === "event") tab = savedTab;
+    const savedPage = Number(readParam("gpage"));
+    pendingPage = Number.isInteger(savedPage) && savedPage > 0 ? savedPage : null;
+    const savedArea = readParam("garea") === "tree" ? "tree" : "crop";
+    const savedSlot = Number(readParam("gslot"));
+    pendingSelection =
+      Number.isInteger(savedSlot) && savedSlot >= 0 ? { area: savedArea, slot: savedSlot } : null;
+  }
+
+  /** @brief Applies the URL selection once a snapshot is available. */
+  function applyPendingView(): void {
+    if (pendingPage !== null) {
+      page = Math.min(pendingPage, pageCount() - 1);
+      pendingPage = null;
+    }
+    if (pendingSelection !== null) {
+      const slots = pendingSelection.area === "tree" ? currentTrees() : currentPlots();
+      if (slots !== null && pendingSelection.slot < slots.length) {
+        selectedSlot = pendingSelection.slot;
+        selectedArea = pendingSelection.area;
+      }
+      pendingSelection = null;
+    }
   }
 
   /** @brief Selects one owned crop or tree slot and shows its detail panel. */
@@ -747,6 +794,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     selectedArea = area;
     supplyPicker = null;
     uprootArmed = false;
+    syncGardenQuery();
     render();
   }
 
@@ -761,6 +809,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     selectedSlot = null;
     supplyPicker = null;
     uprootArmed = false;
+    syncGardenQuery();
     render();
   }
 
@@ -777,6 +826,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       offline = false;
       page = state.patches - 1;
       selectedSlot = null;
+      syncGardenQuery();
       message = { text: t("garden.patchBought", { patch: state.patches }), kind: "ok" };
     } catch (error) {
       applyApiError(error);

@@ -135,6 +135,14 @@ export class DocTabs {
   }
 
   /**
+   * @brief Open document tab ids, in the order they were opened.
+   * @return Tab ids; used to mirror the strip into the URL.
+   */
+  ids(): string[] {
+    return [...this.entries.keys()];
+  }
+
+  /**
    * @brief Id of the visible document tab, if any.
    * @return Active id or null.
    */

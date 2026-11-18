@@ -57,6 +57,12 @@ describe("DocTabs", () => {
     h = makeHarness();
   });
 
+  it("lists open tab ids in opening order", () => {
+    h.tabs.open({ id: "settings", label: "Settings", panel: h.settingsPanel });
+    h.tabs.open({ id: "rooms", label: "Chat Rooms", panel: h.roomsPanel });
+    expect(h.tabs.ids()).toEqual(["settings", "rooms"]);
+  });
+
   it("opens a document as a tab with its panel visible", () => {
     h.tabs.open({ id: "settings", label: "Settings", panel: h.settingsPanel });
 

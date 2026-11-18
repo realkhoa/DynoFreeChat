@@ -25,6 +25,7 @@ import {
 import { createAsciiGardenGame } from "@/features/games/garden/game";
 import type { GardenApi } from "@/features/games/garden/api";
 import { setLocale } from "@/shared/i18n";
+import { readParam } from "@/shared/lib/urlstate";
 
 /** Virtual server time used by the fake API. */
 const CLOCK = EPOCH_MS + 2 * EVENT_WAVE_MS + 60_000;
@@ -44,6 +45,20 @@ const RIPE_PLOT: PlotState = {
   effects: ["golden", "wet"],
   watered: true,
   fertilized: true,
+  harvests: 0,
+  fertilizer: null,
+  spray: null,
+};
+
+/** A fruiting apple tree on tree slot 9 (second page's first slot). */
+const SECOND_PAGE_TREE: TreeState = {
+  slot: 9,
+  tree: "apple",
+  plantedAt: CLOCK - 1_000,
+  readyAt: CLOCK + 600_000,
+  effects: [],
+  watered: false,
+  fertilized: false,
   harvests: 0,
   fertilizer: null,
   spray: null,
@@ -207,6 +222,7 @@ async function settle(): Promise<void> {
 let mounted: Array<{ unmount: () => void }> = [];
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/index.html");
   localStorage.clear();
   localStorage.setItem("dyno.identity", JSON.stringify({ nick: "khoan", color: "hsl(200 60% 60%)" }));
   setLocale("vi");
@@ -342,6 +358,36 @@ describe("garden tab", () => {
     await settle();
     const applied = api.calls.find((call) => call.action?.kind === "fertilize");
     expect(applied?.action).toMatchObject({ kind: "fertilize", supply: "compost" });
+  });
+
+  it("restores the saved tab, page and selection from the URL", async () => {
+    window.history.replaceState(null, "", "/index.html?gtab=garden&gpage=1&garea=tree&gslot=9");
+    const trees = new Array<TreeState | null>(18).fill(null);
+    trees[9] = SECOND_PAGE_TREE;
+    const api = new FakeGardenApi(makeState({ patches: 2, trees }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    expect(host.querySelector(".garden-page")?.textContent).toContain("2/3");
+    const selected = host.querySelector<HTMLElement>(".garden-cell.is-selected");
+    expect(selected?.dataset.area).toBe("tree");
+    expect(selected?.dataset.slot).toBe("9");
+    expect(host.querySelector(".garden-detail-text")?.textContent).toContain("Táo");
+  });
+
+  it("mirrors tab and page changes into the URL", async () => {
+    const api = new FakeGardenApi(makeState({ patches: 2 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    expect(readParam("gtab")).toBe("garden");
+    host.querySelector<HTMLButtonElement>('[data-act="nextPage"]')?.click();
+    await settle();
+    expect(readParam("gpage")).toBe("1");
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
+    await settle();
+    expect(readParam("gtab")).toBe("market");
   });
 
   it("switches to English labels live", async () => {
