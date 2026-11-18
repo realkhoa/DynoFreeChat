@@ -103,6 +103,7 @@ describe("garden registration", () => {
     expect(registered.state.coins).toBe(30);
     expect(registered.state.patches).toBe(1);
     expect(registered.state.plots).toHaveLength(9);
+    expect(registered.state.trees).toHaveLength(9);
     expect(registered.state.bag.seeds.carrot).toBe(3);
     expect(registered.state.rev).toBe(1);
   });
@@ -243,6 +244,7 @@ describe("garden visits", () => {
     const snapshot = await visit(registered.state.code);
     expect(snapshot.nick).toBe("host");
     expect(snapshot.plots).toHaveLength(9);
+    expect(snapshot.trees).toHaveLength(9);
     expect(snapshot.online).toBe(true);
     expect(snapshot.visitors).toEqual([]);
 

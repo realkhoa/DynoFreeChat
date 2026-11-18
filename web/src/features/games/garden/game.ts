@@ -14,24 +14,30 @@ import {
   MAX_PATCHES,
   PLOTS_PER_PATCH,
   SEEDS,
+  TREES,
   cropSellPrice,
+  effectById,
   gardenCounts,
   nextPatchPrice,
   plotView,
   seedById,
+  treeById,
   type EffectId,
   type GardenAction,
   type GardenSnapshot,
   type LeaderboardEntry,
   type PlotState,
   type SeasonSnapshot,
+  type ItemId,
   type SeedId,
+  type TreeId,
+  type TreeState,
   type VisitSnapshot,
 } from "@dyno/shared/garden";
 import { formatDuration, formatNumber, onLocaleChange, t, tList, translateError } from "@/shared/i18n";
 import { loadIdentity, type Identity } from "@/shared/lib/identity";
 import type { GameContext, GameMount } from "../mount";
-import { cellRender, fitText, growthColor, labelValue } from "./ascii";
+import { cellRender, fitText, growthColor, labelValue, treeCellRender } from "./ascii";
 import { GardenApi, GardenApiError } from "./api";
 
 /** Repaint interval while the document is open. */
@@ -90,6 +96,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let visiting: VisitSnapshot | null = null;
   let season: SeasonSnapshot | null = null;
   let selectedSlot: number | null = null;
+  let selectedArea: "crop" | "tree" = "crop";
   let page = 0;
   let message: Message | null = null;
   let loading = true;
@@ -186,6 +193,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return t(`seeds.${id}.short`);
   }
 
+  /** @brief Localized short tree name. */
+  function treeName(id: TreeId): string {
+    return t(`trees.${id}.short`);
+  }
+
+  /** @brief Localized full name of any bag item. */
+  function itemName(id: ItemId): string {
+    return seedById(id) === undefined ? t(`trees.${id}`) : t(`seeds.${id}`);
+  }
+
   /** @brief Plots for the active mode. */
   function currentPlots(): readonly (PlotState | null)[] | null {
     return mode === "visit" ? (visiting?.plots ?? null) : (state?.plots ?? null);
@@ -222,10 +239,32 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return mode === "visit" ? (visiting?.code ?? null) : (state?.code ?? null);
   }
 
+  /** @brief Trees for the active mode. */
+  function currentTrees(): readonly (TreeState | null)[] | null {
+    return mode === "visit" ? (visiting?.trees ?? null) : (state?.trees ?? null);
+  }
+
   /** @brief One plot from the active snapshot. */
   function plotAt(slot: number): PlotState | null {
     const plots = currentPlots();
     return plots === null ? null : (plots[slot] ?? null);
+  }
+
+  /** @brief One tree from the active snapshot. */
+  function treeAt(slot: number): TreeState | null {
+    const trees = currentTrees();
+    return trees === null ? null : (trees[slot] ?? null);
+  }
+
+  /** @brief Names the selected slot for the action messages. */
+  function selectedName(): string {
+    if (selectedSlot === null) return "";
+    if (selectedArea === "tree") {
+      const tree = treeAt(selectedSlot);
+      return tree === null ? "" : t(`trees.${tree.tree}`);
+    }
+    const plot = plotAt(selectedSlot);
+    return plot === null ? "" : t(`seeds.${plot.seed}`);
   }
 
   /** @brief Localized text for one caught error. */
@@ -383,37 +422,83 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (!disposed) render();
   }
 
-  /** @brief Harvests one ripe plot. */
-  function harvest(slot: number): void {
+  /** @brief Harvests one ripe crop or picks one tree fruit. */
+  function harvest(slot: number, area: "crop" | "tree"): void {
+    if (state === null || season === null) return;
+    if (area === "tree") {
+      const tree = treeAt(slot);
+      if (tree === null) return;
+      if (now() < tree.readyAt) {
+        message = { text: translateError("NOT_READY"), kind: "err" };
+        render();
+        return;
+      }
+      const gain = cropSellPrice({ item: tree.tree, effect: tree.effect, qty: 1 }, season);
+      void runAction(
+        { kind: "harvest", slot, tree: true },
+        t("garden.harvestedTree", { tree: itemName(tree.tree), coins: gain }),
+      );
+      return;
+    }
     const plot = plotAt(slot);
-    if (plot === null || state === null || season === null) return;
+    if (plot === null) return;
     const view = plotView(plot, now());
     if (!view.ready) {
       message = { text: translateError("NOT_READY"), kind: "err" };
       render();
       return;
     }
-    const gain = cropSellPrice({ seed: plot.seed, effect: plot.effect, qty: 1 }, season);
+    const gain = cropSellPrice({ item: plot.seed, effect: plot.effect, qty: 1 }, season);
     void runAction(
-      { kind: "harvest", slot },
-      t("garden.harvested", { seed: seedName(plot.seed), coins: gain }),
+      { kind: "harvest", slot, tree: false },
+      t("garden.harvested", { seed: itemName(plot.seed), coins: gain }),
     );
   }
 
-  /** @brief Waters or fertilizes the selected growing crop. */
-  function tend(slot: number, kind: "water" | "fertilize"): void {
-    const plot = plotAt(slot);
-    if (plot === null) return;
-    const name = seedName(plot.seed);
-    if (kind === "water") {
-      void runAction({ kind: "water", slot }, t("garden.watered", { seed: name }));
+  /** @brief Waters or fertilizes the selected growing crop or tree. */
+  function tend(slot: number, kind: "water" | "fertilize", area: "crop" | "tree"): void {
+    if (area === "tree") {
+      const tree = treeAt(slot);
+      if (tree === null) return;
+      const name = itemName(tree.tree);
+      if (kind === "water") {
+        void runAction({ kind: "water", slot, tree: true }, t("garden.wateredTree", { tree: name }));
+        return;
+      }
+      void runAction({ kind: "fertilize", slot, tree: true }, t("garden.fedTree", { tree: name }));
       return;
     }
-    void runAction({ kind: "fertilize", slot }, t("garden.fed", { seed: name }));
+    const plot = plotAt(slot);
+    if (plot === null) return;
+    const name = itemName(plot.seed);
+    if (kind === "water") {
+      void runAction({ kind: "water", slot, tree: false }, t("garden.watered", { seed: name }));
+      return;
+    }
+    void runAction({ kind: "fertilize", slot, tree: false }, t("garden.fed", { seed: name }));
   }
 
-  /** @brief Uproots the selected crop after a two-step confirmation. */
-  function uproot(slot: number): void {
+  /** @brief Plants one fruit tree sapling. */
+  async function plantTree(slot: number, treeId: TreeId): Promise<void> {
+    if (state === null || busy || mode !== "owner") return;
+    const definition = treeById(treeId);
+    if (definition === undefined || state.coins < definition.buy) return;
+    busy = true;
+    try {
+      const result = await api.act(state.rev, { kind: "plantTree", slot, tree: treeId });
+      state = result.state;
+      season = result.season;
+      offline = false;
+      message = { text: t("garden.plantedTree", { tree: itemName(treeId) }), kind: "ok" };
+    } catch (error) {
+      applyApiError(error);
+    }
+    busy = false;
+    if (!disposed) render();
+  }
+
+  /** @brief Removes the selected plant after a two-step confirmation. */
+  function uproot(slot: number, area: "crop" | "tree"): void {
     if (!uprootArmed) {
       uprootArmed = true;
       message = { text: t("garden.uprootConfirm"), kind: "info" };
@@ -427,7 +512,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return;
     }
     uprootArmed = false;
-    void runAction({ kind: "uproot", slot }, t("garden.uprooted", { slot: slot + 1 }));
+    const local = slot - pageOffset() + 1;
+    void runAction(
+      { kind: "uproot", slot, tree: area === "tree" },
+      area === "tree" ? t("garden.uprootedTree", { slot: local }) : t("garden.uprooted", { slot: local }),
+    );
   }
 
   /** @brief Buys one seed from the current shop rotation. */
@@ -438,15 +527,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     );
   }
 
-  /** @brief Sells one crop stack. */
-  function sellStack(seedId: SeedId, effect: EffectId | null): void {
+  /** @brief Sells one harvested stack. */
+  function sellStack(item: ItemId, effect: EffectId | null): void {
     if (state === null || season === null) return;
-    const stack = state.bag.crops.find((entry) => entry.seed === seedId && entry.effect === effect);
+    const stack = state.bag.crops.find((entry) => entry.item === item && entry.effect === effect);
     if (stack === undefined) return;
     const gain = cropSellPrice(stack, season) * stack.qty;
     void runAction(
-      { kind: "sellCrop", seed: seedId, effect, qty: stack.qty },
-      t("market.sold", { seed: seedName(seedId), coins: gain }),
+      { kind: "sellCrop", item, effect, qty: stack.qty },
+      t("market.sold", { seed: itemName(item), coins: gain }),
     );
   }
 
@@ -469,13 +558,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     season = bundle.season;
   }
 
-  /** @brief Waters one crop on a friend's garden. */
-  async function waterFriend(slot: number): Promise<void> {
+  /** @brief Waters one crop or tree on a friend's garden. */
+  async function waterFriend(slot: number, area: "crop" | "tree"): Promise<void> {
     if (visiting === null || visitCode === null || busy) return;
     busy = true;
     try {
       await ensureVisitorSession();
-      const bundle = await api.waterVisit(visitCode, slot);
+      const bundle = await api.waterVisit(visitCode, slot, area === "tree");
       visiting = bundle.garden;
       season = bundle.season;
       offline = false;
@@ -600,11 +689,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     render();
   }
 
-  /** @brief Selects one owned plot and shows its detail panel. */
-  function selectSlot(slot: number): void {
-    const plots = currentPlots();
-    if (plots === null || slot < 0 || slot >= plots.length) return;
+  /** @brief Selects one owned crop or tree slot and shows its detail panel. */
+  function selectSlot(slot: number, area: "crop" | "tree"): void {
+    const slots = area === "tree" ? currentTrees() : currentPlots();
+    if (slots === null || slot < 0 || slot >= slots.length) return;
     selectedSlot = slot;
+    selectedArea = area;
     uprootArmed = false;
     render();
   }
@@ -671,23 +761,25 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief HUD comment line. */
   function hudText(): string {
     if (mode === "visit" && visiting !== null) {
-      const counts = gardenCounts(visiting.plots, now());
+      const counts = gardenCounts(visiting.plots, visiting.trees, now());
       return `${t("garden.visitTitle", { nick: visiting.nick })} | ${t("garden.coins")} ${formatNumber(visiting.coins)} | ${t("garden.ready")} ${counts.ready} | ${visiting.online ? t("common.online") : t("common.offlineUser")}`;
     }
     if (state === null) return "";
-    const counts = gardenCounts(state.plots, now());
+    const counts = gardenCounts(state.plots, state.trees, now());
     return `${t("garden.coins")} ${formatNumber(state.coins)} | ${t("garden.ready")} ${counts.ready} | ${t("garden.growing")} ${counts.growing} | ${t("garden.free")} ${counts.free}`;
   }
 
   /**
-   * @brief Builds one plot cell button.
+   * @brief Builds one plot or tree cell button.
    * @param local Zero-based cell index inside the current page.
+   * @param area Which grid the cell belongs to.
    */
-  function buildCell(local: number): HTMLButtonElement {
+  function buildCell(local: number, area: "crop" | "tree"): HTMLButtonElement {
     const cell = document.createElement("button");
     cell.type = "button";
     cell.className = "garden-cell";
     cell.dataset.act = "plot";
+    cell.dataset.area = area;
     cell.dataset.slot = String(pageOffset() + local);
     if (isPreviewPage()) cell.disabled = true;
     for (let index = 0; index < 6; index += 1) {
@@ -695,16 +787,20 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       line.className = "garden-cell-line";
       cell.append(line);
     }
-    syncCell(cell, pageOffset() + local, now());
+    syncCell(cell, pageOffset() + local, area, now());
     return cell;
   }
 
-  /** @brief Repaints one plot cell from the current snapshot and clock. */
-  function syncCell(cell: HTMLButtonElement, slot: number, at: number): void {
+  /** @brief Repaints one crop or tree cell from the snapshot and clock. */
+  function syncCell(cell: HTMLButtonElement, slot: number, area: "crop" | "tree", at: number): void {
     const local = slot - pageOffset();
     const preview = isPreviewPage();
-    const plot = preview ? null : plotAt(slot);
-    const render = cellRender(plot, at, preview ? 0 : null, local);
+    const plot = preview || area === "tree" ? null : plotAt(slot);
+    const tree = preview || area === "crop" ? null : treeAt(slot);
+    const render =
+      area === "tree"
+        ? treeCellRender(tree, at, preview ? 0 : null, local)
+        : cellRender(plot, at, preview ? 0 : null, local);
     for (let index = 0; index < 6; index += 1) {
       const line = cell.children.item(index);
       if (line instanceof HTMLElement) line.textContent = render.lines[index] ?? "";
@@ -713,27 +809,33 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     cell.classList.toggle("is-growing", render.growing);
     cell.classList.toggle("is-empty", render.empty);
     cell.classList.toggle("is-locked", render.locked);
-    cell.classList.toggle("is-selected", selectedSlot === slot);
-    for (const effect of EFFECTS) {
-      cell.classList.toggle(`is-${effect.id}`, plot?.effect === effect.id);
-    }
+    cell.classList.toggle("is-selected", selectedSlot === slot && selectedArea === area);
+    const effect = area === "tree" ? (tree?.effect ?? null) : (plot?.effect ?? null);
+    for (const definition of EFFECTS) cell.classList.toggle(`is-${definition.id}`, effect === definition.id);
     cell.style.color = render.growing ? growthColor(render.progress) : "";
     const label =
-      plot === null
-        ? t("garden.empty")
-        : `${seedName(plot.seed)}${render.ready ? `, ${t("garden.ready")}` : ""}`;
+      area === "tree"
+        ? tree === null
+          ? t("garden.empty")
+          : `${treeName(tree.tree)}${render.ready ? `, ${t("garden.ready")}` : ""}`
+        : plot === null
+          ? t("garden.empty")
+          : `${seedName(plot.seed)}${render.ready ? `, ${t("garden.ready")}` : ""}`;
     cell.setAttribute(
       "aria-label",
-      `${t("garden.patch", { patch: page + 1 })} ${t("garden.plot", { slot: local + 1 })} ${label}`,
+      `${t("garden.patch", { patch: page + 1 })} ${t(area === "tree" ? "garden.trees" : "garden.crops")} ${t("garden.plot", { slot: local + 1 })} ${label}`,
     );
   }
 
-  /** @brief Builds the plot grid for the current 3x3 patch page. */
-  function buildBoard(): HTMLElement {
-    const board = div("garden-board");
+  /**
+   * @brief Builds one 3x3 board for the current page.
+   * @param area Which grid to build.
+   */
+  function buildBoard(area: "crop" | "tree"): HTMLElement {
+    const board = div(`garden-board garden-board--${area}`);
     for (let row = 0; row < 3; row += 1) {
       const line = div("garden-plot-row");
-      for (let column = 0; column < 3; column += 1) line.append(buildCell(row * 3 + column));
+      for (let column = 0; column < 3; column += 1) line.append(buildCell(row * 3 + column, area));
       board.append(line);
     }
     return board;
@@ -756,54 +858,102 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return bar;
   }
 
-  /** @brief Fills the detail panel text for the selected plot. */
+  /** @brief Fills the detail panel text for the selected crop or tree. */
   function fillDetail(pre: HTMLPreElement, at: number): void {
     const lines: string[] = [];
     const slot = selectedSlot;
     if (slot === null) {
       lines.push(t("garden.noSelection"), "", t("garden.noSelectionHint"));
-    } else {
-      const plot = plotAt(slot);
-      lines.push(
-        `// ${t("garden.patch", { patch: page + 1 })} · ${t("garden.plot", { slot: slot - pageOffset() + 1 })}`,
-      );
-      if (plot === null) {
-        lines.push("", t("garden.empty"), t("garden.emptyHint"));
+      pre.textContent = lines.join("\n");
+      return;
+    }
+    const local = slot - pageOffset() + 1;
+    const board = t(selectedArea === "tree" ? "garden.trees" : "garden.crops");
+    lines.push(
+      `// ${t("garden.patch", { patch: page + 1 })} · ${board} ${t("garden.plot", { slot: local })}`,
+    );
+
+    if (selectedArea === "tree") {
+      const tree = treeAt(slot);
+      if (tree === null) {
+        lines.push("", t("garden.empty"), t("garden.pickTree", { slot: local }));
       } else {
-        const view = plotView(plot, at);
-        const definition = seedById(plot.seed);
-        lines.push(labelValue(t("garden.crop"), t(`seeds.${plot.seed}`)));
+        const definition = treeById(tree.tree);
+        const ready = at >= tree.readyAt;
+        const total = Math.max(1, tree.readyAt - tree.plantedAt);
+        const progress = Math.min(1, Math.max(0, at - tree.plantedAt) / total);
+        lines.push(labelValue(t("garden.crop"), t(`trees.${tree.tree}`)));
         const stages = tList("garden.stageValues");
-        const stageIndex = view.ready ? 3 : Math.min(view.stage, 2);
-        const stage = stages[stageIndex] ?? "";
-        lines.push(labelValue(t("garden.stage"), view.ready ? stage : `${stage} (${stageIndex + 1}/3)`));
+        const stageIndex = ready ? 3 : Math.min(2, Math.floor(progress * 3));
+        lines.push(
+          labelValue(
+            t("garden.stage"),
+            ready ? (stages[3] ?? "") : `${stages[stageIndex] ?? ""} (${stageIndex + 1}/3)`,
+          ),
+        );
+        const effect = tree.effect === null ? null : (effectById(tree.effect) ?? null);
         lines.push(
           labelValue(
             t("garden.effect"),
-            view.effect === null
-              ? t("garden.effectNone")
-              : `${t(`effects.${view.effect.id}`)} x${view.effect.multiplier}`,
+            effect === null ? t("garden.effectNone") : `${t(`effects.${effect.id}`)} x${effect.multiplier}`,
           ),
         );
         lines.push(
-          labelValue(t("garden.readyIn"), view.ready ? t("garden.ready") : formatDuration(view.remainingMs)),
+          labelValue(t("garden.readyIn"), ready ? t("garden.ready") : formatDuration(tree.readyAt - at)),
         );
         if (season !== null) {
           lines.push(
             labelValue(
               t("garden.finalSell"),
-              `${formatNumber(cropSellPrice({ seed: plot.seed, effect: plot.effect, qty: 1 }, season))}c`,
+              `${formatNumber(cropSellPrice({ item: tree.tree, effect: tree.effect, qty: 1 }, season))}c`,
             ),
           );
         }
-        if (definition?.regrow === true) {
-          lines.push(labelValue(t("garden.kind"), t("garden.reharvest")));
-          if (plot.harvests > 0) lines.push(labelValue(t("garden.harvestedTimes"), String(plot.harvests)));
-        } else {
-          lines.push(labelValue(t("garden.kind"), t("garden.singleHarvest")));
-        }
-        if (mode === "owner") lines.push("", t("garden.actions"));
+        lines.push(labelValue(t("garden.kind"), t("garden.reharvest")));
+        if (tree.harvests > 0) lines.push(labelValue(t("garden.harvestedTimes"), String(tree.harvests)));
       }
+      if (mode === "owner") lines.push("", t("garden.actions"));
+      pre.textContent = lines.join("\n");
+      return;
+    }
+
+    const plot = plotAt(slot);
+    if (plot === null) {
+      lines.push("", t("garden.empty"), t("garden.emptyHint"));
+    } else {
+      const view = plotView(plot, at);
+      const definition = seedById(plot.seed);
+      lines.push(labelValue(t("garden.crop"), t(`seeds.${plot.seed}`)));
+      const stages = tList("garden.stageValues");
+      const stageIndex = view.ready ? 3 : Math.min(view.stage, 2);
+      const stage = stages[stageIndex] ?? "";
+      lines.push(labelValue(t("garden.stage"), view.ready ? stage : `${stage} (${stageIndex + 1}/3)`));
+      lines.push(
+        labelValue(
+          t("garden.effect"),
+          view.effect === null
+            ? t("garden.effectNone")
+            : `${t(`effects.${view.effect.id}`)} x${view.effect.multiplier}`,
+        ),
+      );
+      lines.push(
+        labelValue(t("garden.readyIn"), view.ready ? t("garden.ready") : formatDuration(view.remainingMs)),
+      );
+      if (season !== null) {
+        lines.push(
+          labelValue(
+            t("garden.finalSell"),
+            `${formatNumber(cropSellPrice({ item: plot.seed, effect: plot.effect, qty: 1 }, season))}c`,
+          ),
+        );
+      }
+      if (definition?.regrow === true) {
+        lines.push(labelValue(t("garden.kind"), t("garden.reharvest")));
+        if (plot.harvests > 0) lines.push(labelValue(t("garden.harvestedTimes"), String(plot.harvests)));
+      } else {
+        lines.push(labelValue(t("garden.kind"), t("garden.singleHarvest")));
+      }
+      if (mode === "owner") lines.push("", t("garden.actions"));
     }
     pre.textContent = lines.join("\n");
   }
@@ -811,7 +961,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Builds the seed picker rows for one empty plot. */
   function buildSeedPicker(slot: number): HTMLElement {
     const wrap = div("garden-seeds");
-    wrap.append(span("garden-hint", t("garden.pickSeed", { slot: slot + 1 })));
+    wrap.append(span("garden-hint", t("garden.pickSeed", { slot: slot - pageOffset() + 1 })));
     for (const seed of SEEDS) {
       const offer = season?.shop.offers.find((entry) => entry.seed === seed.id);
       const price = offer?.price ?? seed.buy;
@@ -822,6 +972,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       row.dataset.act = "seed";
       row.dataset.seed = seed.id;
       row.textContent = `${fitText(seedName(seed.id), 9)}${fitText(`${price}c`, 5)}${fitText(`${t("garden.bag")} ${owned}`, 8)}${formatDuration(seed.growMs, "short")}`;
+      wrap.append(row);
+    }
+    return wrap;
+  }
+
+  /** @brief Builds the tree picker rows for one empty tree slot. */
+  function buildTreePicker(slot: number): HTMLElement {
+    const wrap = div("garden-seeds");
+    wrap.append(span("garden-hint", t("garden.pickTree", { slot: slot - pageOffset() + 1 })));
+    for (const tree of TREES) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "garden-row";
+      row.dataset.act = "tree";
+      row.dataset.tree = tree.id;
+      row.textContent = `${fitText(treeName(tree.id), 9)}${fitText(`${tree.buy}c`, 6)}${fitText(`${tree.sell}c`, 6)}${formatDuration(tree.growMs, "short")}`;
       wrap.append(row);
     }
     return wrap;
@@ -840,41 +1006,75 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const slot = selectedSlot;
     if (slot === null) {
       actions.append(span("garden-hint", t("garden.noSelectionHint")));
-    } else {
-      const plot = plotAt(slot);
-      if (plot === null) {
-        actions.append(buildSeedPicker(slot));
+      wrap.append(actions);
+      return wrap;
+    }
+    if (selectedArea === "tree") {
+      const tree = treeAt(slot);
+      if (tree === null) {
+        if (mode === "owner") actions.append(buildTreePicker(slot));
+        else actions.append(span("garden-hint", t("garden.noSelectionHint")));
       } else {
-        const view = plotView(plot, now());
+        const ready = now() >= tree.readyAt;
         if (mode === "owner") {
-          actions.append(actionButton(t("garden.harvest"), "harvest", view.ready));
-          actions.append(actionButton(t("garden.water"), "water", !view.ready && !plot.watered));
+          actions.append(actionButton(t("garden.harvest"), "harvest", ready));
+          actions.append(actionButton(t("garden.water"), "water", !ready && !tree.watered));
           actions.append(
             actionButton(
               t("garden.fertilize", { cost: FERTILIZER_PRICE }),
               "fertilize",
-              !view.ready && !plot.fertilized && (state?.coins ?? 0) >= FERTILIZER_PRICE,
+              !ready && !tree.fertilized && (state?.coins ?? 0) >= FERTILIZER_PRICE,
             ),
           );
           actions.append(
             actionButton(uprootArmed ? t("garden.uprootConfirm") : t("garden.uproot"), "uproot"),
           );
         } else {
-          actions.append(actionButton(t("garden.waterFriend"), "waterFriend", !view.ready));
+          actions.append(actionButton(t("garden.waterFriend"), "waterFriend", !ready));
           actions.append(actionButton(t("garden.cheer"), "cheer"));
         }
+      }
+      wrap.append(actions);
+      return wrap;
+    }
+
+    const plot = plotAt(slot);
+    if (plot === null) {
+      actions.append(buildSeedPicker(slot));
+    } else {
+      const view = plotView(plot, now());
+      if (mode === "owner") {
+        actions.append(actionButton(t("garden.harvest"), "harvest", view.ready));
+        actions.append(actionButton(t("garden.water"), "water", !view.ready && !plot.watered));
+        actions.append(
+          actionButton(
+            t("garden.fertilize", { cost: FERTILIZER_PRICE }),
+            "fertilize",
+            !view.ready && !plot.fertilized && (state?.coins ?? 0) >= FERTILIZER_PRICE,
+          ),
+        );
+        actions.append(actionButton(uprootArmed ? t("garden.uprootConfirm") : t("garden.uproot"), "uproot"));
+      } else {
+        actions.append(actionButton(t("garden.waterFriend"), "waterFriend", !view.ready));
+        actions.append(actionButton(t("garden.cheer"), "cheer"));
       }
     }
     wrap.append(actions);
     return wrap;
   }
 
-  /** @brief Builds the garden tab: patch pager above the 3x3 board and detail. */
+  /** @brief Builds the garden tab: pager, both 3x3 boards and the detail panel. */
   function buildGarden(): HTMLElement {
     const wrap = div("garden-garden");
     wrap.append(buildPager());
     const layout = div("garden-layout");
-    layout.append(buildBoard(), buildDetail());
+    const boards = div("garden-boards");
+    const cropPanel = div("garden-board-panel");
+    cropPanel.append(span("garden-board-title", t("garden.crops")), buildBoard("crop"));
+    const treePanel = div("garden-board-panel");
+    treePanel.append(span("garden-board-title", t("garden.trees")), buildBoard("tree"));
+    boards.append(cropPanel, treePanel);
+    layout.append(boards, buildDetail());
     wrap.append(layout);
     return wrap;
   }
@@ -912,10 +1112,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const value = cropSellPrice(stack, season) * stack.qty;
       const row = rowButton(
         "garden-market-row",
-        `${fitText(seedName(stack.seed), 9)}${fitText(stack.effect === null ? "" : t(`effects.${stack.effect}`), 8)}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
+        `${fitText(itemName(stack.item), 9)}${fitText(stack.effect === null ? "" : t(`effects.${stack.effect}`), 8)}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
         "sell",
       );
-      row.dataset.seed = stack.seed;
+      row.dataset.item = stack.item;
       row.dataset.effect = stack.effect ?? "plain";
       exchange.append(row);
     }
@@ -1061,7 +1261,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const at = now();
     for (const cell of root.querySelectorAll<HTMLElement>(".garden-cell[data-slot]")) {
       const slot = Number(cell.dataset.slot);
-      if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncCell(cell, slot, at);
+      const area = cell.dataset.area === "tree" ? "tree" : "crop";
+      if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncCell(cell, slot, area, at);
     }
     if (detailPre !== null) fillDetail(detailPre, at);
     const hud = root.querySelector<HTMLElement>(".stage-hud");
@@ -1096,7 +1297,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     switch (action) {
       case "plot": {
         const slot = Number(target.dataset.slot);
-        if (Number.isInteger(slot)) selectSlot(slot);
+        const area = target.dataset.area === "tree" ? "tree" : "crop";
+        if (Number.isInteger(slot)) selectSlot(slot, area);
         return;
       }
       case "share":
@@ -1113,14 +1315,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (selectedSlot !== null && seedId !== undefined) void plantSeed(selectedSlot, seedId);
         return;
       }
+      case "tree": {
+        const treeId = target.dataset.tree as TreeId | undefined;
+        if (selectedSlot !== null && treeId !== undefined) void plantTree(selectedSlot, treeId);
+        return;
+      }
       case "harvest":
       case "water":
       case "fertilize":
       case "uproot": {
         if (selectedSlot === null) return;
-        if (action === "harvest") harvest(selectedSlot);
-        else if (action === "uproot") uproot(selectedSlot);
-        else tend(selectedSlot, action);
+        if (action === "harvest") harvest(selectedSlot, selectedArea);
+        else if (action === "uproot") uproot(selectedSlot, selectedArea);
+        else tend(selectedSlot, action, selectedArea);
         return;
       }
       case "prevPage":
@@ -1133,7 +1340,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         void buyPatch();
         return;
       case "waterFriend": {
-        if (selectedSlot !== null) void waterFriend(selectedSlot);
+        if (selectedSlot !== null) void waterFriend(selectedSlot, selectedArea);
         return;
       }
       case "cheer":
@@ -1145,10 +1352,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         return;
       }
       case "sell": {
-        const seedId = target.dataset.seed as SeedId | undefined;
-        if (seedId === undefined) return;
+        const item = target.dataset.item as ItemId | undefined;
+        if (item === undefined) return;
         const effect = target.dataset.effect;
-        sellStack(seedId, effect === undefined || effect === "plain" ? null : (effect as EffectId));
+        sellStack(item, effect === undefined || effect === "plain" ? null : (effect as EffectId));
         return;
       }
       case "sellAll":
@@ -1203,19 +1410,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const digit = Number(event.key);
     if (Number.isInteger(digit) && digit >= 1 && digit <= PLOTS_PER_PATCH) {
       event.preventDefault();
-      selectSlot(pageOffset() + digit - 1);
+      selectSlot(pageOffset() + digit - 1, "crop");
       return;
     }
     if (selectedSlot === null) return;
     if (event.key === "h" || event.key === "H") {
-      if (mode === "owner") harvest(selectedSlot);
+      if (mode === "owner") harvest(selectedSlot, selectedArea);
     } else if (event.key === "w" || event.key === "W") {
-      if (mode === "owner") tend(selectedSlot, "water");
-      else void waterFriend(selectedSlot);
+      if (mode === "owner") tend(selectedSlot, "water", selectedArea);
+      else void waterFriend(selectedSlot, selectedArea);
     } else if (event.key === "f" || event.key === "F") {
-      if (mode === "owner") tend(selectedSlot, "fertilize");
+      if (mode === "owner") tend(selectedSlot, "fertilize", selectedArea);
     } else if (event.key === "u" || event.key === "U") {
-      if (mode === "owner") uproot(selectedSlot);
+      if (mode === "owner") uproot(selectedSlot, selectedArea);
     }
   }
 

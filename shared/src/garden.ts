@@ -102,6 +102,12 @@ export type SeedId =
   | "pineapple"
   | "pitcher";
 
+/** Fruit tree ids shipped in this build. */
+export type TreeId = "apple" | "grape" | "orange" | "plum" | "apricot" | "coconut" | "elderberry";
+
+/** Anything that can sit in the harvest bag: a crop seed or a tree fruit. */
+export type ItemId = SeedId | TreeId;
+
 /** Luck effects a crop can carry. */
 export type EffectId =
   "wet" | "golden" | "frozen" | "snow" | "chill" | "sunray" | "smoked" | "cracked" | "onfire";
@@ -154,6 +160,31 @@ export const SEEDS: readonly SeedDefinition[] = [
   { id: "watermelon", growMs: 22 * 60_000, buy: 130, sell: 210, art: [".", "v", "Y", "w"], regrow: true },
   { id: "pineapple", growMs: 28 * 60_000, buy: 200, sell: 320, art: [".", "v", "Y", "i"], regrow: true },
   { id: "pitcher", growMs: 35 * 60_000, buy: 250, sell: 380, art: [".", "v", "Y", "&"], regrow: true },
+];
+
+/** One plantable fruit tree and its economy. */
+export interface TreeDefinition {
+  /** Stable id used by saves and the fruit exchange. */
+  readonly id: TreeId;
+  /** Growth time in milliseconds before the season modifier. */
+  readonly growMs: number;
+  /** Sapling price, paid on planting. */
+  readonly buy: number;
+  /** Base exchange price for one plain fruit. */
+  readonly sell: number;
+  /** Glyphs for the four stages: sapling, sprout, young, fruiting. */
+  readonly art: readonly [string, string, string, string];
+}
+
+/** Fruit trees share the 3x3 layout with crops and regrow every fruit. */
+export const TREES: readonly TreeDefinition[] = [
+  { id: "apple", growMs: 25 * 60_000, buy: 150, sell: 260, art: [".", "v", "Y", "a"] },
+  { id: "grape", growMs: 20 * 60_000, buy: 120, sell: 180, art: [".", "v", "Y", "g"] },
+  { id: "orange", growMs: 30 * 60_000, buy: 220, sell: 350, art: [".", "v", "Y", "O"] },
+  { id: "plum", growMs: 35 * 60_000, buy: 280, sell: 420, art: [".", "v", "Y", "m"] },
+  { id: "apricot", growMs: 40 * 60_000, buy: 320, sell: 500, art: [".", "v", "Y", "A"] },
+  { id: "coconut", growMs: 45 * 60_000, buy: 400, sell: 620, art: [".", "v", "Y", "C"] },
+  { id: "elderberry", growMs: 50 * 60_000, buy: 480, sell: 760, art: [".", "v", "Y", "e"] },
 ];
 
 /** One luck effect and how it changes a crop's value. */
@@ -234,10 +265,30 @@ export interface PlotState {
   readonly harvests: number;
 }
 
-/** One stack of harvested crops in the bag. */
+/** One planted fruit tree. */
+export interface TreeState {
+  /** Absolute tree slot, `0..MAX_PLOTS-1`. */
+  readonly slot: number;
+  /** Tree species planted here. */
+  readonly tree: TreeId;
+  /** Wall-clock planting time, server clock. */
+  readonly plantedAt: number;
+  /** Wall-clock time the fruit becomes harvestable. */
+  readonly readyAt: number;
+  /** Effect rolled for the current fruit, or `null`. */
+  readonly effect: EffectId | null;
+  /** Whether the owner already watered this cycle. */
+  readonly watered: boolean;
+  /** Whether the owner already fertilized this cycle. */
+  readonly fertilized: boolean;
+  /** Fruits already picked from this tree. */
+  readonly harvests: number;
+}
+
+/** One stack of harvested produce in the bag. */
 export interface CropStack {
-  /** Seed of the harvested crop. */
-  readonly seed: SeedId;
+  /** Item of the harvested stack: a seed's crop or a tree's fruit. */
+  readonly item: ItemId;
   /** Effect the crop carried when harvested, or `null`. */
   readonly effect: EffectId | null;
   /** Units in the stack. */
@@ -280,6 +331,8 @@ export interface GardenSnapshot {
   readonly patches: number;
   /** Plot states for the owned patches, `patches * PLOTS_PER_PATCH` entries. */
   readonly plots: readonly (PlotState | null)[];
+  /** Tree states for the owned patches, parallel to `plots`. */
+  readonly trees: readonly (TreeState | null)[];
   /** Seeds and harvested crops. */
   readonly bag: BagState;
   /** Lifetime counters. */
@@ -304,6 +357,8 @@ export interface VisitSnapshot {
   readonly patches: number;
   /** Plot states. */
   readonly plots: readonly (PlotState | null)[];
+  /** Tree states, parallel to `plots`. */
+  readonly trees: readonly (TreeState | null)[];
   /** Seeds and harvested crops. */
   readonly bag: BagState;
   /** Lifetime counters. */
@@ -371,6 +426,8 @@ export interface SeasonSnapshot {
   };
   /** Exchange price per seed for a plain crop. */
   readonly prices: Readonly<Record<SeedId, number>>;
+  /** Exchange price per tree for one plain fruit. */
+  readonly fruitPrices: Readonly<Record<TreeId, number>>;
 }
 
 /** One leaderboard row. */
@@ -392,15 +449,16 @@ export interface LeaderboardEntry {
 /** Actions the owner can apply to their garden. */
 export type GardenAction =
   | { readonly kind: "plant"; readonly slot: number; readonly seed: SeedId }
-  | { readonly kind: "harvest"; readonly slot: number }
-  | { readonly kind: "water"; readonly slot: number }
-  | { readonly kind: "fertilize"; readonly slot: number }
-  | { readonly kind: "uproot"; readonly slot: number }
+  | { readonly kind: "plantTree"; readonly slot: number; readonly tree: TreeId }
+  | { readonly kind: "harvest"; readonly slot: number; readonly tree: boolean }
+  | { readonly kind: "water"; readonly slot: number; readonly tree: boolean }
+  | { readonly kind: "fertilize"; readonly slot: number; readonly tree: boolean }
+  | { readonly kind: "uproot"; readonly slot: number; readonly tree: boolean }
   | { readonly kind: "buyPatch" }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | {
       readonly kind: "sellCrop";
-      readonly seed: SeedId;
+      readonly item: ItemId;
       readonly effect: EffectId | null;
       readonly qty: number;
     }
@@ -464,6 +522,20 @@ export function seedById(id: string): SeedDefinition | undefined {
   return SEEDS.find((seed) => seed.id === id);
 }
 
+/** @brief Looks one fruit tree up by id. */
+export function treeById(id: string): TreeDefinition | undefined {
+  return TREES.find((tree) => tree.id === id);
+}
+
+/**
+ * @brief Looks one bag item up in either catalog.
+ * @param id Seed or tree id.
+ * @return The seed or tree definition, or `undefined` when unknown.
+ */
+export function itemById(id: string): SeedDefinition | TreeDefinition | undefined {
+  return seedById(id) ?? treeById(id);
+}
+
 /** @brief Looks one effect up by id. */
 export function effectById(id: string): EffectDefinition | undefined {
   return EFFECTS.find((effect) => effect.id === id);
@@ -524,22 +596,22 @@ export function isRecoveryKey(value: unknown): value is string {
   return typeof value === "string" && RECOVERY_RE.test(value);
 }
 
-/** @brief Builds the bag key for one crop stack. */
-export function cropKey(seed: SeedId, effect: EffectId | null): string {
-  return effect === null ? seed : `${seed}:${effect}`;
+/** @brief Builds the bag key for one produce stack. */
+export function cropKey(item: ItemId, effect: EffectId | null): string {
+  return effect === null ? item : `${item}:${effect}`;
 }
 
 /**
  * @brief Parses one bag key back into a stack identity.
- * @return The seed and effect, or `null` when malformed.
+ * @return The item and effect, or `null` when malformed.
  */
-export function parseCropKey(key: string): { seed: SeedId; effect: EffectId | null } | null {
-  const [seedPart, effectPart] = key.split(":");
-  const seed = seedPart === undefined ? undefined : seedById(seedPart);
-  if (seed === undefined) return null;
-  if (effectPart === undefined) return { seed: seed.id, effect: null };
+export function parseCropKey(key: string): { item: ItemId; effect: EffectId | null } | null {
+  const [itemPart, effectPart] = key.split(":");
+  const item = itemPart === undefined ? undefined : itemById(itemPart);
+  if (item === undefined) return null;
+  if (effectPart === undefined) return { item: item.id as ItemId, effect: null };
   const effect = effectById(effectPart);
-  return effect === undefined ? null : { seed: seed.id, effect: effect.id };
+  return effect === undefined ? null : { item: item.id as ItemId, effect: effect.id };
 }
 
 /**
@@ -557,10 +629,16 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     if (slot === null || seed === undefined) return null;
     return { kind, slot, seed: seed.id };
   }
+  if (kind === "plantTree") {
+    const slot = readSlot(value.slot);
+    const tree = typeof value.tree === "string" ? treeById(value.tree) : undefined;
+    if (slot === null || tree === undefined) return null;
+    return { kind, slot, tree: tree.id };
+  }
   if (kind === "harvest" || kind === "water" || kind === "fertilize" || kind === "uproot") {
     const slot = readSlot(value.slot);
     if (slot === null) return null;
-    return { kind, slot };
+    return { kind, slot, tree: value.tree === true };
   }
   if (kind === "buySeed") {
     const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
@@ -577,13 +655,13 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return { kind, seed: seed.id, qty };
   }
   if (kind === "sellCrop") {
-    const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+    const item = typeof value.item === "string" ? itemById(value.item) : undefined;
     const effect =
       value.effect === null ? null : typeof value.effect === "string" ? effectById(value.effect) : undefined;
     const qty = value.qty;
-    if (seed === undefined || effect === undefined) return null;
+    if (item === undefined || effect === undefined) return null;
     if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 99) return null;
-    return { kind, seed: seed.id, effect: effect === null ? null : effect.id, qty };
+    return { kind, item: item.id as ItemId, effect: effect === null ? null : effect.id, qty };
   }
   if (kind === "buyPatch") return { kind };
   if (kind === "sellAll") return { kind };
@@ -656,6 +734,10 @@ export function seasonAt(now: number): SeasonSnapshot {
   for (const seed of SEEDS) {
     prices[seed.id] = Math.max(1, Math.round(seed.sell * (0.85 + priceRng() * 0.3) * current.sellBonus));
   }
+  const fruitPrices = {} as Record<TreeId, number>;
+  for (const tree of TREES) {
+    fruitPrices[tree.id] = Math.max(1, Math.round(tree.sell * (0.85 + priceRng() * 0.3) * current.sellBonus));
+  }
 
   return {
     wave,
@@ -663,6 +745,7 @@ export function seasonAt(now: number): SeasonSnapshot {
     next: { id: next.id, startedAt: nextStart, endsAt: nextStart + EVENT_WAVE_MS },
     shop: { restockAt, offers },
     prices,
+    fruitPrices,
   };
 }
 
@@ -681,8 +764,8 @@ export function eventAt(now: number): EventDefinition {
 }
 
 /** @brief Growth time for one planting under one event. */
-export function growTimeFor(seed: SeedDefinition, event: EventDefinition): number {
-  return Math.max(5_000, Math.round(seed.growMs / event.growScale));
+export function growTimeFor(plant: { readonly growMs: number }, event: EventDefinition): number {
+  return Math.max(5_000, Math.round(plant.growMs / event.growScale));
 }
 
 /**
@@ -761,11 +844,16 @@ export interface GardenCounts {
 }
 
 /**
- * @brief Counts ripe, growing and free plots on the owned patches.
- * @param plots Plot states.
+ * @brief Counts ripe, growing and free slots across crops and fruit trees.
+ * @param plots Crop plot states.
+ * @param trees Tree states.
  * @param now Clock to measure against.
  */
-export function gardenCounts(plots: readonly (PlotState | null)[], now: number): GardenCounts {
+export function gardenCounts(
+  plots: readonly (PlotState | null)[],
+  trees: readonly (TreeState | null)[],
+  now: number,
+): GardenCounts {
   let ready = 0;
   let growing = 0;
   let free = 0;
@@ -777,14 +865,30 @@ export function gardenCounts(plots: readonly (PlotState | null)[], now: number):
     if (now >= plot.readyAt) ready += 1;
     else growing += 1;
   }
+  for (const tree of trees) {
+    if (tree === null) {
+      free += 1;
+      continue;
+    }
+    if (now >= tree.readyAt) ready += 1;
+    else growing += 1;
+  }
   return { ready, growing, free };
 }
 
-/** @brief Sell price of one crop stack under a season snapshot. */
+/** @brief Sell price of one produce stack under a season snapshot. */
 export function cropSellPrice(stack: CropStack, season: SeasonSnapshot): number {
   const effect = stack.effect === null ? null : effectById(stack.effect);
   const multiplier = effect?.multiplier ?? 1;
-  return Math.round((season.prices[stack.seed] ?? 0) * multiplier);
+  const seed = seedById(stack.item);
+  const tree = seed === undefined ? treeById(stack.item) : undefined;
+  const base =
+    seed === undefined
+      ? tree === undefined
+        ? 0
+        : (season.fruitPrices[tree.id as TreeId] ?? 0)
+      : (season.prices[seed.id] ?? 0);
+  return Math.round(base * multiplier);
 }
 
 /** @brief Total value of every crop in a bag. */

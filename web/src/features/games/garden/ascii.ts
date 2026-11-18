@@ -6,7 +6,7 @@
  * measured in code points, which keeps Vietnamese labels inside the frame.
  */
 
-import { plotView, type PlotState } from "@dyno/shared/garden";
+import { plotView, treeById, type PlotState, type TreeState } from "@dyno/shared/garden";
 import { formatDuration, t } from "@/shared/i18n";
 
 /** Columns of one plot cell, borders included. */
@@ -134,6 +134,73 @@ export function cellRender(
     empty: false,
     locked: false,
     progress: view.progress,
+  };
+}
+
+/**
+ * @brief Renders one fruit tree cell.
+ * @param tree Tree state, or `null` for an empty slot.
+ * @param now Server-clock time.
+ * @param lockedCost Unlock price when the whole patch is still a preview, else `null`.
+ * @param slot Zero-based slot inside the page.
+ */
+export function treeCellRender(
+  tree: TreeState | null,
+  now: number,
+  lockedCost: number | null,
+  slot = 0,
+): CellRender {
+  const top = border(slot);
+  const bottom = border();
+  if (lockedCost !== null) {
+    return {
+      lines: [top, row("#", "center"), row(t("garden.locked")), row(""), row("--"), bottom],
+      ready: false,
+      growing: false,
+      empty: false,
+      locked: true,
+      progress: 0,
+    };
+  }
+  if (tree === null) {
+    return {
+      lines: [top, row(".", "center"), row(t("garden.empty")), row(""), row("--"), bottom],
+      ready: false,
+      growing: false,
+      empty: true,
+      locked: false,
+      progress: 0,
+    };
+  }
+  const definition = treeById(tree.tree);
+  const glyph =
+    definition?.art[
+      now >= tree.readyAt
+        ? 3
+        : Math.min(
+            2,
+            Math.floor((Math.max(0, now - tree.plantedAt) / Math.max(1, tree.readyAt - tree.plantedAt)) * 3),
+          )
+    ] ?? ".";
+  const total = Math.max(1, tree.readyAt - tree.plantedAt);
+  const progress = Math.min(1, Math.max(0, now - tree.plantedAt) / total);
+  const ready = now >= tree.readyAt;
+  const effect = tree.effect === null ? null : t(`effects.${tree.effect}`);
+  const tail = ready ? t("garden.ready") : formatDuration(Math.max(0, tree.readyAt - now), "short");
+  return {
+    lines: [
+      top,
+      row(glyph, "center"),
+      row(t(`trees.${tree.tree}.short`)),
+      row(effect ?? ""),
+      row(tail),
+      bottom,
+    ],
+    ready,
+    growing: !ready,
+    empty: false,
+    locked: false,
+    progress,
   };
 }
 

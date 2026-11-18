@@ -83,22 +83,58 @@ describe("garden ledger rules", () => {
     });
   });
 
+  it("plants a fruit tree for coins and picks only its fruit", () => {
+    const ledger = makeLedger();
+    ledger.coins = 1_000;
+    const planted = run(ledger, { kind: "plantTree", slot: 0, tree: "apple" }, NOW, 0.9);
+    expect(planted.ok).toBe(true);
+    if (!planted.ok) return;
+    expect(planted.ledger.coins).toBe(850);
+    expect(planted.ledger.trees[0]?.tree).toBe("apple");
+    expect(planted.ledger.plots[0]).toBeNull();
+
+    const tree = planted.ledger.trees[0];
+    if (tree === null || tree === undefined) throw new Error("tree missing");
+    const picked = run(planted.ledger, { kind: "harvest", slot: 0, tree: true }, tree.readyAt, 0.9);
+    expect(picked.ok).toBe(true);
+    if (!picked.ok) return;
+    expect(picked.ledger.trees[0]?.harvests).toBe(1);
+    expect(picked.ledger.trees[0]?.readyAt).toBeGreaterThan(tree.readyAt);
+    expect(picked.ledger.bag.crops).toEqual([{ item: "apple", effect: null, qty: 1 }]);
+  });
+
+  it("refuses a tree it cannot afford and an occupied tree slot", () => {
+    const broke = makeLedger();
+    expect(run(broke, { kind: "plantTree", slot: 0, tree: "elderberry" })).toMatchObject({
+      ok: false,
+      code: "NOT_ENOUGH_COINS",
+    });
+    const rich = makeLedger();
+    rich.coins = 1_000;
+    const first = run(rich, { kind: "plantTree", slot: 0, tree: "apple" });
+    if (!first.ok) throw new Error("plant failed");
+    expect(run(first.ledger, { kind: "plantTree", slot: 0, tree: "apple" })).toMatchObject({
+      ok: false,
+      code: "PLOT_OCCUPIED",
+    });
+  });
+
   it("harvests only when ripe and moves the crop into the bag", () => {
     const planted = run(makeLedger(), { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.9);
     if (!planted.ok) throw new Error("plant failed");
     const plot = planted.ledger.plots[0];
     if (plot === null || plot === undefined) throw new Error("plot empty");
 
-    expect(run(planted.ledger, { kind: "harvest", slot: 0 }, NOW + 1_000)).toMatchObject({
+    expect(run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, NOW + 1_000)).toMatchObject({
       ok: false,
       code: "NOT_READY",
     });
 
-    const harvested = run(planted.ledger, { kind: "harvest", slot: 0 }, plot.readyAt);
+    const harvested = run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt);
     expect(harvested.ok).toBe(true);
     if (!harvested.ok) return;
     expect(harvested.ledger.plots[0]).toBeNull();
-    expect(harvested.ledger.bag.crops).toEqual([{ seed: "carrot", effect: null, qty: 1 }]);
+    expect(harvested.ledger.bag.crops).toEqual([{ item: "carrot", effect: null, qty: 1 }]);
     expect(harvested.ledger.stats.harvested).toBe(1);
   });
 
@@ -110,16 +146,16 @@ describe("garden ledger rules", () => {
     const plot = planted.ledger.plots[0];
     if (plot === null || plot === undefined) throw new Error("plot empty");
 
-    const first = run(planted.ledger, { kind: "harvest", slot: 0 }, plot.readyAt, 0.01);
+    const first = run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt, 0.01);
     expect(first.ok).toBe(true);
     if (!first.ok) return;
     expect(first.ledger.plots[0]).not.toBeNull();
     expect(first.ledger.plots[0]?.harvests).toBe(1);
     expect(first.ledger.plots[0]?.readyAt).toBeGreaterThan(plot.readyAt);
     expect(first.ledger.plots[0]?.effect).toBe("golden");
-    expect(first.ledger.bag.crops).toEqual([{ seed: "tomato", effect: null, qty: 1 }]);
+    expect(first.ledger.bag.crops).toEqual([{ item: "tomato", effect: null, qty: 1 }]);
 
-    expect(run(first.ledger, { kind: "harvest", slot: 0 })).toMatchObject({
+    expect(run(first.ledger, { kind: "harvest", slot: 0, tree: false })).toMatchObject({
       ok: false,
       code: "NOT_READY",
     });
@@ -130,7 +166,7 @@ describe("garden ledger rules", () => {
     if (!planted.ok) throw new Error("plant failed");
     const plot = planted.ledger.plots[0];
     if (plot === null || plot === undefined) throw new Error("plot empty");
-    const harvested = run(planted.ledger, { kind: "harvest", slot: 0 }, plot.readyAt);
+    const harvested = run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt);
     expect(harvested.ok).toBe(true);
     if (!harvested.ok) return;
     expect(harvested.ledger.plots[0]).toBeNull();
@@ -144,14 +180,14 @@ describe("garden ledger rules", () => {
     const plot = planted.ledger.plots[0];
     if (plot === null || plot === undefined) throw new Error("plot empty");
 
-    const watered = run(planted.ledger, { kind: "water", slot: 0 });
+    const watered = run(planted.ledger, { kind: "water", slot: 0, tree: false });
     expect(watered.ok).toBe(true);
     if (!watered.ok) return;
     const next = watered.ledger.plots[0];
     expect(next?.watered).toBe(true);
     expect(next?.effect).toBe("wet");
     expect(next?.readyAt).toBeLessThan(plot.readyAt);
-    expect(run(watered.ledger, { kind: "water", slot: 0 })).toMatchObject({
+    expect(run(watered.ledger, { kind: "water", slot: 0, tree: false })).toMatchObject({
       ok: false,
       code: "ALREADY_WATERED",
     });
@@ -165,13 +201,13 @@ describe("garden ledger rules", () => {
     const plot = planted.ledger.plots[0];
     if (plot === null || plot === undefined) throw new Error("plot empty");
 
-    const fed = run(planted.ledger, { kind: "fertilize", slot: 0 });
+    const fed = run(planted.ledger, { kind: "fertilize", slot: 0, tree: false });
     expect(fed.ok).toBe(true);
     if (!fed.ok) return;
     expect(fed.ledger.coins).toBe(planted.ledger.coins - 3);
     expect(fed.ledger.plots[0]?.fertilized).toBe(true);
     expect(fed.ledger.plots[0]?.readyAt).toBeLessThan(plot.readyAt);
-    expect(run(fed.ledger, { kind: "fertilize", slot: 0 })).toMatchObject({
+    expect(run(fed.ledger, { kind: "fertilize", slot: 0, tree: false })).toMatchObject({
       ok: false,
       code: "ALREADY_FERTILIZED",
     });
@@ -180,7 +216,7 @@ describe("garden ledger rules", () => {
   it("uproots without a refund", () => {
     const planted = run(makeLedger(), { kind: "plant", slot: 1, seed: "carrot" });
     if (!planted.ok) throw new Error("plant failed");
-    const uprooted = run(planted.ledger, { kind: "uproot", slot: 1 });
+    const uprooted = run(planted.ledger, { kind: "uproot", slot: 1, tree: false });
     expect(uprooted.ok).toBe(true);
     if (!uprooted.ok) return;
     expect(uprooted.ledger.plots[1]).toBeNull();
@@ -240,8 +276,8 @@ describe("garden ledger rules", () => {
   it("sells crop stacks with the effect multiplier", () => {
     const ledger = makeLedger();
     ledger.bag.crops = [
-      { seed: "carrot", effect: "golden", qty: 2 },
-      { seed: "corn", effect: null, qty: 1 },
+      { item: "carrot", effect: "golden", qty: 2 },
+      { item: "corn", effect: null, qty: 1 },
     ];
     const season = seasonFor(NOW);
     const expected = season.prices.carrot * 5 * 2 + season.prices.corn;

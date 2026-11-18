@@ -25,6 +25,8 @@ import {
   type LeaderboardEntry,
   type PlotState,
   type SeedId,
+  type TreeId,
+  type TreeState,
   type VisitSnapshot,
   type VisitorSummary,
 } from "@dyno/shared/garden";
@@ -35,6 +37,7 @@ import {
   applyGardenAction,
   createLedger,
   emptyPlots,
+  emptyTrees,
   ledgerSnapshot,
   type GardenLedger,
 } from "./garden-rules";
@@ -71,13 +74,24 @@ export function derivePatches(value: { patches?: unknown; unlocked?: unknown }):
 }
 
 /** Stored metadata: the ledger minus the rows kept in their own tables. */
-type StoredMeta = Omit<GardenLedger, "plots" | "bag">;
+type StoredMeta = Omit<GardenLedger, "plots" | "trees" | "bag">;
 
 type MetaRow = SqlRow<{ value: string }>;
 
 type PlotRow = SqlRow<{
   slot: number;
   seed: string;
+  planted_at: number;
+  ready_at: number;
+  effect: string | null;
+  watered: number;
+  fertilized: number;
+  harvests: number;
+}>;
+
+type TreeRow = SqlRow<{
+  slot: number;
+  tree: string;
   planted_at: number;
   ready_at: number;
   effect: string | null;
@@ -115,6 +129,16 @@ export class Garden extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS plots (
         slot INTEGER PRIMARY KEY,
         seed TEXT NOT NULL,
+        planted_at INTEGER NOT NULL,
+        ready_at INTEGER NOT NULL,
+        effect TEXT,
+        watered INTEGER NOT NULL DEFAULT 0,
+        fertilized INTEGER NOT NULL DEFAULT 0,
+        harvests INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS trees (
+        slot INTEGER PRIMARY KEY,
+        tree TEXT NOT NULL,
         planted_at INTEGER NOT NULL,
         ready_at INTEGER NOT NULL,
         effect TEXT,
@@ -181,7 +205,12 @@ export class Garden extends DurableObject<Env> {
     // Old saves keep their plots; only the patch count is derived from `unlocked`.
     const patches = derivePatches(raw);
     const meta: StoredMeta = { ...raw, patches };
-    return { ...meta, plots: this.readPlots(patches), bag: this.readBag() };
+    return {
+      ...meta,
+      plots: this.readPlots(patches),
+      trees: this.readTrees(patches),
+      bag: this.readBag(),
+    };
   }
 
   /**
@@ -210,6 +239,32 @@ export class Garden extends DurableObject<Env> {
     return plots;
   }
 
+  /**
+   * @brief Reads the tree rows into a dense vector for the owned patches.
+   * @param patches Owned patch count.
+   */
+  private readTrees(patches: number): (TreeState | null)[] {
+    const trees = emptyTrees(patches);
+    const rows = this.sql
+      .exec<TreeRow>(
+        "SELECT slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests FROM trees",
+      )
+      .toArray();
+    for (const row of rows) {
+      trees[row.slot] = {
+        slot: row.slot,
+        tree: row.tree as TreeId,
+        plantedAt: row.planted_at,
+        readyAt: row.ready_at,
+        effect: row.effect === null ? null : (row.effect as TreeState["effect"]),
+        watered: row.watered === 1,
+        fertilized: row.fertilized === 1,
+        harvests: row.harvests,
+      };
+    }
+    return trees;
+  }
+
   /** @brief Reads the bag rows into seeds plus crop stacks. */
   private readBag(): GardenLedger["bag"] {
     const seeds: Partial<Record<SeedId, number>> = {};
@@ -221,7 +276,7 @@ export class Garden extends DurableObject<Env> {
         continue;
       }
       const parsed = parseCropKey(row.item);
-      if (parsed !== null) crops.push({ seed: parsed.seed, effect: parsed.effect, qty: row.qty });
+      if (parsed !== null) crops.push({ item: parsed.item, effect: parsed.effect, qty: row.qty });
     }
     return { seeds, crops };
   }
@@ -233,7 +288,7 @@ export class Garden extends DurableObject<Env> {
 
   /** @brief Replaces the plot and bag rows of one ledger. */
   private writeRows(ledger: GardenLedger): void {
-    const { plots, bag, ...meta } = ledger;
+    const { plots, trees, bag, ...meta } = ledger;
     this.sql.exec(
       "INSERT INTO meta (key, value) VALUES ('ledger', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       JSON.stringify(meta),
@@ -253,20 +308,35 @@ export class Garden extends DurableObject<Env> {
         plot.harvests,
       );
     }
+    this.sql.exec("DELETE FROM trees");
+    for (const tree of trees) {
+      if (tree === null) continue;
+      this.sql.exec(
+        "INSERT INTO trees (slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        tree.slot,
+        tree.tree,
+        tree.plantedAt,
+        tree.readyAt,
+        tree.effect,
+        tree.watered ? 1 : 0,
+        tree.fertilized ? 1 : 0,
+        tree.harvests,
+      );
+    }
     this.sql.exec("DELETE FROM bag");
     for (const [seed, qty] of Object.entries(bag.seeds)) {
       if (qty === undefined || qty <= 0) continue;
       this.sql.exec("INSERT INTO bag (kind, item, qty) VALUES ('seed', ?, ?)", seed, qty);
     }
     for (const stack of bag.crops) {
-      const item = stack.effect === null ? stack.seed : `${stack.seed}:${stack.effect}`;
+      const item = stack.effect === null ? stack.item : `${stack.item}:${stack.effect}`;
       this.sql.exec("INSERT INTO bag (kind, item, qty) VALUES ('crop', ?, ?)", item, stack.qty);
     }
   }
 
   /** @brief Deletes every row; used to roll back a failed registration. */
   private destroy(): Response {
-    for (const table of ["meta", "plots", "bag", "visitors", "help"]) {
+    for (const table of ["meta", "plots", "trees", "bag", "visitors", "help"]) {
       this.sql.exec(`DELETE FROM ${table}`);
     }
     return json({ ok: true });
@@ -438,6 +508,7 @@ export class Garden extends DurableObject<Env> {
       coins: ledger.coins,
       patches: ledger.patches,
       plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
+      trees: ledger.trees.map((tree) => (tree === null ? null : { ...tree })),
       bag: {
         seeds: { ...ledger.bag.seeds },
         crops: ledger.bag.crops.map((stack) => ({ ...stack })),
@@ -480,32 +551,36 @@ export class Garden extends DurableObject<Env> {
     if (visitorId.length === 0 || typeof slot !== "number" || !Number.isInteger(slot) || !nick.ok) {
       return json({ code: "BAD_REQUEST" }, 400);
     }
-    if (slot < 0 || slot >= ledger.plots.length) return json({ code: "BAD_REQUEST" }, 400);
+    const target = body.tree === true ? ledger.trees : ledger.plots;
+    if (slot < 0 || slot >= target.length) return json({ code: "BAD_REQUEST" }, 400);
 
-    const plot = ledger.plots[slot] ?? null;
+    const plant = target[slot] ?? null;
     const now = Date.now();
-    if (plot === null) return json({ code: "PLOT_EMPTY" }, 400);
-    if (now >= plot.readyAt) return json({ code: "NOT_READY" }, 400);
+    if (plant === null) return json({ code: "PLOT_EMPTY" }, 400);
+    if (now >= plant.readyAt) return json({ code: "NOT_READY" }, 400);
 
     const day = Math.floor(now / 86_400_000);
+    const helpSlot = body.tree === true ? 100 + slot : slot;
     const helped = this.sql
       .exec<SqlRow<{ one: number }>>(
         "SELECT 1 AS one FROM help WHERE visitor_id = ? AND slot = ? AND day = ?",
         visitorId,
-        slot,
+        helpSlot,
         day,
       )
       .toArray();
     if (helped.length > 0) return json({ code: "ALREADY_WATERED" }, 409);
 
-    const remaining = plot.readyAt - now;
-    ledger.plots[slot] = {
-      ...plot,
-      readyAt: Math.max(now + 1_000, plot.readyAt - Math.round(remaining * GUEST_WATER_CUT_RATIO)),
+    const remaining = plant.readyAt - now;
+    const next = {
+      ...plant,
+      readyAt: Math.max(now + 1_000, plant.readyAt - Math.round(remaining * GUEST_WATER_CUT_RATIO)),
     };
+    if (body.tree === true) ledger.trees[slot] = next as TreeState;
+    else ledger.plots[slot] = next as PlotState;
     ledger.rev += 1;
     ledger.updatedAt = now;
-    this.sql.exec("INSERT INTO help (visitor_id, slot, day) VALUES (?, ?, ?)", visitorId, slot, day);
+    this.sql.exec("INSERT INTO help (visitor_id, slot, day) VALUES (?, ?, ?)", visitorId, helpSlot, day);
     this.recordVisitor(visitorId, nick.nick, sanitizeColor(body.color), now, 1, 0);
     this.write(ledger);
     await this.publish(ledger);

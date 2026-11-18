@@ -12,11 +12,13 @@ import {
   EPOCH_MS,
   EVENT_WAVE_MS,
   SEEDS,
+  TREES,
   seasonAt,
   type GardenAction,
   type GardenSnapshot,
   type PlotState,
   type SeasonSnapshot,
+  type TreeState,
   type VisitSnapshot,
 } from "@dyno/shared/garden";
 import { createAsciiGardenGame } from "@/features/games/garden/game";
@@ -67,6 +69,7 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     coins: 42,
     patches: 1,
     plots: new Array<PlotState | null>(9).fill(null),
+    trees: new Array<TreeState | null>(9).fill(null),
     bag: { seeds: { carrot: 3 }, crops: [] },
     stats: { planted: 0, harvested: 0, earned: 0 },
     rev: 7,
@@ -84,6 +87,7 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     coins: 12,
     patches: 1,
     plots: new Array<PlotState | null>(9).fill(null),
+    trees: new Array<TreeState | null>(9).fill(null),
     bag: { seeds: {}, crops: [] },
     stats: { planted: 1, harvested: 0, earned: 0 },
     updatedAt: CLOCK,
@@ -220,7 +224,7 @@ describe("garden tab", () => {
     mounted.push(game);
 
     expect(host.querySelectorAll(".garden-tab")).toHaveLength(3);
-    expect(host.querySelectorAll(".garden-cell")).toHaveLength(9);
+    expect(host.querySelectorAll(".garden-cell")).toHaveLength(18);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     expect(host.querySelector(".stage-hud")?.textContent).toContain("coin");
     expect(host.querySelector(".garden-code")?.textContent).toBe("#ABCDEF");
@@ -273,7 +277,9 @@ describe("garden tab", () => {
     next?.click();
     await settle();
     expect(host.querySelector(".garden-page")?.textContent).toContain("2/3");
-    expect(host.querySelectorAll<HTMLElement>(".garden-cell")[0]?.dataset.slot).toBe("9");
+    const secondPageCells = host.querySelectorAll<HTMLElement>(".garden-cell");
+    expect(secondPageCells[0]?.dataset.slot).toBe("9");
+    expect(secondPageCells[0]?.dataset.area).toBe("crop");
 
     host.querySelector<HTMLButtonElement>('[data-act="nextPage"]')?.click();
     await settle();
@@ -282,6 +288,23 @@ describe("garden tab", () => {
     const buy = host.querySelector<HTMLButtonElement>('[data-act="buyPatch"]');
     expect(buy).not.toBeNull();
     expect(buy?.disabled).toBe(true);
+  });
+
+  it("plants a fruit tree from the tree board", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 500 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const treeCell = host.querySelectorAll<HTMLButtonElement>(".garden-cell")[9];
+    expect(treeCell?.dataset.area).toBe("tree");
+    treeCell?.click();
+    await settle();
+    const rows = host.querySelectorAll<HTMLButtonElement>(".garden-seeds .garden-row");
+    expect(rows).toHaveLength(TREES.length);
+    rows[0]?.click();
+    await settle();
+    const planted = api.calls.find((call) => call.action?.kind === "plantTree");
+    expect(planted?.action).toMatchObject({ kind: "plantTree", slot: 0, tree: "apple" });
   });
 
   it("switches to English labels live", async () => {

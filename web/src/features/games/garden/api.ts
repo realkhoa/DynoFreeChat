@@ -210,12 +210,17 @@ export class GardenApi {
     });
   }
 
-  /** @brief Waters one friend crop. */
-  async waterVisit(code: string, slot: number): Promise<GardenVisitBundle> {
+  /**
+   * @brief Waters one friend crop or fruit tree.
+   * @param code Owner share code.
+   * @param slot Slot inside the current patch.
+   * @param tree Whether the slot is a fruit tree.
+   */
+  async waterVisit(code: string, slot: number, tree = false): Promise<GardenVisitBundle> {
     return this.request<GardenVisitBundle>(`/api/garden/visit/${encodeURIComponent(code)}/water`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ slot }),
+      body: JSON.stringify({ slot, tree }),
     });
   }
 

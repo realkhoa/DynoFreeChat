@@ -36,10 +36,12 @@ import {
   parseGardenAuth,
   plotView,
   rollEffect,
+  TREES,
   nextPatchPrice,
   seasonAt,
   seedById,
   totalPlots,
+  treeById,
   type PlotState,
 } from "../src/garden";
 
@@ -261,18 +263,54 @@ describe("garden growth math", () => {
       fertilized: false,
       harvests: 0,
     };
-    expect(gardenCounts(plots, NOW)).toEqual({ ready: 1, growing: 1, free: 7 });
-    expect(cropSellPrice({ seed: "carrot", effect: "golden", qty: 1 }, season)).toBe(
+    expect(gardenCounts(plots, [], NOW)).toEqual({ ready: 1, growing: 1, free: 7 });
+    expect(cropSellPrice({ item: "carrot", effect: "golden", qty: 1 }, season)).toBe(
       season.prices.carrot * 5,
     );
   });
 });
 
 describe("garden wire parsing", () => {
+  it("ships seven fruit trees and prices their fruit", () => {
+    expect(TREES).toHaveLength(7);
+    expect(TREES.map((tree) => tree.id)).toEqual([
+      "apple",
+      "grape",
+      "orange",
+      "plum",
+      "apricot",
+      "coconut",
+      "elderberry",
+    ]);
+    expect(treeById("apple")?.sell).toBeGreaterThan(treeById("apple")?.buy ?? 0);
+    const season = seasonAt(NOW);
+    expect(cropSellPrice({ item: "apple", effect: null, qty: 1 }, season)).toBe(season.fruitPrices.apple);
+    expect(cropSellPrice({ item: "apple", effect: "golden", qty: 1 }, season)).toBe(
+      season.fruitPrices.apple * 5,
+    );
+  });
+
+  it("parses tree actions and round-trips fruit bag keys", () => {
+    expect(parseGardenAction({ kind: "plantTree", slot: 0, tree: "apple" })).toEqual({
+      kind: "plantTree",
+      slot: 0,
+      tree: "apple",
+    });
+    expect(parseGardenAction({ kind: "harvest", slot: 0, tree: true })).toEqual({
+      kind: "harvest",
+      slot: 0,
+      tree: true,
+    });
+    expect(parseGardenAction({ kind: "plantTree", slot: 0, tree: "nope" })).toBeNull();
+    expect(cropKey("apple", "wet")).toBe("apple:wet");
+    expect(parseCropKey("apple:wet")).toEqual({ item: "apple", effect: "wet" });
+    expect(parseCropKey("elderberry")).toEqual({ item: "elderberry", effect: null });
+  });
+
   it("round-trips crop bag keys", () => {
     expect(cropKey("tomato", "wet")).toBe("tomato:wet");
-    expect(parseCropKey("tomato:wet")).toEqual({ seed: "tomato", effect: "wet" });
-    expect(parseCropKey("corn")).toEqual({ seed: "corn", effect: null });
+    expect(parseCropKey("tomato:wet")).toEqual({ item: "tomato", effect: "wet" });
+    expect(parseCropKey("corn")).toEqual({ item: "corn", effect: null });
     expect(parseCropKey("unknown:wet")).toBeNull();
     expect(parseCropKey("tomato:nope")).toBeNull();
   });
@@ -306,14 +344,22 @@ describe("garden wire parsing", () => {
       slot: 0,
       seed: "carrot",
     });
-    expect(parseGardenAction({ kind: "water", slot: 8 })).toEqual({ kind: "water", slot: 8 });
-    expect(parseGardenAction({ kind: "water", slot: 9 })).toEqual({ kind: "water", slot: 9 });
+    expect(parseGardenAction({ kind: "water", slot: 8 })).toEqual({
+      kind: "water",
+      slot: 8,
+      tree: false,
+    });
+    expect(parseGardenAction({ kind: "water", slot: 9, tree: true })).toEqual({
+      kind: "water",
+      slot: 9,
+      tree: true,
+    });
     expect(parseGardenAction({ kind: "water", slot: 54 })).toBeNull();
     expect(parseGardenAction({ kind: "plant", slot: 0, seed: "nope" })).toBeNull();
     expect(parseGardenAction({ kind: "buySeed", seed: "corn", qty: 0 })).toBeNull();
-    expect(parseGardenAction({ kind: "sellCrop", seed: "corn", effect: "wet", qty: 2 })).toEqual({
+    expect(parseGardenAction({ kind: "sellCrop", item: "corn", effect: "wet", qty: 2 })).toEqual({
       kind: "sellCrop",
-      seed: "corn",
+      item: "corn",
       effect: "wet",
       qty: 2,
     });

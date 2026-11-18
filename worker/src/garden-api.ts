@@ -266,6 +266,7 @@ async function waterVisit(request: Request, env: Env, code: string): Promise<Res
       nick: visitor.nick,
       color: visitor.color,
       slot: body.slot,
+      tree: body.tree === true,
     }),
   });
 }

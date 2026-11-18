@@ -81,6 +81,25 @@
   align-items: flex-start;
 }
 
+/* Crops and fruit trees share a page as two parallel 3x3 boards. */
+.garden-boards {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.garden-board-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.garden-board-title {
+  color: #6a9955;
+  font: 9.5px/13px var(--font-mono);
+}
+
 .garden-board {
   display: flex;
   flex-direction: column;
