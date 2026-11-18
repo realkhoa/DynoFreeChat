@@ -98,6 +98,7 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     buildings: { coop: 0, barn: 0 },
     animals: { coop: [], barn: [] },
     farmSettledAt: CLOCK,
+    warehouse: { level: 0, machines: {} },
     rev: 7,
     updatedAt: CLOCK,
     ...overrides,
@@ -119,6 +120,7 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     stats: { planted: 1, harvested: 0, earned: 0, spent: 0 },
     buildings: { coop: 0, barn: 0 },
     animals: { coop: [], barn: [] },
+    warehouse: { level: 0, machines: {} },
     updatedAt: CLOCK,
     lastSeen: CLOCK - 1_000,
     online: true,
@@ -297,7 +299,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    expect(host.querySelectorAll(".garden-tab")).toHaveLength(7);
+    expect(host.querySelectorAll(".garden-tab")).toHaveLength(8);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
@@ -676,6 +678,30 @@ describe("farm tab", () => {
     row?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "sellProduct")).toBe(true);
+  });
+});
+
+describe("warehouse tab", () => {
+  it("builds a warehouse and crafts produce with machines", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        warehouse: { level: 1, machines: { mayoMaker: { level: 1, lastCraftAt: 0 } } },
+        bag: { seeds: {}, crops: [], supplies: {}, products: [{ product: "egg", star: 1, qty: 2 }] },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:warehouse"]')?.click();
+    await settle();
+    const craft = host.querySelector<HTMLButtonElement>(
+      '[data-act="craftMachine"][data-machine="mayoMaker"]',
+    );
+    expect(craft).not.toBeNull();
+    craft?.click();
+    await settle();
+    const call = api.calls.find((entry) => entry.action?.kind === "craftMachine");
+    expect(call?.action).toMatchObject({ kind: "craftMachine", machine: "mayoMaker" });
   });
 });
 

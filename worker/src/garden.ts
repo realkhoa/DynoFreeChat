@@ -384,6 +384,8 @@ export class Garden extends DurableObject<Env> {
       animals: raw.animals ?? { coop: [], barn: [] },
       farmSettledAt: raw.farmSettledAt ?? raw.updatedAt ?? 0,
       toolsSettledAt: raw.toolsSettledAt ?? raw.updatedAt ?? 0,
+      warehouse: raw.warehouse ?? 0,
+      machines: raw.machines ?? {},
       // Saves written before ROI tracking have no spent counter.
       stats: {
         planted: stats.planted ?? 0,
@@ -933,6 +935,10 @@ export class Garden extends DurableObject<Env> {
       animals: {
         coop: ledger.animals.coop.map((animal) => (animal === null ? null : { ...animal })),
         barn: ledger.animals.barn.map((animal) => (animal === null ? null : { ...animal })),
+      },
+      warehouse: {
+        level: ledger.warehouse,
+        machines: { ...ledger.machines },
       },
       stats: { ...ledger.stats },
       updatedAt: ledger.updatedAt,

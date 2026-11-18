@@ -398,7 +398,8 @@ export type BuildingId = "coop" | "barn";
 export type AnimalId = "chicken" | "duck" | "cow" | "goat" | "sheep";
 
 /** Products animals produce. */
-export type ProductId = "egg" | "duckEgg" | "milk" | "goatMilk" | "wool";
+export type ProductId =
+  "egg" | "duckEgg" | "milk" | "goatMilk" | "wool" | "mayo" | "cheese" | "pickles" | "oil" | "fabric";
 
 /** One animal definition. */
 export interface AnimalDefinition {
@@ -466,7 +467,113 @@ export const PRODUCTS: readonly ProductDefinition[] = [
   { id: "milk", base: 120 },
   { id: "goatMilk", base: 400 },
   { id: "wool", base: 1_000 },
+  // Warehouse outputs: value already includes the recipe multiplier.
+  { id: "mayo", base: 1_600 },
+  { id: "cheese", base: 12_000 },
+  { id: "pickles", base: 300 },
+  { id: "oil", base: 2_600 },
+  { id: "fabric", base: 100_000 },
 ];
+
+/** Warehouse machine ids. */
+export type MachineId = "seedMaker" | "mayoMaker" | "cheesePress" | "pickleJar" | "oilPress" | "loom";
+
+/** One machine recipe. */
+export interface MachineDefinition {
+  /** Stable id. */
+  readonly id: MachineId;
+  /** What it consumes. */
+  readonly input: { readonly kind: "seedCrop" } | { readonly kind: "product"; readonly product: ProductId };
+  /** What it produces. */
+  readonly output: { readonly kind: "seeds" } | { readonly kind: "product"; readonly product: ProductId };
+  /** Output multiplier, purely informative for labels. */
+  readonly multiplier: number;
+  /** Cycles between two crafts. */
+  readonly cooldownCycles: number;
+}
+
+/** Price of the warehouse itself. */
+export const WAREHOUSE_PRICE = 5_000_000;
+
+/** Price of one machine and of every upgrade step. */
+export const MACHINE_PRICE = 5_000_000;
+
+/** Maximum machine level. */
+export const MACHINE_MAX_LEVEL = 3;
+
+/** Warehouse machine catalog. */
+export const MACHINES: readonly MachineDefinition[] = [
+  {
+    id: "seedMaker",
+    input: { kind: "seedCrop" },
+    output: { kind: "seeds" },
+    multiplier: 3,
+    cooldownCycles: 2,
+  },
+  {
+    id: "mayoMaker",
+    input: { kind: "product", product: "egg" },
+    output: { kind: "product", product: "mayo" },
+    multiplier: 10,
+    cooldownCycles: 2,
+  },
+  {
+    id: "cheesePress",
+    input: { kind: "product", product: "milk" },
+    output: { kind: "product", product: "cheese" },
+    multiplier: 100,
+    cooldownCycles: 2,
+  },
+  {
+    id: "pickleJar",
+    input: { kind: "seedCrop" },
+    output: { kind: "product", product: "pickles" },
+    multiplier: 10,
+    cooldownCycles: 2,
+  },
+  {
+    id: "oilPress",
+    input: { kind: "seedCrop" },
+    output: { kind: "product", product: "oil" },
+    multiplier: 20,
+    cooldownCycles: 2,
+  },
+  {
+    id: "loom",
+    input: { kind: "product", product: "wool" },
+    output: { kind: "product", product: "fabric" },
+    multiplier: 100,
+    cooldownCycles: 2,
+  },
+];
+
+/** @brief Machine definition by id. */
+export function machineById(id: string): MachineDefinition | undefined {
+  return MACHINES.find((machine) => machine.id === id);
+}
+
+/** One built machine on the wire. */
+export interface MachineState {
+  /** Machine level, `1..3`. */
+  readonly level: number;
+  /** Server time of the last craft. */
+  readonly lastCraftAt: number;
+}
+
+/** @brief Seeds a seed maker returns for one crop at a level. */
+export function seedMakerOutput(level: number): number {
+  return 2 + Math.max(1, Math.min(MACHINE_MAX_LEVEL, level));
+}
+
+/** @brief Products a converter returns for one input at a level. */
+export function converterOutput(level: number): number {
+  return Math.max(1, Math.min(MACHINE_MAX_LEVEL, level));
+}
+
+/** @brief Requirements of one machine craft. */
+export function machineCraftCost(machine: MachineDefinition): number {
+  return MACHINE_PRICE;
+}
 
 /** Rare tools sold in the market. */
 export type ToolId = "autoWater";
@@ -668,6 +775,14 @@ export interface GardenStats {
   readonly spent: number;
 }
 
+/** Warehouse and its machines. */
+export interface WarehouseState {
+  /** 0 when not built, 1 when built. */
+  readonly level: number;
+  /** Built machines by id. */
+  readonly machines: Readonly<Partial<Record<MachineId, MachineState>>>;
+}
+
 /** Full owner snapshot; every response carries one. */
 export interface GardenSnapshot {
   /** Wire protocol version. */
@@ -698,6 +813,8 @@ export interface GardenSnapshot {
   readonly animals: Readonly<Record<BuildingId, readonly (AnimalState | null)[]>>;
   /** Last time farm upkeep and production were settled. */
   readonly farmSettledAt: number;
+  /** Warehouse and built machines. */
+  readonly warehouse: WarehouseState;
   /** Lifetime counters. */
   readonly stats: GardenStats;
   /** Revision bumped on every write; actions echo it to reject stale tabs. */
@@ -730,6 +847,8 @@ export interface VisitSnapshot {
   readonly buildings: Readonly<Record<BuildingId, number>>;
   /** Animals per building slot. */
   readonly animals: Readonly<Record<BuildingId, readonly (AnimalState | null)[]>>;
+  /** Warehouse and its machines. */
+  readonly warehouse: WarehouseState;
   /** Lifetime counters. */
   readonly stats: GardenStats;
   /** Server time of the last write. */
@@ -1071,6 +1190,14 @@ export type GardenAction =
   | { readonly kind: "sellProduct"; readonly product: ProductId; readonly star: number; readonly qty: number }
   | { readonly kind: "sellAllProducts" }
   | { readonly kind: "buyTool"; readonly tool: ToolId; readonly qty: number }
+  | { readonly kind: "buildWarehouse" }
+  | { readonly kind: "buildMachine"; readonly machine: MachineId }
+  | { readonly kind: "upgradeMachine"; readonly machine: MachineId }
+  | {
+      readonly kind: "craftMachine";
+      readonly machine: MachineId;
+      readonly item?: ItemId;
+    }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
   | {
@@ -1114,6 +1241,11 @@ export type GardenErrorCode =
   | "SLOT_EMPTY"
   | "NO_PRODUCT"
   | "TOOL_SOLD_OUT"
+  | "WAREHOUSE_LOCKED"
+  | "MACHINE_LOCKED"
+  | "MACHINE_MAX"
+  | "MACHINE_COOLDOWN"
+  | "NO_INPUT"
   | "CANNOT_VISIT_SELF";
 
 /** Successful response to a garden action. */
@@ -1404,6 +1536,19 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return { kind, item: item.id as ItemId, effects: canonicalEffects(effects), qty };
   }
   if (kind === "buyTab") return { kind };
+  if (kind === "buildWarehouse") return { kind };
+  if (kind === "buildMachine" || kind === "upgradeMachine") {
+    const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
+    return machine === undefined ? null : { kind, machine: machine.id };
+  }
+  if (kind === "craftMachine") {
+    const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
+    if (machine === undefined) return null;
+    if (value.item === undefined) return { kind, machine: machine.id };
+    const item = typeof value.item === "string" ? itemById(value.item) : undefined;
+    if (item === undefined) return null;
+    return { kind, machine: machine.id, item: item.id as ItemId };
+  }
   if (kind === "waterAll" || kind === "harvestAll") return { kind };
   if (kind === "sellAllProducts") return { kind };
   if (kind === "buyTool") {

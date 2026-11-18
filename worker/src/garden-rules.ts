@@ -25,6 +25,13 @@ import {
   buildingById,
   buildingSlots,
   buildingUpgradeCost,
+  MACHINE_MAX_LEVEL,
+  MACHINE_PRICE,
+  WAREHOUSE_PRICE,
+  converterOutput,
+  machineById,
+  seedMakerOutput,
+  seedById,
   maxBuildingLevel,
   productById,
   productPrice,
@@ -44,7 +51,6 @@ import {
   rollEffects,
   resolvedCropEffects,
   resolvedTreeEffects,
-  seedById,
   fertilizerById,
   sprayById,
   totalCrops,
@@ -66,6 +72,8 @@ import {
   type SupplyId,
   type PlotState,
   type ProductId,
+  type MachineId,
+  type MachineState,
   type ProductStack,
   type SeasonSnapshot,
   type SeedId,
@@ -135,6 +143,10 @@ export interface GardenLedger {
   farmSettledAt: number;
   /** Last automatic-tool settlement. */
   toolsSettledAt: number;
+  /** Warehouse level: 0 not built. */
+  warehouse: number;
+  /** Built machines. */
+  machines: Partial<Record<MachineId, MachineState>>;
   /** Revision bumped on every successful write. */
   rev: number;
   /** Creation time, server clock. */
@@ -199,6 +211,8 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     animals: { coop: [], barn: [] },
     farmSettledAt: input.now,
     toolsSettledAt: input.now,
+    warehouse: 0,
+    machines: {},
     rev: 1,
     createdAt: input.now,
     updatedAt: input.now,
@@ -255,6 +269,15 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
       barn: ledger.animals.barn.map((animal) => (animal === null ? null : { ...animal })),
     },
     farmSettledAt: ledger.farmSettledAt,
+    warehouse: {
+      level: ledger.warehouse,
+      machines: Object.fromEntries(
+        Object.entries(ledger.machines).map(([id, machine]) => [
+          id,
+          machine === undefined ? undefined : { ...machine },
+        ]),
+      ) as Partial<Record<MachineId, MachineState>>,
+    },
     stats: { ...ledger.stats },
     rev: ledger.rev,
     updatedAt: ledger.updatedAt,
@@ -320,6 +343,14 @@ export function applyGardenAction(
       return sellAllProducts(ledger, season, now);
     case "buyTool":
       return buyTool(ledger, action.tool, action.qty, season, now);
+    case "buildWarehouse":
+      return buildWarehouse(ledger, now);
+    case "buildMachine":
+      return buildMachine(ledger, action.machine, now);
+    case "upgradeMachine":
+      return upgradeMachine(ledger, action.machine, now);
+    case "craftMachine":
+      return craftMachine(ledger, action.machine, action.item, now);
     case "harvestAll":
       return harvestAll(ledger, now, rng);
     case "buySeed":
@@ -972,6 +1003,92 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
   return next;
 }
 
+/** @brief Builds the warehouse once. */
+function buildWarehouse(ledger: GardenLedger, now: number): RuleResult {
+  if (ledger.warehouse > 0) return { ok: false, code: "BAD_REQUEST" };
+  if (ledger.coins < WAREHOUSE_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= WAREHOUSE_PRICE;
+  next.stats.spent += WAREHOUSE_PRICE;
+  next.warehouse = 1;
+  return changed(next, now);
+}
+
+/** @brief Builds one machine inside a built warehouse. */
+function buildMachine(ledger: GardenLedger, id: MachineId, now: number): RuleResult {
+  const definition = machineById(id);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+  if (ledger.warehouse <= 0) return { ok: false, code: "WAREHOUSE_LOCKED" };
+  if (ledger.machines[id] !== undefined) return { ok: false, code: "BAD_REQUEST" };
+  if (ledger.coins < MACHINE_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= MACHINE_PRICE;
+  next.stats.spent += MACHINE_PRICE;
+  next.machines[id] = { level: 1, lastCraftAt: 0 };
+  return changed(next, now);
+}
+
+/** @brief Upgrades one machine, same price per step, max level three. */
+function upgradeMachine(ledger: GardenLedger, id: MachineId, now: number): RuleResult {
+  const machine = ledger.machines[id];
+  if (machine === undefined) return { ok: false, code: "MACHINE_LOCKED" };
+  if (machine.level >= MACHINE_MAX_LEVEL) return { ok: false, code: "MACHINE_MAX" };
+  if (ledger.coins < MACHINE_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= MACHINE_PRICE;
+  next.stats.spent += MACHINE_PRICE;
+  next.machines[id] = { ...machine, level: machine.level + 1 };
+  return changed(next, now);
+}
+
+/** @brief Consumes one recipe input and returns its output batch. */
+function craftMachine(
+  ledger: GardenLedger,
+  id: MachineId,
+  item: ItemId | undefined,
+  now: number,
+): RuleResult {
+  const definition = machineById(id);
+  const machine = ledger.machines[id];
+  if (definition === undefined || machine === undefined) return { ok: false, code: "MACHINE_LOCKED" };
+  if (now - machine.lastCraftAt < definition.cooldownCycles * FARM_CYCLE_MS) {
+    return { ok: false, code: "MACHINE_COOLDOWN" };
+  }
+
+  const next = clone(ledger);
+  if (definition.input.kind === "product") {
+    const inputProduct = definition.input.product;
+    const stack = next.bag.products.find((entry) => entry.product === inputProduct && entry.qty > 0);
+    if (stack === undefined) return { ok: false, code: "NO_INPUT" };
+    const star = stack.star;
+    next.bag.products = next.bag.products
+      .map((entry) =>
+        entry.product === stack.product && entry.star === stack.star
+          ? { ...entry, qty: entry.qty - 1 }
+          : entry,
+      )
+      .filter((entry) => entry.qty > 0);
+    if (definition.output.kind === "product") {
+      addProduct(next.bag.products, definition.output.product, star, converterOutput(machine.level));
+    }
+  } else {
+    const seedId = item === undefined ? undefined : seedById(item);
+    if (seedId === undefined) return { ok: false, code: "NO_INPUT" };
+    const stack = next.bag.crops.find((entry) => entry.item === seedId.id);
+    if (stack === undefined || stack.qty < 1) return { ok: false, code: "NO_INPUT" };
+    next.bag.crops = next.bag.crops
+      .map((entry) => (entry === stack ? { ...entry, qty: entry.qty - 1 } : entry))
+      .filter((entry) => entry.qty > 0);
+    if (definition.output.kind === "seeds") {
+      next.bag.seeds[seedId.id] = (next.bag.seeds[seedId.id] ?? 0) + seedMakerOutput(machine.level);
+    } else {
+      addProduct(next.bag.products, definition.output.product, 1, converterOutput(machine.level));
+    }
+  }
+  next.machines[id] = { ...machine, lastCraftAt: now };
+  return changed(next, now);
+}
+
 /** @brief Buys the next tab at the compounding ladder price. */
 function buyTab(ledger: GardenLedger, now: number): RuleResult {
   if (ledger.tabs >= MAX_TABS) return { ok: false, code: "MAX_TABS" };
@@ -1104,6 +1221,13 @@ function clone(ledger: GardenLedger): GardenLedger {
       barn: ledger.animals.barn.map((animal) => (animal === null ? null : { ...animal })),
     },
     farmSettledAt: ledger.farmSettledAt,
+    warehouse: ledger.warehouse,
+    machines: Object.fromEntries(
+      Object.entries(ledger.machines).map(([id, machine]) => [
+        id,
+        machine === undefined ? undefined : { ...machine },
+      ]),
+    ) as Partial<Record<MachineId, MachineState>>,
     stats: { ...ledger.stats },
     shopStock: { ...ledger.shopStock },
   };

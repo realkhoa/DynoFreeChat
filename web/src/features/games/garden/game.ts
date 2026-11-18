@@ -38,13 +38,20 @@ import {
   buildingUpgradeCost,
   buildingById,
   maxBuildingLevel,
+  MACHINES,
+  MACHINE_MAX_LEVEL,
+  MACHINE_PRICE,
+  WAREHOUSE_PRICE,
+  converterOutput,
+  machineById,
+  seedById,
+  seedMakerOutput,
   productById,
   productPrice,
   type AnimalId,
   type BuildingId,
   type ProductId,
   plotView,
-  seedById,
   strongestEffect,
   treeById,
   type EffectId,
@@ -81,7 +88,7 @@ const POLL_MS = 60_000;
 const UPROOT_ARM_MS = 4_000;
 
 /** One active tab inside the document. */
-type Tab = "garden" | "market" | "event" | "chart" | "bots" | "rank" | "farm";
+type Tab = "garden" | "market" | "event" | "chart" | "bots" | "rank" | "farm" | "warehouse";
 
 /** Whether the document is showing the owner's garden or a friend's. */
 type Mode = "owner" | "visit";
@@ -882,7 +889,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       savedTab === "chart" ||
       savedTab === "bots" ||
       savedTab === "rank" ||
-      savedTab === "farm"
+      savedTab === "farm" ||
+      savedTab === "warehouse"
     ) {
       tab = savedTab;
     }
@@ -1027,7 +1035,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Builds the tab strip with the garden code and share action. */
   function buildTabs(): HTMLElement {
     const bar = div("garden-tabs");
-    for (const id of ["garden", "market", "event", "chart", "bots", "rank", "farm"] as const) {
+    for (const id of ["garden", "market", "event", "chart", "bots", "rank", "farm", "warehouse"] as const) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "garden-tab";
@@ -1755,6 +1763,86 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Builds the warehouse tab: machines, levels and crafting. */
+  function buildWarehouse(): HTMLElement {
+    const wrap = div("garden-warehouse");
+    if (state === null) return lineBlock(t("common.loading"));
+    wrap.append(lineBlock(`// ${t("warehouse.title")}`));
+    if (state.warehouse.level === 0) {
+      wrap.append(
+        actionButton(
+          t("warehouse.build", { cost: formatNumber(WAREHOUSE_PRICE) }),
+          "buildWarehouse",
+          (state.coins ?? 0) >= WAREHOUSE_PRICE,
+        ),
+      );
+      return wrap;
+    }
+    for (const machine of MACHINES) {
+      const built = state.warehouse.machines[machine.id];
+      const panel = div("garden-warehouse-machine");
+      panel.append(span("garden-farm-title", t(`machines.${machine.id}`)));
+      if (built === undefined) {
+        panel.append(
+          actionButton(
+            t("warehouse.buildMachine", { cost: formatNumber(MACHINE_PRICE) }),
+            "buildMachine",
+            (state.coins ?? 0) >= MACHINE_PRICE,
+          ).cloneNode(true) as HTMLButtonElement,
+        );
+        const button = panel.lastElementChild as HTMLButtonElement;
+        button.dataset.machine = machine.id;
+        button.dataset.act = "buildMachine";
+      } else {
+        const cooldownEnd = built.lastCraftAt + machine.cooldownCycles * 6 * 60_000;
+        const remaining = Math.max(0, cooldownEnd - now());
+        const upgrade = actionButton(
+          built.level >= MACHINE_MAX_LEVEL
+            ? t("farm.maxLevel")
+            : t("warehouse.upgrade", { cost: formatNumber(MACHINE_PRICE) }),
+          "upgradeMachine",
+          built.level < MACHINE_MAX_LEVEL && (state.coins ?? 0) >= MACHINE_PRICE,
+        );
+        upgrade.dataset.machine = machine.id;
+        panel.append(
+          span(
+            "garden-farm-title",
+            ` · ${t("warehouse.level")} ${built.level}/${MACHINE_MAX_LEVEL}${remaining > 0 ? ` · ${formatDuration(remaining, "short")}` : ""}`,
+          ),
+          upgrade,
+        );
+
+        if (machine.input.kind === "product") {
+          const inputProduct = machine.input.product;
+          const inputCount =
+            state.bag.products
+              ?.filter((stack) => stack.product === inputProduct)
+              .reduce((sum, stack) => sum + stack.qty, 0) ?? 0;
+          panel.append(
+            span("garden-hint", `${t("warehouse.needs")} ${t(`products.${inputProduct}`)} (${inputCount})`),
+          );
+          const craft = actionButton(t("warehouse.craft"), "craftMachine", inputCount > 0 && remaining <= 0);
+          craft.dataset.machine = machine.id;
+          panel.append(craft);
+        } else {
+          const items = (state.bag.crops ?? [])
+            .filter((stack) => seedById(stack.item) !== undefined)
+            .map((stack) => stack.item);
+          panel.append(span("garden-hint", t("warehouse.pickCrop")));
+          for (const item of new Set(items)) {
+            const craft = actionButton(`[ ${seedName(item as SeedId)} ]`, "craftMachine");
+            craft.dataset.machine = machine.id;
+            craft.dataset.item = item;
+            craft.disabled = remaining > 0;
+            panel.append(craft);
+          }
+        }
+      }
+      wrap.append(panel);
+    }
+    return wrap;
+  }
+
   /** @brief Builds the market tab. */
   function buildMarket(): HTMLElement {
     const wrap = div("garden-market");
@@ -2112,6 +2200,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (tab === "bots") return buildBots();
     if (tab === "rank") return buildRank();
     if (tab === "farm") return buildFarm();
+    if (tab === "warehouse") return buildWarehouse();
     return buildEvent();
   }
 
@@ -2369,6 +2458,37 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "visitBot": {
         const code = target.dataset.code;
         if (code !== undefined) openVisit(code);
+        return;
+      }
+      case "buildWarehouse":
+        void runAction({ kind: "buildWarehouse" }, t("warehouse.built"));
+        return;
+      case "buildMachine": {
+        const machine = target.dataset.machine;
+        if (machine !== undefined) {
+          void runAction({ kind: "buildMachine", machine: machine as never }, t("warehouse.machineBuilt"));
+        }
+        return;
+      }
+      case "upgradeMachine": {
+        const machine = target.dataset.machine;
+        if (machine !== undefined) {
+          void runAction(
+            { kind: "upgradeMachine", machine: machine as never },
+            t("warehouse.machineUpgraded"),
+          );
+        }
+        return;
+      }
+      case "craftMachine": {
+        const machine = target.dataset.machine;
+        const item = target.dataset.item;
+        if (machine !== undefined) {
+          void runAction(
+            { kind: "craftMachine", machine: machine as never, item: item as never },
+            t("warehouse.crafted"),
+          );
+        }
         return;
       }
       case "buildBuilding": {

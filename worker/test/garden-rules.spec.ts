@@ -398,6 +398,37 @@ describe("garden ledger rules", () => {
     expect(watered).toBe(1);
   });
 
+  it("builds a warehouse, machines and crafts produce", () => {
+    const ledger = makeLedger();
+    ledger.coins = 30_000_000;
+    const built = run(ledger, { kind: "buildWarehouse" });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.ledger.warehouse).toBe(1);
+
+    const machine = run(built.ledger, { kind: "buildMachine", machine: "seedMaker" });
+    expect(machine.ok).toBe(true);
+    if (!machine.ok) return;
+    expect(machine.ledger.machines.seedMaker?.level).toBe(1);
+
+    // One tomato crop becomes three seeds at level 1.
+    machine.ledger.bag.crops = [{ item: "tomato", effects: [], qty: 2 }];
+    const seeds = run(machine.ledger, { kind: "craftMachine", machine: "seedMaker", item: "tomato" });
+    expect(seeds.ok).toBe(true);
+    if (!seeds.ok) return;
+    expect(seeds.ledger.bag.seeds.tomato).toBe(3);
+    expect(seeds.ledger.bag.crops[0]?.qty).toBe(1);
+
+    const mayo = run(seeds.ledger, { kind: "buildMachine", machine: "mayoMaker" });
+    expect(mayo.ok).toBe(true);
+    if (!mayo.ok) return;
+    mayo.ledger.bag.products = [{ product: "egg", star: 2, qty: 1 }];
+    const crafted = run(mayo.ledger, { kind: "craftMachine", machine: "mayoMaker" });
+    expect(crafted.ok).toBe(true);
+    if (!crafted.ok) return;
+    expect(crafted.ledger.bag.products).toEqual([{ product: "mayo", star: 2, qty: 1 }]);
+  });
+
   it("buys the next tab at the compounding price", () => {
     const tabCost = nextTabPrice(1);
     const ledger = makeLedger();
