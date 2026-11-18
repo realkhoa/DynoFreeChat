@@ -425,6 +425,8 @@ describe("garden tab", () => {
     await settle();
     const buy = host.querySelector<HTMLButtonElement>('[data-act="menuBuyPatch"]');
     expect(buy).not.toBeNull();
+    // First bought patch costs 5,000 x 2^0 = 5.000c.
+    expect(buy?.textContent).toContain("5.000c");
     buy?.click();
     await settle();
     const bought = api.calls.find((call) => call.action?.kind === "buyPatch");

@@ -32,8 +32,8 @@ export const STARTING_TABS = 1;
 /** Hard cap on bought tabs, so the garden stays bounded. */
 export const MAX_TABS = 4;
 
-/** Price of the second crop patch inside a tab, in coins. */
-export const PATCH_BASE_PRICE = 2_000;
+/** Price of the first bought crop patch inside a tab, in coins. */
+export const PATCH_BASE_PRICE = 5_000;
 
 /** Each further crop patch costs this multiple of the previous one. */
 export const PATCH_PRICE_FACTOR = 2;
@@ -721,10 +721,12 @@ export function totalTrees(tabs: number): number {
 /**
  * @brief Price of the next crop patch inside a tab.
  * @param unlockedPatches Patches already open in that tab (1..9).
- * @details 2,000 -> 4,000 -> 8,000 -> 16,000 ...
+ * @details Base x 2^bought: 5,000 -> 10,000 -> 20,000 -> 40,000 ...
  */
 export function nextPatchPrice(unlockedPatches: number): number {
-  return Math.round(PATCH_BASE_PRICE * PATCH_PRICE_FACTOR ** Math.max(0, unlockedPatches - 1));
+  // The free starting patch is not bought, so `unlockedPatches - 1` is exactly
+  // the number of patches already purchased in this tab.
+  return PATCH_BASE_PRICE * PATCH_PRICE_FACTOR ** Math.max(0, unlockedPatches - 1);
 }
 
 /**
