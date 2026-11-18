@@ -103,10 +103,22 @@ export type SeedId =
   | "pitcher";
 
 /** Luck effects a crop can carry. */
-export type EffectId = "wet" | "golden" | "frozen";
+export type EffectId =
+  "wet" | "golden" | "frozen" | "snow" | "chill" | "sunray" | "smoked" | "cracked" | "onfire";
 
 /** Global events that rotate over time. */
-export type EventId = "calm" | "rain" | "goldenHour" | "frost" | "marketBoom";
+export type EventId =
+  | "calm"
+  | "rain"
+  | "goldenHour"
+  | "frost"
+  | "marketBoom"
+  | "snowfall"
+  | "coldSnap"
+  | "heatwave"
+  | "smoke"
+  | "drought"
+  | "wildfire";
 
 /** One plantable seed and its economy. */
 export interface SeedDefinition {
@@ -152,14 +164,28 @@ export interface EffectDefinition {
   readonly mark: string;
   /** Multiplier applied to the seed's sell price. */
   readonly multiplier: number;
+  /** Whether weather can roll this effect at planting; wet comes from watering. */
+  readonly natural: boolean;
 }
 
-/** Effect catalog. */
+/** Effect catalog; order is also the weather roll priority. */
 export const EFFECTS: readonly EffectDefinition[] = [
-  { id: "wet", mark: "~", multiplier: 2 },
-  { id: "golden", mark: "$", multiplier: 5 },
-  { id: "frozen", mark: "*", multiplier: 3 },
+  { id: "wet", mark: "~", multiplier: 2, natural: false },
+  { id: "golden", mark: "$", multiplier: 5, natural: true },
+  { id: "frozen", mark: "*", multiplier: 3, natural: true },
+  { id: "snow", mark: "+", multiplier: 2.5, natural: true },
+  { id: "chill", mark: ",", multiplier: 3.5, natural: true },
+  { id: "sunray", mark: "'", multiplier: 3, natural: true },
+  { id: "smoked", mark: "%", multiplier: 4, natural: true },
+  { id: "cracked", mark: "/", multiplier: 4.5, natural: true },
+  { id: "onfire", mark: "!", multiplier: 6, natural: true },
 ];
+
+/** Effects every planting can roll even under a calm sky. */
+export const BASE_EFFECT_CHANCES: Readonly<Partial<Record<EffectId, number>>> = {
+  golden: 0.03,
+  frozen: 0.02,
+};
 
 /** One global event and its modifiers. */
 export interface EventDefinition {
@@ -167,21 +193,25 @@ export interface EventDefinition {
   readonly id: EventId;
   /** Growth time multiplier applied when planting; `> 1` grows faster. */
   readonly growScale: number;
-  /** Extra golden chance applied when planting. */
-  readonly goldenChance: number;
-  /** Extra frozen chance applied when planting. */
-  readonly frozenChance: number;
+  /** Extra planting chances for the weather effects this event brings. */
+  readonly effectChances: Readonly<Partial<Record<EffectId, number>>>;
   /** Exchange price multiplier applied when selling. */
   readonly sellBonus: number;
 }
 
 /** Event catalog; the rotation walks this list in order. */
 export const EVENTS: readonly EventDefinition[] = [
-  { id: "calm", growScale: 1, goldenChance: 0.03, frozenChance: 0.02, sellBonus: 1 },
-  { id: "rain", growScale: 1.25, goldenChance: 0.03, frozenChance: 0.02, sellBonus: 1 },
-  { id: "goldenHour", growScale: 1, goldenChance: 0.15, frozenChance: 0.02, sellBonus: 1 },
-  { id: "frost", growScale: 0.9, goldenChance: 0.03, frozenChance: 0.12, sellBonus: 1 },
-  { id: "marketBoom", growScale: 1, goldenChance: 0.03, frozenChance: 0.02, sellBonus: 1.2 },
+  { id: "calm", growScale: 1, sellBonus: 1, effectChances: {} },
+  { id: "rain", growScale: 1.25, sellBonus: 1, effectChances: {} },
+  { id: "goldenHour", growScale: 1, sellBonus: 1, effectChances: { golden: 0.12 } },
+  { id: "frost", growScale: 0.9, sellBonus: 1, effectChances: { frozen: 0.1 } },
+  { id: "marketBoom", growScale: 1, sellBonus: 1.2, effectChances: {} },
+  { id: "snowfall", growScale: 0.9, sellBonus: 1, effectChances: { snow: 0.15 } },
+  { id: "coldSnap", growScale: 0.85, sellBonus: 1, effectChances: { chill: 0.15 } },
+  { id: "heatwave", growScale: 1.1, sellBonus: 1, effectChances: { sunray: 0.15 } },
+  { id: "smoke", growScale: 1, sellBonus: 1, effectChances: { smoked: 0.12 } },
+  { id: "drought", growScale: 0.8, sellBonus: 1, effectChances: { cracked: 0.12 } },
+  { id: "wildfire", growScale: 0.95, sellBonus: 1.15, effectChances: { onfire: 0.08 } },
 ];
 
 /** One occupied plot on the wire. */
@@ -644,9 +674,8 @@ export function eventAt(now: number): EventDefinition {
     EVENTS[0] ?? {
       id: "calm",
       growScale: 1,
-      goldenChance: 0,
-      frozenChance: 0,
       sellBonus: 1,
+      effectChances: {},
     }
   );
 }
@@ -662,9 +691,23 @@ export function growTimeFor(seed: SeedDefinition, event: EventDefinition): numbe
  * @param rng Deterministic random source.
  */
 export function rollEffect(event: EventDefinition, rng: () => number): EffectId | null {
+  const natural = EFFECTS.filter((effect) => effect.natural);
+  const chances = natural.map((effect) => ({
+    id: effect.id,
+    chance: (BASE_EFFECT_CHANCES[effect.id] ?? 0) + (event.effectChances[effect.id] ?? 0),
+  }));
+  const total = chances.reduce((sum, entry) => sum + entry.chance, 0);
+  if (total <= 0) return null;
+
+  // More than 95% of plantings may be lucky; scale down so a stack of event
+  // chances never makes "plain" impossible.
+  const scale = total > 0.95 ? 0.95 / total : 1;
   const roll = rng();
-  if (roll < event.goldenChance) return "golden";
-  if (roll < event.goldenChance + event.frozenChance) return "frozen";
+  let cursor = 0;
+  for (const entry of chances) {
+    cursor += entry.chance * scale;
+    if (roll < cursor) return entry.id;
+  }
   return null;
 }
 

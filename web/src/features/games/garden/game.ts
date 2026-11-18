@@ -9,6 +9,7 @@
  */
 
 import {
+  EFFECTS,
   FERTILIZER_PRICE,
   MAX_PATCHES,
   PLOTS_PER_PATCH,
@@ -713,8 +714,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     cell.classList.toggle("is-empty", render.empty);
     cell.classList.toggle("is-locked", render.locked);
     cell.classList.toggle("is-selected", selectedSlot === slot);
-    for (const effect of ["wet", "golden", "frozen"] as const) {
-      cell.classList.toggle(`is-${effect}`, plot?.effect === effect);
+    for (const effect of EFFECTS) {
+      cell.classList.toggle(`is-${effect.id}`, plot?.effect === effect.id);
     }
     cell.style.color = render.growing ? growthColor(render.progress) : "";
     const label =

@@ -23,6 +23,7 @@ import {
   createRng,
   cropKey,
   cropSellPrice,
+  effectById,
   eventAt,
   formatGardenAuth,
   gardenCounts,
@@ -197,6 +198,44 @@ describe("garden growth math", () => {
     expect(rollEffect(goldenHour, () => 0.1)).toBe("golden");
     expect(rollEffect(frost, () => 0.05)).toBe("frozen");
     expect(rollEffect(frost, () => 0.5)).toBeNull();
+  });
+
+  it("rolls the new weather effects during their own event", () => {
+    const snowfall = eventAt(EPOCH_MS + 5 * EVENT_WAVE_MS + 100);
+    expect(snowfall.id).toBe("snowfall");
+    expect(rollEffect(snowfall, () => 0.1)).toBe("snow");
+
+    const coldSnap = eventAt(EPOCH_MS + 6 * EVENT_WAVE_MS + 100);
+    expect(rollEffect(coldSnap, () => 0.1)).toBe("chill");
+
+    const heatwave = eventAt(EPOCH_MS + 7 * EVENT_WAVE_MS + 100);
+    expect(rollEffect(heatwave, () => 0.1)).toBe("sunray");
+
+    const drought = eventAt(EPOCH_MS + 9 * EVENT_WAVE_MS + 100);
+    expect(rollEffect(drought, () => 0.1)).toBe("cracked");
+
+    const wildfire = eventAt(EPOCH_MS + 10 * EVENT_WAVE_MS + 100);
+    expect(rollEffect(wildfire, () => 0.1)).toBe("onfire");
+
+    // A calm sky still leaves most plantings plain.
+    expect(rollEffect(eventAt(EPOCH_MS + 100), () => 0.9)).toBeNull();
+  });
+
+  it("keeps every weather effect rollable except water", () => {
+    expect(effectById("wet")?.natural).toBe(false);
+    for (const id of [
+      "golden",
+      "frozen",
+      "snow",
+      "chill",
+      "sunray",
+      "smoked",
+      "cracked",
+      "onfire",
+    ] as const) {
+      expect(effectById(id)?.natural).toBe(true);
+    }
+    expect(effectById("onfire")?.multiplier).toBe(6);
   });
 
   it("counts plots and prices crop stacks", () => {

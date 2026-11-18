@@ -156,6 +156,30 @@
   color: #4ec9b0;
 }
 
+.garden-cell.is-snow {
+  color: #b8dcff;
+}
+
+.garden-cell.is-chill {
+  color: #7ec8ff;
+}
+
+.garden-cell.is-sunray {
+  color: #f0d58c;
+}
+
+.garden-cell.is-smoked {
+  color: #c586c0;
+}
+
+.garden-cell.is-cracked {
+  color: #ce9178;
+}
+
+.garden-cell.is-onfire {
+  color: #f48771;
+}
+
 @keyframes garden-blink {
   50% {
     opacity: 0.35;
