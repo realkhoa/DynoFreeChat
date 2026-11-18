@@ -24,7 +24,10 @@ import {
   type GardenSnapshot,
   type LeaderboardEntry,
   type PlotState,
+  type ActiveFertilizer,
+  type ActiveSpray,
   type SeedId,
+  type SupplyId,
   type TreeId,
   type TreeState,
   type VisitSnapshot,
@@ -87,6 +90,8 @@ type PlotRow = SqlRow<{
   watered: number;
   fertilized: number;
   harvests: number;
+  fertilizer: string | null;
+  spray: string | null;
 }>;
 
 type TreeRow = SqlRow<{
@@ -98,6 +103,8 @@ type TreeRow = SqlRow<{
   watered: number;
   fertilized: number;
   harvests: number;
+  fertilizer: string | null;
+  spray: string | null;
 }>;
 
 type BagRow = SqlRow<{ kind: string; item: string; qty: number }>;
@@ -134,7 +141,9 @@ export class Garden extends DurableObject<Env> {
         effect TEXT,
         watered INTEGER NOT NULL DEFAULT 0,
         fertilized INTEGER NOT NULL DEFAULT 0,
-        harvests INTEGER NOT NULL DEFAULT 0
+        harvests INTEGER NOT NULL DEFAULT 0,
+        fertilizer TEXT,
+        spray TEXT
       );
       CREATE TABLE IF NOT EXISTS trees (
         slot INTEGER PRIMARY KEY,
@@ -144,7 +153,9 @@ export class Garden extends DurableObject<Env> {
         effect TEXT,
         watered INTEGER NOT NULL DEFAULT 0,
         fertilized INTEGER NOT NULL DEFAULT 0,
-        harvests INTEGER NOT NULL DEFAULT 0
+        harvests INTEGER NOT NULL DEFAULT 0,
+        fertilizer TEXT,
+        spray TEXT
       );
       CREATE TABLE IF NOT EXISTS bag (
         kind TEXT NOT NULL,
@@ -166,6 +177,19 @@ export class Garden extends DurableObject<Env> {
     const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(plots)").toArray();
     if (!columns.some((column) => column.name === "harvests")) {
       this.sql.exec("ALTER TABLE plots ADD COLUMN harvests INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!columns.some((column) => column.name === "fertilizer")) {
+      this.sql.exec("ALTER TABLE plots ADD COLUMN fertilizer TEXT");
+    }
+    if (!columns.some((column) => column.name === "spray")) {
+      this.sql.exec("ALTER TABLE plots ADD COLUMN spray TEXT");
+    }
+    const treeColumns = this.sql.exec<{ name: string }>("PRAGMA table_info(trees)").toArray();
+    if (!treeColumns.some((column) => column.name === "fertilizer")) {
+      this.sql.exec("ALTER TABLE trees ADD COLUMN fertilizer TEXT");
+    }
+    if (!treeColumns.some((column) => column.name === "spray")) {
+      this.sql.exec("ALTER TABLE trees ADD COLUMN spray TEXT");
     }
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS help (
@@ -221,7 +245,7 @@ export class Garden extends DurableObject<Env> {
     const plots = emptyPlots(patches);
     const rows = this.sql
       .exec<PlotRow>(
-        "SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests FROM plots",
+        "SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray FROM plots",
       )
       .toArray();
     for (const row of rows) {
@@ -234,6 +258,8 @@ export class Garden extends DurableObject<Env> {
         watered: row.watered === 1,
         fertilized: row.fertilized === 1,
         harvests: row.harvests,
+        fertilizer: parseFertilizer(row.fertilizer),
+        spray: parseSpray(row.spray),
       };
     }
     return plots;
@@ -247,7 +273,7 @@ export class Garden extends DurableObject<Env> {
     const trees = emptyTrees(patches);
     const rows = this.sql
       .exec<TreeRow>(
-        "SELECT slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests FROM trees",
+        "SELECT slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray FROM trees",
       )
       .toArray();
     for (const row of rows) {
@@ -260,6 +286,8 @@ export class Garden extends DurableObject<Env> {
         watered: row.watered === 1,
         fertilized: row.fertilized === 1,
         harvests: row.harvests,
+        fertilizer: parseFertilizer(row.fertilizer),
+        spray: parseSpray(row.spray),
       };
     }
     return trees;
@@ -269,16 +297,21 @@ export class Garden extends DurableObject<Env> {
   private readBag(): GardenLedger["bag"] {
     const seeds: Partial<Record<SeedId, number>> = {};
     const crops: CropStack[] = [];
+    const supplies: Partial<Record<SupplyId, number>> = {};
     const rows = this.sql.exec<BagRow>("SELECT kind, item, qty FROM bag").toArray();
     for (const row of rows) {
       if (row.kind === "seed") {
         seeds[row.item as SeedId] = row.qty;
         continue;
       }
+      if (row.kind === "supply") {
+        supplies[row.item as SupplyId] = row.qty;
+        continue;
+      }
       const parsed = parseCropKey(row.item);
       if (parsed !== null) crops.push({ item: parsed.item, effect: parsed.effect, qty: row.qty });
     }
-    return { seeds, crops };
+    return { seeds, crops, supplies };
   }
 
   /** @brief Writes a complete ledger atomically, so a crash cannot lose the old one. */
@@ -297,7 +330,7 @@ export class Garden extends DurableObject<Env> {
     for (const plot of plots) {
       if (plot === null) continue;
       this.sql.exec(
-        "INSERT INTO plots (slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO plots (slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         plot.slot,
         plot.seed,
         plot.plantedAt,
@@ -306,13 +339,15 @@ export class Garden extends DurableObject<Env> {
         plot.watered ? 1 : 0,
         plot.fertilized ? 1 : 0,
         plot.harvests,
+        plot.fertilizer === null ? null : JSON.stringify(plot.fertilizer),
+        plot.spray === null ? null : JSON.stringify(plot.spray),
       );
     }
     this.sql.exec("DELETE FROM trees");
     for (const tree of trees) {
       if (tree === null) continue;
       this.sql.exec(
-        "INSERT INTO trees (slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO trees (slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         tree.slot,
         tree.tree,
         tree.plantedAt,
@@ -321,9 +356,15 @@ export class Garden extends DurableObject<Env> {
         tree.watered ? 1 : 0,
         tree.fertilized ? 1 : 0,
         tree.harvests,
+        tree.fertilizer === null ? null : JSON.stringify(tree.fertilizer),
+        tree.spray === null ? null : JSON.stringify(tree.spray),
       );
     }
     this.sql.exec("DELETE FROM bag");
+    for (const [supply, qty] of Object.entries(bag.supplies)) {
+      if (qty === undefined || qty <= 0) continue;
+      this.sql.exec("INSERT INTO bag (kind, item, qty) VALUES ('supply', ?, ?)", supply, qty);
+    }
     for (const [seed, qty] of Object.entries(bag.seeds)) {
       if (qty === undefined || qty <= 0) continue;
       this.sql.exec("INSERT INTO bag (kind, item, qty) VALUES ('seed', ?, ?)", seed, qty);
@@ -512,6 +553,7 @@ export class Garden extends DurableObject<Env> {
       bag: {
         seeds: { ...ledger.bag.seeds },
         crops: ledger.bag.crops.map((stack) => ({ ...stack })),
+        supplies: { ...ledger.bag.supplies },
       },
       stats: { ...ledger.stats },
       updatedAt: ledger.updatedAt,
@@ -648,6 +690,30 @@ export class Garden extends DurableObject<Env> {
     } catch {
       // A stale leaderboard row is preferable to a failed harvest.
     }
+  }
+}
+
+/** @brief Parses a stored fertilizer JSON cell. */
+function parseFertilizer(raw: string | null): ActiveFertilizer | null {
+  if (raw === null) return null;
+  try {
+    const value = JSON.parse(raw) as { id?: unknown; left?: unknown };
+    if (typeof value.id !== "string" || typeof value.left !== "number") return null;
+    return { id: value.id as ActiveFertilizer["id"], left: value.left };
+  } catch {
+    return null;
+  }
+}
+
+/** @brief Parses a stored spray JSON cell. */
+function parseSpray(raw: string | null): ActiveSpray | null {
+  if (raw === null) return null;
+  try {
+    const value = JSON.parse(raw) as { id?: unknown; left?: unknown };
+    if (typeof value.id !== "string" || typeof value.left !== "number") return null;
+    return { id: value.id as ActiveSpray["id"], left: value.left };
+  } catch {
+    return null;
   }
 }
 

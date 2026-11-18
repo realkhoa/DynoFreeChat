@@ -10,10 +10,11 @@
 
 import {
   EFFECTS,
-  FERTILIZER_PRICE,
+  FERTILIZERS,
   MAX_PATCHES,
   PLOTS_PER_PATCH,
   SEEDS,
+  SPRAYS,
   TREES,
   cropSellPrice,
   effectById,
@@ -28,8 +29,11 @@ import {
   type LeaderboardEntry,
   type PlotState,
   type SeasonSnapshot,
+  type FertilizerId,
   type ItemId,
   type SeedId,
+  type SprayId,
+  type SupplyId,
   type TreeId,
   type TreeState,
   type VisitSnapshot,
@@ -97,6 +101,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let season: SeasonSnapshot | null = null;
   let selectedSlot: number | null = null;
   let selectedArea: "crop" | "tree" = "crop";
+  let supplyPicker: "fertilize" | "spray" | null = null;
   let page = 0;
   let message: Message | null = null;
   let loading = true;
@@ -455,27 +460,44 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     );
   }
 
-  /** @brief Waters or fertilizes the selected growing crop or tree. */
-  function tend(slot: number, kind: "water" | "fertilize", area: "crop" | "tree"): void {
+  /** @brief Waters the selected growing crop or tree. */
+  function waterSelected(slot: number, area: "crop" | "tree"): void {
     if (area === "tree") {
       const tree = treeAt(slot);
       if (tree === null) return;
-      const name = itemName(tree.tree);
-      if (kind === "water") {
-        void runAction({ kind: "water", slot, tree: true }, t("garden.wateredTree", { tree: name }));
-        return;
-      }
-      void runAction({ kind: "fertilize", slot, tree: true }, t("garden.fedTree", { tree: name }));
+      void runAction(
+        { kind: "water", slot, tree: true },
+        t("garden.wateredTree", { tree: itemName(tree.tree) }),
+      );
       return;
     }
     const plot = plotAt(slot);
     if (plot === null) return;
-    const name = itemName(plot.seed);
-    if (kind === "water") {
-      void runAction({ kind: "water", slot, tree: false }, t("garden.watered", { seed: name }));
-      return;
-    }
-    void runAction({ kind: "fertilize", slot, tree: false }, t("garden.fed", { seed: name }));
+    void runAction({ kind: "water", slot, tree: false }, t("garden.watered", { seed: itemName(plot.seed) }));
+  }
+
+  /** @brief Applies one owned fertilizer to the selected plant. */
+  function applySupply(kind: "fertilize" | "spray", supply: SupplyId): void {
+    if (selectedSlot === null) return;
+    const tree = selectedArea === "tree";
+    supplyPicker = null;
+    const action: GardenAction =
+      kind === "fertilize"
+        ? { kind, slot: selectedSlot, tree, supply: supply as FertilizerId }
+        : { kind: "spray", slot: selectedSlot, tree, supply: supply as SprayId };
+    const name = t(`supplies.${supply}`);
+    void runAction(
+      action,
+      t(kind === "fertilize" ? "garden.fertilized" : "garden.sprayed", { supply: name }),
+    );
+  }
+
+  /** @brief Buys one fertilizer or spray. */
+  function buySupply(supply: SupplyId): void {
+    void runAction(
+      { kind: "buySupply", supply, qty: 1 },
+      t("garden.boughtSupply", { supply: t(`supplies.${supply}`) }),
+    );
   }
 
   /** @brief Plants one fruit tree sapling. */
@@ -695,6 +717,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (slots === null || slot < 0 || slot >= slots.length) return;
     selectedSlot = slot;
     selectedArea = area;
+    supplyPicker = null;
     uprootArmed = false;
     render();
   }
@@ -708,6 +731,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (next === page) return;
     page = next;
     selectedSlot = null;
+    supplyPicker = null;
     uprootArmed = false;
     render();
   }
@@ -936,6 +960,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             : `${t(`effects.${view.effect.id}`)} x${view.effect.multiplier}`,
         ),
       );
+      if (plot.fertilizer !== null) {
+        lines.push(
+          labelValue(
+            t("garden.fertilizer"),
+            `${t(`supplies.${plot.fertilizer.id}`)} (${t("garden.supplyLeft", { left: plot.fertilizer.left })})`,
+          ),
+        );
+      }
+      if (plot.spray !== null) {
+        lines.push(
+          labelValue(
+            t("garden.sprayActive"),
+            `${t(`supplies.${plot.spray.id}`)} (${t("garden.supplyLeft", { left: plot.spray.left })})`,
+          ),
+        );
+      }
       lines.push(
         labelValue(t("garden.readyIn"), view.ready ? t("garden.ready") : formatDuration(view.remainingMs)),
       );
@@ -993,6 +1033,37 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /**
+   * @brief Builds the fertilizer or spray picker for the selected plant.
+   * @param kind Which consumable kind to list.
+   * @param slot Absolute slot index.
+   * @param area Whether the selected plant is a crop or a tree.
+   */
+  function buildSupplyPicker(kind: "fertilize" | "spray", slot: number, area: "crop" | "tree"): HTMLElement {
+    const wrap = div("garden-seeds");
+    wrap.append(span("garden-hint", t("garden.noSupplies")));
+    const catalog = kind === "fertilize" ? FERTILIZERS : SPRAYS;
+    for (const supply of catalog) {
+      const owned = state?.bag.supplies[supply.id] ?? 0;
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "garden-row";
+      row.dataset.act = "applySupply";
+      row.dataset.kind = kind;
+      row.dataset.supply = supply.id;
+      row.dataset.area = area;
+      row.dataset.slot = String(slot);
+      if (owned < 1) row.disabled = true;
+      const detail =
+        "growMultiplier" in supply
+          ? `x${supply.growMultiplier} · ${supply.harvests}`
+          : `+mut · ${supply.harvests}`;
+      row.textContent = `${fitText(t(`supplies.${supply.id}`), 14)}${fitText(`${owned}`, 3)}${fitText(`${supply.price}c`, 5)}${detail}`;
+      wrap.append(row);
+    }
+    return wrap;
+  }
+
   /** @brief Builds the right-hand detail panel and its actions. */
   function buildDetail(): HTMLElement {
     const wrap = div("garden-detail");
@@ -1009,55 +1080,28 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       wrap.append(actions);
       return wrap;
     }
-    if (selectedArea === "tree") {
-      const tree = treeAt(slot);
-      if (tree === null) {
-        if (mode === "owner") actions.append(buildTreePicker(slot));
-        else actions.append(span("garden-hint", t("garden.noSelectionHint")));
-      } else {
-        const ready = now() >= tree.readyAt;
-        if (mode === "owner") {
-          actions.append(actionButton(t("garden.harvest"), "harvest", ready));
-          actions.append(actionButton(t("garden.water"), "water", !ready && !tree.watered));
-          actions.append(
-            actionButton(
-              t("garden.fertilize", { cost: FERTILIZER_PRICE }),
-              "fertilize",
-              !ready && !tree.fertilized && (state?.coins ?? 0) >= FERTILIZER_PRICE,
-            ),
-          );
-          actions.append(
-            actionButton(uprootArmed ? t("garden.uprootConfirm") : t("garden.uproot"), "uproot"),
-          );
-        } else {
-          actions.append(actionButton(t("garden.waterFriend"), "waterFriend", !ready));
-          actions.append(actionButton(t("garden.cheer"), "cheer"));
-        }
-      }
-      wrap.append(actions);
-      return wrap;
-    }
 
-    const plot = plotAt(slot);
-    if (plot === null) {
-      actions.append(buildSeedPicker(slot));
+    const tree = selectedArea === "tree" ? treeAt(slot) : null;
+    const plot = selectedArea === "crop" ? plotAt(slot) : null;
+    const plant = tree ?? plot;
+    const ready = plant !== null && now() >= plant.readyAt;
+
+    if (plant === null) {
+      if (mode === "owner")
+        actions.append(selectedArea === "tree" ? buildTreePicker(slot) : buildSeedPicker(slot));
+      else actions.append(span("garden-hint", t("garden.noSelectionHint")));
+    } else if (supplyPicker !== null) {
+      actions.append(buildSupplyPicker(supplyPicker, slot, selectedArea));
+      actions.append(actionButton(t("common.cancel"), "cancelSupply"));
+    } else if (mode === "owner") {
+      actions.append(actionButton(t("garden.harvest"), "harvest", ready));
+      actions.append(actionButton(t("garden.water"), "water", !ready && !plant.watered));
+      actions.append(actionButton(t("garden.fertilize"), "pickFertilize", !ready));
+      actions.append(actionButton(t("garden.spray"), "pickSpray", !ready));
+      actions.append(actionButton(uprootArmed ? t("garden.uprootConfirm") : t("garden.uproot"), "uproot"));
     } else {
-      const view = plotView(plot, now());
-      if (mode === "owner") {
-        actions.append(actionButton(t("garden.harvest"), "harvest", view.ready));
-        actions.append(actionButton(t("garden.water"), "water", !view.ready && !plot.watered));
-        actions.append(
-          actionButton(
-            t("garden.fertilize", { cost: FERTILIZER_PRICE }),
-            "fertilize",
-            !view.ready && !plot.fertilized && (state?.coins ?? 0) >= FERTILIZER_PRICE,
-          ),
-        );
-        actions.append(actionButton(uprootArmed ? t("garden.uprootConfirm") : t("garden.uproot"), "uproot"));
-      } else {
-        actions.append(actionButton(t("garden.waterFriend"), "waterFriend", !view.ready));
-        actions.append(actionButton(t("garden.cheer"), "cheer"));
-      }
+      actions.append(actionButton(t("garden.waterFriend"), "waterFriend", !ready));
+      actions.append(actionButton(t("garden.cheer"), "cheer"));
     }
     wrap.append(actions);
     return wrap;
@@ -1128,7 +1172,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       exchange.append(actionButton(t("market.sellAllValue", { coins: total }), "sellAll"));
     }
 
-    wrap.append(shop, exchange);
+    const supplies = div("garden-market-panel");
+    supplies.append(lineBlock(`// ${t("market.supplies")}`));
+    const supplyCatalog = [...FERTILIZERS, ...SPRAYS];
+    for (const supply of supplyCatalog) {
+      const owned = state.bag.supplies[supply.id] ?? 0;
+      const row = rowButton(
+        "garden-market-row",
+        `${fitText(t(`supplies.${supply.id}`), 14)}${fitText(`${supply.price}c`, 5)}${fitText(`${t("garden.bag")} ${owned}`, 8)}[${t("market.buy")}]`,
+        "buySupply",
+      );
+      row.dataset.supply = supply.id;
+      supplies.append(row);
+    }
+
+    wrap.append(shop, exchange, supplies);
     return wrap;
   }
 
@@ -1322,12 +1380,34 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       case "harvest":
       case "water":
-      case "fertilize":
       case "uproot": {
         if (selectedSlot === null) return;
         if (action === "harvest") harvest(selectedSlot, selectedArea);
         else if (action === "uproot") uproot(selectedSlot, selectedArea);
-        else tend(selectedSlot, action, selectedArea);
+        else waterSelected(selectedSlot, selectedArea);
+        return;
+      }
+      case "pickFertilize":
+        supplyPicker = "fertilize";
+        render();
+        return;
+      case "pickSpray":
+        supplyPicker = "spray";
+        render();
+        return;
+      case "cancelSupply":
+        supplyPicker = null;
+        render();
+        return;
+      case "applySupply": {
+        const supply = target.dataset.supply as SupplyId | undefined;
+        const kind = target.dataset.kind === "spray" ? "spray" : "fertilize";
+        if (supply !== undefined) applySupply(kind, supply);
+        return;
+      }
+      case "buySupply": {
+        const supply = target.dataset.supply as SupplyId | undefined;
+        if (supply !== undefined) buySupply(supply);
         return;
       }
       case "prevPage":
@@ -1417,10 +1497,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (event.key === "h" || event.key === "H") {
       if (mode === "owner") harvest(selectedSlot, selectedArea);
     } else if (event.key === "w" || event.key === "W") {
-      if (mode === "owner") tend(selectedSlot, "water", selectedArea);
+      if (mode === "owner") waterSelected(selectedSlot, selectedArea);
       else void waterFriend(selectedSlot, selectedArea);
     } else if (event.key === "f" || event.key === "F") {
-      if (mode === "owner") tend(selectedSlot, "fertilize", selectedArea);
+      if (mode === "owner") {
+        supplyPicker = "fertilize";
+        render();
+      }
+    } else if (event.key === "x" || event.key === "X") {
+      if (mode === "owner") {
+        supplyPicker = "spray";
+        render();
+      }
     } else if (event.key === "u" || event.key === "U") {
       if (mode === "owner") uproot(selectedSlot, selectedArea);
     }

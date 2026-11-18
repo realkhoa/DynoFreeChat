@@ -36,8 +36,13 @@ import {
   parseGardenAuth,
   plotView,
   rollEffect,
+  FERTILIZERS,
+  SPRAYS,
   TREES,
+  fertilizerById,
   nextPatchPrice,
+  sprayById,
+  supplyById,
   seasonAt,
   seedById,
   totalPlots,
@@ -75,6 +80,16 @@ describe("garden catalog", () => {
       expect(seed.growMs).toBeGreaterThan(0);
       expect(seed.sell).toBeGreaterThan(seed.buy);
     }
+  });
+
+  it("ships fertilizers and sprays with their shop data", () => {
+    expect(FERTILIZERS).toHaveLength(3);
+    expect(SPRAYS).toHaveLength(4);
+    expect(fertilizerById("speedGrow")?.growMultiplier).toBeLessThan(1);
+    expect(fertilizerById("superGrow")?.harvests).toBe(4);
+    expect(sprayById("goldenSpray")?.effectChances.golden).toBe(0.15);
+    expect(supplyById("compost")?.price).toBe(25);
+    expect(supplyById("unknown")).toBeUndefined();
   });
 
   it("prices each new patch on the compounding ladder", () => {
@@ -175,6 +190,8 @@ describe("garden growth math", () => {
       watered: false,
       fertilized: false,
       harvests: 0,
+      fertilizer: null,
+      spray: null,
     };
     expect(plotView(plot, 1_000).stage).toBe(0);
     expect(plotView(plot, 1_000 + seed.growMs * 0.4).stage).toBe(1);
@@ -252,6 +269,8 @@ describe("garden growth math", () => {
       watered: false,
       fertilized: false,
       harvests: 0,
+      fertilizer: null,
+      spray: null,
     };
     plots[1] = {
       slot: 1,
@@ -262,6 +281,8 @@ describe("garden growth math", () => {
       watered: false,
       fertilized: false,
       harvests: 0,
+      fertilizer: null,
+      spray: null,
     };
     expect(gardenCounts(plots, [], NOW)).toEqual({ ready: 1, growing: 1, free: 7 });
     expect(cropSellPrice({ item: "carrot", effect: "golden", qty: 1 }, season)).toBe(
@@ -361,6 +382,24 @@ describe("garden wire parsing", () => {
       kind: "sellCrop",
       item: "corn",
       effect: "wet",
+      qty: 2,
+    });
+    expect(parseGardenAction({ kind: "fertilize", slot: 0, tree: false, supply: "speedGrow" })).toEqual({
+      kind: "fertilize",
+      slot: 0,
+      tree: false,
+      supply: "speedGrow",
+    });
+    expect(parseGardenAction({ kind: "spray", slot: 0, tree: true, supply: "snowSpray" })).toEqual({
+      kind: "spray",
+      slot: 0,
+      tree: true,
+      supply: "snowSpray",
+    });
+    expect(parseGardenAction({ kind: "fertilize", slot: 0, tree: false, supply: "nope" })).toBeNull();
+    expect(parseGardenAction({ kind: "buySupply", supply: "compost", qty: 2 })).toEqual({
+      kind: "buySupply",
+      supply: "compost",
       qty: 2,
     });
     expect(parseGardenAction({ kind: "buyPatch" })).toEqual({ kind: "buyPatch" });

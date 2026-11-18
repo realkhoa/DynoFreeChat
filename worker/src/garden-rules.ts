@@ -9,8 +9,6 @@
 
 import {
   ACTIONS_PER_MINUTE,
-  FERTILIZER_CUT_RATIO,
-  FERTILIZER_PRICE,
   MAX_PATCHES,
   PLOTS_PER_PATCH,
   STARTING_COINS,
@@ -25,13 +23,20 @@ import {
   nextPatchPrice,
   rollEffect,
   seedById,
+  fertilizerById,
+  sprayById,
   totalPlots,
   treeById,
+  type ActiveFertilizer,
+  type ActiveSpray,
   type CropStack,
+  type FertilizerId,
+  type SprayId,
   type GardenAction,
   type GardenErrorCode,
   type GardenSnapshot,
   type ItemId,
+  type SupplyId,
   type PlotState,
   type SeasonSnapshot,
   type SeedId,
@@ -45,6 +50,8 @@ export interface LedgerBag {
   seeds: Partial<Record<SeedId, number>>;
   /** Harvested crops and fruits. */
   crops: CropStack[];
+  /** Owned fertilizers and sprays. */
+  supplies: Partial<Record<SupplyId, number>>;
 }
 
 /** Mutable counters used by the rules. */
@@ -140,7 +147,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     patches: STARTING_PATCHES,
     plots: emptyPlots(STARTING_PATCHES),
     trees: emptyTrees(STARTING_PATCHES),
-    bag: { seeds: { carrot: STARTING_SEEDS }, crops: [] },
+    bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {} },
     stats: { planted: 0, harvested: 0, earned: 0 },
     rev: 1,
     createdAt: input.now,
@@ -187,6 +194,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     bag: {
       seeds: { ...ledger.bag.seeds },
       crops: ledger.bag.crops.map((stack) => ({ ...stack })),
+      supplies: { ...ledger.bag.supplies },
     },
     stats: { ...ledger.stats },
     rev: ledger.rev,
@@ -228,13 +236,17 @@ export function applyGardenAction(
     case "water":
       return action.tree ? waterTree(ledger, action.slot, now) : water(ledger, action.slot, now);
     case "fertilize":
-      return action.tree ? fertilizeTree(ledger, action.slot, now) : fertilize(ledger, action.slot, now);
+      return fertilize(ledger, action.slot, action.supply, now, action.tree);
+    case "spray":
+      return spray(ledger, action.slot, action.supply, now, action.tree);
     case "uproot":
       return action.tree ? uprootTree(ledger, action.slot, now) : uproot(ledger, action.slot, now);
     case "buyPatch":
       return buyPatch(ledger, now);
     case "buySeed":
       return buySeed(ledger, action.seed, action.qty, season, now);
+    case "buySupply":
+      return buySupply(ledger, action.supply, action.qty, now);
     case "sellCrop":
       return sellCrop(ledger, action.item, action.effect, action.qty, season, now);
     case "sellAll":
@@ -271,6 +283,8 @@ function plant(
     watered: false,
     fertilized: false,
     harvests: 0,
+    fertilizer: null,
+    spray: null,
   };
   next.stats.planted += 1;
   return changed(next, now);
@@ -302,6 +316,8 @@ function plantTree(
     watered: false,
     fertilized: false,
     harvests: 0,
+    fertilizer: null,
+    spray: null,
   };
   next.stats.planted += 1;
   return changed(next, now);
@@ -324,15 +340,18 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
   const seed = seedById(plot.seed);
   if (seed !== undefined && seed.regrow) {
     const event = eventAt(now);
+    const sprayBonus = plot.spray === null ? {} : (sprayById(plot.spray.id)?.effectChances ?? {});
     next.plots[slot] = {
       slot,
       seed: plot.seed,
       plantedAt: now,
-      readyAt: now + growTimeFor(seed, event),
-      effect: rollEffect(event, rng),
+      readyAt: now + growTimeFor(seed, event, plot.fertilizer),
+      effect: rollEffect(event, rng, sprayBonus),
       watered: false,
       fertilized: false,
       harvests: plot.harvests + 1,
+      fertilizer: tickFertilizer(plot.fertilizer),
+      spray: tickSpray(plot.spray),
     };
   } else {
     next.plots[slot] = null;
@@ -352,15 +371,18 @@ function harvestTree(ledger: GardenLedger, slot: number, now: number, rng: () =>
   addCrop(next.bag.crops, tree.tree, tree.effect, 1);
   next.stats.harvested += 1;
   const event = eventAt(now);
+  const sprayBonus = tree.spray === null ? {} : (sprayById(tree.spray.id)?.effectChances ?? {});
   next.trees[slot] = {
     slot,
     tree: tree.tree,
     plantedAt: now,
-    readyAt: now + growTimeFor(definition, event),
-    effect: rollEffect(event, rng),
+    readyAt: now + growTimeFor(definition, event, tree.fertilizer),
+    effect: rollEffect(event, rng, sprayBonus),
     watered: false,
     fertilized: false,
     harvests: tree.harvests + 1,
+    fertilizer: tickFertilizer(tree.fertilizer),
+    spray: tickSpray(tree.spray),
   };
   return changed(next, now);
 }
@@ -401,42 +423,83 @@ function waterTree(ledger: GardenLedger, slot: number, now: number): RuleResult 
   return changed(next, now);
 }
 
-/** @brief Fertilizes one growing crop for coins. */
-function fertilize(ledger: GardenLedger, slot: number, now: number): RuleResult {
-  const plot = ledger.plots[slot] ?? null;
-  if (plot === null) return { ok: false, code: "PLOT_EMPTY" };
-  if (now >= plot.readyAt) return { ok: false, code: "NOT_READY" };
-  if (plot.fertilized) return { ok: false, code: "ALREADY_FERTILIZED" };
-  if (ledger.coins < FERTILIZER_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
+/**
+ * @brief Applies one fertilizer from the bag to a growing crop or tree.
+ * @details The active fertilizer shortens the current growth immediately and
+ * keeps boosting the next `harvests - 1` cycles before it wears off.
+ */
+function fertilize(
+  ledger: GardenLedger,
+  slot: number,
+  supply: FertilizerId,
+  now: number,
+  tree: boolean,
+): RuleResult {
+  const definition = fertilizerById(supply);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+  const plant = tree ? (ledger.trees[slot] ?? null) : (ledger.plots[slot] ?? null);
+  if (plant === null) return { ok: false, code: "PLOT_EMPTY" };
+  const owned = ledger.bag.supplies[supply] ?? 0;
+  if (owned < 1) return { ok: false, code: "NO_SUPPLY" };
 
   const next = clone(ledger);
-  const remaining = plot.readyAt - now;
-  next.coins -= FERTILIZER_PRICE;
-  next.plots[slot] = {
-    ...plot,
-    readyAt: Math.max(now + 1_000, plot.readyAt - Math.round(remaining * FERTILIZER_CUT_RATIO)),
+  next.bag.supplies[supply] = owned - 1;
+  const remaining = Math.max(0, plant.readyAt - now);
+  const readyAt =
+    now >= plant.readyAt
+      ? plant.readyAt
+      : now + Math.max(1_000, Math.round(remaining * definition.growMultiplier));
+  const updated = {
+    ...plant,
+    readyAt,
     fertilized: true,
+    fertilizer: { id: supply, left: definition.harvests },
   };
+  if (tree) next.trees[slot] = updated as (typeof next.trees)[number];
+  else next.plots[slot] = updated as (typeof next.plots)[number];
   return changed(next, now);
 }
 
-/** @brief Fertilizes one growing tree for coins. */
-function fertilizeTree(ledger: GardenLedger, slot: number, now: number): RuleResult {
-  const tree = ledger.trees[slot] ?? null;
-  if (tree === null) return { ok: false, code: "PLOT_EMPTY" };
-  if (now >= tree.readyAt) return { ok: false, code: "NOT_READY" };
-  if (tree.fertilized) return { ok: false, code: "ALREADY_FERTILIZED" };
-  if (ledger.coins < FERTILIZER_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
+/** @brief Applies one spray: the next rolls carry its mutation bonus. */
+function spray(ledger: GardenLedger, slot: number, supply: SprayId, now: number, tree: boolean): RuleResult {
+  const definition = sprayById(supply);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+  const plant = tree ? (ledger.trees[slot] ?? null) : (ledger.plots[slot] ?? null);
+  if (plant === null) return { ok: false, code: "PLOT_EMPTY" };
+  const owned = ledger.bag.supplies[supply] ?? 0;
+  if (owned < 1) return { ok: false, code: "NO_SUPPLY" };
 
   const next = clone(ledger);
-  const remaining = tree.readyAt - now;
-  next.coins -= FERTILIZER_PRICE;
-  next.trees[slot] = {
-    ...tree,
-    readyAt: Math.max(now + 1_000, tree.readyAt - Math.round(remaining * FERTILIZER_CUT_RATIO)),
-    fertilized: true,
-  };
+  next.bag.supplies[supply] = owned - 1;
+  const updated = { ...plant, spray: { id: supply, left: definition.harvests } };
+  if (tree) next.trees[slot] = updated as (typeof next.trees)[number];
+  else next.plots[slot] = updated as (typeof next.plots)[number];
   return changed(next, now);
+}
+
+/** @brief Buys fertilizers or sprays at their fixed price. */
+function buySupply(ledger: GardenLedger, supply: SupplyId, qty: number, now: number): RuleResult {
+  const definition = fertilizerById(supply) ?? sprayById(supply);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+  const total = definition.price * qty;
+  if (ledger.coins < total) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= total;
+  next.bag.supplies[supply] = (next.bag.supplies[supply] ?? 0) + qty;
+  return changed(next, now);
+}
+
+/** @brief Ages one fertilizer by one harvest cycle. */
+function tickFertilizer(active: ActiveFertilizer | null): ActiveFertilizer | null {
+  if (active === null) return null;
+  return active.left <= 1 ? null : { id: active.id, left: active.left - 1 };
+}
+
+/** @brief Ages one spray by one harvest cycle. */
+function tickSpray(active: ActiveSpray | null): ActiveSpray | null {
+  if (active === null) return null;
+  return active.left <= 1 ? null : { id: active.id, left: active.left - 1 };
 }
 
 /** @brief Removes one crop without a refund. */
@@ -551,6 +614,7 @@ function clone(ledger: GardenLedger): GardenLedger {
     bag: {
       seeds: { ...ledger.bag.seeds },
       crops: ledger.bag.crops.map((stack) => ({ ...stack })),
+      supplies: { ...ledger.bag.supplies },
     },
     stats: { ...ledger.stats },
     shopStock: { ...ledger.shopStock },

@@ -193,24 +193,55 @@ describe("garden ledger rules", () => {
     });
   });
 
-  it("fertilizes for coins, once", () => {
+  it("buys fertilizer and applies it across several harvest cycles", () => {
     const corn = makeLedger();
     corn.bag.seeds.corn = 1;
-    const planted = run(corn, { kind: "plant", slot: 0, seed: "corn" }, NOW, 0.9);
+    corn.coins = 500;
+    const bought = run(corn, { kind: "buySupply", supply: "compost", qty: 1 });
+    expect(bought.ok).toBe(true);
+    if (!bought.ok) return;
+    expect(bought.ledger.bag.supplies.compost).toBe(1);
+    expect(bought.ledger.coins).toBe(475);
+
+    const planted = run(bought.ledger, { kind: "plant", slot: 0, seed: "corn" }, NOW, 0.9);
     if (!planted.ok) throw new Error("plant failed");
     const plot = planted.ledger.plots[0];
     if (plot === null || plot === undefined) throw new Error("plot empty");
 
-    const fed = run(planted.ledger, { kind: "fertilize", slot: 0, tree: false });
+    const fed = run(planted.ledger, { kind: "fertilize", slot: 0, tree: false, supply: "compost" });
     expect(fed.ok).toBe(true);
     if (!fed.ok) return;
-    expect(fed.ledger.coins).toBe(planted.ledger.coins - 3);
-    expect(fed.ledger.plots[0]?.fertilized).toBe(true);
+    expect(fed.ledger.bag.supplies.compost).toBe(0);
+    expect(fed.ledger.plots[0]?.fertilizer).toEqual({ id: "compost", left: 2 });
     expect(fed.ledger.plots[0]?.readyAt).toBeLessThan(plot.readyAt);
-    expect(run(fed.ledger, { kind: "fertilize", slot: 0, tree: false })).toMatchObject({
+    expect(run(fed.ledger, { kind: "fertilize", slot: 0, tree: false, supply: "compost" })).toMatchObject({
       ok: false,
-      code: "ALREADY_FERTILIZED",
+      code: "NO_SUPPLY",
     });
+  });
+
+  it("sprays raise the next mutation roll and wear off", () => {
+    const tomato = makeLedger();
+    tomato.bag.seeds.tomato = 1;
+    tomato.coins = 500;
+    const bought = run(tomato, { kind: "buySupply", supply: "snowSpray", qty: 1 });
+    if (!bought.ok) throw new Error("buy failed");
+    const planted = run(bought.ledger, { kind: "plant", slot: 0, seed: "tomato" }, NOW, 0.9);
+    if (!planted.ok) throw new Error("plant failed");
+    const plot = planted.ledger.plots[0];
+    if (plot === null || plot === undefined) throw new Error("plot empty");
+
+    const sprayed = run(planted.ledger, { kind: "spray", slot: 0, tree: false, supply: "snowSpray" });
+    expect(sprayed.ok).toBe(true);
+    if (!sprayed.ok) return;
+    expect(sprayed.ledger.plots[0]?.spray).toEqual({ id: "snowSpray", left: 2 });
+    expect(sprayed.ledger.bag.supplies.snowSpray).toBe(0);
+
+    const picked = run(sprayed.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt, 0.2);
+    expect(picked.ok).toBe(true);
+    if (!picked.ok) return;
+    expect(picked.ledger.plots[0]?.effect).toBe("snow");
+    expect(picked.ledger.plots[0]?.spray).toEqual({ id: "snowSpray", left: 1 });
   });
 
   it("uproots without a refund", () => {

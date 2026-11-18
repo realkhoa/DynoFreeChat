@@ -162,6 +162,75 @@ export const SEEDS: readonly SeedDefinition[] = [
   { id: "pitcher", growMs: 35 * 60_000, buy: 250, sell: 380, art: [".", "v", "Y", "&"], regrow: true },
 ];
 
+/** Multiplier-aware fertilizer ids. */
+export type FertilizerId = "compost" | "speedGrow" | "superGrow";
+
+/** Mutation-boosting spray ids. */
+export type SprayId = "goldenSpray" | "frostSpray" | "snowSpray" | "stormSpray";
+
+/** Anything the player can buy in the supplies shop. */
+export type SupplyId = FertilizerId | SprayId;
+
+/** One fertilizer: shortens growth for a number of harvests. */
+export interface FertilizerDefinition {
+  /** Stable id. */
+  readonly id: FertilizerId;
+  /** Growth-time multiplier while active; `< 1` grows faster. */
+  readonly growMultiplier: number;
+  /** Harvest cycles the boost survives. */
+  readonly harvests: number;
+  /** Shop price. */
+  readonly price: number;
+}
+
+/** One spray: raises mutation chances for a number of harvests. */
+export interface SprayDefinition {
+  /** Stable id. */
+  readonly id: SprayId;
+  /** Extra effect chances added on every roll while active. */
+  readonly effectChances: Readonly<Partial<Record<EffectId, number>>>;
+  /** Harvest cycles the boost survives. */
+  readonly harvests: number;
+  /** Shop price. */
+  readonly price: number;
+}
+
+/** Fertilizer catalog. */
+export const FERTILIZERS: readonly FertilizerDefinition[] = [
+  { id: "compost", growMultiplier: 0.75, harvests: 2, price: 25 },
+  { id: "speedGrow", growMultiplier: 0.6, harvests: 3, price: 60 },
+  { id: "superGrow", growMultiplier: 0.45, harvests: 4, price: 140 },
+];
+
+/** Spray catalog. */
+export const SPRAYS: readonly SprayDefinition[] = [
+  { id: "goldenSpray", effectChances: { golden: 0.15 }, harvests: 2, price: 80 },
+  { id: "frostSpray", effectChances: { frozen: 0.15 }, harvests: 2, price: 80 },
+  { id: "snowSpray", effectChances: { snow: 0.15 }, harvests: 2, price: 80 },
+  {
+    id: "stormSpray",
+    effectChances: { snow: 0.05, chill: 0.05, sunray: 0.05, smoked: 0.05, cracked: 0.05, onfire: 0.05 },
+    harvests: 3,
+    price: 150,
+  },
+];
+
+/** One active fertilizer on a planted slot. */
+export interface ActiveFertilizer {
+  /** Which fertilizer. */
+  readonly id: FertilizerId;
+  /** Harvest cycles left. */
+  readonly left: number;
+}
+
+/** One active spray on a planted slot. */
+export interface ActiveSpray {
+  /** Which spray. */
+  readonly id: SprayId;
+  /** Harvest cycles left. */
+  readonly left: number;
+}
+
 /** One plantable fruit tree and its economy. */
 export interface TreeDefinition {
   /** Stable id used by saves and the fruit exchange. */
@@ -263,6 +332,10 @@ export interface PlotState {
   readonly fertilized: boolean;
   /** Fruits already harvested from this plant; `0` for single-harvest crops. */
   readonly harvests: number;
+  /** Active fertilizer, or `null`. */
+  readonly fertilizer: ActiveFertilizer | null;
+  /** Active spray, or `null`. */
+  readonly spray: ActiveSpray | null;
 }
 
 /** One planted fruit tree. */
@@ -283,6 +356,10 @@ export interface TreeState {
   readonly fertilized: boolean;
   /** Fruits already picked from this tree. */
   readonly harvests: number;
+  /** Active fertilizer, or `null`. */
+  readonly fertilizer: ActiveFertilizer | null;
+  /** Active spray, or `null`. */
+  readonly spray: ActiveSpray | null;
 }
 
 /** One stack of harvested produce in the bag. */
@@ -301,6 +378,8 @@ export interface BagState {
   readonly seeds: Readonly<Partial<Record<SeedId, number>>>;
   /** Harvested crops ready to sell. */
   readonly crops: readonly CropStack[];
+  /** Owned fertilizers and sprays; missing ids are zero. */
+  readonly supplies: Readonly<Partial<Record<SupplyId, number>>>;
 }
 
 /** Lifetime counters used by the HUD and the leaderboard. */
@@ -452,10 +531,17 @@ export type GardenAction =
   | { readonly kind: "plantTree"; readonly slot: number; readonly tree: TreeId }
   | { readonly kind: "harvest"; readonly slot: number; readonly tree: boolean }
   | { readonly kind: "water"; readonly slot: number; readonly tree: boolean }
-  | { readonly kind: "fertilize"; readonly slot: number; readonly tree: boolean }
+  | {
+      readonly kind: "fertilize";
+      readonly slot: number;
+      readonly tree: boolean;
+      readonly supply: FertilizerId;
+    }
+  | { readonly kind: "spray"; readonly slot: number; readonly tree: boolean; readonly supply: SprayId }
   | { readonly kind: "uproot"; readonly slot: number; readonly tree: boolean }
   | { readonly kind: "buyPatch" }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
+  | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
   | {
       readonly kind: "sellCrop";
       readonly item: ItemId;
@@ -483,6 +569,7 @@ export type GardenErrorCode =
   | "ALREADY_WATERED"
   | "ALREADY_FERTILIZED"
   | "NO_SEED"
+  | "NO_SUPPLY"
   | "SHOP_SOLD_OUT"
   | "NO_CROP"
   | "NOTHING_TO_SELL"
@@ -534,6 +621,31 @@ export function treeById(id: string): TreeDefinition | undefined {
  */
 export function itemById(id: string): SeedDefinition | TreeDefinition | undefined {
   return seedById(id) ?? treeById(id);
+}
+
+/** @brief Looks one fertilizer up by id. */
+export function fertilizerById(id: string): FertilizerDefinition | undefined {
+  return FERTILIZERS.find((entry) => entry.id === id);
+}
+
+/** @brief Looks one spray up by id. */
+export function sprayById(id: string): SprayDefinition | undefined {
+  return SPRAYS.find((entry) => entry.id === id);
+}
+
+/** @brief Looks one supply up in either catalog. */
+export function supplyById(id: string): FertilizerDefinition | SprayDefinition | undefined {
+  return fertilizerById(id) ?? sprayById(id);
+}
+
+/** @brief Whether a supply id is a fertilizer. */
+export function isFertilizer(id: string): id is FertilizerId {
+  return fertilizerById(id) !== undefined;
+}
+
+/** @brief Whether a supply id is a spray. */
+export function isSpray(id: string): id is SprayId {
+  return sprayById(id) !== undefined;
 }
 
 /** @brief Looks one effect up by id. */
@@ -635,10 +747,29 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     if (slot === null || tree === undefined) return null;
     return { kind, slot, tree: tree.id };
   }
-  if (kind === "harvest" || kind === "water" || kind === "fertilize" || kind === "uproot") {
+  if (kind === "harvest" || kind === "water" || kind === "uproot") {
     const slot = readSlot(value.slot);
     if (slot === null) return null;
     return { kind, slot, tree: value.tree === true };
+  }
+  if (kind === "fertilize") {
+    const slot = readSlot(value.slot);
+    const supply = typeof value.supply === "string" ? fertilizerById(value.supply) : undefined;
+    if (slot === null || supply === undefined) return null;
+    return { kind, slot, tree: value.tree === true, supply: supply.id };
+  }
+  if (kind === "spray") {
+    const slot = readSlot(value.slot);
+    const supply = typeof value.supply === "string" ? sprayById(value.supply) : undefined;
+    if (slot === null || supply === undefined) return null;
+    return { kind, slot, tree: value.tree === true, supply: supply.id };
+  }
+  if (kind === "buySupply") {
+    const supply = typeof value.supply === "string" ? supplyById(value.supply) : undefined;
+    const qty = value.qty;
+    if (supply === undefined) return null;
+    if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > MAX_BUY_QTY) return null;
+    return { kind, supply: supply.id as SupplyId, qty };
   }
   if (kind === "buySeed") {
     const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
@@ -764,8 +895,13 @@ export function eventAt(now: number): EventDefinition {
 }
 
 /** @brief Growth time for one planting under one event. */
-export function growTimeFor(plant: { readonly growMs: number }, event: EventDefinition): number {
-  return Math.max(5_000, Math.round(plant.growMs / event.growScale));
+export function growTimeFor(
+  plant: { readonly growMs: number },
+  event: EventDefinition,
+  fertilizer: ActiveFertilizer | null = null,
+): number {
+  const multiplier = fertilizer === null ? 1 : (fertilizerById(fertilizer.id)?.growMultiplier ?? 1);
+  return Math.max(5_000, Math.round((plant.growMs / event.growScale) * multiplier));
 }
 
 /**
@@ -773,11 +909,16 @@ export function growTimeFor(plant: { readonly growMs: number }, event: EventDefi
  * @param event Event active at planting.
  * @param rng Deterministic random source.
  */
-export function rollEffect(event: EventDefinition, rng: () => number): EffectId | null {
+export function rollEffect(
+  event: EventDefinition,
+  rng: () => number,
+  bonus: Readonly<Partial<Record<EffectId, number>>> = {},
+): EffectId | null {
   const natural = EFFECTS.filter((effect) => effect.natural);
   const chances = natural.map((effect) => ({
     id: effect.id,
-    chance: (BASE_EFFECT_CHANCES[effect.id] ?? 0) + (event.effectChances[effect.id] ?? 0),
+    chance:
+      (BASE_EFFECT_CHANCES[effect.id] ?? 0) + (event.effectChances[effect.id] ?? 0) + (bonus[effect.id] ?? 0),
   }));
   const total = chances.reduce((sum, entry) => sum + entry.chance, 0);
   if (total <= 0) return null;

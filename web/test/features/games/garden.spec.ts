@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   EPOCH_MS,
   EVENT_WAVE_MS,
+  FERTILIZERS,
   SEEDS,
   TREES,
   seasonAt,
@@ -44,6 +45,8 @@ const RIPE_PLOT: PlotState = {
   watered: true,
   fertilized: true,
   harvests: 0,
+  fertilizer: null,
+  spray: null,
 };
 
 /** A growing tomato on plot 0. */
@@ -56,6 +59,8 @@ const GROWING_PLOT: PlotState = {
   watered: false,
   fertilized: false,
   harvests: 0,
+  fertilizer: null,
+  spray: null,
 };
 
 /** Builds one owner snapshot. */
@@ -70,7 +75,7 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     patches: 1,
     plots: new Array<PlotState | null>(9).fill(null),
     trees: new Array<TreeState | null>(9).fill(null),
-    bag: { seeds: { carrot: 3 }, crops: [] },
+    bag: { seeds: { carrot: 3 }, crops: [], supplies: {} },
     stats: { planted: 0, harvested: 0, earned: 0 },
     rev: 7,
     updatedAt: CLOCK,
@@ -88,7 +93,7 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     patches: 1,
     plots: new Array<PlotState | null>(9).fill(null),
     trees: new Array<TreeState | null>(9).fill(null),
-    bag: { seeds: {}, crops: [] },
+    bag: { seeds: {}, crops: [], supplies: {} },
     stats: { planted: 1, harvested: 0, earned: 0 },
     updatedAt: CLOCK,
     lastSeen: CLOCK - 1_000,
@@ -307,6 +312,29 @@ describe("garden tab", () => {
     expect(planted?.action).toMatchObject({ kind: "plantTree", slot: 0, tree: "apple" });
   });
 
+  it("opens the fertilizer picker and applies an owned supply", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        plots: [GROWING_PLOT, ...new Array<PlotState | null>(8).fill(null)],
+        bag: { seeds: { carrot: 3 }, crops: [], supplies: { compost: 2 } },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="pickFertilize"]')?.click();
+    await settle();
+    const rows = host.querySelectorAll<HTMLButtonElement>(".garden-seeds .garden-row");
+    expect(rows).toHaveLength(FERTILIZERS.length);
+
+    host.querySelector<HTMLButtonElement>('.garden-seeds .garden-row[data-supply="compost"]')?.click();
+    await settle();
+    const applied = api.calls.find((call) => call.action?.kind === "fertilize");
+    expect(applied?.action).toMatchObject({ kind: "fertilize", supply: "compost" });
+  });
+
   it("switches to English labels live", async () => {
     const api = new FakeGardenApi(makeState());
     const { host, game } = await mountGame(api);
@@ -328,7 +356,8 @@ describe("market tab", () => {
 
     host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
     await settle();
-    const rows = host.querySelectorAll<HTMLButtonElement>(".garden-market .garden-row");
+    const shopPanel = host.querySelectorAll<HTMLElement>(".garden-market-panel")[0];
+    const rows = shopPanel?.querySelectorAll<HTMLButtonElement>(".garden-row") ?? [];
     expect(rows).toHaveLength(SEEDS.length);
 
     rows[0]?.click();
