@@ -337,10 +337,9 @@ describe("garden tab", () => {
     host.querySelector<HTMLButtonElement>('[data-act="menuViewSeed"]')?.click();
     await settle();
     const seeds = host.querySelectorAll<HTMLButtonElement>('[data-act="menuSeed"]');
-    const visible = SEEDS.filter(
-      (seed) => seed.rare !== true || SEASON.shop.offers.some((offer) => offer.seed === seed.id),
-    );
-    expect(seeds).toHaveLength(visible.length);
+    // Only seeds already in the bag are offered for planting.
+    expect(seeds).toHaveLength(1);
+    expect(seeds[0]?.dataset.seed).toBe("carrot");
 
     seeds[0]?.click();
     await settle();
@@ -491,6 +490,7 @@ describe("garden tab", () => {
 
     host.querySelector<HTMLButtonElement>('[data-act="pickPlantTool"]')?.click();
     await settle();
+    expect(host.querySelectorAll('[data-act="pickPlantSeed"]')).toHaveLength(1);
     host.querySelector<HTMLButtonElement>('[data-act="pickPlantSeed"][data-seed="carrot"]')?.click();
     await settle();
     expect(host.querySelector(".garden-tool-active")?.textContent).toContain("Cà rốt");

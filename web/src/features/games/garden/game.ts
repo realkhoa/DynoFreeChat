@@ -1381,18 +1381,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function buildSeedPicker(slot: number): HTMLElement {
     const wrap = div("garden-seeds");
     wrap.append(span("garden-hint", t("garden.pickSeed", { slot: plotLabel(slot, "crop").plot })));
-    for (const seed of SEEDS) {
-      const offer = season?.shop.offers.find((entry) => entry.seed === seed.id);
+    const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
+    if (ownedSeeds.length === 0) wrap.append(span("garden-hint", t("garden.noSeedsOwned")));
+    for (const seed of ownedSeeds) {
       const owned = state?.bag.seeds[seed.id] ?? 0;
-      // Event seeds only show when owned or actually in stock.
-      if (seed.rare === true && owned < 1 && offer === undefined) continue;
-      const price = buyPriceOf(seed.id, offer?.price ?? seed.buy);
       const row = document.createElement("button");
       row.type = "button";
       row.className = "garden-row";
       row.dataset.act = "seed";
       row.dataset.seed = seed.id;
-      row.textContent = `${fitText(seedName(seed.id), 9)}${fitText(`${price}c`, 5)}${fitText(`${t("garden.bag")} ${owned}`, 8)}${formatDuration(seed.growMs, "short")}`;
+      row.textContent = `${fitText(seedName(seed.id), 9)}${fitText(`${t("garden.bag")} ${owned}`, 8)}${formatDuration(seed.growMs, "short")}`;
       wrap.append(row);
     }
     return wrap;
@@ -1552,17 +1550,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     if (menuState.view === "seed") {
       rows.append(menuRow(t("garden.menuBack"), "menuBack"));
-      for (const seed of SEEDS) {
-        const offer = season?.shop.offers.find((entry) => entry.seed === seed.id);
+      const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
+      if (ownedSeeds.length === 0)
+        rows.append(menuRow(t("garden.noSeedsOwned"), "menuNoop", { disabled: true }));
+      for (const seed of ownedSeeds) {
         const owned = state?.bag.seeds[seed.id] ?? 0;
-        if (seed.rare === true && owned < 1 && offer === undefined) continue;
-        const price = buyPriceOf(seed.id, offer?.price ?? seed.buy);
         rows.append(
-          menuRow(
-            `${fitText(seedName(seed.id), 9)} ${fitText(`${price}c`, 5)} ${t("garden.bag")} ${owned}`,
-            "menuSeed",
-            { data: { seed: seed.id } },
-          ),
+          menuRow(`${fitText(seedName(seed.id), 9)} ${t("garden.bag")} ${owned}`, "menuSeed", {
+            data: { seed: seed.id },
+          }),
         );
       }
     } else if (menuState.view === "tree") {
