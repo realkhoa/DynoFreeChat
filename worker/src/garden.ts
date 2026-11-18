@@ -83,6 +83,7 @@ type PlotRow = SqlRow<{
   effect: string | null;
   watered: number;
   fertilized: number;
+  harvests: number;
 }>;
 
 type BagRow = SqlRow<{ kind: string; item: string; qty: number }>;
@@ -118,7 +119,8 @@ export class Garden extends DurableObject<Env> {
         ready_at INTEGER NOT NULL,
         effect TEXT,
         watered INTEGER NOT NULL DEFAULT 0,
-        fertilized INTEGER NOT NULL DEFAULT 0
+        fertilized INTEGER NOT NULL DEFAULT 0,
+        harvests INTEGER NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS bag (
         kind TEXT NOT NULL,
@@ -134,6 +136,14 @@ export class Garden extends DurableObject<Env> {
         waters INTEGER NOT NULL DEFAULT 0,
         cheers INTEGER NOT NULL DEFAULT 0
       );
+    `);
+    // Existing gardens predate the reharvest counter: add the column in place,
+    // keeping every plot row and every other column untouched.
+    const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(plots)").toArray();
+    if (!columns.some((column) => column.name === "harvests")) {
+      this.sql.exec("ALTER TABLE plots ADD COLUMN harvests INTEGER NOT NULL DEFAULT 0");
+    }
+    this.sql.exec(`
       CREATE TABLE IF NOT EXISTS help (
         visitor_id TEXT NOT NULL,
         slot INTEGER NOT NULL,
@@ -181,7 +191,9 @@ export class Garden extends DurableObject<Env> {
   private readPlots(patches: number): (PlotState | null)[] {
     const plots = emptyPlots(patches);
     const rows = this.sql
-      .exec<PlotRow>("SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized FROM plots")
+      .exec<PlotRow>(
+        "SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests FROM plots",
+      )
       .toArray();
     for (const row of rows) {
       plots[row.slot] = {
@@ -192,6 +204,7 @@ export class Garden extends DurableObject<Env> {
         effect: row.effect === null ? null : (row.effect as PlotState["effect"]),
         watered: row.watered === 1,
         fertilized: row.fertilized === 1,
+        harvests: row.harvests,
       };
     }
     return plots;
@@ -229,7 +242,7 @@ export class Garden extends DurableObject<Env> {
     for (const plot of plots) {
       if (plot === null) continue;
       this.sql.exec(
-        "INSERT INTO plots (slot, seed, planted_at, ready_at, effect, watered, fertilized) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO plots (slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         plot.slot,
         plot.seed,
         plot.plantedAt,
@@ -237,6 +250,7 @@ export class Garden extends DurableObject<Env> {
         plot.effect,
         plot.watered ? 1 : 0,
         plot.fertilized ? 1 : 0,
+        plot.harvests,
       );
     }
     this.sql.exec("DELETE FROM bag");

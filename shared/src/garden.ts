@@ -84,7 +84,17 @@ export const GARDEN_AUTH_HEADER = "x-dyno-garden";
 export const PLAYER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 /** Seed ids shipped in this build. */
-export type SeedId = "carrot" | "tomato" | "corn" | "pumpkin";
+export type SeedId =
+  | "carrot"
+  | "parsnip"
+  | "cucumber"
+  | "tomato"
+  | "strawberry"
+  | "corn"
+  | "hop"
+  | "cauliflower"
+  | "blueberry"
+  | "pumpkin";
 
 /** Luck effects a crop can carry. */
 export type EffectId = "wet" | "golden" | "frozen";
@@ -102,16 +112,24 @@ export interface SeedDefinition {
   readonly buy: number;
   /** Base exchange price for a plain crop. */
   readonly sell: number;
+  /** Whether the plant stays after a harvest and regrows its fruit. */
+  readonly regrow: boolean;
   /** Glyphs for the four stages: seed, sprout, young, ripe. */
   readonly art: readonly [string, string, string, string];
 }
 
 /** Catalog order is the shop order. */
 export const SEEDS: readonly SeedDefinition[] = [
-  { id: "carrot", growMs: 3 * 60_000, buy: 5, sell: 9, art: [".", "v", "Y", "^"] },
-  { id: "tomato", growMs: 8 * 60_000, buy: 18, sell: 34, art: [".", "v", "Y", "o"] },
-  { id: "corn", growMs: 15 * 60_000, buy: 45, sell: 95, art: [".", "v", "Y", "u"] },
-  { id: "pumpkin", growMs: 30 * 60_000, buy: 120, sell: 280, art: [".", "v", "Y", "@"] },
+  { id: "carrot", growMs: 3 * 60_000, buy: 5, sell: 9, art: [".", "v", "Y", "^"], regrow: false },
+  { id: "parsnip", growMs: 6 * 60_000, buy: 14, sell: 30, art: [".", "v", "Y", "p"], regrow: false },
+  { id: "cucumber", growMs: 10 * 60_000, buy: 30, sell: 40, art: [".", "v", "Y", "c"], regrow: true },
+  { id: "tomato", growMs: 8 * 60_000, buy: 18, sell: 34, art: [".", "v", "Y", "o"], regrow: true },
+  { id: "strawberry", growMs: 12 * 60_000, buy: 60, sell: 90, art: [".", "v", "Y", "s"], regrow: true },
+  { id: "corn", growMs: 15 * 60_000, buy: 45, sell: 95, art: [".", "v", "Y", "u"], regrow: true },
+  { id: "hop", growMs: 18 * 60_000, buy: 100, sell: 140, art: [".", "v", "Y", "h"], regrow: true },
+  { id: "cauliflower", growMs: 20 * 60_000, buy: 90, sell: 220, art: [".", "v", "Y", "f"], regrow: false },
+  { id: "blueberry", growMs: 25 * 60_000, buy: 180, sell: 260, art: [".", "v", "Y", "b"], regrow: true },
+  { id: "pumpkin", growMs: 30 * 60_000, buy: 120, sell: 280, art: [".", "v", "Y", "@"], regrow: true },
 ];
 
 /** One luck effect and how it changes a crop's value. */
@@ -170,6 +188,8 @@ export interface PlotState {
   readonly watered: boolean;
   /** Whether the owner already fertilized this planting. */
   readonly fertilized: boolean;
+  /** Fruits already harvested from this plant; `0` for single-harvest crops. */
+  readonly harvests: number;
 }
 
 /** One stack of harvested crops in the bag. */
@@ -590,7 +610,7 @@ export function seasonAt(now: number): SeasonSnapshot {
   });
 
   const priceRng = createRng(hash32(`garden:price:${restockWave}`));
-  const prices: Record<SeedId, number> = { carrot: 0, tomato: 0, corn: 0, pumpkin: 0 };
+  const prices = {} as Record<SeedId, number>;
   for (const seed of SEEDS) {
     prices[seed.id] = Math.max(1, Math.round(seed.sell * (0.85 + priceRng() * 0.3) * current.sellBonus));
   }

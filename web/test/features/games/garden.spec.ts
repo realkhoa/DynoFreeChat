@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   EPOCH_MS,
   EVENT_WAVE_MS,
+  SEEDS,
   seasonAt,
   type GardenAction,
   type GardenSnapshot,
@@ -40,6 +41,7 @@ const RIPE_PLOT: PlotState = {
   effect: "golden",
   watered: true,
   fertilized: true,
+  harvests: 0,
 };
 
 /** A growing tomato on plot 0. */
@@ -51,6 +53,7 @@ const GROWING_PLOT: PlotState = {
   effect: null,
   watered: false,
   fertilized: false,
+  harvests: 0,
 };
 
 /** Builds one owner snapshot. */
@@ -232,7 +235,7 @@ describe("garden tab", () => {
     cells[1]?.click();
     await settle();
     const seeds = host.querySelectorAll<HTMLButtonElement>(".garden-seeds .garden-row");
-    expect(seeds).toHaveLength(4);
+    expect(seeds).toHaveLength(SEEDS.length);
 
     seeds[0]?.click();
     await settle();
@@ -303,7 +306,7 @@ describe("market tab", () => {
     host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
     await settle();
     const rows = host.querySelectorAll<HTMLButtonElement>(".garden-market .garden-row");
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(SEEDS.length);
 
     rows[0]?.click();
     await settle();

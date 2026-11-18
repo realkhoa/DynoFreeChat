@@ -102,6 +102,40 @@ describe("garden ledger rules", () => {
     expect(harvested.ledger.stats.harvested).toBe(1);
   });
 
+  it("keeps reharvest plants after picking and regrows the fruit", () => {
+    const tomato = makeLedger();
+    tomato.bag.seeds.tomato = 1;
+    const planted = run(tomato, { kind: "plant", slot: 0, seed: "tomato" }, NOW, 0.9);
+    if (!planted.ok) throw new Error("plant failed");
+    const plot = planted.ledger.plots[0];
+    if (plot === null || plot === undefined) throw new Error("plot empty");
+
+    const first = run(planted.ledger, { kind: "harvest", slot: 0 }, plot.readyAt, 0.01);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.ledger.plots[0]).not.toBeNull();
+    expect(first.ledger.plots[0]?.harvests).toBe(1);
+    expect(first.ledger.plots[0]?.readyAt).toBeGreaterThan(plot.readyAt);
+    expect(first.ledger.plots[0]?.effect).toBe("golden");
+    expect(first.ledger.bag.crops).toEqual([{ seed: "tomato", effect: null, qty: 1 }]);
+
+    expect(run(first.ledger, { kind: "harvest", slot: 0 })).toMatchObject({
+      ok: false,
+      code: "NOT_READY",
+    });
+  });
+
+  it("pulls root crops and leaves empty soil", () => {
+    const planted = run(makeLedger(), { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.9);
+    if (!planted.ok) throw new Error("plant failed");
+    const plot = planted.ledger.plots[0];
+    if (plot === null || plot === undefined) throw new Error("plot empty");
+    const harvested = run(planted.ledger, { kind: "harvest", slot: 0 }, plot.readyAt);
+    expect(harvested.ok).toBe(true);
+    if (!harvested.ok) return;
+    expect(harvested.ledger.plots[0]).toBeNull();
+  });
+
   it("waters once: shortens growth and adds the wet effect", () => {
     const tomato = makeLedger();
     tomato.bag.seeds.tomato = 1;

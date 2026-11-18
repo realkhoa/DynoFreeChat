@@ -17,6 +17,7 @@ import {
   gardenCounts,
   nextPatchPrice,
   plotView,
+  seedById,
   type EffectId,
   type GardenAction,
   type GardenSnapshot,
@@ -769,6 +770,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         lines.push("", t("garden.empty"), t("garden.emptyHint"));
       } else {
         const view = plotView(plot, at);
+        const definition = seedById(plot.seed);
+        lines.push(labelValue(t("garden.crop"), t(`seeds.${plot.seed}`)));
         const stages = tList("garden.stageValues");
         const stageIndex = view.ready ? 3 : Math.min(view.stage, 2);
         const stage = stages[stageIndex] ?? "";
@@ -791,6 +794,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
               `${formatNumber(cropSellPrice({ seed: plot.seed, effect: plot.effect, qty: 1 }, season))}c`,
             ),
           );
+        }
+        if (definition?.regrow === true) {
+          lines.push(labelValue(t("garden.kind"), t("garden.reharvest")));
+          if (plot.harvests > 0) lines.push(labelValue(t("garden.harvestedTimes"), String(plot.harvests)));
+        } else {
+          lines.push(labelValue(t("garden.kind"), t("garden.singleHarvest")));
         }
         if (mode === "owner") lines.push("", t("garden.actions"));
       }

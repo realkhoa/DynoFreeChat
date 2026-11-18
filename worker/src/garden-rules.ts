@@ -203,7 +203,7 @@ export function applyGardenAction(
     case "plant":
       return plant(ledger, action.slot, action.seed, now, rng);
     case "harvest":
-      return harvest(ledger, action.slot, now);
+      return harvest(ledger, action.slot, now, rng);
     case "water":
       return water(ledger, action.slot, now);
     case "fertilize":
@@ -249,21 +249,42 @@ function plant(
     effect: rollEffect(event, rng),
     watered: false,
     fertilized: false,
+    harvests: 0,
   };
   next.stats.planted += 1;
   return changed(next, now);
 }
 
-/** @brief Harvests one ripe crop into the bag. */
-function harvest(ledger: GardenLedger, slot: number, now: number): RuleResult {
+/**
+ * @brief Harvests one ripe crop into the bag.
+ * @details Root crops are pulled and leave empty soil; reharvest plants keep
+ * the plant, reset the growth clock and roll a fresh effect for the next fruit.
+ */
+function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => number): RuleResult {
   const plot = ledger.plots[slot] ?? null;
   if (plot === null) return { ok: false, code: "PLOT_EMPTY" };
   if (now < plot.readyAt) return { ok: false, code: "NOT_READY" };
 
   const next = clone(ledger);
-  next.plots[slot] = null;
   addCrop(next.bag.crops, plot.seed, plot.effect, 1);
   next.stats.harvested += 1;
+
+  const seed = seedById(plot.seed);
+  if (seed !== undefined && seed.regrow) {
+    const event = eventAt(now);
+    next.plots[slot] = {
+      slot,
+      seed: plot.seed,
+      plantedAt: now,
+      readyAt: now + growTimeFor(seed, event),
+      effect: rollEffect(event, rng),
+      watered: false,
+      fertilized: false,
+      harvests: plot.harvests + 1,
+    };
+  } else {
+    next.plots[slot] = null;
+  }
   return changed(next, now);
 }
 

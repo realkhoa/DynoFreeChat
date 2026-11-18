@@ -49,7 +49,18 @@ describe("garden catalog", () => {
   it("ships four seeds with unique ids and four art stages each", () => {
     const ids = SEEDS.map((seed) => seed.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toEqual(["carrot", "tomato", "corn", "pumpkin"]);
+    expect(ids).toEqual([
+      "carrot",
+      "parsnip",
+      "cucumber",
+      "tomato",
+      "strawberry",
+      "corn",
+      "hop",
+      "cauliflower",
+      "blueberry",
+      "pumpkin",
+    ]);
     for (const seed of SEEDS) {
       expect(seed.art).toHaveLength(4);
       expect(seed.growMs).toBeGreaterThan(0);
@@ -61,6 +72,16 @@ describe("garden catalog", () => {
     expect(nextPatchPrice(1)).toBe(PATCH_BASE_PRICE);
     expect(nextPatchPrice(2)).toBe(PATCH_BASE_PRICE * PATCH_PRICE_FACTOR);
     expect(nextPatchPrice(3)).toBe(PATCH_BASE_PRICE * PATCH_PRICE_FACTOR ** 2);
+  });
+
+  it("marks reharvest plants apart from root crops", () => {
+    expect(seedById("tomato")?.regrow).toBe(true);
+    expect(seedById("corn")?.regrow).toBe(true);
+    expect(seedById("pumpkin")?.regrow).toBe(true);
+    expect(seedById("cucumber")?.regrow).toBe(true);
+    expect(seedById("carrot")?.regrow).toBe(false);
+    expect(seedById("parsnip")?.regrow).toBe(false);
+    expect(seedById("cauliflower")?.regrow).toBe(false);
   });
 
   it("starts a garden with one 3x3 patch", () => {
@@ -138,6 +159,7 @@ describe("garden growth math", () => {
       effect: null,
       watered: false,
       fertilized: false,
+      harvests: 0,
     };
     expect(plotView(plot, 1_000).stage).toBe(0);
     expect(plotView(plot, 1_000 + seed.growMs * 0.4).stage).toBe(1);
@@ -176,6 +198,7 @@ describe("garden growth math", () => {
       effect: "golden",
       watered: false,
       fertilized: false,
+      harvests: 0,
     };
     plots[1] = {
       slot: 1,
@@ -185,6 +208,7 @@ describe("garden growth math", () => {
       effect: null,
       watered: false,
       fertilized: false,
+      harvests: 0,
     };
     expect(gardenCounts(plots, NOW)).toEqual({ ready: 1, growing: 1, free: 7 });
     expect(cropSellPrice({ seed: "carrot", effect: "golden", qty: 1 }, season)).toBe(

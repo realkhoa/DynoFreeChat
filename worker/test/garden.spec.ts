@@ -16,6 +16,7 @@ import type {
   SeasonSnapshot,
   VisitSnapshot,
 } from "@dyno/shared/garden";
+import { SEEDS } from "@dyno/shared/garden";
 import { derivePatches } from "../src/garden";
 import { BASE, ORIGIN, uniqueIp } from "./helpers";
 
@@ -297,7 +298,7 @@ describe("garden season", () => {
     expect(second.status).toBe(200);
     const a = await body<{ season: SeasonSnapshot; serverNow: number }>(first);
     const b = await body<{ season: SeasonSnapshot; serverNow: number }>(second);
-    expect(a.season.shop.offers).toHaveLength(4);
+    expect(a.season.shop.offers).toHaveLength(SEEDS.length);
     expect(a.season.event.id).toBe(b.season.event.id);
     expect(a.season.event.startedAt).toBe(b.season.event.startedAt);
     expect(b.serverNow).toBeGreaterThanOrEqual(a.serverNow);
