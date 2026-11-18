@@ -465,6 +465,35 @@ describe("garden ledger rules", () => {
     expect(again.ledger.plots[0]?.protectedUntil).toBe(NOW + 24 * 60 * 60_000);
   });
 
+  it("slows growth on poor soil, drains it per harvest and renovates all cells", () => {
+    const ledger = makeLedger();
+    ledger.soil[0] = 50;
+    const poor = run(ledger, { kind: "plant", slot: 0, seed: "carrot" });
+    expect(poor.ok).toBe(true);
+    if (!poor.ok) return;
+    const poorPlot = poor.ledger.plots[0];
+    if (poorPlot === null || poorPlot === undefined) throw new Error("plot missing");
+    const rich = run(ledger, { kind: "plant", slot: 1, seed: "carrot" });
+    if (!rich.ok) return;
+    const richPlot = rich.ledger.plots[1];
+    if (richPlot === null || richPlot === undefined) throw new Error("plot missing");
+    expect(poorPlot.readyAt - NOW).toBeGreaterThan(richPlot.readyAt - NOW);
+
+    const harvested = run(poor.ledger, { kind: "harvest", slot: 0, tree: false }, poorPlot.readyAt);
+    expect(harvested.ok).toBe(true);
+    if (!harvested.ok) return;
+    expect(harvested.ledger.soil[0]).toBe(45);
+
+    const richLedger = makeLedger();
+    richLedger.coins = 1_000;
+    richLedger.soil[0] = 50;
+    const renovated = run(richLedger, { kind: "renovateSoil" });
+    expect(renovated.ok).toBe(true);
+    if (!renovated.ok) return;
+    expect(renovated.ledger.coins).toBe(900);
+    expect(renovated.ledger.soil.every((value) => value === 100)).toBe(true);
+  });
+
   it("buys the next tab at the compounding price", () => {
     const tabCost = nextTabPrice(1);
     const ledger = makeLedger();

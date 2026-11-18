@@ -25,6 +25,8 @@ import {
   createRng,
   cropKey,
   cropSellPrice,
+  soilGrowthFactor,
+  soilRenovateCost,
   effectById,
   eventAt,
   formatGardenAuth,
@@ -264,6 +266,18 @@ describe("rare tools", () => {
     }
     expect(withTool / samples).toBeLessThan(0.25);
     expect(TOOLS[0]?.price).toBe(1_000_000);
+  });
+});
+
+describe("soil fertility", () => {
+  it("slows growth and prices renovation by missing steps", () => {
+    expect(soilGrowthFactor(100)).toBe(1);
+    expect(soilGrowthFactor(50)).toBe(1.5);
+    expect(soilGrowthFactor(0)).toBe(2);
+    expect(soilRenovateCost(100)).toBe(0);
+    expect(soilRenovateCost(95)).toBe(10);
+    expect(soilRenovateCost(50)).toBe(100);
+    expect(soilRenovateCost(0)).toBe(200);
   });
 });
 

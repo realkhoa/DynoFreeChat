@@ -24,6 +24,8 @@ import {
   applyBuyMarket,
   applyMarket,
   seasonAt,
+  SOIL_START,
+  totalCrops,
   type BagState,
   type CropStack,
   type ProductStack,
@@ -402,6 +404,7 @@ export class Garden extends DurableObject<Env> {
       farmSettledAt: raw.farmSettledAt ?? raw.updatedAt ?? 0,
       toolsSettledAt: raw.toolsSettledAt ?? raw.updatedAt ?? 0,
       pestSettledAt: raw.pestSettledAt ?? raw.updatedAt ?? 0,
+      soil: this.readSoil(tabs, raw.soil),
       warehouse: raw.warehouse ?? 0,
       machines: raw.machines ?? {},
       // Saves written before ROI tracking have no spent counter.
@@ -425,6 +428,21 @@ export class Garden extends DurableObject<Env> {
    * @brief Reads the plot rows into a dense vector for the owned patches.
    * @param patches Owned patch count.
    */
+  /** @brief Keeps the soil vector dense and inside `0..100`. */
+  private readSoil(tabs: number, stored: unknown): number[] {
+    const length = totalCrops(tabs);
+    const soil: number[] = new Array<number>(length).fill(SOIL_START);
+    if (Array.isArray(stored)) {
+      for (let index = 0; index < length; index += 1) {
+        const value = stored[index];
+        if (typeof value === "number" && Number.isFinite(value)) {
+          soil[index] = Math.max(0, Math.min(100, Math.floor(value)));
+        }
+      }
+    }
+    return soil;
+  }
+
   private readPlots(tabs: number): (PlotState | null)[] {
     const plots = emptyCrops(tabs);
     const rows = this.sql
@@ -966,6 +984,7 @@ export class Garden extends DurableObject<Env> {
         level: ledger.warehouse,
         machines: { ...ledger.machines },
       },
+      soil: [...ledger.soil],
       stats: { ...ledger.stats },
       updatedAt: ledger.updatedAt,
       lastSeen: ledger.lastSeen,

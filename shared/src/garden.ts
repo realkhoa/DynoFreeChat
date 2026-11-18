@@ -829,6 +829,8 @@ export interface GardenSnapshot {
   readonly farmSettledAt: number;
   /** Warehouse and built machines. */
   readonly warehouse: WarehouseState;
+  /** Fertility percent per crop cell, index = absolute slot. */
+  readonly soil: readonly number[];
   /** Lifetime counters. */
   readonly stats: GardenStats;
   /** Revision bumped on every write; actions echo it to reject stale tabs. */
@@ -863,6 +865,8 @@ export interface VisitSnapshot {
   readonly animals: Readonly<Record<BuildingId, readonly (AnimalState | null)[]>>;
   /** Warehouse and its machines. */
   readonly warehouse: WarehouseState;
+  /** Fertility percent per crop cell. */
+  readonly soil: readonly number[];
   /** Lifetime counters. */
   readonly stats: GardenStats;
   /** Server time of the last write. */
@@ -909,6 +913,28 @@ export interface ShopOffer {
   readonly price: number;
   /** Units available to this player this rotation. */
   readonly stock: number;
+}
+
+/** Soil fertility of a fresh cell, in percent. */
+export const SOIL_START = 100;
+
+/** Fertility lost by one planting cycle, in percent. */
+export const SOIL_STEP = 5;
+
+/** Renovation price for one 5% step of one cell, in coins. */
+export const SOIL_RENOVATE_STEP_COST = 10;
+
+/** @brief Growth time multiplier from soil fertility. */
+export function soilGrowthFactor(fertility: number): number {
+  const clamped = Math.max(0, Math.min(100, fertility));
+  // 100% soil grows at normal speed, 0% takes twice as long.
+  return 2 - clamped / 100;
+}
+
+/** @brief Renovation price to bring one cell back to 100%. */
+export function soilRenovateCost(fertility: number): number {
+  const missing = Math.max(0, Math.min(100, 100 - Math.floor(fertility)));
+  return Math.ceil(missing / SOIL_STEP) * SOIL_RENOVATE_STEP_COST;
 }
 
 /** Sell value multiplier while a plant is infested. */
@@ -1223,6 +1249,7 @@ export type GardenAction =
   | { readonly kind: "sellAllProducts" }
   | { readonly kind: "buyTool"; readonly tool: ToolId; readonly qty: number }
   | { readonly kind: "buildWarehouse" }
+  | { readonly kind: "renovateSoil" }
   | {
       readonly kind: "sellCrop";
       readonly item: ItemId;
@@ -1281,6 +1308,7 @@ export type GardenErrorCode =
   | "MACHINE_MAX"
   | "MACHINE_COOLDOWN"
   | "NO_INPUT"
+  | "NOTHING_TO_RENOVATE"
   | "CANNOT_VISIT_SELF";
 
 /** Successful response to a garden action. */
@@ -1578,6 +1606,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   }
   if (kind === "buyTab") return { kind };
   if (kind === "buildWarehouse") return { kind };
+  if (kind === "renovateSoil") return { kind };
   if (kind === "sprayPestAll") return { kind };
   if (kind === "sprayPest") {
     const isTree = value.tree === true;

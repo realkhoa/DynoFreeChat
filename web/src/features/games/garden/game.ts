@@ -15,6 +15,8 @@ import {
   FRUIT_PATCHES_PER_TAB,
   HARVEST_ALL_COST,
   PEST_SPRAY_COST,
+  SOIL_START,
+  soilRenovateCost,
   WATER_ALL_COST,
   MAX_TABS,
   PLOTS_PER_PATCH,
@@ -1324,6 +1326,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
               : t("garden.pestNone"),
         ),
       );
+      const fertility = state?.soil?.[slot] ?? SOIL_START;
+      lines.push(
+        labelValue(
+          t("garden.soil"),
+          fertility < 50 ? `${fertility}% · ${t("garden.soilLow")}` : `${fertility}%`,
+        ),
+      );
       if (plot.fertilizer !== null) {
         lines.push(
           labelValue(
@@ -1644,6 +1653,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           }),
           "sprayPestAll",
           pestTargets > 0 && coins >= pestTargets * PEST_SPRAY_COST,
+        ),
+      );
+      const soil = state?.soil ?? [];
+      const renovateCost = soil.reduce((sum, fertility) => sum + soilRenovateCost(fertility), 0);
+      bulk.append(
+        actionButton(
+          t("garden.renovate", { cost: renovateCost }),
+          "renovateSoil",
+          renovateCost > 0 && coins >= renovateCost,
         ),
       );
       wrap.append(bulk);
@@ -2469,6 +2487,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         closeMenu();
         return;
       }
+      case "renovateSoil":
+        void runAction({ kind: "renovateSoil" }, t("garden.renovated"));
+        return;
       case "sprayPestAll": {
         if (state === null) return;
         const count =

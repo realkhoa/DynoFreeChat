@@ -19,6 +19,10 @@ import {
   FARM_CYCLE_MS,
   WATER_ALL_COST,
   SELL_TAX_RATE,
+  SOIL_START,
+  SOIL_STEP,
+  soilGrowthFactor,
+  soilRenovateCost,
   PEST_CHANCE_PER_CYCLE,
   PEST_GROWTH_PENALTY,
   PEST_PROTECTION_MS,
@@ -152,6 +156,8 @@ export interface GardenLedger {
   toolsSettledAt: number;
   /** Last pest strike roll. */
   pestSettledAt: number;
+  /** Fertility percent per crop cell. */
+  soil: number[];
   /** Warehouse level: 0 not built. */
   warehouse: number;
   /** Built machines. */
@@ -221,6 +227,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     farmSettledAt: input.now,
     toolsSettledAt: input.now,
     pestSettledAt: input.now,
+    soil: new Array<number>(totalCrops(STARTING_TABS)).fill(SOIL_START),
     warehouse: 0,
     machines: {},
     rev: 1,
@@ -279,6 +286,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
       barn: ledger.animals.barn.map((animal) => (animal === null ? null : { ...animal })),
     },
     farmSettledAt: ledger.farmSettledAt,
+    soil: [...ledger.soil],
     warehouse: {
       level: ledger.warehouse,
       machines: Object.fromEntries(
@@ -359,6 +367,8 @@ export function applyGardenAction(
       return sprayPest(ledger, action.slot, action.tree, now);
     case "sprayPestAll":
       return sprayPestAll(ledger, now);
+    case "renovateSoil":
+      return renovateSoil(ledger, now);
     case "buildMachine":
       return buildMachine(ledger, action.machine, now);
     case "upgradeMachine":
@@ -403,7 +413,8 @@ function plant(
     slot,
     seed: seed.id,
     plantedAt: now,
-    readyAt: now + growTimeForEvents(seed, events),
+    readyAt:
+      now + Math.round(growTimeForEvents(seed, events) * soilGrowthFactor(ledger.soil[slot] ?? SOIL_START)),
     effects: rollEffectsFor(events, rng),
     pest: false,
     protectedUntil: 0,
@@ -466,6 +477,9 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
   const next = clone(ledger);
   addCrop(next.bag.crops, plot.seed, resolvedCropEffects(plot, now), 1, plot.pest);
   next.stats.harvested += 1;
+  // One planting cycle always costs some fertility, even for reharvest plants.
+  const fertility = Math.max(0, (next.soil[slot] ?? SOIL_START) - SOIL_STEP);
+  next.soil[slot] = fertility;
 
   const seed = seedById(plot.seed);
   if (seed !== undefined && seed.regrow) {
@@ -475,7 +489,8 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
       slot,
       seed: plot.seed,
       plantedAt: now,
-      readyAt: now + growTimeForEvents(seed, events, plot.fertilizer),
+      readyAt:
+        now + Math.round(growTimeForEvents(seed, events, plot.fertilizer) * soilGrowthFactor(fertility)),
       effects: rollEffectsFor(events, rng, sprayBonus),
       pest: false,
       protectedUntil: plot.protectedUntil,
@@ -1136,6 +1151,20 @@ export function settlePest(ledger: GardenLedger, now: number): GardenLedger {
   return next;
 }
 
+/** @brief Restores every crop cell to full fertility in one go. */
+function renovateSoil(ledger: GardenLedger, now: number): RuleResult {
+  let cost = 0;
+  for (const fertility of ledger.soil) cost += soilRenovateCost(fertility);
+  if (cost <= 0) return { ok: false, code: "NOTHING_TO_RENOVATE" };
+  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= cost;
+  next.stats.spent += cost;
+  next.soil = next.soil.map(() => SOIL_START);
+  return changed(next, now);
+}
+
 /** @brief Builds the warehouse once. */
 function buildWarehouse(ledger: GardenLedger, now: number): RuleResult {
   if (ledger.warehouse > 0) return { ok: false, code: "BAD_REQUEST" };
@@ -1235,7 +1264,10 @@ function buyTab(ledger: GardenLedger, now: number): RuleResult {
   next.stats.spent += cost;
   next.tabs += 1;
   next.unlockedPatches.push(1);
-  for (let index = 0; index < CROPS_PER_TAB; index += 1) next.plots.push(null);
+  for (let index = 0; index < CROPS_PER_TAB; index += 1) {
+    next.plots.push(null);
+    next.soil.push(SOIL_START);
+  }
   for (let index = 0; index < TREES_PER_TAB; index += 1) next.trees.push(null);
   return changed(next, now);
 }
@@ -1361,6 +1393,7 @@ function clone(ledger: GardenLedger): GardenLedger {
       barn: ledger.animals.barn.map((animal) => (animal === null ? null : { ...animal })),
     },
     farmSettledAt: ledger.farmSettledAt,
+    soil: [...ledger.soil],
     warehouse: ledger.warehouse,
     machines: Object.fromEntries(
       Object.entries(ledger.machines).map(([id, machine]) => [

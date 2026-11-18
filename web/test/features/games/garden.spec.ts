@@ -105,6 +105,7 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     animals: { coop: [], barn: [] },
     farmSettledAt: CLOCK,
     warehouse: { level: 0, machines: {} },
+    soil: new Array<number>(CROPS_PER_TAB).fill(100),
     rev: 7,
     updatedAt: CLOCK,
     ...overrides,
@@ -127,6 +128,7 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     buildings: { coop: 0, barn: 0 },
     animals: { coop: [], barn: [] },
     warehouse: { level: 0, machines: {} },
+    soil: new Array<number>(CROPS_PER_TAB).fill(100),
     updatedAt: CLOCK,
     lastSeen: CLOCK - 1_000,
     online: true,
@@ -430,6 +432,20 @@ describe("garden tab", () => {
     host.querySelector<HTMLButtonElement>('[data-act="sprayPestAll"]')?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "sprayPestAll")).toBe(true);
+  });
+
+  it("shows soil fertility and renovates the whole field", async () => {
+    const soil = new Array<number>(CROPS_PER_TAB).fill(100);
+    soil[0] = 50;
+    const api = new FakeGardenApi(makeState({ coins: 1_000, soil }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const renovate = host.querySelector<HTMLButtonElement>('[data-act="renovateSoil"]');
+    expect(renovate?.textContent).toContain("100c");
+    renovate?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "renovateSoil")).toBe(true);
   });
 
   it("offers bulk water and harvest with per-plant prices", async () => {
