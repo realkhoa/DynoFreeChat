@@ -96,6 +96,27 @@ describe("global market", () => {
   });
 });
 
+describe("bots", () => {
+  it("creates ten bot gardens and keeps them out of the human leaderboard", async () => {
+    const tick = await SELF.fetch(`${BASE}/api/garden/bots/tick`, { method: "POST" });
+    expect(tick.status).toBe(200);
+    const body = (await tick.json()) as { bots: number };
+    expect(body.bots).toBe(10);
+
+    const list = await SELF.fetch(`${BASE}/api/garden/bots`);
+    const listed = (await list.json()) as { bots: Array<{ code: string; nick: string }> };
+    expect(listed.bots).toHaveLength(10);
+    for (const bot of listed.bots) expect(bot.nick).toMatch(/^Bot \d\d$/);
+
+    const board = await SELF.fetch(`${BASE}/api/garden/leaderboard`);
+    const ranked = (await board.json()) as { entries: Array<{ nick: string }> };
+    expect(ranked.entries.some((entry) => entry.nick.startsWith("Bot "))).toBe(false);
+
+    const visit = await SELF.fetch(`${BASE}/api/garden/visit/${listed.bots[0]?.code ?? ""}`);
+    expect(visit.status).toBe(200);
+  });
+});
+
 describe("legacy saves", () => {
   it("keeps old patch data as usable tabs", () => {
     expect(deriveTabs({ unlocked: 4 })).toBe(1);

@@ -3,6 +3,8 @@ import { LOCK_HEADER, lockSecrets, stateResponse, verifyResponse, verifySession 
 import type { Env } from "./env";
 import { handleGardenRoute } from "./garden-api";
 import { Garden, GardenHub } from "./garden";
+import { BotManager, BOT_MANAGER_NAME } from "./bot-manager";
+import { BOT_HEADER } from "./garden";
 import { MarketBoard } from "./market-board";
 import { json } from "./http";
 import {
@@ -17,7 +19,7 @@ import {
 import { Registry } from "./registry";
 import { ChatRoom } from "./room";
 
-export { ChatRoom, Garden, GardenHub, MarketBoard, Registry };
+export { BotManager, ChatRoom, Garden, GardenHub, MarketBoard, Registry };
 
 /**
  * Exact-match origin allowlist. A missing Origin (CLI, curl, miniflare) is
@@ -56,7 +58,20 @@ function withCors(response: Response, origin: string | null): Response {
   });
 }
 
+/** Runs one bot tick from the cron trigger. */
+async function runBots(env: Env): Promise<void> {
+  const stub = env.BOT_MANAGER.get(env.BOT_MANAGER.idFromName(BOT_MANAGER_NAME));
+  await stub.fetch("https://bots/tick", {
+    method: "POST",
+    headers: { [BOT_HEADER]: env.BOT_SECRET ?? "" },
+  });
+}
+
 export default {
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runBots(env));
+  },
+
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 

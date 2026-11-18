@@ -163,6 +163,22 @@ class FakeGardenApi {
     return { market: MARKET, serverNow: CLOCK };
   }
 
+  async bots() {
+    return {
+      bots: [
+        {
+          code: "BOT123",
+          nick: "Bot 01",
+          color: "#4ec9b0",
+          coins: 500,
+          earned: 500,
+          harvested: 3,
+          online: true,
+        },
+      ],
+    };
+  }
+
   async act(rev: number, action: GardenAction) {
     this.calls.push({ method: "act", action });
     this.stateValue = { ...this.stateValue, rev: rev + 1 };
@@ -264,7 +280,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    expect(host.querySelectorAll(".garden-tab")).toHaveLength(4);
+    expect(host.querySelectorAll(".garden-tab")).toHaveLength(5);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
@@ -545,6 +561,22 @@ describe("garden tab", () => {
     await settle();
     expect(host.querySelector(".garden-balance")?.textContent).toContain("$");
     expect(host.querySelector(".stage-status")?.textContent).toContain("Click");
+  });
+});
+
+describe("bots tab", () => {
+  it("lists bot gardens separately and visits one", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:bots"]')?.click();
+    await settle();
+    const row = host.querySelector<HTMLButtonElement>('[data-act="visitBot"]');
+    expect(row?.textContent).toContain("Bot 01");
+    row?.click();
+    await settle();
+    expect(host.querySelector(".stage-status")?.textContent).toContain("Chế độ xem");
   });
 });
 

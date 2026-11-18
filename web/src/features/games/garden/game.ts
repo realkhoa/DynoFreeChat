@@ -51,6 +51,7 @@ import {
 } from "@dyno/shared/garden";
 import { formatDuration, formatNumber, onLocaleChange, t, tList, translateError } from "@/shared/i18n";
 import { loadIdentity, type Identity } from "@/shared/lib/identity";
+import type { GardenBot } from "@/features/games/garden/api";
 import { readParam, writeParams } from "@/shared/lib/urlstate";
 import type { GameContext, GameMount } from "../mount";
 import { cellRender, fitText, growthColor, labelValue, treeCellRender } from "./ascii";
@@ -66,7 +67,7 @@ const POLL_MS = 60_000;
 const UPROOT_ARM_MS = 4_000;
 
 /** One active tab inside the document. */
-type Tab = "garden" | "market" | "event" | "chart";
+type Tab = "garden" | "market" | "event" | "chart" | "bots";
 
 /** Whether the document is showing the owner's garden or a friend's. */
 type Mode = "owner" | "visit";
@@ -133,6 +134,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let page = 0;
   let menu: MenuState | null = null;
   let chartMarket: MarketSnapshot | null = null;
+  let botGardens: GardenBot[] = [];
   let buyQty = 1;
   let tool: { kind: "fertilize" | "spray"; supply: SupplyId } | null = null;
   let toolPicker: "fertilize" | "spray" | null = null;
@@ -841,6 +843,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     uprootArmed = false;
     if (next === "event") void loadLeaderboard();
     if (next === "chart") void loadChart();
+    if (next === "bots") void loadBots();
     syncGardenQuery();
     render();
   }
@@ -858,7 +861,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Restores tab, page and selection saved in the URL. */
   function readGardenQuery(): void {
     const savedTab = readParam("gtab");
-    if (savedTab === "garden" || savedTab === "market" || savedTab === "event" || savedTab === "chart") {
+    if (
+      savedTab === "garden" ||
+      savedTab === "market" ||
+      savedTab === "event" ||
+      savedTab === "chart" ||
+      savedTab === "bots"
+    ) {
       tab = savedTab;
     }
     const rawPage = readParam("gpage");
@@ -1002,7 +1011,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Builds the tab strip with the garden code and share action. */
   function buildTabs(): HTMLElement {
     const bar = div("garden-tabs");
-    for (const id of ["garden", "market", "event", "chart"] as const) {
+    for (const id of ["garden", "market", "event", "chart", "bots"] as const) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "garden-tab";
@@ -1712,6 +1721,43 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Loads the bot garden list for the bots tab. */
+  async function loadBots(): Promise<void> {
+    if (disposed) return;
+    try {
+      const result = await api.bots();
+      if (disposed) return;
+      botGardens = result.bots;
+      offline = false;
+      render();
+    } catch {
+      if (disposed) return;
+      offline = true;
+      render();
+    }
+  }
+
+  /** @brief Builds the bots tab: the ten market-maker gardens. */
+  function buildBots(): HTMLElement {
+    const wrap = div("garden-bots");
+    wrap.append(lineBlock(`// ${t("bots.title")}`));
+    if (botGardens.length === 0) {
+      wrap.append(lineBlock(t("bots.empty")));
+      return wrap;
+    }
+    for (const bot of botGardens) {
+      const row = rowButton(
+        "garden-bot-row",
+        `${fitText(bot.nick, 12)}${fitText(`#${bot.code}`, 10)}${fitText(`${formatNumber(bot.coins)}c`, 10)}${bot.online ? t("common.online") : t("common.offlineUser")}`,
+        "visitBot",
+      );
+      row.dataset.code = bot.code;
+      wrap.append(row);
+    }
+    wrap.append(lineBlock(t("bots.hint")));
+    return wrap;
+  }
+
   /** @brief Loads the global market board for the chart tab. */
   async function loadChart(): Promise<void> {
     if (mode !== "owner" || disposed) return;
@@ -1886,6 +1932,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (tab === "garden") return buildGarden();
     if (tab === "market") return buildMarket();
     if (tab === "chart") return buildChart();
+    if (tab === "bots") return buildBots();
     return buildEvent();
   }
 
@@ -2135,6 +2182,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (supply !== undefined) applySupply(kind, supply);
         return;
       }
+      case "visitBot": {
+        const code = target.dataset.code;
+        if (code !== undefined) openVisit(code);
+        return;
+      }
       case "setBuyQty": {
         const qty = Number(target.dataset.qty);
         if (Number.isInteger(qty) && qty >= 1 && qty <= 99) buyQty = qty;
@@ -2352,6 +2404,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (typeof document === "undefined" || !document.hidden) {
         void refresh();
         if (tab === "chart") void loadChart();
+        if (tab === "bots") void loadBots();
       }
     }, POLL_MS);
 

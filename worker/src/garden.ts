@@ -45,6 +45,7 @@ import {
 import { DEFAULT_COLOR, sanitizeColor, sanitizeNick } from "@dyno/shared/protocol";
 import type { Env } from "./env";
 import { json, readJson } from "./http";
+import { BOT_ACTION_LIMIT, planBotActions } from "./bot-brain";
 import {
   applyGardenAction,
   createLedger,
@@ -55,6 +56,7 @@ import {
 } from "./garden-rules";
 import { timingSafeEqualHex } from "./pass";
 import { randomRecoveryKey, randomToken, sha256Hex } from "./secrets";
+import { createRng, hash32 } from "@dyno/shared/garden";
 import type { SqlRow } from "./sql";
 
 /** Name of the singleton Hub object. */
@@ -65,6 +67,9 @@ export const GARDEN_TOKEN_HEADER = "x-dyno-garden-token";
 
 /** Header carrying market multipliers from the Worker to a garden object. */
 export const MARKET_HEADER = "x-dyno-market";
+
+/** Internal header that authorises a bot automation tick. */
+export const BOT_HEADER = "x-dyno-bot-tick";
 
 /** Owners seen less than this long ago count as online visitors see it. */
 export const ONLINE_WINDOW_MS = 30_000;
@@ -342,6 +347,7 @@ export class Garden extends DurableObject<Env> {
     const url = new URL(request.url);
 
     if (request.method === "POST" && url.pathname === "/register") return this.register(request);
+    if (request.method === "POST" && url.pathname === "/bot-tick") return this.botTick(request);
     if (request.method === "GET" && url.pathname === "/state") return this.state(request);
     if (request.method === "POST" && url.pathname === "/act") return this.act(request);
     if (request.method === "GET" && url.pathname === "/snapshot") return this.snapshot();
@@ -646,6 +652,60 @@ export class Garden extends DurableObject<Env> {
       state: ledgerSnapshot(ledger),
       season: seasonAt(now),
       serverNow: now,
+    });
+  }
+
+  /**
+   * @brief Runs one bounded automation step for a bot garden.
+   * @details Called by the BotManager cron with the market header attached.
+   * The plan is capped by the brain, every action still goes through the normal
+   * rules (coins, stock, patch locks), and the whole tick writes once.
+   */
+  private async botTick(request: Request): Promise<Response> {
+    const secret = this.env.BOT_SECRET;
+    if (secret !== undefined && request.headers.get(BOT_HEADER) !== secret) {
+      return json({ code: "UNAUTHORIZED" }, 401);
+    }
+    const ledger = this.read();
+    if (ledger === null) return json({ code: "NOT_REGISTERED" }, 404);
+
+    const now = Date.now();
+    const season = this.seasonFor(request, now);
+    const rng = createRng(hash32(`bot:${ledger.playerId}:${Math.floor(now / 60_000)}`));
+    const actions = planBotActions(ledger, season, now, rng);
+    if (actions.length === 0) return json({ ok: true, actions: 0, coins: ledger.coins });
+
+    let current = ledger;
+    const sold: Record<string, number> = {};
+    const bought: Record<string, number> = {};
+    for (const action of actions) {
+      const result = applyGardenAction(current, action, season, now);
+      if (!result.ok) continue;
+      const diffSold = soldDiff(current.bag.crops, result.ledger.bag.crops);
+      for (const [item, qty] of Object.entries(diffSold)) sold[item] = (sold[item] ?? 0) + qty;
+      const diffBought = boughtDiff(action);
+      for (const [item, qty] of Object.entries(diffBought)) bought[item] = (bought[item] ?? 0) + qty;
+      current = result.ledger;
+    }
+
+    if (current.rev !== ledger.rev || current.coins !== ledger.coins) {
+      this.write(current);
+      if (
+        current.coins !== ledger.coins ||
+        current.stats.earned !== ledger.stats.earned ||
+        current.stats.harvested !== ledger.stats.harvested
+      ) {
+        await this.publish(current);
+      }
+    }
+    return json({
+      ok: true,
+      actions: actions.length,
+      coins: current.coins,
+      earned: current.stats.earned,
+      harvested: current.stats.harvested,
+      sold,
+      bought,
     });
   }
 
@@ -1053,6 +1113,11 @@ export class GardenHub extends DurableObject<Env> {
         count INTEGER NOT NULL
       );
     `);
+    // Bots live in the same table but never reach the human leaderboard.
+    const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(gardens)").toArray();
+    if (!columns.some((column) => column.name === "bot")) {
+      this.sql.exec("ALTER TABLE gardens ADD COLUMN bot INTEGER NOT NULL DEFAULT 0");
+    }
   }
 
   override async fetch(request: Request): Promise<Response> {
@@ -1064,6 +1129,7 @@ export class GardenHub extends DurableObject<Env> {
     if (request.method === "GET" && url.pathname === "/by-code") return this.byCode(url);
     if (request.method === "GET" && url.pathname === "/by-recovery") return this.byRecovery(url);
     if (request.method === "GET" && url.pathname === "/leaderboard") return this.leaderboard(url);
+    if (request.method === "GET" && url.pathname === "/bots") return this.botList();
     if (request.method === "POST" && url.pathname === "/remove") return this.remove(request);
     if (request.method === "GET" && url.pathname === "/info") return this.info();
 
@@ -1087,7 +1153,7 @@ export class GardenHub extends DurableObject<Env> {
     if (this.codeTaken(code)) return json({ code: "CODE_EXISTS" }, 409);
 
     this.sql.exec(
-      "INSERT INTO gardens (player_id, code, nick, color, earned, harvested, recovery_hash, created_at, updated_at) VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?)",
+      "INSERT INTO gardens (player_id, code, nick, color, earned, harvested, recovery_hash, created_at, updated_at, bot) VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?)",
       playerId,
       code,
       nick.nick,
@@ -1095,6 +1161,7 @@ export class GardenHub extends DurableObject<Env> {
       recoveryHash,
       now,
       now,
+      body.bot === true ? 1 : 0,
     );
     return json({ ok: true }, 201);
   }
@@ -1138,13 +1205,32 @@ export class GardenHub extends DurableObject<Env> {
     return json({ playerId: row.player_id });
   }
 
+  /** @brief Every bot garden, for the separate bots tab. */
+  private botList(): Response {
+    const rows = this.sql
+      .exec<GardenRow>(
+        "SELECT code, nick, color, earned, harvested, updated_at FROM gardens WHERE bot = 1 ORDER BY code ASC",
+      )
+      .toArray();
+    return json({
+      bots: rows.map((row) => ({
+        code: row.code,
+        nick: row.nick,
+        color: row.color,
+        earned: row.earned,
+        harvested: row.harvested,
+        updatedAt: row.updated_at,
+      })),
+    });
+  }
+
   /** @brief Top gardens by earned coins. */
   private leaderboard(url: URL): Response {
     const raw = Number(url.searchParams.get("limit") ?? "20");
     const limit = Number.isInteger(raw) ? Math.min(50, Math.max(1, raw)) : 20;
     const rows = this.sql
       .exec<GardenRow>(
-        "SELECT code, nick, color, earned, harvested, updated_at FROM gardens ORDER BY earned DESC, harvested DESC, updated_at ASC LIMIT ?",
+        "SELECT code, nick, color, earned, harvested, updated_at FROM gardens WHERE bot = 0 ORDER BY earned DESC, harvested DESC, updated_at ASC LIMIT ?",
         limit,
       )
       .toArray();

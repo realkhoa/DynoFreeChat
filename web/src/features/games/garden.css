@@ -663,3 +663,30 @@
   font: 10px/16px var(--font-mono);
   white-space: nowrap;
 }
+
+/* Bot tab: separate from the human leaderboard. */
+.garden-bots {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 2px;
+}
+
+.garden-bot-row {
+  display: block;
+  width: max-content;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: #d4d4d4;
+  font: 10px/16px var(--font-mono);
+  text-align: left;
+  white-space: pre;
+  cursor: pointer;
+}
+
+.garden-bot-row:hover {
+  background: var(--hover-row);
+  color: #ffffff;
+}

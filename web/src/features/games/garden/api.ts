@@ -24,6 +24,17 @@ import { loadIdentity, type Identity } from "@/shared/lib/identity";
 /** Storage key for the player credentials. */
 export const GARDEN_CREDENTIALS_KEY = "dyno.garden.credentials";
 
+/** One bot garden row for the bots tab. */
+export interface GardenBot {
+  readonly code: string;
+  readonly nick: string;
+  readonly color: string;
+  readonly coins: number;
+  readonly earned: number;
+  readonly harvested: number;
+  readonly online: boolean;
+}
+
 /** Credentials the browser keeps for this player. */
 export interface StoredGardenCredentials {
   /** Stable player id. */
@@ -165,6 +176,11 @@ export class GardenApi {
   /** @brief Reads the owner snapshot. */
   async state(): Promise<GardenStateResponse> {
     return this.request<GardenStateResponse>("/api/garden/state", { method: "GET" });
+  }
+
+  /** @brief Lists the server-side bot gardens. */
+  async bots(): Promise<{ bots: GardenBot[] }> {
+    return this.request<{ bots: GardenBot[] }>("/api/garden/bots", { method: "GET" });
   }
 
   /** @brief Reads the global market board for the chart tab. */

@@ -27,6 +27,10 @@
         "name": "MARKET",
         "class_name": "MarketBoard",
       },
+      {
+        "name": "BOT_MANAGER",
+        "class_name": "BotManager",
+      },
     ],
   },
   "migrations": [
@@ -42,7 +46,14 @@
       "tag": "v3",
       "new_sqlite_classes": ["MarketBoard"],
     },
+    {
+      "tag": "v4",
+      "new_sqlite_classes": ["BotManager"],
+    },
   ],
+  "triggers": {
+    "crons": ["*/5 * * * *"],
+  },
   "vars": {
     "ALLOWED_ORIGINS": "localhost,https://realkhoa.github.io",
   },

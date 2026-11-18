@@ -24,7 +24,8 @@ import { LOCK_HEADER } from "@dyno/shared/market";
 import { sanitizeColor, sanitizeNick } from "@dyno/shared/protocol";
 import { lockSecrets, verifySession } from "./auth";
 import type { Env } from "./env";
-import { GARDEN_TOKEN_HEADER, HUB_NAME, MARKET_HEADER } from "./garden";
+import { BOT_HEADER, GARDEN_TOKEN_HEADER, HUB_NAME, MARKET_HEADER } from "./garden";
+import { BOT_MANAGER_NAME } from "./bot-manager";
 import { MARKET_BOARD_NAME } from "./market-board";
 import { json, readJson } from "./http";
 import { randomCode, randomRecoveryKey, sha256Hex } from "./secrets";
@@ -54,6 +55,12 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   if (name === "season" && request.method === "GET") return seasonRoute(env, now);
   if (name === "market" && request.method === "GET") return marketRoute(env);
   if (name === "leaderboard" && request.method === "GET") return leaderboard(env, url);
+  if (name === "bots") {
+    const action = parts[3];
+    if (request.method === "GET" && action === undefined) return botsList(env);
+    if (request.method === "POST" && action === "tick") return botsTick(env, request);
+    return json({ code: "NOT_FOUND" }, 404);
+  }
   if (name === "visit") {
     const code = parts[3];
     const action = parts[4];
@@ -76,6 +83,26 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
     return forwardOwner(env, auth, "/recovery", "POST", request);
 
   return json({ code: "NOT_FOUND" }, 404);
+}
+
+/** @brief Durable Object stub for the bot manager. */
+function botManagerStub(env: Env): DurableObjectStub {
+  return env.BOT_MANAGER.get(env.BOT_MANAGER.idFromName(BOT_MANAGER_NAME));
+}
+
+/** @brief Bot summaries for the separate bots tab. */
+async function botsList(env: Env): Promise<Response> {
+  const response = await botManagerStub(env).fetch("https://bots/list");
+  return json(await response.json(), response.status);
+}
+
+/** @brief Manual bot tick, used by the cron and for maintenance. */
+async function botsTick(env: Env, request: Request): Promise<Response> {
+  const response = await botManagerStub(env).fetch("https://bots/tick", {
+    method: "POST",
+    headers: { [BOT_HEADER]: request.headers.get(BOT_HEADER) ?? "" },
+  });
+  return json(await response.json(), response.status);
 }
 
 /** @brief Durable Object stub for one player's garden. */
