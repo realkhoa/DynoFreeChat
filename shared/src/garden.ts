@@ -705,6 +705,10 @@ export interface PlotState {
   readonly readyAt: number;
   /** Mutations carried by the current fruit; may hold several at once. */
   readonly effects: readonly EffectId[];
+  /** Whether pests are damaging this crop right now. */
+  readonly pest: boolean;
+  /** Pesticide protection expiry; pests cannot strike before it. */
+  readonly protectedUntil: number;
   /** Whether the owner already watered this planting. */
   readonly watered: boolean;
   /** Whether the owner already fertilized this planting. */
@@ -729,6 +733,10 @@ export interface TreeState {
   readonly readyAt: number;
   /** Mutations carried by the current fruit; may hold several at once. */
   readonly effects: readonly EffectId[];
+  /** Whether pests are damaging this tree right now. */
+  readonly pest: boolean;
+  /** Pesticide protection expiry; pests cannot strike before it. */
+  readonly protectedUntil: number;
   /** Whether the owner already watered this cycle. */
   readonly watered: boolean;
   /** Whether the owner already fertilized this cycle. */
@@ -747,6 +755,8 @@ export interface CropStack {
   readonly item: ItemId;
   /** Mutations the stack carried when harvested. */
   readonly effects: readonly EffectId[];
+  /** Harvested from a pest-damaged plant; sells for half. */
+  readonly pest?: boolean;
   /** Units in the stack. */
   readonly qty: number;
 }
@@ -900,6 +910,21 @@ export interface ShopOffer {
   /** Units available to this player this rotation. */
   readonly stock: number;
 }
+
+/** Sell value multiplier while a plant is infested. */
+export const PEST_VALUE_MULTIPLIER = 0.5;
+
+/** Coins charged to spray one plant with pesticide. */
+export const PEST_SPRAY_COST = 100;
+
+/** Protection after one pesticide spray: one day. */
+export const PEST_PROTECTION_MS = 24 * 60 * 60_000;
+
+/** Growth slowdown applied when pests strike (remaining time x this). */
+export const PEST_GROWTH_PENALTY = 1.5;
+
+/** Chance per cycle that an unprotected plant catches pests. */
+export const PEST_CHANCE_PER_CYCLE = 0.04;
 
 /** Flat tax rate on every sale income. */
 export const SELL_TAX_RATE = 0.1;
@@ -1198,6 +1223,15 @@ export type GardenAction =
   | { readonly kind: "sellAllProducts" }
   | { readonly kind: "buyTool"; readonly tool: ToolId; readonly qty: number }
   | { readonly kind: "buildWarehouse" }
+  | {
+      readonly kind: "sellCrop";
+      readonly item: ItemId;
+      readonly effects: readonly EffectId[];
+      readonly pest?: boolean;
+      readonly qty: number;
+    }
+  | { readonly kind: "sprayPest"; readonly slot: number; readonly tree: boolean }
+  | { readonly kind: "sprayPestAll" }
   | { readonly kind: "buildMachine"; readonly machine: MachineId }
   | { readonly kind: "upgradeMachine"; readonly machine: MachineId }
   | {
@@ -1207,12 +1241,6 @@ export type GardenAction =
     }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
-  | {
-      readonly kind: "sellCrop";
-      readonly item: ItemId;
-      readonly effects: readonly EffectId[];
-      readonly qty: number;
-    }
   | { readonly kind: "sellAll" };
 
 /** Error codes; the client localizes them, the server never sends prose. */
@@ -1540,10 +1568,22 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
       if (effect === undefined) return null;
       effects.push(effect.id);
     }
-    return { kind, item: item.id as ItemId, effects: canonicalEffects(effects), qty };
+    return {
+      kind,
+      item: item.id as ItemId,
+      effects: canonicalEffects(effects),
+      pest: value.pest === true,
+      qty,
+    };
   }
   if (kind === "buyTab") return { kind };
   if (kind === "buildWarehouse") return { kind };
+  if (kind === "sprayPestAll") return { kind };
+  if (kind === "sprayPest") {
+    const isTree = value.tree === true;
+    const slot = readSlot(value.slot, isTree ? MAX_TREES : MAX_CROPS);
+    return slot === null ? null : { kind, slot, tree: isTree };
+  }
   if (kind === "buildMachine" || kind === "upgradeMachine") {
     const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
     return machine === undefined ? null : { kind, machine: machine.id };
@@ -1961,7 +2001,8 @@ export function cropSellPrice(stack: CropStack, season: SeasonSnapshot): number 
     seed?.eventBonus !== undefined && seed.eventBonus.events.some((id) => active.has(id))
       ? seed.eventBonus.multiplier
       : 1;
-  return Math.round(base * multiplier * bonus);
+  const pest = stack.pest === true ? PEST_VALUE_MULTIPLIER : 1;
+  return Math.round(base * multiplier * bonus * pest);
 }
 
 /** @brief Total value of every crop in a bag. */

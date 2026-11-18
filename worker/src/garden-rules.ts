@@ -19,6 +19,10 @@ import {
   FARM_CYCLE_MS,
   WATER_ALL_COST,
   SELL_TAX_RATE,
+  PEST_CHANCE_PER_CYCLE,
+  PEST_GROWTH_PENALTY,
+  PEST_PROTECTION_MS,
+  PEST_SPRAY_COST,
   ANIMALS,
   animalById,
   animalIntervalMs,
@@ -146,6 +150,8 @@ export interface GardenLedger {
   farmSettledAt: number;
   /** Last automatic-tool settlement. */
   toolsSettledAt: number;
+  /** Last pest strike roll. */
+  pestSettledAt: number;
   /** Warehouse level: 0 not built. */
   warehouse: number;
   /** Built machines. */
@@ -214,6 +220,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     animals: { coop: [], barn: [] },
     farmSettledAt: input.now,
     toolsSettledAt: input.now,
+    pestSettledAt: input.now,
     warehouse: 0,
     machines: {},
     rev: 1,
@@ -348,6 +355,10 @@ export function applyGardenAction(
       return buyTool(ledger, action.tool, action.qty, season, now);
     case "buildWarehouse":
       return buildWarehouse(ledger, now);
+    case "sprayPest":
+      return sprayPest(ledger, action.slot, action.tree, now);
+    case "sprayPestAll":
+      return sprayPestAll(ledger, now);
     case "buildMachine":
       return buildMachine(ledger, action.machine, now);
     case "upgradeMachine":
@@ -361,7 +372,7 @@ export function applyGardenAction(
     case "buySupply":
       return buySupply(ledger, action.supply, action.qty, season, now);
     case "sellCrop":
-      return sellCrop(ledger, action.item, action.effects, action.qty, season, now);
+      return sellCrop(ledger, action.item, action.effects, action.qty, action.pest === true, season, now);
     case "sellAll":
       return sellAll(ledger, season, now);
     default:
@@ -394,6 +405,8 @@ function plant(
     plantedAt: now,
     readyAt: now + growTimeForEvents(seed, events),
     effects: rollEffectsFor(events, rng),
+    pest: false,
+    protectedUntil: 0,
     watered: false,
     fertilized: false,
     harvests: 0,
@@ -428,6 +441,8 @@ function plantTree(
     plantedAt: now,
     readyAt: now + growTimeForEvents(tree, events),
     effects: rollEffectsFor(events, rng),
+    pest: false,
+    protectedUntil: 0,
     watered: false,
     fertilized: false,
     harvests: 0,
@@ -449,7 +464,7 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
   if (now < plot.readyAt) return { ok: false, code: "NOT_READY" };
 
   const next = clone(ledger);
-  addCrop(next.bag.crops, plot.seed, resolvedCropEffects(plot, now), 1);
+  addCrop(next.bag.crops, plot.seed, resolvedCropEffects(plot, now), 1, plot.pest);
   next.stats.harvested += 1;
 
   const seed = seedById(plot.seed);
@@ -462,6 +477,8 @@ function harvest(ledger: GardenLedger, slot: number, now: number, rng: () => num
       plantedAt: now,
       readyAt: now + growTimeForEvents(seed, events, plot.fertilizer),
       effects: rollEffectsFor(events, rng, sprayBonus),
+      pest: false,
+      protectedUntil: plot.protectedUntil,
       watered: false,
       fertilized: false,
       harvests: plot.harvests + 1,
@@ -483,7 +500,7 @@ function harvestTree(ledger: GardenLedger, slot: number, now: number, rng: () =>
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
 
   const next = clone(ledger);
-  addCrop(next.bag.crops, tree.tree, resolvedTreeEffects(tree, now), 1);
+  addCrop(next.bag.crops, tree.tree, resolvedTreeEffects(tree, now), 1, tree.pest);
   next.stats.harvested += 1;
   const events = eventsAt(now);
   const sprayBonus = tree.spray === null ? {} : (sprayById(tree.spray.id)?.effectChances ?? {});
@@ -493,6 +510,8 @@ function harvestTree(ledger: GardenLedger, slot: number, now: number, rng: () =>
     plantedAt: now,
     readyAt: now + growTimeForEvents(definition, events, tree.fertilizer),
     effects: rollEffectsFor(events, rng, sprayBonus),
+    pest: false,
+    protectedUntil: tree.protectedUntil,
     watered: false,
     fertilized: false,
     harvests: tree.harvests + 1,
@@ -1010,6 +1029,113 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
   return next;
 }
 
+/** @brief Sprays pesticide on one plant: cures pests and protects one day. */
+function sprayPest(ledger: GardenLedger, slot: number, tree: boolean, now: number): RuleResult {
+  const plant = tree ? (ledger.trees[slot] ?? null) : (ledger.plots[slot] ?? null);
+  if (plant === null) return { ok: false, code: "PLOT_EMPTY" };
+  if (ledger.coins < PEST_SPRAY_COST) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= PEST_SPRAY_COST;
+  next.stats.spent += PEST_SPRAY_COST;
+  const updated = { ...plant, pest: false, protectedUntil: now + PEST_PROTECTION_MS };
+  if (tree) next.trees[slot] = updated as (typeof next.trees)[number];
+  else next.plots[slot] = updated as (typeof next.plots)[number];
+  return changed(next, now);
+}
+
+/** @brief Sprays every planted crop and tree at once, 100 coins each. */
+function sprayPestAll(ledger: GardenLedger, now: number): RuleResult {
+  const crops: number[] = [];
+  for (let tab = 0; tab < ledger.tabs; tab += 1) {
+    const open = ledger.unlockedPatches[tab] ?? 1;
+    for (let patch = 0; patch < open; patch += 1) {
+      for (let plot = 0; plot < PLOTS_PER_PATCH; plot += 1) {
+        const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
+        if ((ledger.plots[slot] ?? null) !== null) crops.push(slot);
+      }
+    }
+  }
+  const trees: number[] = [];
+  for (let slot = 0; slot < ledger.trees.length; slot += 1) {
+    if ((ledger.trees[slot] ?? null) !== null) trees.push(slot);
+  }
+  const count = crops.length + trees.length;
+  if (count === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  const cost = count * PEST_SPRAY_COST;
+  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= cost;
+  next.stats.spent += cost;
+  for (const slot of crops) {
+    const plot = next.plots[slot];
+    if (plot !== null && plot !== undefined) {
+      next.plots[slot] = { ...plot, pest: false, protectedUntil: now + PEST_PROTECTION_MS };
+    }
+  }
+  for (const slot of trees) {
+    const tree = next.trees[slot];
+    if (tree !== null && tree !== undefined) {
+      next.trees[slot] = { ...tree, pest: false, protectedUntil: now + PEST_PROTECTION_MS };
+    }
+  }
+  return changed(next, now);
+}
+
+/**
+ * @brief Rolls pest strikes for every elapsed cycle.
+ * @param ledger Garden before the roll.
+ * @param now Server clock.
+ * @details Unprotected plants have a small seeded chance each cycle to catch
+ * pests: value halves and the remaining growth time is stretched 50%.
+ */
+export function settlePest(ledger: GardenLedger, now: number): GardenLedger {
+  const elapsed = now - ledger.pestSettledAt;
+  if (elapsed < FARM_CYCLE_MS) return ledger;
+  const cycles = Math.min(20, Math.floor(elapsed / FARM_CYCLE_MS));
+  if (cycles <= 0) return ledger;
+
+  const next = clone(ledger);
+  const startCycle = Math.floor(ledger.pestSettledAt / FARM_CYCLE_MS);
+  next.pestSettledAt = ledger.pestSettledAt + cycles * FARM_CYCLE_MS;
+
+  for (let step = 0; step < cycles; step += 1) {
+    const cycle = startCycle + step;
+    for (let tab = 0; tab < next.tabs; tab += 1) {
+      const open = next.unlockedPatches[tab] ?? 1;
+      for (let patch = 0; patch < open; patch += 1) {
+        for (let plot = 0; plot < PLOTS_PER_PATCH; plot += 1) {
+          const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
+          const plant = next.plots[slot] ?? null;
+          if (plant === null || plant.pest || plant.protectedUntil > now) continue;
+          const rng = createRng(hash32(`pest:${ledger.playerId}:c${slot}:${cycle}`));
+          if (rng() >= PEST_CHANCE_PER_CYCLE) continue;
+          const remaining = Math.max(0, plant.readyAt - now);
+          next.plots[slot] = {
+            ...plant,
+            pest: true,
+            readyAt: plant.readyAt + Math.round(remaining * (PEST_GROWTH_PENALTY - 1)),
+          };
+        }
+      }
+    }
+    for (let slot = 0; slot < next.trees.length; slot += 1) {
+      const tree = next.trees[slot] ?? null;
+      if (tree === null || tree.pest || tree.protectedUntil > now) continue;
+      const rng = createRng(hash32(`pest:${ledger.playerId}:t${slot}:${cycle}`));
+      if (rng() >= PEST_CHANCE_PER_CYCLE) continue;
+      const remaining = Math.max(0, tree.readyAt - now);
+      next.trees[slot] = {
+        ...tree,
+        pest: true,
+        readyAt: tree.readyAt + Math.round(remaining * (PEST_GROWTH_PENALTY - 1)),
+      };
+    }
+  }
+  return next;
+}
+
 /** @brief Builds the warehouse once. */
 function buildWarehouse(ledger: GardenLedger, now: number): RuleResult {
   if (ledger.warehouse > 0) return { ok: false, code: "BAD_REQUEST" };
@@ -1176,6 +1302,7 @@ function sellCrop(
   item: ItemId,
   effects: readonly EffectId[],
   qty: number,
+  pest: boolean,
   season: SeasonSnapshot,
   now: number,
 ): RuleResult {
@@ -1188,7 +1315,7 @@ function sellCrop(
   next.coins += gross - tax;
   next.stats.earned += gross;
   next.stats.tax += tax;
-  removeCrop(next.bag.crops, item, effects, qty);
+  removeCrop(next.bag.crops, item, effects, pest, qty);
   return changed(next, now);
 }
 
@@ -1254,23 +1381,45 @@ function sameEffects(left: readonly EffectId[], right: readonly EffectId[]): boo
 }
 
 /** @brief Adds one produce unit to a mutable bag. */
-function addCrop(crops: CropStack[], item: ItemId, effects: readonly EffectId[], qty: number): void {
+function addCrop(
+  crops: CropStack[],
+  item: ItemId,
+  effects: readonly EffectId[],
+  qty: number,
+  pest = false,
+): void {
   const canonical = canonicalEffects(effects);
-  const stack = crops.find((entry) => entry.item === item && sameEffects(entry.effects, canonical));
+  const stack = crops.find(
+    (entry) => entry.item === item && sameEffects(entry.effects, canonical) && (entry.pest === true) === pest,
+  );
   if (stack === undefined) {
-    crops.push({ item, effects: canonical, qty });
+    crops.push({ item, effects: canonical, ...(pest ? { pest: true } : {}), qty });
     return;
   }
-  crops[crops.indexOf(stack)] = { item, effects: canonical, qty: stack.qty + qty };
+  crops[crops.indexOf(stack)] = {
+    item,
+    effects: canonical,
+    ...(pest ? { pest: true } : {}),
+    qty: stack.qty + qty,
+  };
 }
 
 /** @brief Removes produce units from a mutable bag, dropping empty stacks. */
-function removeCrop(crops: CropStack[], item: ItemId, effects: readonly EffectId[], qty: number): void {
-  const index = crops.findIndex((entry) => entry.item === item && sameEffects(entry.effects, effects));
+function removeCrop(
+  crops: CropStack[],
+  item: ItemId,
+  effects: readonly EffectId[],
+  pest: boolean,
+  qty: number,
+): void {
+  const index = crops.findIndex(
+    (entry) => entry.item === item && sameEffects(entry.effects, effects) && (entry.pest === true) === pest,
+  );
   if (index < 0) return;
   const stack = crops[index];
   if (stack === undefined) return;
   const left = stack.qty - qty;
   if (left <= 0) crops.splice(index, 1);
-  else crops[index] = { item, effects: canonicalEffects(effects), qty: left };
+  else
+    crops[index] = { item, effects: canonicalEffects(effects), ...(pest ? { pest: true } : {}), qty: left };
 }

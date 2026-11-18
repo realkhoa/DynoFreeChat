@@ -726,3 +726,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Pest-damaged plants read as an infestation at a glance. */
+.garden-cell.is-pest {
+  color: #f48771;
+}
+
+.garden-cell.is-pest .garden-cell-line {
+  text-shadow: 0 0 2px #f4877144;
+}

@@ -290,6 +290,8 @@ describe("garden ledger rules", () => {
       harvests: 0,
       fertilizer: null,
       spray: null,
+      pest: false,
+      protectedUntil: 0,
     };
     ledger.plots[1] = { ...ledger.plots[0], slot: 1 };
     const result = run(ledger, { kind: "waterAll" });
@@ -317,6 +319,8 @@ describe("garden ledger rules", () => {
       harvests: 0,
       fertilizer: null,
       spray: null,
+      pest: false,
+      protectedUntil: 0,
     };
     ledger.plots[1] = { ...ledger.plots[0], slot: 1, seed: "parsnip" };
     const result = run(ledger, { kind: "harvestAll" });
@@ -390,6 +394,8 @@ describe("garden ledger rules", () => {
         harvests: 0,
         fertilizer: null,
         spray: null,
+        pest: false,
+        protectedUntil: 0,
       };
     }
     farmed.toolsSettledAt = NOW;
@@ -427,6 +433,36 @@ describe("garden ledger rules", () => {
     expect(crafted.ok).toBe(true);
     if (!crafted.ok) return;
     expect(crafted.ledger.bag.products).toEqual([{ product: "mayo", star: 2, qty: 1 }]);
+  });
+
+  it("sprays pesticide and harvests infested produce at half value", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000;
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW - 5 * 60_000,
+      readyAt: NOW - 1_000,
+      effects: [],
+      pest: true,
+      protectedUntil: 0,
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+    };
+    const harvested = run(ledger, { kind: "harvest", slot: 0, tree: false });
+    expect(harvested.ok).toBe(true);
+    if (!harvested.ok) return;
+    expect(harvested.ledger.bag.crops[0]?.pest).toBe(true);
+
+    const again = run(ledger, { kind: "sprayPest", slot: 0, tree: false });
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.ledger.coins).toBe(9_900);
+    expect(again.ledger.plots[0]?.pest).toBe(false);
+    expect(again.ledger.plots[0]?.protectedUntil).toBe(NOW + 24 * 60 * 60_000);
   });
 
   it("buys the next tab at the compounding price", () => {

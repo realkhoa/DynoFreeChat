@@ -186,6 +186,8 @@ describe("weather effect stacking", () => {
       harvests: 0,
       fertilizer: null,
       spray: null,
+      pest: false,
+      protectedUntil: 0,
     };
     const resolved = resolvedCropEffects(plot, readyAt + 10_000);
     expect(resolved).toContain("wet");
@@ -262,6 +264,15 @@ describe("rare tools", () => {
     }
     expect(withTool / samples).toBeLessThan(0.25);
     expect(TOOLS[0]?.price).toBe(1_000_000);
+  });
+});
+
+describe("pests", () => {
+  it("halves the sale value of infested produce", () => {
+    const season = seasonAt(EPOCH_MS + 1_000);
+    const clean = cropSellPrice({ item: "carrot", effects: [], qty: 1 }, season);
+    const infested = cropSellPrice({ item: "carrot", effects: [], pest: true, qty: 1 }, season);
+    expect(infested).toBe(Math.round(clean * 0.5));
   });
 });
 
@@ -410,6 +421,8 @@ describe("garden growth math", () => {
       harvests: 0,
       fertilizer: null,
       spray: null,
+      pest: false,
+      protectedUntil: 0,
     };
     expect(plotView(plot, 1_000).stage).toBe(0);
     expect(plotView(plot, 1_000).effects).toEqual([]);
@@ -488,6 +501,8 @@ describe("garden growth math", () => {
       harvests: 0,
       fertilizer: null,
       spray: null,
+      pest: false,
+      protectedUntil: 0,
     };
     plots[1] = {
       slot: 1,
@@ -500,6 +515,8 @@ describe("garden growth math", () => {
       harvests: 0,
       fertilizer: null,
       spray: null,
+      pest: false,
+      protectedUntil: 0,
     };
     expect(gardenCounts(plots, [], NOW)).toEqual({ ready: 1, growing: 1, free: 79 });
     expect(cropSellPrice({ item: "carrot", effects: ["golden"], qty: 1 }, season)).toBe(
@@ -600,6 +617,7 @@ describe("garden wire parsing", () => {
       kind: "sellCrop",
       item: "corn",
       effects: ["wet"],
+      pest: false,
       qty: 2,
     });
     expect(parseGardenAction({ kind: "fertilize", slot: 0, tree: false, supply: "speedGrow" })).toEqual({

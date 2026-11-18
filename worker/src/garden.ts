@@ -55,6 +55,7 @@ import {
   emptyTrees,
   settleFarm,
   settleTools,
+  settlePest,
   ledgerSnapshot,
   type GardenLedger,
 } from "./garden-rules";
@@ -173,6 +174,8 @@ type PlotRow = SqlRow<{
   harvests: number;
   fertilizer: string | null;
   spray: string | null;
+  pest: number;
+  protected_until: number;
 }>;
 
 type TreeRow = SqlRow<{
@@ -186,6 +189,8 @@ type TreeRow = SqlRow<{
   harvests: number;
   fertilizer: string | null;
   spray: string | null;
+  pest: number;
+  protected_until: number;
 }>;
 
 type BagRow = SqlRow<{ kind: string; item: string; qty: number }>;
@@ -288,7 +293,9 @@ export class Garden extends DurableObject<Env> {
         fertilized INTEGER NOT NULL DEFAULT 0,
         harvests INTEGER NOT NULL DEFAULT 0,
         fertilizer TEXT,
-        spray TEXT
+        spray TEXT,
+        pest INTEGER NOT NULL DEFAULT 0,
+        protected_until INTEGER NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS trees (
         slot INTEGER PRIMARY KEY,
@@ -300,7 +307,9 @@ export class Garden extends DurableObject<Env> {
         fertilized INTEGER NOT NULL DEFAULT 0,
         harvests INTEGER NOT NULL DEFAULT 0,
         fertilizer TEXT,
-        spray TEXT
+        spray TEXT,
+        pest INTEGER NOT NULL DEFAULT 0,
+        protected_until INTEGER NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS bag (
         kind TEXT NOT NULL,
@@ -329,12 +338,20 @@ export class Garden extends DurableObject<Env> {
     if (!columns.some((column) => column.name === "spray")) {
       this.sql.exec("ALTER TABLE plots ADD COLUMN spray TEXT");
     }
+    if (!columns.some((column) => column.name === "pest")) {
+      this.sql.exec("ALTER TABLE plots ADD COLUMN pest INTEGER NOT NULL DEFAULT 0");
+      this.sql.exec("ALTER TABLE plots ADD COLUMN protected_until INTEGER NOT NULL DEFAULT 0");
+    }
     const treeColumns = this.sql.exec<{ name: string }>("PRAGMA table_info(trees)").toArray();
     if (!treeColumns.some((column) => column.name === "fertilizer")) {
       this.sql.exec("ALTER TABLE trees ADD COLUMN fertilizer TEXT");
     }
     if (!treeColumns.some((column) => column.name === "spray")) {
       this.sql.exec("ALTER TABLE trees ADD COLUMN spray TEXT");
+    }
+    if (!treeColumns.some((column) => column.name === "pest")) {
+      this.sql.exec("ALTER TABLE trees ADD COLUMN pest INTEGER NOT NULL DEFAULT 0");
+      this.sql.exec("ALTER TABLE trees ADD COLUMN protected_until INTEGER NOT NULL DEFAULT 0");
     }
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS help (
@@ -384,6 +401,7 @@ export class Garden extends DurableObject<Env> {
       animals: raw.animals ?? { coop: [], barn: [] },
       farmSettledAt: raw.farmSettledAt ?? raw.updatedAt ?? 0,
       toolsSettledAt: raw.toolsSettledAt ?? raw.updatedAt ?? 0,
+      pestSettledAt: raw.pestSettledAt ?? raw.updatedAt ?? 0,
       warehouse: raw.warehouse ?? 0,
       machines: raw.machines ?? {},
       // Saves written before ROI tracking have no spent counter.
@@ -411,7 +429,7 @@ export class Garden extends DurableObject<Env> {
     const plots = emptyCrops(tabs);
     const rows = this.sql
       .exec<PlotRow>(
-        "SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray FROM plots",
+        "SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until FROM plots",
       )
       .toArray();
     for (const row of rows) {
@@ -421,6 +439,8 @@ export class Garden extends DurableObject<Env> {
         plantedAt: row.planted_at,
         readyAt: row.ready_at,
         effects: parseEffects(row.effect),
+        pest: row.pest === 1,
+        protectedUntil: row.protected_until,
         watered: row.watered === 1,
         fertilized: row.fertilized === 1,
         harvests: row.harvests,
@@ -439,7 +459,7 @@ export class Garden extends DurableObject<Env> {
     const trees = emptyTrees(tabs);
     const rows = this.sql
       .exec<TreeRow>(
-        "SELECT slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray FROM trees",
+        "SELECT slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until FROM trees",
       )
       .toArray();
     for (const row of rows) {
@@ -449,6 +469,8 @@ export class Garden extends DurableObject<Env> {
         plantedAt: row.planted_at,
         readyAt: row.ready_at,
         effects: parseEffects(row.effect),
+        pest: row.pest === 1,
+        protectedUntil: row.protected_until,
         watered: row.watered === 1,
         fertilized: row.fertilized === 1,
         harvests: row.harvests,
@@ -787,7 +809,7 @@ export class Garden extends DurableObject<Env> {
     if (ledger === null) return this.unauthorized();
 
     const now = Date.now();
-    const settled = settleTools(settleFarm(ledger, now), now);
+    const settled = settlePest(settleTools(settleFarm(ledger, now), now), now);
     if (settled !== ledger) this.write(settled);
     const ledgerNow = settled;
     if (now - ledgerNow.lastSeen > 60_000) {
@@ -820,7 +842,7 @@ export class Garden extends DurableObject<Env> {
 
     const now = Date.now();
     const season = this.seasonFor(request, now);
-    const settled = settleTools(settleFarm(ledger, now), now);
+    const settled = settlePest(settleTools(settleFarm(ledger, now), now), now);
     const result = applyGardenAction(settled, action as GardenAction, season, now);
     if (!result.ok) return json({ code: result.code }, 400);
 

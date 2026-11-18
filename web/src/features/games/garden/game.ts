@@ -14,6 +14,7 @@ import {
   FERTILIZERS,
   FRUIT_PATCHES_PER_TAB,
   HARVEST_ALL_COST,
+  PEST_SPRAY_COST,
   WATER_ALL_COST,
   MAX_TABS,
   PLOTS_PER_PATCH,
@@ -701,17 +702,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /** @brief Sells one harvested stack. */
-  function sellStack(item: ItemId, effects: readonly EffectId[]): void {
+  function sellStack(item: ItemId, effects: readonly EffectId[], pest = false): void {
     if (state === null || season === null) return;
     const stack = state.bag.crops.find(
-      (entry) => entry.item === item && sameEffectSet(entry.effects, effects),
+      (entry) =>
+        entry.item === item && sameEffectSet(entry.effects, effects) && (entry.pest === true) === pest,
     );
     if (stack === undefined) return;
     const gross = cropSellPrice(stack, season) * stack.qty;
     // The server keeps 10% of every sale; show the amount actually received.
     const gain = gross - Math.round(gross * 0.1);
     void runAction(
-      { kind: "sellCrop", item, effects: stack.effects, qty: stack.qty },
+      { kind: "sellCrop", item, effects: stack.effects, pest: stack.pest === true, qty: stack.qty },
       t("market.sold", { seed: itemName(item), coins: gain }),
     );
   }
@@ -1163,6 +1165,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     cell.classList.toggle("is-empty", render.empty);
     cell.classList.toggle("is-locked", render.locked);
     cell.classList.toggle("is-selected", selectedSlot === slot && selectedArea === area);
+    cell.classList.toggle("is-pest", area === "crop" ? plot?.pest === true : tree?.pest === true);
     const effects =
       area === "tree"
         ? tree === null
@@ -1311,6 +1314,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const stage = stages[stageIndex] ?? "";
       lines.push(labelValue(t("garden.stage"), view.ready ? stage : `${stage} (${stageIndex + 1}/3)`));
       lines.push(labelValue(t("garden.effect"), effectListText(view.effects.map((effect) => effect.id))));
+      lines.push(
+        labelValue(
+          t("garden.pest"),
+          plot.pest
+            ? t("garden.pestHint")
+            : plot.protectedUntil > at
+              ? t("garden.protected", { time: formatDuration(plot.protectedUntil - at, "short") })
+              : t("garden.pestNone"),
+        ),
+      );
       if (plot.fertilizer !== null) {
         lines.push(
           labelValue(
@@ -1585,6 +1598,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         ),
       );
     } else {
+      rows.append(menuRow(t("garden.sprayPest", { cost: PEST_SPRAY_COST }), "sprayPest"));
       rows.append(menuRow(t("garden.harvest"), "harvest", { disabled: !ready }));
       rows.append(menuRow(t("garden.water"), "water", { disabled: ready || plant.watered }));
       rows.append(menuRow(t("garden.menuFertilize"), "menuViewFertilize", { disabled: ready }));
@@ -1617,6 +1631,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           }),
           "harvestAll",
           counts.harvest > 0 && coins >= counts.harvest * HARVEST_ALL_COST,
+        ),
+      );
+      const pestTargets =
+        (state?.plots ?? []).filter((plot, slot) => plot !== null && !cropSlotLocked(slot)).length +
+        (state?.trees ?? []).filter((tree) => tree !== null).length;
+      bulk.append(
+        actionButton(
+          t("garden.sprayPestAll", {
+            count: pestTargets,
+            cost: pestTargets * PEST_SPRAY_COST,
+          }),
+          "sprayPestAll",
+          pestTargets > 0 && coins >= pestTargets * PEST_SPRAY_COST,
         ),
       );
       wrap.append(bulk);
@@ -1897,11 +1924,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const value = cropSellPrice(stack, season) * stack.qty;
       const row = rowButton(
         "garden-market-row",
-        `${fitText(itemName(stack.item), 9)}${fitText(effectBadge(stack.effects), 8)}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
+        `${fitText(itemName(stack.item), 9)}${fitText(effectBadge(stack.effects), 8)}${stack.pest === true ? "[sâu]" : ""}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
         "sell",
       );
       row.dataset.item = stack.item;
       row.dataset.effects = JSON.stringify(stack.effects);
+      row.dataset.pest = stack.pest === true ? "1" : "0";
       exchange.append(row);
     }
     if (state.bag.crops.length > 0) {
@@ -2432,6 +2460,26 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (selectedSlot !== null && treeId !== undefined) void plantTree(selectedSlot, treeId);
         return;
       }
+      case "sprayPest": {
+        if (menu === null) return;
+        void runAction(
+          { kind: "sprayPest", slot: menu.slot, tree: menu.area === "tree" },
+          t("garden.sprayedPest"),
+        );
+        closeMenu();
+        return;
+      }
+      case "sprayPestAll": {
+        if (state === null) return;
+        const count =
+          (state.plots ?? []).filter((plot, slot) => plot !== null && !cropSlotLocked(slot)).length +
+          (state.trees ?? []).filter((tree) => tree !== null).length;
+        void runAction(
+          { kind: "sprayPestAll" },
+          t("garden.sprayedPestAll", { count, cost: count * PEST_SPRAY_COST }),
+        );
+        return;
+      }
       case "harvest":
       case "water":
       case "uproot": {
@@ -2621,7 +2669,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         } catch {
           effects = [];
         }
-        sellStack(item, effects);
+        sellStack(item, effects, target.dataset.pest === "1");
         return;
       }
       case "sellAll":

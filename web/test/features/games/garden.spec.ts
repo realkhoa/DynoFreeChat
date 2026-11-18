@@ -50,6 +50,8 @@ const RIPE_PLOT: PlotState = {
   harvests: 0,
   fertilizer: null,
   spray: null,
+  pest: false,
+  protectedUntil: 0,
 };
 
 /** A fruiting apple tree on tree slot 9 (second page's first slot). */
@@ -64,6 +66,8 @@ const SECOND_PAGE_TREE: TreeState = {
   harvests: 0,
   fertilizer: null,
   spray: null,
+  pest: false,
+  protectedUntil: 0,
 };
 
 /** A growing tomato on plot 0. */
@@ -78,6 +82,8 @@ const GROWING_PLOT: PlotState = {
   harvests: 0,
   fertilizer: null,
   spray: null,
+  pest: false,
+  protectedUntil: 0,
 };
 
 /** Builds one owner snapshot. */
@@ -403,6 +409,27 @@ describe("garden tab", () => {
     row?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "buyTool")).toBe(true);
+  });
+
+  it("sprays pesticides on one plant or the whole field", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 5_000,
+        plots: [{ ...RIPE_PLOT, pest: true }, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="sprayPest"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "sprayPest")).toBe(true);
+
+    host.querySelector<HTMLButtonElement>('[data-act="sprayPestAll"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "sprayPestAll")).toBe(true);
   });
 
   it("offers bulk water and harvest with per-plant prices", async () => {
