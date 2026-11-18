@@ -74,8 +74,10 @@ interface MenuState {
   readonly slot: number;
   /** Viewport x of the menu origin. */
   readonly x: number;
-  /** Viewport y of the menu origin. */
+  /** Viewport y of the menu origin (cell bottom). */
   readonly y: number;
+  /** Viewport y of the cell top, used to flip the menu above the cell. */
+  readonly anchorTop: number;
   /** Which submenu is showing. */
   readonly view: "actions" | "fertilize" | "spray" | "seed" | "tree";
 }
@@ -424,7 +426,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         `.garden-cell[data-area="${selectedArea}"][data-slot="${selectedSlot}"]`,
       );
       const rect = cell?.getBoundingClientRect();
-      openMenu(selectedSlot, selectedArea, (rect?.left ?? 24) + 6, (rect?.bottom ?? 120) + 2);
+      openMenu(
+        selectedSlot,
+        selectedArea,
+        (rect?.left ?? 24) + 6,
+        (rect?.bottom ?? 120) + 2,
+        rect?.top ?? 60,
+      );
     }
   }
 
@@ -851,12 +859,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
    * @param x Viewport x of the pointer.
    * @param y Viewport y of the pointer.
    */
-  function openMenu(slot: number, area: "crop" | "tree", x: number, y: number): void {
+  function openMenu(slot: number, area: "crop" | "tree", x: number, y: number, anchorTop = y): void {
     selectedSlot = slot;
     selectedArea = area;
     supplyPicker = null;
     uprootArmed = false;
-    menu = { area, slot, x, y, view: "actions" };
+    menu = { area, slot, x, y, anchorTop, view: "actions" };
     syncGardenQuery();
     render();
   }
@@ -870,6 +878,26 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     uprootArmed = false;
     syncGardenQuery();
     render();
+  }
+
+  /** @brief Keeps the open menu inside the viewport, flipping it above the cell. */
+  function fitMenu(): void {
+    if (root === null || menu === null) return;
+    const element = root.querySelector<HTMLElement>(".garden-menu");
+    if (element === null) return;
+    const rect = element.getBoundingClientRect();
+    const margin = 8;
+    const left = Math.min(
+      Math.max(margin, menu.x),
+      Math.max(margin, window.innerWidth - rect.width - margin),
+    );
+    let top = menu.y;
+    if (top + rect.height > window.innerHeight - margin) {
+      top = menu.anchorTop - rect.height - 4;
+    }
+    top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - rect.height - margin));
+    element.style.left = `${left}px`;
+    element.style.top = `${top}px`;
   }
 
   /** @brief Switches the open context menu to another submenu. */
@@ -1650,6 +1678,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const popover = buildMenu(now());
     if (popover !== null) parts.push(popover);
     root.replaceChildren(...parts);
+    fitMenu();
     refreshTimers();
   }
 
@@ -1715,7 +1744,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const area = target.dataset.area === "tree" ? "tree" : "crop";
         if (!Number.isInteger(slot)) return;
         const rect = target.getBoundingClientRect();
-        openMenu(slot, area, rect.left + 6, rect.bottom + 2);
+        openMenu(slot, area, rect.left + 6, rect.bottom + 2, rect.top);
         return;
       }
       case "menuClose":
@@ -1792,8 +1821,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "water":
       case "uproot": {
         if (selectedSlot === null) return;
+        if (action === "uproot") {
+          // First press arms the confirmation and keeps the menu open; only the
+          // second press actually removes the plant.
+          const armed = uprootArmed;
+          uproot(selectedSlot, selectedArea);
+          if (armed) closeMenu();
+          return;
+        }
         if (action === "harvest") harvest(selectedSlot, selectedArea);
-        else if (action === "uproot") uproot(selectedSlot, selectedArea);
         else waterSelected(selectedSlot, selectedArea);
         closeMenu();
         return;
@@ -1935,7 +1971,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         render();
       }
     } else if (event.key === "u" || event.key === "U") {
-      if (mode === "owner") uproot(selectedSlot, selectedArea);
+      if (mode === "owner") {
+        const armed = uprootArmed;
+        uproot(selectedSlot, selectedArea);
+        if (armed) closeMenu();
+      }
     }
   }
 

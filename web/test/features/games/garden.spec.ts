@@ -327,6 +327,50 @@ describe("garden tab", () => {
     expect(buy?.disabled).toBe(true);
   });
 
+  it("uproot needs two presses and confirms in the menu", async () => {
+    const api = new FakeGardenApi(
+      makeState({ plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)] }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    await settle();
+    const uproot = host.querySelector<HTMLButtonElement>('[data-act="uproot"]');
+    expect(uproot).not.toBeNull();
+    uproot?.click();
+    await settle();
+    // Still armed in the same menu, nothing sent yet.
+    expect(api.calls.some((call) => call.action?.kind === "uproot")).toBe(false);
+    const confirm = host.querySelector<HTMLButtonElement>('[data-act="uproot"]');
+    expect(confirm?.textContent).toContain("Chắc chắn");
+    confirm?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "uproot")).toBe(true);
+  });
+
+  it("flips the menu above a cell that sits near the bottom edge", async () => {
+    const rect = (() => ({ top: 680, bottom: 710, left: 10, right: 110, width: 100, height: 100 }))();
+    const menuRect = (() => ({ top: 0, bottom: 200, left: 0, right: 330, width: 330, height: 200 }))();
+    const original = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function mock(this: HTMLElement) {
+      return (this.classList.contains("garden-menu") ? menuRect : rect) as DOMRect;
+    } as typeof original;
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    await settle();
+    const menu = host.querySelector<HTMLElement>(".garden-menu");
+    expect(menu).not.toBeNull();
+    const top = Number.parseFloat(menu?.style.top ?? "0");
+    // 680 - 200 (menu height) - 4 = 476px, fully inside the 768px viewport.
+    expect(top).toBeLessThanOrEqual(560);
+    expect(top).toBeGreaterThanOrEqual(8);
+    HTMLElement.prototype.getBoundingClientRect = original;
+  });
+
   it("plants a fruit tree from the tree board", async () => {
     const api = new FakeGardenApi(makeState({ coins: 500 }));
     const { host, game } = await mountGame(api);

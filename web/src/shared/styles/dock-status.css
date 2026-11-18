@@ -221,3 +221,29 @@ button.statusitem {
 #room-lock {
   color: var(--statusbar-dim);
 }
+
+/* New build available: a status item the user can click to reload. */
+.statusitem--update {
+  background: var(--warn);
+  color: #1e1e1e;
+  font-weight: 700;
+  cursor: pointer;
+  animation: update-pulse 1.6s ease-in-out infinite;
+}
+
+.statusitem--update:hover {
+  background: #e8c76a;
+  color: #000000;
+}
+
+@keyframes update-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .statusitem--update {
+    animation: none;
+  }
+}

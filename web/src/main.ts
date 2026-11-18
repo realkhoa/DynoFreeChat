@@ -32,6 +32,7 @@ import { formatAge } from "@/shared/lib/format";
 import { loadIdentity, saveNick, type Identity } from "@/shared/lib/identity";
 import { initLocale, setLocale } from "@/shared/i18n";
 import { readList, readParam, writeParams } from "@/shared/lib/urlstate";
+import { watchForUpdates } from "@/shared/lib/update";
 import { Notifier } from "@/shared/lib/notify";
 import { SoundPlayer } from "@/shared/lib/sound";
 import { PassVault } from "@/shared/lib/passvault";
@@ -2022,6 +2023,22 @@ function boot(): void {
   // Restoring last: the saved documents decide the visible view, while the
   // room above already rejoined the chat socket in the background.
   restoreDocsFromUrl();
+
+  // A new deploy replaces the hashed assets: surface it instead of letting the
+  // user reload by hand to discover it.
+  const updateBadge = byId<HTMLButtonElement>("update-badge");
+  updateBadge.addEventListener("click", () => window.location.reload());
+  if (import.meta.env.PROD) {
+    watchForUpdates(
+      () => {
+        updateBadge.hidden = false;
+        document.title = `● Có cập nhật mới — ${BASE_TITLE}`;
+        store.addSystem("có bản cập nhật mới — bấm nút 'Cập nhật' ở thanh trạng thái để tải lại");
+        render();
+      },
+      { intervalMs: 60_000 },
+    );
+  }
 
   if (window.location.protocol === "https:" && wsUrl.startsWith("ws:")) {
     store.addSystem("bản deploy chưa có VITE_WS_URL — đang trỏ vào localhost, không chat được", "error");
