@@ -19,6 +19,7 @@ import {
   RECOVERY_RE,
   SEEDS,
   SHOP_RESTOCK_MS,
+  TOOLS,
   STARTING_COINS,
   STARTING_TABS,
   createRng,
@@ -214,6 +215,20 @@ describe("farm buildings", () => {
 function buildingUpgradeCostForTest(id: "coop" | "barn"): number {
   return BUILDINGS.find((building) => building.id === id)?.upgrade ?? 0;
 }
+
+describe("rare tools", () => {
+  it("appears in fewer than twenty percent of restocks", () => {
+    const restock = Math.floor((EPOCH_MS - EPOCH_MS) / SHOP_RESTOCK_MS);
+    let withTool = 0;
+    const samples = 300;
+    for (let index = 0; index < samples; index += 1) {
+      const at = EPOCH_MS + (restock + index) * SHOP_RESTOCK_MS + 1_000;
+      if (seasonAt(at).shop.tools.length > 0) withTool += 1;
+    }
+    expect(withTool / samples).toBeLessThan(0.25);
+    expect(TOOLS[0]?.price).toBe(1_000_000);
+  });
+});
 
 describe("market pressure", () => {
   it("keeps light supply unchanged and cuts heavier supply", () => {

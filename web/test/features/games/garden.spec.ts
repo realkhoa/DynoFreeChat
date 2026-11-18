@@ -142,6 +142,7 @@ const MARKET = {
 
 class FakeGardenApi {
   stateValue: GardenSnapshot;
+  seasonValue = SEASON;
   visitValue: VisitSnapshot = makeVisit();
   calls: Array<{ method: string; action?: GardenAction }> = [];
   session = { playerId: PLAYER_ID, token: "a".repeat(64), recovery: "ABCD-EFGH-JKMN" };
@@ -161,7 +162,7 @@ class FakeGardenApi {
   forget(): void {}
 
   async state() {
-    return { state: this.stateValue, season: SEASON, serverNow: CLOCK, market: MARKET };
+    return { state: this.stateValue, season: this.seasonValue, serverNow: CLOCK, market: MARKET };
   }
 
   async market() {
@@ -380,6 +381,23 @@ describe("garden tab", () => {
     host.querySelector<HTMLButtonElement>('.garden-cell[data-area="crop"]')?.click();
     await settle();
     expect(host.querySelector(".stage-status")?.textContent).toContain("chưa mở");
+  });
+
+  it("sells rare tools only when the restock carries them", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 2_000_000 }));
+    api.seasonValue = {
+      ...SEASON,
+      shop: { ...SEASON.shop, tools: [{ tool: "autoWater", price: 1_000_000, stock: 1 }] },
+    };
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
+    await settle();
+    const row = host.querySelector<HTMLButtonElement>('[data-act="buyTool"]');
+    expect(row?.textContent).toContain("Máy tưới tự động");
+    row?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "buyTool")).toBe(true);
   });
 
   it("offers bulk water and harvest with per-plant prices", async () => {

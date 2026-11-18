@@ -420,6 +420,38 @@ export const PRODUCTS: readonly ProductDefinition[] = [
   { id: "wool", base: 1_000 },
 ];
 
+/** Rare tools sold in the market. */
+export type ToolId = "autoWater";
+
+/** One rare tool definition. */
+export interface ToolDefinition {
+  /** Stable id. */
+  readonly id: ToolId;
+  /** Fixed price, in coins. */
+  readonly price: number;
+}
+
+/** Rare tool catalog. */
+export const TOOLS: readonly ToolDefinition[] = [{ id: "autoWater", price: 1_000_000 }];
+
+/** Chance a rare tool appears in one shop restock (`< 20%`). */
+export const TOOL_STOCK_CHANCE = 0.15;
+
+/** @brief Tool definition by id. */
+export function toolById(id: string): ToolDefinition | undefined {
+  return TOOLS.find((tool) => tool.id === id);
+}
+
+/** One rare-tool offer in the rotation. */
+export interface ShopToolOffer {
+  /** Tool id. */
+  readonly tool: ToolId;
+  /** Price when in stock. */
+  readonly price: number;
+  /** Units available this restock; absent tools do not appear. */
+  readonly stock: number;
+}
+
 /** @brief Building definition by id. */
 export function buildingById(id: string): BuildingDefinition | undefined {
   return BUILDINGS.find((building) => building.id === id);
@@ -572,6 +604,8 @@ export interface BagState {
   readonly supplies: Readonly<Partial<Record<SupplyId, number>>>;
   /** Animal products waiting to be sold; absent on old saves. */
   readonly products?: readonly ProductStack[];
+  /** Rare tools owned; absent on old saves. */
+  readonly tools?: Readonly<Partial<Record<ToolId, number>>>;
 }
 
 /** Lifetime counters used by the HUD and the leaderboard. */
@@ -928,6 +962,8 @@ export interface SeasonSnapshot {
     readonly restockAt: number;
     /** One offer per seed. */
     readonly offers: readonly ShopOffer[];
+    /** Rare tools that happen to be in stock this restock. */
+    readonly tools: readonly ShopToolOffer[];
   };
   /** Exchange price per seed for a plain crop. */
   readonly prices: Readonly<Record<SeedId, number>>;
@@ -986,6 +1022,7 @@ export type GardenAction =
   | { readonly kind: "patAnimal"; readonly building: BuildingId; readonly slot: number }
   | { readonly kind: "sellProduct"; readonly product: ProductId; readonly star: number; readonly qty: number }
   | { readonly kind: "sellAllProducts" }
+  | { readonly kind: "buyTool"; readonly tool: ToolId; readonly qty: number }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
   | {
@@ -1028,6 +1065,7 @@ export type GardenErrorCode =
   | "SLOT_OCCUPIED"
   | "SLOT_EMPTY"
   | "NO_PRODUCT"
+  | "TOOL_SOLD_OUT"
   | "CANNOT_VISIT_SELF";
 
 /** Successful response to a garden action. */
@@ -1320,6 +1358,13 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   if (kind === "buyTab") return { kind };
   if (kind === "waterAll" || kind === "harvestAll") return { kind };
   if (kind === "sellAllProducts") return { kind };
+  if (kind === "buyTool") {
+    const tool = typeof value.tool === "string" ? toolById(value.tool) : undefined;
+    const qty = value.qty;
+    if (tool === undefined) return null;
+    if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 10) return null;
+    return { kind, tool: tool.id, qty };
+  }
   if (kind === "buildBuilding" || kind === "upgradeBuilding") {
     const building = typeof value.building === "string" ? buildingById(value.building) : undefined;
     return building === undefined ? null : { kind, building: building.id };
@@ -1411,6 +1456,15 @@ export function seasonAt(now: number): SeasonSnapshot {
   const restockWave = Math.floor((now - EPOCH_MS) / SHOP_RESTOCK_MS);
   const restockAt = EPOCH_MS + (restockWave + 1) * SHOP_RESTOCK_MS;
   const shopRng = createRng(hash32(`garden:shop:${restockWave}`));
+  const toolRng = createRng(hash32(`garden:tools:${restockWave}`));
+  const tools: ShopToolOffer[] = [];
+  for (const tool of TOOLS) {
+    // Rare stock: a restock carries the tool less than twenty percent of the time.
+    if (toolRng() < TOOL_STOCK_CHANCE) {
+      tools.push({ tool: tool.id, price: tool.price, stock: 1 });
+    }
+  }
+
   const offers: ShopOffer[] = SEEDS.map((seed) => {
     const price = Math.max(1, Math.round(seed.buy * (0.85 + shopRng() * 0.3)));
     const stock = 2 + Math.floor(shopRng() * 9);
@@ -1447,7 +1501,7 @@ export function seasonAt(now: number): SeasonSnapshot {
       endsAt: nextStart + EVENT_WAVE_MS,
     })),
     next: { id: next.id, startedAt: nextStart, endsAt: nextStart + EVENT_WAVE_MS },
-    shop: { restockAt, offers },
+    shop: { restockAt, offers, tools },
     prices,
     fruitPrices,
   };

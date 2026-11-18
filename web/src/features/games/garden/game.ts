@@ -1824,6 +1824,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       supplies.append(row);
     }
 
+    const tools = div("garden-market-panel");
+    tools.append(lineBlock(`// ${t("market.tools")}`));
+    const toolOffers = season?.shop.tools ?? [];
+    if (toolOffers.length === 0) tools.append(lineBlock(t("market.toolsEmpty")));
+    for (const offer of toolOffers) {
+      const owned = state?.bag.tools?.[offer.tool] ?? 0;
+      const row = rowButton(
+        "garden-market-row",
+        `${fitText(t(`tools.${offer.tool}`), 18)}${fitText(`${formatNumber(offer.price)}c`, 11)}${fitText(`${t("market.stock")} ${offer.stock}`, 8)}${fitText(`${t("garden.bag")} ${owned}`, 8)}[${t("market.buy")}]`,
+        "buyTool",
+      );
+      row.dataset.tool = offer.tool;
+      tools.append(row);
+    }
+
     const products = div("garden-market-panel");
     products.append(lineBlock(`// ${t("farm.products")}`));
     const stacks = state.bag.products ?? [];
@@ -1841,7 +1856,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     if (stacks.length > 0) products.append(actionButton(t("farm.sellAllProducts"), "sellAllProducts"));
 
-    wrap.append(shop, exchange, supplies, products);
+    wrap.append(shop, exchange, supplies, tools, products);
     return wrap;
   }
 
@@ -2391,6 +2406,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (building !== undefined && Number.isInteger(slot)) {
           void runAction({ kind: "patAnimal", building, slot }, t("farm.patted"));
         }
+        return;
+      }
+      case "buyTool": {
+        const tool = target.dataset.tool;
+        if (tool !== undefined)
+          void runAction({ kind: "buyTool", tool: tool as never, qty: 1 }, t("market.boughtTool"));
         return;
       }
       case "sellProduct": {

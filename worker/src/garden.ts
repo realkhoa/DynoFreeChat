@@ -27,6 +27,7 @@ import {
   type BagState,
   type CropStack,
   type ProductStack,
+  type ToolId,
   type GardenAction,
   type GardenSnapshot,
   type LeaderboardEntry,
@@ -53,6 +54,7 @@ import {
   emptyCrops,
   emptyTrees,
   settleFarm,
+  settleTools,
   ledgerSnapshot,
   type GardenLedger,
 } from "./garden-rules";
@@ -381,6 +383,7 @@ export class Garden extends DurableObject<Env> {
       buildings: raw.buildings ?? { coop: 0, barn: 0 },
       animals: raw.animals ?? { coop: [], barn: [] },
       farmSettledAt: raw.farmSettledAt ?? raw.updatedAt ?? 0,
+      toolsSettledAt: raw.toolsSettledAt ?? raw.updatedAt ?? 0,
       // Saves written before ROI tracking have no spent counter.
       stats: {
         planted: stats.planted ?? 0,
@@ -459,6 +462,7 @@ export class Garden extends DurableObject<Env> {
     const crops: CropStack[] = [];
     const supplies: Partial<Record<SupplyId, number>> = {};
     const products: ProductStack[] = [];
+    const tools: Partial<Record<ToolId, number>> = {};
     const rows = this.sql.exec<BagRow>("SELECT kind, item, qty FROM bag").toArray();
     for (const row of rows) {
       if (row.kind === "seed") {
@@ -467,6 +471,10 @@ export class Garden extends DurableObject<Env> {
       }
       if (row.kind === "supply") {
         supplies[row.item as SupplyId] = row.qty;
+        continue;
+      }
+      if (row.kind === "tool") {
+        tools[row.item as ToolId] = row.qty;
         continue;
       }
       if (row.kind === "product") {
@@ -480,7 +488,7 @@ export class Garden extends DurableObject<Env> {
       const parsed = parseCropKey(row.item);
       if (parsed !== null) crops.push({ item: parsed.item, effects: parsed.effects, qty: row.qty });
     }
-    return { seeds, crops, supplies, products };
+    return { seeds, crops, supplies, products, tools };
   }
 
   /** @brief Writes a complete ledger atomically, so a crash cannot lose the old one. */
@@ -599,6 +607,9 @@ export class Garden extends DurableObject<Env> {
     }
     for (const stack of bag.crops) desired.set(`crop:${cropKey(stack.item, stack.effects)}`, stack.qty);
     for (const stack of bag.products ?? []) desired.set(`product:${stack.product}:${stack.star}`, stack.qty);
+    for (const [tool, qty] of Object.entries(bag.tools ?? {})) {
+      if (qty !== undefined && qty > 0) desired.set(`tool:${tool}`, qty);
+    }
 
     for (const [key, qty] of desired) {
       if (stored.get(key) === qty) continue;
@@ -773,7 +784,7 @@ export class Garden extends DurableObject<Env> {
     if (ledger === null) return this.unauthorized();
 
     const now = Date.now();
-    const settled = settleFarm(ledger, now);
+    const settled = settleTools(settleFarm(ledger, now), now);
     if (settled !== ledger) this.write(settled);
     const ledgerNow = settled;
     if (now - ledgerNow.lastSeen > 60_000) {
@@ -806,7 +817,7 @@ export class Garden extends DurableObject<Env> {
 
     const now = Date.now();
     const season = this.seasonFor(request, now);
-    const settled = settleFarm(ledger, now);
+    const settled = settleTools(settleFarm(ledger, now), now);
     const result = applyGardenAction(settled, action as GardenAction, season, now);
     if (!result.ok) return json({ code: result.code }, 400);
 
@@ -916,6 +927,7 @@ export class Garden extends DurableObject<Env> {
         crops: ledger.bag.crops.map((stack) => ({ ...stack })),
         supplies: { ...ledger.bag.supplies },
         products: (ledger.bag.products ?? []).map((stack) => ({ ...stack })),
+        tools: { ...ledger.bag.tools },
       },
       buildings: { ...ledger.buildings },
       animals: {

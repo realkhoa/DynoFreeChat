@@ -28,6 +28,8 @@ import {
   maxBuildingLevel,
   productById,
   productPrice,
+  toolById,
+  type ToolId,
   WATER_CUT_RATIO,
   HARVEST_ALL_COST,
   createRng,
@@ -81,6 +83,8 @@ export interface LedgerBag {
   supplies: Partial<Record<SupplyId, number>>;
   /** Animal products waiting to be sold. */
   products: ProductStack[];
+  /** Rare tools owned. */
+  tools: Partial<Record<ToolId, number>>;
 }
 
 /** Mutable counters used by the rules. */
@@ -129,6 +133,8 @@ export interface GardenLedger {
   animals: Record<BuildingId, (AnimalState | null)[]>;
   /** Last farm upkeep/production settlement. */
   farmSettledAt: number;
+  /** Last automatic-tool settlement. */
+  toolsSettledAt: number;
   /** Revision bumped on every successful write. */
   rev: number;
   /** Creation time, server clock. */
@@ -187,11 +193,12 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     unlockedPatches: new Array<number>(STARTING_TABS).fill(1),
     plots: emptyCrops(STARTING_TABS),
     trees: emptyTrees(STARTING_TABS),
-    bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {}, products: [] },
+    bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {}, products: [], tools: {} },
     stats: { planted: 0, harvested: 0, earned: 0, spent: 0 },
     buildings: { coop: 0, barn: 0 },
     animals: { coop: [], barn: [] },
     farmSettledAt: input.now,
+    toolsSettledAt: input.now,
     rev: 1,
     createdAt: input.now,
     updatedAt: input.now,
@@ -240,6 +247,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
       crops: ledger.bag.crops.map((stack) => ({ ...stack })),
       supplies: { ...ledger.bag.supplies },
       products: (ledger.bag.products ?? []).map((stack) => ({ ...stack })),
+      tools: { ...ledger.bag.tools },
     },
     buildings: { ...ledger.buildings },
     animals: {
@@ -310,6 +318,8 @@ export function applyGardenAction(
       return sellProduct(ledger, action.product, action.star, action.qty, season, now);
     case "sellAllProducts":
       return sellAllProducts(ledger, season, now);
+    case "buyTool":
+      return buyTool(ledger, action.tool, action.qty, season, now);
     case "harvestAll":
       return harvestAll(ledger, now, rng);
     case "buySeed":
@@ -689,6 +699,96 @@ function harvestAll(ledger: GardenLedger, now: number, rng: () => number): RuleR
   return changed(next, now);
 }
 
+/** @brief Buys rare tools from a restock that happens to carry them. */
+function buyTool(
+  ledger: GardenLedger,
+  tool: ToolId,
+  qty: number,
+  season: SeasonSnapshot,
+  now: number,
+): RuleResult {
+  const definition = toolById(tool);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+  const offer = season.shop.tools.find((entry) => entry.tool === tool);
+  if (offer === undefined || offer.stock < qty) return { ok: false, code: "TOOL_SOLD_OUT" };
+  const total = offer.price * qty;
+  if (ledger.coins < total) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= total;
+  next.stats.spent += total;
+  next.bag.tools[tool] = (next.bag.tools[tool] ?? 0) + qty;
+  return changed(next, now);
+}
+
+/**
+ * @brief Runs owned automatic tools for every elapsed cycle.
+ * @param ledger Garden before the tool pass.
+ * @param now Server clock.
+ * @details The watering machine picks ten percent (at least one) of the plants
+ * that are still growing and not watered yet, seeded by player and cycle so the
+ * result is stable for every device.
+ */
+export function settleTools(ledger: GardenLedger, now: number): GardenLedger {
+  if ((ledger.bag.tools?.autoWater ?? 0) < 1) return ledger;
+  const elapsed = now - ledger.toolsSettledAt;
+  if (elapsed < FARM_CYCLE_MS) return ledger;
+  const cycles = Math.min(20, Math.floor(elapsed / FARM_CYCLE_MS));
+  if (cycles <= 0) return ledger;
+
+  const next = clone(ledger);
+  const startCycle = Math.floor(ledger.toolsSettledAt / FARM_CYCLE_MS);
+  next.toolsSettledAt = ledger.toolsSettledAt + cycles * FARM_CYCLE_MS;
+
+  for (let step = 0; step < cycles; step += 1) {
+    const rng = createRng(hash32(`tool:${ledger.playerId}:${startCycle + step}`));
+    const candidates: Array<{ slot: number; tree: boolean }> = [];
+    for (let tab = 0; tab < next.tabs; tab += 1) {
+      const open = next.unlockedPatches[tab] ?? 1;
+      for (let patch = 0; patch < open; patch += 1) {
+        for (let plot = 0; plot < PLOTS_PER_PATCH; plot += 1) {
+          const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
+          const entry = next.plots[slot] ?? null;
+          if (entry !== null && now < entry.readyAt && !entry.watered) candidates.push({ slot, tree: false });
+        }
+      }
+    }
+    for (let slot = 0; slot < next.trees.length; slot += 1) {
+      const entry = next.trees[slot] ?? null;
+      if (entry !== null && now < entry.readyAt && !entry.watered) candidates.push({ slot, tree: true });
+    }
+    if (candidates.length === 0) break;
+
+    const count = Math.max(1, Math.min(candidates.length, Math.round(candidates.length * 0.1)));
+    for (let index = 0; index < count; index += 1) {
+      const pick = candidates.splice(Math.floor(rng() * candidates.length), 1)[0];
+      if (pick === undefined) break;
+      if (pick.tree) {
+        const tree = next.trees[pick.slot] ?? null;
+        if (tree === null) continue;
+        const remaining = tree.readyAt - now;
+        next.trees[pick.slot] = {
+          ...tree,
+          readyAt: Math.max(now + 1_000, tree.readyAt - Math.round(remaining * WATER_CUT_RATIO)),
+          watered: true,
+          effects: canonicalEffects([...tree.effects, "wet"]),
+        };
+      } else {
+        const plot = next.plots[pick.slot] ?? null;
+        if (plot === null) continue;
+        const remaining = plot.readyAt - now;
+        next.plots[pick.slot] = {
+          ...plot,
+          readyAt: Math.max(now + 1_000, plot.readyAt - Math.round(remaining * WATER_CUT_RATIO)),
+          watered: true,
+          effects: canonicalEffects([...plot.effects, "wet"]),
+        };
+      }
+    }
+  }
+  return next;
+}
+
 /** @brief Empty animal vector for one building. */
 function emptyAnimalSlots(count: number): (AnimalState | null)[] {
   return new Array<AnimalState | null>(count).fill(null);
@@ -996,6 +1096,7 @@ function clone(ledger: GardenLedger): GardenLedger {
       crops: ledger.bag.crops.map((stack) => ({ ...stack })),
       supplies: { ...ledger.bag.supplies },
       products: (ledger.bag.products ?? []).map((stack) => ({ ...stack })),
+      tools: { ...ledger.bag.tools },
     },
     buildings: { ...ledger.buildings },
     animals: {

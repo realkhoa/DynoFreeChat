@@ -25,6 +25,7 @@ import {
   createLedger,
   ledgerSnapshot,
   settleFarm,
+  settleTools,
   type GardenLedger,
 } from "../src/garden-rules";
 
@@ -50,8 +51,9 @@ function run(
   action: GardenAction,
   at = NOW,
   roll = 0.9,
+  season = seasonFor(at),
 ): ReturnType<typeof applyGardenAction> {
-  return applyGardenAction(ledger, action, seasonFor(at), at, () => roll);
+  return applyGardenAction(ledger, action, season, at, () => roll);
 }
 
 describe("garden ledger rules", () => {
@@ -358,6 +360,42 @@ describe("garden ledger rules", () => {
     if (!sold.ok) return;
     expect(sold.ledger.coins).toBeGreaterThan(later.coins);
     expect(sold.ledger.bag.products).toHaveLength(0);
+  });
+
+  it("buys a rare watering machine and it waters ten percent per cycle", () => {
+    const base = seasonFor(NOW);
+    const season = {
+      ...base,
+      shop: { ...base.shop, tools: [{ tool: "autoWater" as const, price: 1_000_000, stock: 1 }] },
+    };
+    const ledger = makeLedger();
+    ledger.coins = 2_000_000;
+    const bought = run(ledger, { kind: "buyTool", tool: "autoWater", qty: 1 }, NOW, 0.9, season);
+    expect(bought.ok).toBe(true);
+    if (!bought.ok) return;
+    expect(bought.ledger.bag.tools.autoWater).toBe(1);
+    expect(bought.ledger.coins).toBe(1_000_000);
+
+    // Ten growing, unwatered tomatoes: the machine waters exactly one.
+    const farmed = bought.ledger;
+    for (let slot = 0; slot < 10; slot += 1) {
+      farmed.plots[slot] = {
+        slot,
+        seed: "tomato",
+        plantedAt: NOW,
+        readyAt: NOW + 8 * 60_000,
+        effects: [],
+        watered: false,
+        fertilized: false,
+        harvests: 0,
+        fertilizer: null,
+        spray: null,
+      };
+    }
+    farmed.toolsSettledAt = NOW;
+    const later = settleTools(farmed, NOW + FARM_CYCLE_MS);
+    const watered = later.plots.filter((plot) => plot?.watered === true).length;
+    expect(watered).toBe(1);
   });
 
   it("buys the next tab at the compounding price", () => {
