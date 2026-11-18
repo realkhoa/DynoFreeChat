@@ -23,6 +23,7 @@ import {
   effectById,
   gardenCounts,
   effectsMultiplier,
+  nextPatchPrice,
   nextTabPrice,
   plotView,
   seedById,
@@ -64,6 +65,20 @@ type Tab = "garden" | "market" | "event";
 
 /** Whether the document is showing the owner's garden or a friend's. */
 type Mode = "owner" | "visit";
+
+/** One open context menu: position, target slot and the visible submenu. */
+interface MenuState {
+  /** Which grid owns the target. */
+  readonly area: "crop" | "tree";
+  /** Absolute slot index inside that grid. */
+  readonly slot: number;
+  /** Viewport x of the menu origin. */
+  readonly x: number;
+  /** Viewport y of the menu origin. */
+  readonly y: number;
+  /** Which submenu is showing. */
+  readonly view: "actions" | "fertilize" | "spray" | "seed" | "tree";
+}
 
 /** One status message. */
 interface Message {
@@ -109,6 +124,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let selectedArea: "crop" | "tree" = "crop";
   let supplyPicker: "fertilize" | "spray" | null = null;
   let page = 0;
+  let menu: MenuState | null = null;
   let pendingSelection: { area: "crop" | "tree"; slot: number } | null = null;
   let pendingPage: number | null = null;
   let message: Message | null = null;
@@ -269,6 +285,24 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return currentTabs() >= MAX_TABS ? null : nextTabPrice(currentTabs());
   }
 
+  /** @brief Open crop patch counts per tab for the active mode. */
+  function currentPatches(): readonly number[] {
+    return mode === "visit" ? (visiting?.unlockedPatches ?? [1]) : (state?.unlockedPatches ?? [1]);
+  }
+
+  /** @brief Whether one crop slot sits in a still-locked 3x3 patch. */
+  function cropSlotLocked(slot: number): boolean {
+    const tab = Math.floor(slot / CROPS_PER_TAB);
+    const local = slot % CROPS_PER_TAB;
+    const patch = Math.floor(local / PLOTS_PER_PATCH);
+    return (currentPatches()[tab] ?? 1) <= patch;
+  }
+
+  /** @brief Next crop patch price for one tab. */
+  function patchCost(tab: number): number {
+    return nextPatchPrice(currentPatches()[tab] ?? 1);
+  }
+
   /** @brief Public share code for the active mode. */
   function currentCode(): string | null {
     return mode === "visit" ? (visiting?.code ?? null) : (state?.code ?? null);
@@ -384,6 +418,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     loading = false;
     render();
+    // A saved selection (URL gslot) reopens the context menu on the same cell.
+    if (selectedSlot !== null && menu === null) {
+      const cell = root?.querySelector<HTMLElement>(
+        `.garden-cell[data-area="${selectedArea}"][data-slot="${selectedSlot}"]`,
+      );
+      const rect = cell?.getBoundingClientRect();
+      openMenu(selectedSlot, selectedArea, (rect?.left ?? 24) + 6, (rect?.bottom ?? 120) + 2);
+    }
   }
 
   /** @brief Refreshes season and snapshot from the server. */
@@ -750,6 +792,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (tab === next) return;
     tab = next;
     selectedSlot = null;
+    menu = null;
     uprootArmed = false;
     if (next === "event") void loadLeaderboard();
     syncGardenQuery();
@@ -801,6 +844,41 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return { patch: Math.floor(local / PLOTS_PER_PATCH) + 1, plot: (local % PLOTS_PER_PATCH) + 1 };
   }
 
+  /**
+   * @brief Opens the context menu for one cell.
+   * @param slot Absolute slot index.
+   * @param area Which grid it belongs to.
+   * @param x Viewport x of the pointer.
+   * @param y Viewport y of the pointer.
+   */
+  function openMenu(slot: number, area: "crop" | "tree", x: number, y: number): void {
+    selectedSlot = slot;
+    selectedArea = area;
+    supplyPicker = null;
+    uprootArmed = false;
+    menu = { area, slot, x, y, view: "actions" };
+    syncGardenQuery();
+    render();
+  }
+
+  /** @brief Closes the context menu and drops the selection. */
+  function closeMenu(): void {
+    if (menu === null) return;
+    menu = null;
+    selectedSlot = null;
+    supplyPicker = null;
+    uprootArmed = false;
+    syncGardenQuery();
+    render();
+  }
+
+  /** @brief Switches the open context menu to another submenu. */
+  function menuView(view: MenuState["view"]): void {
+    if (menu === null) return;
+    menu = { ...menu, view };
+    render();
+  }
+
   /** @brief Selects one owned crop or tree slot and shows its detail panel. */
   function selectSlot(slot: number, area: "crop" | "tree"): void {
     const slots = area === "tree" ? currentTrees() : currentPlots();
@@ -822,6 +900,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (next === page) return;
     page = next;
     selectedSlot = null;
+    menu = null;
     supplyPicker = null;
     uprootArmed = false;
     syncGardenQuery();
@@ -875,14 +954,44 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return bar;
   }
 
+  /** @brief Ready/growing/free counts over the open crop patches and fruit slots. */
+  function gardenSummary(at: number): { ready: number; growing: number; free: number } {
+    let ready = 0;
+    let growing = 0;
+    let free = 0;
+    const plots = currentPlots() ?? [];
+    const trees = currentTrees() ?? [];
+    const patches = currentPatches();
+    for (let slot = 0; slot < plots.length; slot += 1) {
+      if (cropSlotLocked(slot)) continue;
+      const plot = plots[slot] ?? null;
+      if (plot === null) {
+        free += 1;
+        continue;
+      }
+      if (at >= plot.readyAt) ready += 1;
+      else growing += 1;
+    }
+    for (const tree of trees) {
+      if (tree === null) {
+        free += 1;
+        continue;
+      }
+      if (at >= tree.readyAt) ready += 1;
+      else growing += 1;
+    }
+    return { ready, growing, free };
+  }
+
   /** @brief HUD comment line. */
   function hudText(): string {
+    const at = now();
     if (mode === "visit" && visiting !== null) {
-      const counts = gardenCounts(visiting.plots, visiting.trees, now());
+      const counts = gardenSummary(at);
       return `${t("garden.visitTitle", { nick: visiting.nick })} | ${t("garden.coins")} ${formatNumber(visiting.coins)} | ${t("garden.ready")} ${counts.ready} | ${visiting.online ? t("common.online") : t("common.offlineUser")}`;
     }
     if (state === null) return "";
-    const counts = gardenCounts(state.plots, state.trees, now());
+    const counts = gardenSummary(at);
     return `${t("garden.coins")} ${formatNumber(state.coins)} | ${t("garden.ready")} ${counts.ready} | ${t("garden.growing")} ${counts.growing} | ${t("garden.free")} ${counts.free}`;
   }
 
@@ -910,10 +1019,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const plot = preview || area === "tree" ? null : plotAt(slot);
     const tree = preview || area === "crop" ? null : treeAt(slot);
     const local = area === "crop" ? slot - cropOffset() : slot - treeOffset();
+    const locked = preview || (area === "crop" && cropSlotLocked(slot));
+    const lockedCost = !locked ? null : preview ? 0 : patchCost(Math.floor(slot / CROPS_PER_TAB));
     const render =
       area === "tree"
-        ? treeCellRender(tree, at, preview ? 0 : null, local % PLOTS_PER_PATCH)
-        : cellRender(plot, at, preview ? 0 : null, local % PLOTS_PER_PATCH);
+        ? treeCellRender(tree, at, lockedCost, local % PLOTS_PER_PATCH)
+        : cellRender(plot, at, lockedCost, local % PLOTS_PER_PATCH);
     for (let index = 0; index < 6; index += 1) {
       const line = cell.children.item(index);
       if (line instanceof HTMLElement) line.textContent = render.lines[index] ?? "";
@@ -1213,7 +1324,137 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
-  /** @brief Builds the garden tab: pager, 9x9 crop grid, 3 fruit patches and detail. */
+  /** @brief Builds one full-width row inside the context menu. */
+  function menuRow(
+    label: string,
+    act: string,
+    options: { disabled?: boolean; data?: Record<string, string> } = {},
+  ): HTMLButtonElement {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "garden-menu-row";
+    row.dataset.act = act;
+    row.textContent = label;
+    if (options.disabled === true) row.disabled = true;
+    if (options.data !== undefined) {
+      for (const [key, value] of Object.entries(options.data)) row.dataset[key] = value;
+    }
+    return row;
+  }
+
+  /** @brief Builds the context menu anchored at the clicked cell. */
+  function buildMenu(at: number): HTMLElement | null {
+    const menuState = menu;
+    if (menuState === null) return null;
+    const wrap = div("garden-menu");
+    const width = 340;
+    const left = Math.min(Math.max(8, menuState.x), Math.max(8, window.innerWidth - width - 8));
+    const top = Math.min(Math.max(8, menuState.y), Math.max(8, window.innerHeight - 120));
+    wrap.style.left = `${left}px`;
+    wrap.style.top = `${top}px`;
+
+    const label = plotLabel(menuState.slot, menuState.area);
+    const head = div("garden-menu-head");
+    head.append(
+      span(
+        "garden-menu-title",
+        `${t(menuState.area === "tree" ? "garden.trees" : "garden.crops")} · ${t("garden.patch", { patch: label.patch })} · ${t("garden.plot", { slot: label.plot })}`,
+      ),
+    );
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "garden-menu-close";
+    close.dataset.act = "menuClose";
+    close.textContent = "×";
+    close.setAttribute("aria-label", t("common.close"));
+    head.append(close);
+    wrap.append(head);
+
+    const info = document.createElement("pre");
+    info.className = "garden-menu-info";
+    fillDetail(info, at);
+    wrap.append(info);
+
+    const rows = div("garden-menu-rows");
+    const plot = menuState.area === "crop" ? plotAt(menuState.slot) : null;
+    const tree = menuState.area === "tree" ? treeAt(menuState.slot) : null;
+    const plant = tree ?? plot;
+    const ready = plant !== null && at >= plant.readyAt;
+    const locked = menuState.area === "crop" && cropSlotLocked(menuState.slot);
+
+    if (menuState.view === "seed") {
+      rows.append(menuRow(t("garden.menuBack"), "menuBack"));
+      for (const seed of SEEDS) {
+        const offer = season?.shop.offers.find((entry) => entry.seed === seed.id);
+        const price = offer?.price ?? seed.buy;
+        const owned = state?.bag.seeds[seed.id] ?? 0;
+        rows.append(
+          menuRow(
+            `${fitText(seedName(seed.id), 9)} ${fitText(`${price}c`, 5)} ${t("garden.bag")} ${owned}`,
+            "menuSeed",
+            { data: { seed: seed.id } },
+          ),
+        );
+      }
+    } else if (menuState.view === "tree") {
+      rows.append(menuRow(t("garden.menuBack"), "menuBack"));
+      for (const treeDef of TREES) {
+        rows.append(
+          menuRow(
+            `${fitText(treeName(treeDef.id), 9)} ${fitText(`${treeDef.buy}c`, 6)} ${formatDuration(treeDef.growMs, "short")}`,
+            "menuTree",
+            { data: { tree: treeDef.id }, disabled: (state?.coins ?? 0) < treeDef.buy },
+          ),
+        );
+      }
+    } else if (menuState.view === "fertilize" || menuState.view === "spray") {
+      rows.append(menuRow(t("garden.menuBack"), "menuBack"));
+      const catalog = menuState.view === "fertilize" ? FERTILIZERS : SPRAYS;
+      const act = menuState.view === "fertilize" ? "menuUseFertilize" : "menuUseSpray";
+      for (const supply of catalog) {
+        const owned = state?.bag.supplies[supply.id] ?? 0;
+        rows.append(
+          menuRow(
+            `${fitText(t(`supplies.${supply.id}`), 14)} ${t("garden.bag")} ${owned} · ${supply.price}c`,
+            act,
+            { data: { supply: supply.id }, disabled: owned < 1 },
+          ),
+        );
+      }
+    } else if (mode === "visit") {
+      if (plant !== null) {
+        rows.append(menuRow(t("garden.waterFriend"), "waterFriend", { disabled: ready }));
+        rows.append(menuRow(t("garden.cheer"), "cheer"));
+      }
+    } else if (locked) {
+      rows.append(
+        menuRow(
+          t("garden.menuBuyPatch", {
+            patch: label.patch,
+            cost: `${formatNumber(patchCost(Math.floor(menuState.slot / CROPS_PER_TAB)))}c`,
+          }),
+          "menuBuyPatch",
+        ),
+      );
+    } else if (plant === null) {
+      rows.append(
+        menuRow(
+          menuState.area === "crop" ? t("garden.menuSeed") : t("garden.menuTree"),
+          menuState.area === "crop" ? "menuViewSeed" : "menuViewTree",
+        ),
+      );
+    } else {
+      rows.append(menuRow(t("garden.harvest"), "harvest", { disabled: !ready }));
+      rows.append(menuRow(t("garden.water"), "water", { disabled: ready || plant.watered }));
+      rows.append(menuRow(t("garden.menuFertilize"), "menuViewFertilize", { disabled: ready }));
+      rows.append(menuRow(t("garden.menuSpray"), "menuViewSpray"));
+      rows.append(menuRow(uprootArmed ? t("garden.uprootConfirm") : t("garden.uproot"), "uproot"));
+    }
+    wrap.append(rows);
+    return wrap;
+  }
+
+  /** @brief Builds the garden tab: pager plus the crop grid and fruit stack. */
   function buildGarden(): HTMLElement {
     const wrap = div("garden-garden");
     wrap.append(buildPager());
@@ -1224,7 +1465,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const treePanel = div("garden-board-panel");
     treePanel.append(span("garden-board-title", t("garden.trees")), buildTreeBoard());
     boards.append(cropPanel, treePanel);
-    layout.append(boards, buildDetail());
+    layout.append(boards);
     wrap.append(layout);
     return wrap;
   }
@@ -1401,12 +1642,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function render(): void {
     if (root === null || disposed) return;
     page = Math.min(page, pageCount() - 1);
-    detailPre = null;
     root.dataset.tab = tab;
     root.dataset.mode = mode;
     root.dataset.offline = offline ? "on" : "off";
     root.dataset.busy = busy ? "on" : "off";
     const parts: HTMLElement[] = [buildTabs(), buildHud(), buildContent(), buildStatus()];
+    const popover = buildMenu(now());
+    if (popover !== null) parts.push(popover);
     root.replaceChildren(...parts);
     refreshTimers();
   }
@@ -1428,7 +1670,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const area = cell.dataset.area === "tree" ? "tree" : "crop";
       if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncCell(cell, slot, area, at);
     }
-    if (detailPre !== null) fillDetail(detailPre, at);
     const hud = root.querySelector<HTMLElement>(".stage-hud");
     if (hud !== null) hud.textContent = hudText();
     if (season !== null) {
@@ -1451,9 +1692,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Click routing through `data-act` buttons. */
   function onClick(event: MouseEvent): void {
     if (busy) return;
-    const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-act]") : null;
-    if (target === null) return;
+    const clicked = event.target instanceof Element ? event.target : null;
+    const target = clicked?.closest<HTMLElement>("[data-act]") ?? null;
+    const inMenu = clicked?.closest(".garden-menu") !== null;
+    if (target === null) {
+      if (!inMenu) closeMenu();
+      return;
+    }
     const action = target.dataset.act ?? "";
+    if (action.startsWith("tab:")) {
+      closeMenu();
+      switchTab(action.slice(4) as Tab);
+      return;
+    }
     if (action.startsWith("tab:")) {
       switchTab(action.slice(4) as Tab);
       return;
@@ -1462,7 +1713,60 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "plot": {
         const slot = Number(target.dataset.slot);
         const area = target.dataset.area === "tree" ? "tree" : "crop";
-        if (Number.isInteger(slot)) selectSlot(slot, area);
+        if (!Number.isInteger(slot)) return;
+        const rect = target.getBoundingClientRect();
+        openMenu(slot, area, rect.left + 6, rect.bottom + 2);
+        return;
+      }
+      case "menuClose":
+        closeMenu();
+        return;
+      case "menuBack":
+        menuView("actions");
+        return;
+      case "menuViewSeed":
+        menuView("seed");
+        return;
+      case "menuViewTree":
+        menuView("tree");
+        return;
+      case "menuViewFertilize":
+        menuView("fertilize");
+        return;
+      case "menuViewSpray":
+        menuView("spray");
+        return;
+      case "menuBuyPatch": {
+        const tabIndex = menu === null ? page : Math.floor(menu.slot / CROPS_PER_TAB);
+        void runAction(
+          { kind: "buyPatch", tab: tabIndex },
+          t("garden.patchBought", { patch: plotLabel(menu?.slot ?? cropOffset(), "crop").patch }),
+        );
+        closeMenu();
+        return;
+      }
+      case "menuSeed": {
+        const seedId = target.dataset.seed as SeedId | undefined;
+        if (menu !== null && seedId !== undefined) void plantSeed(menu.slot, seedId);
+        closeMenu();
+        return;
+      }
+      case "menuTree": {
+        const treeId = target.dataset.tree as TreeId | undefined;
+        if (menu !== null && treeId !== undefined) void plantTree(menu.slot, treeId);
+        closeMenu();
+        return;
+      }
+      case "menuUseFertilize": {
+        const supply = target.dataset.supply as SupplyId | undefined;
+        if (supply !== undefined) applySupply("fertilize", supply);
+        closeMenu();
+        return;
+      }
+      case "menuUseSpray": {
+        const supply = target.dataset.supply as SupplyId | undefined;
+        if (supply !== undefined) applySupply("spray", supply);
+        closeMenu();
         return;
       }
       case "share":
@@ -1491,6 +1795,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (action === "harvest") harvest(selectedSlot, selectedArea);
         else if (action === "uproot") uproot(selectedSlot, selectedArea);
         else waterSelected(selectedSlot, selectedArea);
+        closeMenu();
         return;
       }
       case "pickFertilize":
@@ -1523,14 +1828,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         goPage(1);
         return;
       case "buyTab":
+        closeMenu();
         void buyTab();
         return;
       case "waterFriend": {
         if (selectedSlot !== null) void waterFriend(selectedSlot, selectedArea);
+        closeMenu();
         return;
       }
       case "cheer":
         void cheerHost();
+        closeMenu();
         return;
       case "buy": {
         const seedId = target.dataset.seed as SeedId | undefined;
@@ -1573,9 +1881,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Keyboard routing: plot digits, tab letters and action letters. */
   function onKeyDown(event: KeyboardEvent): void {
     if (event.key === "Escape") {
-      selectedSlot = null;
-      uprootArmed = false;
-      render();
+      if (menu !== null) closeMenu();
+      else {
+        selectedSlot = null;
+        uprootArmed = false;
+        render();
+      }
       return;
     }
     if (event.key === "g" || event.key === "G") {
@@ -1609,6 +1920,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (selectedSlot === null) return;
     if (event.key === "h" || event.key === "H") {
       if (mode === "owner") harvest(selectedSlot, selectedArea);
+      closeMenu();
     } else if (event.key === "w" || event.key === "W") {
       if (mode === "owner") waterSelected(selectedSlot, selectedArea);
       else void waterFriend(selectedSlot, selectedArea);
@@ -1632,6 +1944,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
     if (target.dataset.role === "restore") restoreDraft = target.value;
+  }
+
+  /** @brief Closes the context menu when the pointer lands outside it. */
+  function onPointerDown(event: PointerEvent): void {
+    if (menu === null) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest(".garden-menu") !== null || target.closest(".garden-cell") !== null) return;
+    closeMenu();
   }
 
   /** @brief Refreshes when the tab becomes visible again. */
@@ -1669,6 +1990,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     listen(root, "input", onInput);
     listen(target, "keydown", (event) => onKeyDown(event as KeyboardEvent));
     listen(document, "visibilitychange", onVisibility);
+    listen(document, "pointerdown", (event) => onPointerDown(event as PointerEvent));
     listen(window, "dyno:nick", () => {
       localIdentity = loadIdentity(identityStorage());
       void syncProfile();

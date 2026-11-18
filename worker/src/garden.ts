@@ -91,6 +91,30 @@ export function deriveTabs(value: { tabs?: unknown; patches?: unknown; unlocked?
   );
 }
 
+/**
+ * @brief Derives which crop patches are open in each tab.
+ * @param stored Value from an old or current save.
+ * @param plots Read crop rows, used to keep every planted slot reachable.
+ * @param tabs Owned tab count.
+ */
+export function deriveUnlockedPatches(stored: unknown, plots: (PlotState | null)[], tabs: number): number[] {
+  const patches: number[] = [];
+  for (let tab = 0; tab < tabs; tab += 1) {
+    let open = 1;
+    const local = Array.isArray(stored) && typeof stored[tab] === "number" ? stored[tab] : 0;
+    if (Number.isFinite(local)) open = Math.min(PLOTS_PER_PATCH, Math.max(1, Math.floor(local)));
+    // Never lock a slot that already holds a plant from an older layout.
+    for (let patch = 0; patch < PLOTS_PER_PATCH; patch += 1) {
+      for (let plot = 0; plot < PLOTS_PER_PATCH; plot += 1) {
+        const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
+        if ((plots[slot] ?? null) !== null) open = Math.max(open, patch + 1);
+      }
+    }
+    patches.push(open);
+  }
+  return patches;
+}
+
 /** Stored metadata: the ledger minus the rows kept in their own tables. */
 type StoredMeta = Omit<GardenLedger, "plots" | "trees" | "bag">;
 
@@ -243,10 +267,15 @@ export class Garden extends DurableObject<Env> {
     const raw = JSON.parse(row.value) as StoredMeta & { patches?: number; unlocked?: number };
     // Old saves keep their planted slots; only the tab count is derived.
     const tabs = deriveTabs(raw);
-    const meta: StoredMeta = { ...raw, tabs };
+    const plots = this.readPlots(tabs);
+    const meta: StoredMeta = {
+      ...raw,
+      tabs,
+      unlockedPatches: deriveUnlockedPatches(raw.unlockedPatches, plots, tabs),
+    };
     return {
       ...meta,
-      plots: this.readPlots(tabs),
+      plots,
       trees: this.readTrees(tabs),
       bag: this.readBag(),
     };
@@ -563,6 +592,7 @@ export class Garden extends DurableObject<Env> {
       code: ledger.code,
       coins: ledger.coins,
       tabs: ledger.tabs,
+      unlockedPatches: [...ledger.unlockedPatches],
       plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
       trees: ledger.trees.map((tree) => (tree === null ? null : { ...tree })),
       bag: {

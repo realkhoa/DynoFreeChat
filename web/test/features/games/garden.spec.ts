@@ -90,6 +90,7 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     code: "ABCDEF",
     coins: 42,
     tabs: 1,
+    unlockedPatches: [1],
     plots: new Array<PlotState | null>(CROPS_PER_TAB).fill(null),
     trees: new Array<TreeState | null>(TREES_PER_TAB).fill(null),
     bag: { seeds: { carrot: 3 }, crops: [], supplies: {} },
@@ -108,6 +109,7 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     code: "ABCDEF",
     coins: 12,
     tabs: 1,
+    unlockedPatches: [1],
     plots: new Array<PlotState | null>(CROPS_PER_TAB).fill(null),
     trees: new Array<TreeState | null>(TREES_PER_TAB).fill(null),
     bag: { seeds: {}, crops: [], supplies: {} },
@@ -255,7 +257,7 @@ describe("garden tab", () => {
     expect(readyCell?.classList.contains("is-wet")).toBe(true);
     host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
     await settle();
-    const detail = host.querySelector(".garden-detail-text")?.textContent ?? "";
+    const detail = host.querySelector(".garden-menu-info")?.textContent ?? "";
     expect(detail).toContain("Vàng x5");
     expect(detail).toContain("Ướt x2");
     expect(detail).toContain("x10");
@@ -271,7 +273,9 @@ describe("garden tab", () => {
     const cells = host.querySelectorAll<HTMLButtonElement>(".garden-cell");
     cells[1]?.click();
     await settle();
-    const seeds = host.querySelectorAll<HTMLButtonElement>(".garden-seeds .garden-row");
+    host.querySelector<HTMLButtonElement>('[data-act="menuViewSeed"]')?.click();
+    await settle();
+    const seeds = host.querySelectorAll<HTMLButtonElement>('[data-act="menuSeed"]');
     expect(seeds).toHaveLength(SEEDS.length);
 
     seeds[0]?.click();
@@ -332,7 +336,9 @@ describe("garden tab", () => {
     expect(treeCell?.dataset.area).toBe("tree");
     treeCell?.click();
     await settle();
-    const rows = host.querySelectorAll<HTMLButtonElement>(".garden-seeds .garden-row");
+    host.querySelector<HTMLButtonElement>('[data-act="menuViewTree"]')?.click();
+    await settle();
+    const rows = host.querySelectorAll<HTMLButtonElement>('[data-act="menuTree"]');
     expect(rows).toHaveLength(TREES.length);
     rows[0]?.click();
     await settle();
@@ -352,15 +358,31 @@ describe("garden tab", () => {
 
     host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
     await settle();
-    host.querySelector<HTMLButtonElement>('[data-act="pickFertilize"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-act="menuViewFertilize"]')?.click();
     await settle();
-    const rows = host.querySelectorAll<HTMLButtonElement>(".garden-seeds .garden-row");
+    const rows = host.querySelectorAll<HTMLButtonElement>('[data-act="menuUseFertilize"]');
     expect(rows).toHaveLength(FERTILIZERS.length);
 
-    host.querySelector<HTMLButtonElement>('.garden-seeds .garden-row[data-supply="compost"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-act="menuUseFertilize"][data-supply="compost"]')?.click();
     await settle();
     const applied = api.calls.find((call) => call.action?.kind === "fertilize");
     expect(applied?.action).toMatchObject({ kind: "fertilize", supply: "compost" });
+  });
+
+  it("offers to open the next locked 3x3 patch", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 1_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    // Slot 9 is the first cell of the second crop patch, locked by default.
+    host.querySelector<HTMLButtonElement>('.garden-cell[data-area="crop"][data-slot="20"]')?.click();
+    await settle();
+    const buy = host.querySelector<HTMLButtonElement>('[data-act="menuBuyPatch"]');
+    expect(buy).not.toBeNull();
+    buy?.click();
+    await settle();
+    const bought = api.calls.find((call) => call.action?.kind === "buyPatch");
+    expect(bought?.action).toMatchObject({ kind: "buyPatch", tab: 0 });
   });
 
   it("restores the saved tab, page and selection from the URL", async () => {
@@ -375,7 +397,7 @@ describe("garden tab", () => {
     const selected = host.querySelector<HTMLElement>(".garden-cell.is-selected");
     expect(selected?.dataset.area).toBe("tree");
     expect(selected?.dataset.slot).toBe("36");
-    expect(host.querySelector(".garden-detail-text")?.textContent).toContain("Táo");
+    expect(host.querySelector(".garden-menu-info")?.textContent).toContain("Táo");
   });
 
   it("mirrors tab and page changes into the URL", async () => {

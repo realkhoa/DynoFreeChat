@@ -32,6 +32,12 @@ export const STARTING_TABS = 1;
 /** Hard cap on bought tabs, so the garden stays bounded. */
 export const MAX_TABS = 4;
 
+/** Price of the second crop patch inside a tab, in coins. */
+export const PATCH_BASE_PRICE = 250;
+
+/** Each further crop patch costs this multiple of the previous one. */
+export const PATCH_PRICE_FACTOR = 2;
+
 /** Price of the second tab, in coins. */
 export const TAB_BASE_PRICE = 5_000;
 
@@ -423,6 +429,8 @@ export interface GardenSnapshot {
   readonly coins: number;
   /** Bought tabs, `STARTING_TABS..MAX_TABS`. */
   readonly tabs: number;
+  /** Open crop patches per tab (1..9), in tab order. */
+  readonly unlockedPatches: readonly number[];
   /** Crop slots for the owned tabs, `tabs * CROPS_PER_TAB` entries. */
   readonly plots: readonly (PlotState | null)[];
   /** Fruit tree slots for the owned tabs, `tabs * TREES_PER_TAB` entries. */
@@ -449,6 +457,8 @@ export interface VisitSnapshot {
   readonly coins: number;
   /** Bought tabs. */
   readonly tabs: number;
+  /** Open crop patches per tab (1..9). */
+  readonly unlockedPatches: readonly number[];
   /** Crop slots. */
   readonly plots: readonly (PlotState | null)[];
   /** Fruit tree slots. */
@@ -555,6 +565,7 @@ export type GardenAction =
   | { readonly kind: "spray"; readonly slot: number; readonly tree: boolean; readonly supply: SprayId }
   | { readonly kind: "uproot"; readonly slot: number; readonly tree: boolean }
   | { readonly kind: "buyTab" }
+  | { readonly kind: "buyPatch"; readonly tab: number }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
   | {
@@ -589,6 +600,7 @@ export type GardenErrorCode =
   | "NO_CROP"
   | "NOTHING_TO_SELL"
   | "MAX_TABS"
+  | "MAX_PATCHES"
   | "CANNOT_VISIT_SELF";
 
 /** Successful response to a garden action. */
@@ -704,6 +716,15 @@ export function totalCrops(tabs: number): number {
 /** @brief Fruit tree slots owned with `tabs` bought tabs. */
 export function totalTrees(tabs: number): number {
   return tabs * TREES_PER_TAB;
+}
+
+/**
+ * @brief Price of the next crop patch inside a tab.
+ * @param unlockedPatches Patches already open in that tab (1..9).
+ * @details 250 -> 500 -> 1,000 -> 2,000 ...
+ */
+export function nextPatchPrice(unlockedPatches: number): number {
+  return Math.round(PATCH_BASE_PRICE * PATCH_PRICE_FACTOR ** Math.max(0, unlockedPatches - 1));
 }
 
 /**
@@ -858,6 +879,11 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return { kind, item: item.id as ItemId, effects: canonicalEffects(effects), qty };
   }
   if (kind === "buyTab") return { kind };
+  if (kind === "buyPatch") {
+    const tab = value.tab;
+    if (typeof tab !== "number" || !Number.isInteger(tab) || tab < 0 || tab >= MAX_TABS) return null;
+    return { kind, tab };
+  }
   if (kind === "sellAll") return { kind };
   return null;
 }

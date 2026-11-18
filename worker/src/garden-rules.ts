@@ -11,6 +11,7 @@ import {
   ACTIONS_PER_MINUTE,
   CROPS_PER_TAB,
   MAX_TABS,
+  PLOTS_PER_PATCH,
   STARTING_COINS,
   STARTING_TABS,
   STARTING_SEEDS,
@@ -21,6 +22,7 @@ import {
   eventAt,
   growTimeFor,
   hash32,
+  nextPatchPrice,
   nextTabPrice,
   canonicalEffects,
   rollEffects,
@@ -86,6 +88,8 @@ export interface GardenLedger {
   coins: number;
   /** Bought tabs. */
   tabs: number;
+  /** Open crop patches per tab (1..9). */
+  unlockedPatches: number[];
   /** Crop slots, parallel to {@link trees}. */
   plots: (PlotState | null)[];
   /** Fruit tree slots, parallel to {@link plots}. */
@@ -149,6 +153,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     recoveryHash: input.recoveryHash,
     coins: STARTING_COINS,
     tabs: STARTING_TABS,
+    unlockedPatches: new Array<number>(STARTING_TABS).fill(1),
     plots: emptyCrops(STARTING_TABS),
     trees: emptyTrees(STARTING_TABS),
     bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {} },
@@ -193,6 +198,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     code: ledger.code,
     coins: ledger.coins,
     tabs: ledger.tabs,
+    unlockedPatches: [...ledger.unlockedPatches],
     plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
     trees: ledger.trees.map((tree) => (tree === null ? null : { ...tree })),
     bag: {
@@ -247,6 +253,8 @@ export function applyGardenAction(
       return action.tree ? uprootTree(ledger, action.slot, now) : uproot(ledger, action.slot, now);
     case "buyTab":
       return buyTab(ledger, now);
+    case "buyPatch":
+      return buyPatch(ledger, action.tab, now);
     case "buySeed":
       return buySeed(ledger, action.seed, action.qty, season, now);
     case "buySupply":
@@ -269,6 +277,7 @@ function plant(
   rng: () => number,
 ): RuleResult {
   if (slot >= ledger.plots.length) return { ok: false, code: "PLOT_LOCKED" };
+  if (!isCropPatchOpen(ledger, slot)) return { ok: false, code: "PLOT_LOCKED" };
   if (ledger.plots[slot] !== null) return { ok: false, code: "PLOT_OCCUPIED" };
   const seed = seedById(seedId);
   if (seed === undefined) return { ok: false, code: "NO_SEED" };
@@ -531,9 +540,32 @@ function buyTab(ledger: GardenLedger, now: number): RuleResult {
   const next = clone(ledger);
   next.coins -= cost;
   next.tabs += 1;
+  next.unlockedPatches.push(1);
   for (let index = 0; index < CROPS_PER_TAB; index += 1) next.plots.push(null);
   for (let index = 0; index < TREES_PER_TAB; index += 1) next.trees.push(null);
   return changed(next, now);
+}
+
+/** @brief Buys the next crop patch inside one tab. */
+function buyPatch(ledger: GardenLedger, tab: number, now: number): RuleResult {
+  if (tab < 0 || tab >= ledger.tabs) return { ok: false, code: "BAD_REQUEST" };
+  const open = ledger.unlockedPatches[tab] ?? 1;
+  if (open >= PLOTS_PER_PATCH) return { ok: false, code: "MAX_PATCHES" };
+  const cost = nextPatchPrice(open);
+  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= cost;
+  next.unlockedPatches[tab] = open + 1;
+  return changed(next, now);
+}
+
+/** @brief Whether one crop slot belongs to an open 3x3 patch. */
+function isCropPatchOpen(ledger: GardenLedger, slot: number): boolean {
+  const tab = Math.floor(slot / CROPS_PER_TAB);
+  const local = slot % CROPS_PER_TAB;
+  const patch = Math.floor(local / PLOTS_PER_PATCH);
+  return (ledger.unlockedPatches[tab] ?? 0) > patch;
 }
 
 /** @brief Buys seeds from the current shop rotation. */
