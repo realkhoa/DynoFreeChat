@@ -540,3 +540,84 @@
   font: 700 10.5px/15px var(--font-mono);
   white-space: nowrap;
 }
+
+/* Market chart: one row per item, sorted by pressure. */
+.garden-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 2px;
+  font: 10px/15px var(--font-mono);
+}
+
+.garden-chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  color: #6a9955;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+}
+
+.garden-chart-timer {
+  color: #f0d58c;
+  font-weight: 700;
+}
+
+.garden-chart-hint {
+  color: #8a8a8a;
+  font-size: 9.5px;
+}
+
+.garden-chart-row {
+  display: grid;
+  grid-template-columns: 1fr 72px 54px 72px 96px;
+  gap: 8px;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.garden-chart-row:hover {
+  background: var(--hover-row);
+}
+
+.garden-chart-name {
+  color: #d4d4d4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.garden-chart-price {
+  color: #f0d58c;
+  text-align: right;
+}
+
+.garden-chart-mult {
+  color: #9cdcfe;
+  text-align: right;
+}
+
+.garden-chart-trend {
+  text-align: right;
+}
+
+.garden-chart-row.is-up .garden-chart-trend {
+  color: #6fe3b5;
+}
+
+.garden-chart-row.is-down .garden-chart-trend {
+  color: #f48771;
+}
+
+.garden-chart-row.is-flat .garden-chart-trend {
+  color: #8a8a8a;
+}
+
+.garden-chart-sold {
+  color: #8a8a8a;
+  text-align: right;
+  white-space: nowrap;
+}

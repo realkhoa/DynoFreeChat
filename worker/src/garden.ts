@@ -21,6 +21,7 @@ import {
   parseGardenAction,
   cropKey,
   parseCropKey,
+  applyMarket,
   seasonAt,
   type CropStack,
   type GardenAction,
@@ -30,6 +31,7 @@ import {
   type ActiveFertilizer,
   type ActiveSpray,
   type EffectId,
+  type SeasonSnapshot,
   effectById,
   type SeedId,
   type SupplyId,
@@ -58,6 +60,9 @@ export const HUB_NAME = "hub";
 
 /** Header carrying the raw write token from the Worker to a garden object. */
 export const GARDEN_TOKEN_HEADER = "x-dyno-garden-token";
+
+/** Header carrying market multipliers from the Worker to a garden object. */
+export const MARKET_HEADER = "x-dyno-market";
 
 /** Owners seen less than this long ago count as online visitors see it. */
 export const ONLINE_WINDOW_MS = 30_000;
@@ -113,6 +118,25 @@ export function deriveUnlockedPatches(stored: unknown, plots: (PlotState | null)
     patches.push(open);
   }
   return patches;
+}
+
+/**
+ * @brief Units of each item removed from the bag by one action.
+ * @param before Bag before the action.
+ * @param after Bag after the action.
+ */
+export function soldDiff(before: readonly CropStack[], after: readonly CropStack[]): Record<string, number> {
+  const sold: Record<string, number> = {};
+  for (const stack of before) {
+    const left = after.find(
+      (entry) =>
+        entry.item === stack.item &&
+        cropKey(entry.item, entry.effects) === cropKey(stack.item, stack.effects),
+    );
+    const removed = stack.qty - (left?.qty ?? 0);
+    if (removed > 0) sold[stack.item] = (sold[stack.item] ?? 0) + removed;
+  }
+  return sold;
 }
 
 /** Stored metadata: the ledger minus the rows kept in their own tables. */
@@ -479,6 +503,29 @@ export class Garden extends DurableObject<Env> {
     });
   }
 
+  /**
+   * @brief Applies the market multipliers the Worker forwarded with the request.
+   * @param request Internal request carrying `x-dyno-market` (URI-encoded JSON).
+   * @param now Server clock.
+   * @details Selling and previews must agree with the shared board, so the season
+   * used for rules already includes market pressure.
+   */
+  private seasonFor(request: Request, now: number): SeasonSnapshot {
+    const season = seasonAt(now);
+    const raw = request.headers.get(MARKET_HEADER);
+    if (raw === null) return season;
+    try {
+      const multipliers = JSON.parse(decodeURIComponent(raw)) as Partial<Record<string, number>>;
+      const typed: Partial<Record<string, number>> = {};
+      for (const [item, value] of Object.entries(multipliers)) {
+        if (typeof value === "number" && Number.isFinite(value)) typed[item] = value;
+      }
+      return applyMarket(season, typed);
+    } catch {
+      return season;
+    }
+  }
+
   /** @brief Returns the owner snapshot and refreshes the presence stamp. */
   private async state(request: Request): Promise<Response> {
     const ledger = await this.authorize(request);
@@ -489,7 +536,11 @@ export class Garden extends DurableObject<Env> {
       ledger.lastSeen = now;
       this.write(ledger);
     }
-    return json({ state: ledgerSnapshot(ledger), season: seasonAt(now), serverNow: now });
+    return json({
+      state: ledgerSnapshot(ledger),
+      season: this.seasonFor(request, now),
+      serverNow: now,
+    });
   }
 
   /** @brief Applies one owner action against the current revision. */
@@ -505,13 +556,18 @@ export class Garden extends DurableObject<Env> {
     if (action === null) return json({ code: "BAD_REQUEST" }, 400);
 
     const now = Date.now();
-    const season = seasonAt(now);
+    const season = this.seasonFor(request, now);
     const result = applyGardenAction(ledger, action as GardenAction, season, now);
     if (!result.ok) return json({ code: result.code }, 400);
 
     this.write(result.ledger);
     await this.publish(result.ledger);
-    return json({ state: ledgerSnapshot(result.ledger), season, serverNow: now });
+    return json({
+      state: ledgerSnapshot(result.ledger),
+      season,
+      serverNow: now,
+      sold: soldDiff(ledger.bag.crops, result.ledger.bag.crops),
+    });
   }
 
   /** @brief Renames the player without touching the garden identity. */

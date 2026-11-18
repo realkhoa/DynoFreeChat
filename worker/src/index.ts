@@ -3,6 +3,7 @@ import { LOCK_HEADER, lockSecrets, stateResponse, verifyResponse, verifySession 
 import type { Env } from "./env";
 import { handleGardenRoute } from "./garden-api";
 import { Garden, GardenHub } from "./garden";
+import { MarketBoard } from "./market-board";
 import { json } from "./http";
 import {
   chartResponse,
@@ -16,7 +17,7 @@ import {
 import { Registry } from "./registry";
 import { ChatRoom } from "./room";
 
-export { ChatRoom, Garden, GardenHub, Registry };
+export { ChatRoom, Garden, GardenHub, MarketBoard, Registry };
 
 /**
  * Exact-match origin allowlist. A missing Origin (CLI, curl, miniflare) is

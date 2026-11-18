@@ -80,6 +80,22 @@ async function visit(code: string): Promise<VisitSnapshot> {
   return payload.garden;
 }
 
+describe("global market", () => {
+  it("serves the market board with every sellable item", async () => {
+    const response = await SELF.fetch(`${BASE}/api/garden/market`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      market: { cycle: number; nextCycleAt: number; soldTarget: number; items: unknown[] };
+    };
+    expect(body.market.items.length).toBeGreaterThan(20);
+    expect(body.market.soldTarget).toBe(25);
+    expect(body.market.nextCycleAt).toBeGreaterThan(Date.now());
+    const first = body.market.items[0] as { item: string; multiplier: number; price: number };
+    expect(first.multiplier).toBe(1);
+    expect(first.price).toBeGreaterThan(0);
+  });
+});
+
 describe("legacy saves", () => {
   it("keeps old patch data as usable tabs", () => {
     expect(deriveTabs({ unlocked: 4 })).toBe(1);

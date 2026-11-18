@@ -23,6 +23,10 @@
         "name": "GARDEN_HUB",
         "class_name": "GardenHub",
       },
+      {
+        "name": "MARKET",
+        "class_name": "MarketBoard",
+      },
     ],
   },
   "migrations": [
@@ -33,6 +37,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["Garden", "GardenHub"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["MarketBoard"],
     },
   ],
   "vars": {

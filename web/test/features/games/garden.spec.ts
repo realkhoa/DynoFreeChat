@@ -123,6 +123,17 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
 }
 
 /** Stand-in for {@link GardenApi} with scripted responses. */
+/** Small market board fixture for the chart tab. */
+const MARKET = {
+  cycle: 5,
+  nextCycleAt: CLOCK + 120_000,
+  soldTarget: 25,
+  items: [
+    { item: "carrot" as const, base: 9, multiplier: 1.5, previous: 1, price: 14, sold: 3 },
+    { item: "tomato" as const, base: 28, multiplier: 0.5, previous: 1, price: 14, sold: 40 },
+  ],
+};
+
 class FakeGardenApi {
   stateValue: GardenSnapshot;
   visitValue: VisitSnapshot = makeVisit();
@@ -144,7 +155,11 @@ class FakeGardenApi {
   forget(): void {}
 
   async state() {
-    return { state: this.stateValue, season: SEASON, serverNow: CLOCK };
+    return { state: this.stateValue, season: SEASON, serverNow: CLOCK, market: MARKET };
+  }
+
+  async market() {
+    return { market: MARKET, serverNow: CLOCK };
   }
 
   async act(rev: number, action: GardenAction) {
@@ -248,7 +263,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    expect(host.querySelectorAll(".garden-tab")).toHaveLength(3);
+    expect(host.querySelectorAll(".garden-tab")).toHaveLength(4);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
@@ -473,6 +488,23 @@ describe("garden tab", () => {
     await settle();
     expect(host.querySelector(".garden-balance")?.textContent).toContain("$");
     expect(host.querySelector(".stage-status")?.textContent).toContain("Click");
+  });
+});
+
+describe("chart tab", () => {
+  it("lists item trends from the global market board", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:chart"]')?.click();
+    await settle();
+    const rows = host.querySelectorAll<HTMLElement>(".garden-chart-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.classList.contains("is-up")).toBe(true);
+    expect(rows[0]?.textContent).toContain("x1.50");
+    expect(rows[1]?.classList.contains("is-down")).toBe(true);
+    expect(rows[1]?.textContent).toContain("40/25");
   });
 });
 

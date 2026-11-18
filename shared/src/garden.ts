@@ -516,6 +516,112 @@ export interface ShopOffer {
   readonly stock: number;
 }
 
+/** Market cycle length: prices retune every six minutes. */
+export const MARKET_CYCLE_MS = 6 * 60_000;
+
+/** Units sold in a cycle that the market treats as "normal" demand. */
+export const MARKET_SOLD_TARGET = 25;
+
+/** Floor for a crashed price: the base can lose at most 70%. */
+export const MARKET_MIN_MULTIPLIER = 0.3;
+
+/** Ceiling for a starved price: the base can gain at most 500%. */
+export const MARKET_MAX_MULTIPLIER = 6;
+
+/** One item row of the live market board. */
+export interface MarketQuoteItem {
+  /** Seed or tree id. */
+  readonly item: ItemId;
+  /** Season base price before market pressure. */
+  readonly base: number;
+  /** Current pressure multiplier. */
+  readonly multiplier: number;
+  /** Previous cycle multiplier, for the trend arrow. */
+  readonly previous: number;
+  /** Effective price, i.e. base times multiplier. */
+  readonly price: number;
+  /** Units sold in the running cycle. */
+  readonly sold: number;
+}
+
+/** Global market pressure snapshot. */
+export interface MarketSnapshot {
+  /** Running market cycle index. */
+  readonly cycle: number;
+  /** Server time the cycle rolls over. */
+  readonly nextCycleAt: number;
+  /** Normal demand used by the pressure formula. */
+  readonly soldTarget: number;
+  /** One row per sellable item. */
+  readonly items: readonly MarketQuoteItem[];
+}
+
+/** @brief Market cycle index for one server time. */
+export function marketCycleAt(now: number): number {
+  return Math.floor((now - EPOCH_MS) / MARKET_CYCLE_MS);
+}
+
+/** @brief Server time the current market cycle ends. */
+export function marketCycleEndsAt(now: number): number {
+  return EPOCH_MS + (marketCycleAt(now) + 1) * MARKET_CYCLE_MS;
+}
+
+/**
+ * @brief Computes the next multiplier from one cycle of sales.
+ * @param previous Current multiplier (clamped 0.3..6).
+ * @param sold Units sold during the cycle.
+ * @details No sales raise the price 25%; light sales raise it 10%; heavy sales
+ * cut it proportionally, never below 30% of base or above 600%.
+ */
+export function nextMarketMultiplier(previous: number, sold: number): number {
+  const clamp = (value: number): number =>
+    Math.min(MARKET_MAX_MULTIPLIER, Math.max(MARKET_MIN_MULTIPLIER, value));
+  if (sold <= 0) return clamp(previous * 1.25);
+  if (sold < MARKET_SOLD_TARGET) return clamp(previous * 1.1);
+  const ratio = MARKET_SOLD_TARGET / sold;
+  return clamp(previous * Math.max(0.5, ratio));
+}
+
+/** @brief Base exchange price of one item before market pressure. */
+export function basePriceOf(item: ItemId, season: SeasonSnapshot): number {
+  const seed = seedById(item);
+  if (seed !== undefined) return season.prices[seed.id] ?? 0;
+  const tree = treeById(item);
+  return tree === undefined ? 0 : (season.fruitPrices[tree.id] ?? 0);
+}
+
+/** @brief Every sellable item with its season base price. */
+export function marketBaseItems(season: SeasonSnapshot): Array<{ item: ItemId; base: number }> {
+  const rows: Array<{ item: ItemId; base: number }> = [];
+  for (const seed of SEEDS) rows.push({ item: seed.id, base: season.prices[seed.id] ?? 0 });
+  for (const tree of TREES) rows.push({ item: tree.id, base: season.fruitPrices[tree.id] ?? 0 });
+  return rows;
+}
+
+/**
+ * @brief Applies market multipliers to one season snapshot.
+ * @param season Base season prices.
+ * @param multipliers Pressure per item; missing items stay at base price.
+ */
+export function applyMarket(
+  season: SeasonSnapshot,
+  multipliers: Readonly<Partial<Record<ItemId, number>>>,
+): SeasonSnapshot {
+  const prices = { ...season.prices };
+  for (const seed of SEEDS) {
+    const pressure = multipliers[seed.id];
+    if (pressure !== undefined) prices[seed.id] = Math.max(1, Math.round((prices[seed.id] ?? 0) * pressure));
+  }
+  const fruitPrices = { ...season.fruitPrices };
+  for (const tree of TREES) {
+    const pressure = multipliers[tree.id];
+    if (pressure !== undefined) {
+      fruitPrices[tree.id] = Math.max(1, Math.round((fruitPrices[tree.id] ?? 0) * pressure));
+    }
+  }
+  return { ...season, prices, fruitPrices };
+}
+
 /** Everything that changes with the server clock. */
 export interface SeasonSnapshot {
   /** Rotation index of the current event wave. */
@@ -610,20 +716,26 @@ export type GardenErrorCode =
 export interface GardenActResponse {
   /** Updated owner snapshot. */
   readonly state: GardenSnapshot;
-  /** Season the action was validated against. */
+  /** Season the action was validated against, already market-adjusted. */
   readonly season: SeasonSnapshot;
   /** Server clock when the action was applied. */
   readonly serverNow: number;
+  /** Global market board at write time. */
+  readonly market?: MarketSnapshot;
+  /** Units of each item this action sold into the market. */
+  readonly sold?: Readonly<Record<string, number>>;
 }
 
 /** Successful response to a state read. */
 export interface GardenStateResponse {
   /** Owner snapshot. */
   readonly state: GardenSnapshot;
-  /** Current season snapshot. */
+  /** Current season snapshot, already market-adjusted. */
   readonly season: SeasonSnapshot;
   /** Server clock. */
   readonly serverNow: number;
+  /** Global market board; the chart tab reads this. */
+  readonly market?: MarketSnapshot;
 }
 
 /** Credentials the browser keeps in `localStorage`. */

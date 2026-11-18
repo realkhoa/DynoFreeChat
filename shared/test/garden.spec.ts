@@ -42,6 +42,13 @@ import {
   SPRAYS,
   TREES,
   fertilizerById,
+  MARKET_MAX_MULTIPLIER,
+  MARKET_MIN_MULTIPLIER,
+  applyMarket,
+  marketBaseItems,
+  marketCycleAt,
+  marketCycleEndsAt,
+  nextMarketMultiplier,
   nextTabPrice,
   sprayById,
   supplyById,
@@ -124,6 +131,40 @@ describe("garden catalog", () => {
     expect(TREES_PER_TAB).toBe(27);
     expect(MAX_TABS).toBe(4);
     expect(totalCrops(STARTING_TABS)).toBe(CROPS_PER_TAB);
+  });
+});
+
+describe("market pressure", () => {
+  it("moves the multiplier from one cycle of sales", () => {
+    expect(nextMarketMultiplier(1, 0)).toBeCloseTo(1.25);
+    expect(nextMarketMultiplier(1, 10)).toBeCloseTo(1.1);
+    expect(nextMarketMultiplier(1, 50)).toBeCloseTo(0.5);
+    expect(nextMarketMultiplier(1, 1_000)).toBeCloseTo(0.5);
+  });
+
+  it("clamps the price between -70% and +500%", () => {
+    expect(nextMarketMultiplier(0.31, 1_000)).toBe(MARKET_MIN_MULTIPLIER);
+    expect(nextMarketMultiplier(0.3, 1_000)).toBe(MARKET_MIN_MULTIPLIER);
+    expect(nextMarketMultiplier(5.9, 0)).toBe(MARKET_MAX_MULTIPLIER);
+  });
+
+  it("applies pressure to seed and fruit prices", () => {
+    const season = seasonAt(EPOCH_MS);
+    const pressured = applyMarket(season, { carrot: 2, apple: 0.5 });
+    expect(pressured.prices.carrot).toBe(Math.max(1, Math.round((season.prices.carrot ?? 0) * 2)));
+    expect(pressured.fruitPrices.apple).toBe(Math.max(1, Math.round((season.fruitPrices.apple ?? 0) * 0.5)));
+    expect(pressured.prices.tomato).toBe(season.prices.tomato);
+  });
+
+  it("lists every sellable item with its base price", () => {
+    const rows = marketBaseItems(seasonAt(EPOCH_MS));
+    expect(rows).toHaveLength(SEEDS.length + TREES.length);
+    expect(rows.find((row) => row.item === "carrot")?.base).toBeGreaterThan(0);
+  });
+
+  it("uses six-minute aligned cycles", () => {
+    expect(marketCycleEndsAt(EPOCH_MS)).toBe(EPOCH_MS + 6 * 60_000);
+    expect(marketCycleAt(EPOCH_MS + 6 * 60_000)).toBe(marketCycleAt(EPOCH_MS) + 1);
   });
 });
 

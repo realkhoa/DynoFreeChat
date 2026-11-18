@@ -11,17 +11,20 @@
 import {
   GARDEN_AUTH_HEADER,
   GARDEN_CODE_LENGTH,
+  applyMarket,
   isGardenCode,
   isRecoveryKey,
   parseGardenAuth,
   seasonAt,
   type GardenCredentials,
+  type MarketSnapshot,
 } from "@dyno/shared/garden";
 import { LOCK_HEADER } from "@dyno/shared/market";
 import { sanitizeColor, sanitizeNick } from "@dyno/shared/protocol";
 import { lockSecrets, verifySession } from "./auth";
 import type { Env } from "./env";
-import { GARDEN_TOKEN_HEADER, HUB_NAME } from "./garden";
+import { GARDEN_TOKEN_HEADER, HUB_NAME, MARKET_HEADER } from "./garden";
+import { MARKET_BOARD_NAME } from "./market-board";
 import { json, readJson } from "./http";
 import { randomCode, randomRecoveryKey, sha256Hex } from "./secrets";
 
@@ -47,7 +50,8 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
 
   if (name === "register" && request.method === "POST") return registerGarden(request, env, now);
   if (name === "restore" && request.method === "POST") return restoreGarden(request, env);
-  if (name === "season" && request.method === "GET") return json({ season: seasonAt(now), serverNow: now });
+  if (name === "season" && request.method === "GET") return seasonRoute(env, now);
+  if (name === "market" && request.method === "GET") return marketRoute(env);
   if (name === "leaderboard" && request.method === "GET") return leaderboard(env, url);
   if (name === "visit") {
     const code = parts[3];
@@ -62,8 +66,9 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   const auth = parseGardenAuth(request.headers.get(GARDEN_AUTH_HEADER));
   if (auth === null) return json({ code: "UNAUTHORIZED" }, 401);
 
-  if (name === "state" && request.method === "GET") return forwardOwner(env, auth, "/state", "GET");
-  if (name === "act" && request.method === "POST") return forwardOwner(env, auth, "/act", "POST", request);
+  if (name === "state" && request.method === "GET") return ownerResponse(env, auth, "/state", "GET", now);
+  if (name === "act" && request.method === "POST")
+    return ownerResponse(env, auth, "/act", "POST", now, request);
   if (name === "profile" && request.method === "POST")
     return forwardOwner(env, auth, "/profile", "POST", request);
   if (name === "recovery" && request.method === "POST")
@@ -101,6 +106,83 @@ async function forwardOwner(
     headers: ownerHeaders(auth.token),
     body: body === undefined || body.length === 0 ? undefined : body,
   });
+}
+
+/** Market context for one request: snapshot plus the header Garden consumes. */
+interface MarketContext {
+  readonly snapshot: MarketSnapshot;
+  readonly header: string;
+  readonly stub: DurableObjectStub;
+}
+
+/** @brief Loads the global market board and encodes its multipliers. */
+async function marketContext(env: Env): Promise<MarketContext | null> {
+  try {
+    const stub = env.MARKET.get(env.MARKET.idFromName(MARKET_BOARD_NAME));
+    const response = await stub.fetch("https://market/snapshot");
+    if (!response.ok) return null;
+    const snapshot = (await response.json()) as MarketSnapshot;
+    const multipliers: Record<string, number> = {};
+    for (const item of snapshot.items) multipliers[item.item] = item.multiplier;
+    return { snapshot, header: encodeURIComponent(JSON.stringify(multipliers)), stub };
+  } catch {
+    return null;
+  }
+}
+
+/** @brief Forwards one owner request with market pricing attached. */
+async function ownerResponse(
+  env: Env,
+  auth: GardenCredentials,
+  path: string,
+  method: "GET" | "POST",
+  now: number,
+  request?: Request,
+): Promise<Response> {
+  const context = await marketContext(env);
+  const body = request === undefined ? undefined : await request.text();
+  const headers = ownerHeaders(auth.token);
+  if (context !== null) headers[MARKET_HEADER] = context.header;
+  const response = await gardenStub(env, auth.playerId).fetch(`https://garden${path}`, {
+    method,
+    headers,
+    body: body === undefined || body.length === 0 ? undefined : body,
+  });
+  if (!response.ok) return response;
+
+  const payload = (await response.json()) as Record<string, unknown>;
+  const sold = payload.sold;
+  if (context !== null && path === "/act" && typeof sold === "object" && sold !== null) {
+    for (const [item, qty] of Object.entries(sold as Record<string, unknown>)) {
+      if (typeof qty !== "number" || qty < 1) continue;
+      await context.stub.fetch("https://market/record", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ item, qty }),
+      });
+    }
+  }
+  if (context !== null) payload.market = context.snapshot;
+  return json(payload);
+}
+
+/** @brief Season snapshot with the global market pressure applied. */
+async function seasonRoute(env: Env, now: number): Promise<Response> {
+  const context = await marketContext(env);
+  let season = seasonAt(now);
+  if (context !== null) {
+    const multipliers: Record<string, number> = {};
+    for (const item of context.snapshot.items) multipliers[item.item] = item.multiplier;
+    season = applyMarket(season, multipliers);
+  }
+  return json({ season, market: context?.snapshot ?? null, serverNow: now });
+}
+
+/** @brief Live market board for the chart tab. */
+async function marketRoute(env: Env): Promise<Response> {
+  const context = await marketContext(env);
+  if (context === null) return json({ code: "MARKET_UNAVAILABLE" }, 503);
+  return json({ market: context.snapshot, serverNow: Date.now() });
 }
 
 /** @brief Resolves one public share code to its owner. */

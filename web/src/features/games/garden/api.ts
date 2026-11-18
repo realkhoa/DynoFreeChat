@@ -12,6 +12,7 @@ import type {
   GardenSnapshot,
   GardenStateResponse,
   LeaderboardEntry,
+  MarketSnapshot,
   SeasonSnapshot,
   VisitSnapshot,
 } from "@dyno/shared/garden";
@@ -164,6 +165,13 @@ export class GardenApi {
   /** @brief Reads the owner snapshot. */
   async state(): Promise<GardenStateResponse> {
     return this.request<GardenStateResponse>("/api/garden/state", { method: "GET" });
+  }
+
+  /** @brief Reads the global market board for the chart tab. */
+  async market(): Promise<{ market: MarketSnapshot | null; serverNow: number }> {
+    return this.request<{ market: MarketSnapshot | null; serverNow: number }>("/api/garden/market", {
+      method: "GET",
+    });
   }
 
   /** @brief Reads the current season snapshot. */

@@ -37,6 +37,7 @@ import {
   type SeasonSnapshot,
   type FertilizerId,
   type ItemId,
+  type MarketSnapshot,
   type SeedId,
   type SprayId,
   type SupplyId,
@@ -61,7 +62,7 @@ const POLL_MS = 60_000;
 const UPROOT_ARM_MS = 4_000;
 
 /** One active tab inside the document. */
-type Tab = "garden" | "market" | "event";
+type Tab = "garden" | "market" | "event" | "chart";
 
 /** Whether the document is showing the owner's garden or a friend's. */
 type Mode = "owner" | "visit";
@@ -127,6 +128,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let supplyPicker: "fertilize" | "spray" | null = null;
   let page = 0;
   let menu: MenuState | null = null;
+  let chartMarket: MarketSnapshot | null = null;
   let pendingSelection: { area: "crop" | "tree"; slot: number } | null = null;
   let pendingPage: number | null = null;
   let message: Message | null = null;
@@ -803,6 +805,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     menu = null;
     uprootArmed = false;
     if (next === "event") void loadLeaderboard();
+    if (next === "chart") void loadChart();
     syncGardenQuery();
     render();
   }
@@ -820,7 +823,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Restores tab, page and selection saved in the URL. */
   function readGardenQuery(): void {
     const savedTab = readParam("gtab");
-    if (savedTab === "garden" || savedTab === "market" || savedTab === "event") tab = savedTab;
+    if (savedTab === "garden" || savedTab === "market" || savedTab === "event" || savedTab === "chart") {
+      tab = savedTab;
+    }
     const savedPage = Number(readParam("gpage"));
     pendingPage = Number.isInteger(savedPage) && savedPage > 0 ? savedPage : null;
     const savedArea = readParam("garea") === "tree" ? "tree" : "crop";
@@ -960,7 +965,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Builds the tab strip with the garden code and share action. */
   function buildTabs(): HTMLElement {
     const bar = div("garden-tabs");
-    for (const id of ["garden", "market", "event"] as const) {
+    for (const id of ["garden", "market", "event", "chart"] as const) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "garden-tab";
@@ -1571,6 +1576,64 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Loads the global market board for the chart tab. */
+  async function loadChart(): Promise<void> {
+    if (mode !== "owner" || disposed) return;
+    try {
+      const result = await api.market();
+      if (disposed) return;
+      chartMarket = result.market;
+      offline = false;
+      render();
+    } catch {
+      if (disposed) return;
+      offline = true;
+      render();
+    }
+  }
+
+  /** @brief Builds the market chart tab: cycle timer and every item's trend. */
+  function buildChart(): HTMLElement {
+    const wrap = div("garden-chart");
+    if (chartMarket === null) {
+      wrap.append(lineBlock(offline ? t("common.offline") : t("chart.loading")));
+      return wrap;
+    }
+    const head = div("garden-chart-head");
+    head.append(
+      span(
+        "garden-chart-cycle",
+        `// ${t("chart.cycle", { cycle: chartMarket.cycle })} · ${t("chart.next")} `,
+      ),
+    );
+    const timer = span("garden-chart-timer", "");
+    timer.dataset.marketTimer = "now";
+    timer.textContent = formatDuration(Math.max(0, chartMarket.nextCycleAt - now()));
+    head.append(timer, span("garden-chart-hint", t("chart.hint")));
+    wrap.append(head);
+
+    const items = [...chartMarket.items].sort((left, right) => right.multiplier - left.multiplier);
+    for (const item of items) {
+      const row = div("garden-chart-row");
+      const change = item.previous === 0 ? 0 : (item.multiplier / item.previous - 1) * 100;
+      const trend =
+        item.multiplier > item.previous ? "is-up" : item.multiplier < item.previous ? "is-down" : "is-flat";
+      row.classList.add(trend);
+      row.append(
+        span("garden-chart-name", itemName(item.item)),
+        span("garden-chart-price", `${formatNumber(item.price)}c`),
+        span("garden-chart-mult", `x${item.multiplier.toFixed(2)}`),
+        span(
+          "garden-chart-trend",
+          `${item.multiplier > item.previous ? "^" : item.multiplier < item.previous ? "v" : "-"} ${change >= 0 ? "+" : ""}${change.toFixed(0)}%`,
+        ),
+        span("garden-chart-sold", `${t("chart.sold")} ${item.sold}/${chartMarket.soldTarget}`),
+      );
+      wrap.append(row);
+    }
+    return wrap;
+  }
+
   /** @brief Builds the event tab: season, leaderboard and the backup panel. */
   function buildEvent(): HTMLElement {
     const wrap = div("garden-event");
@@ -1655,6 +1718,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return lineBlock(offline ? t("common.offline") : t("common.loading"));
     if (tab === "garden") return buildGarden();
     if (tab === "market") return buildMarket();
+    if (tab === "chart") return buildChart();
     return buildEvent();
   }
 
@@ -1704,6 +1768,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const slot = Number(cell.dataset.slot);
       const area = cell.dataset.area === "tree" ? "tree" : "crop";
       if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncCell(cell, slot, area, at);
+    }
+    for (const element of root.querySelectorAll<HTMLElement>("[data-market-timer]")) {
+      if (chartMarket !== null) {
+        element.textContent = formatDuration(Math.max(0, chartMarket.nextCycleAt - at));
+      }
     }
     const hud = root.querySelector<HTMLElement>(".stage-hud");
     if (hud !== null) hud.textContent = hudText();
@@ -2045,7 +2114,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     tickTimer = setInterval(refreshTimers, TICK_MS);
     pollTimer = setInterval(() => {
-      if (typeof document === "undefined" || !document.hidden) void refresh();
+      if (typeof document === "undefined" || !document.hidden) {
+        void refresh();
+        if (tab === "chart") void loadChart();
+      }
     }, POLL_MS);
 
     void bootstrap();
