@@ -33,13 +33,13 @@ export const STARTING_TABS = 1;
 export const MAX_TABS = 4;
 
 /** Price of the second crop patch inside a tab, in coins. */
-export const PATCH_BASE_PRICE = 250;
+export const PATCH_BASE_PRICE = 2_000;
 
 /** Each further crop patch costs this multiple of the previous one. */
 export const PATCH_PRICE_FACTOR = 2;
 
 /** Price of the second tab, in coins. */
-export const TAB_BASE_PRICE = 5_000;
+export const TAB_BASE_PRICE = 25_000;
 
 /** Each further tab costs this multiple of the previous one. */
 export const TAB_PRICE_FACTOR = 3;
@@ -721,7 +721,7 @@ export function totalTrees(tabs: number): number {
 /**
  * @brief Price of the next crop patch inside a tab.
  * @param unlockedPatches Patches already open in that tab (1..9).
- * @details 250 -> 500 -> 1,000 -> 2,000 ...
+ * @details 2,000 -> 4,000 -> 8,000 -> 16,000 ...
  */
 export function nextPatchPrice(unlockedPatches: number): number {
   return Math.round(PATCH_BASE_PRICE * PATCH_PRICE_FACTOR ** Math.max(0, unlockedPatches - 1));
@@ -730,7 +730,7 @@ export function nextPatchPrice(unlockedPatches: number): number {
 /**
  * @brief Price of the next tab.
  * @param tabsOwned Tabs already owned; the first bought tab is number 2.
- * @details The ladder compounds: 5,000 -> 15,000 -> 45,000 -> ...
+ * @details The ladder compounds: 25,000 -> 75,000 -> 225,000 -> ...
  */
 export function nextTabPrice(tabsOwned: number): number {
   return Math.round(TAB_BASE_PRICE * TAB_PRICE_FACTOR ** Math.max(0, tabsOwned - 1));
