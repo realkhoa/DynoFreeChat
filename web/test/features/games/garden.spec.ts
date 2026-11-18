@@ -448,6 +448,17 @@ describe("garden tab", () => {
     expect(api.calls.some((call) => call.action?.kind === "renovateSoil")).toBe(true);
   });
 
+  it("starts in stealth mode and remembers when toggled off", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    expect(host.dataset.stealth).toBe("on");
+    host.querySelector<HTMLButtonElement>('[data-act="toggleStealth"]')?.click();
+    await settle();
+    expect(host.dataset.stealth).toBe("off");
+    expect(localStorage.getItem("dyno.garden.stealth")).toBe("0");
+  });
+
   it("offers bulk water and harvest with per-plant prices", async () => {
     const api = new FakeGardenApi(
       makeState({

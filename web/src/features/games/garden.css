@@ -834,3 +834,110 @@
   color: #8a8a8a;
   font-size: 8.5px;
 }
+
+/* Stealth mode: the garden should read like ordinary source code on a shared
+   screen. Every game colour collapses to editor greys/comment green, pills and
+   borders disappear, and blinking stops. */
+.game-stage-host[data-stealth="on"] * {
+  animation: none !important;
+}
+
+.game-stage-host[data-stealth="on"] .garden-balance {
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #6a9955;
+  font: 10px/16px var(--font-mono);
+}
+
+.game-stage-host[data-stealth="on"] .garden-tab,
+.game-stage-host[data-stealth="on"] .garden-code,
+.game-stage-host[data-stealth="on"] .garden-page,
+.game-stage-host[data-stealth="on"] .garden-page-hint,
+.game-stage-host[data-stealth="on"] .garden-hint,
+.game-stage-host[data-stealth="on"] .garden-tool-active,
+.game-stage-host[data-stealth="on"] .garden-chart-cycle,
+.game-stage-host[data-stealth="on"] .garden-chart-timer,
+.game-stage-host[data-stealth="on"] .garden-chart-head {
+  color: #6a9955;
+}
+
+.game-stage-host[data-stealth="on"] .garden-cell,
+.game-stage-host[data-stealth="on"] .garden-cell.is-ready,
+.game-stage-host[data-stealth="on"] .garden-cell.is-pest,
+.game-stage-host[data-stealth="on"] .garden-cell.is-golden,
+.game-stage-host[data-stealth="on"] .garden-cell.is-frozen,
+.game-stage-host[data-stealth="on"] .garden-cell.is-wet,
+.game-stage-host[data-stealth="on"] .garden-cell.is-snow,
+.game-stage-host[data-stealth="on"] .garden-cell.is-chill,
+.game-stage-host[data-stealth="on"] .garden-cell.is-sunray,
+.game-stage-host[data-stealth="on"] .garden-cell.is-smoked,
+.game-stage-host[data-stealth="on"] .garden-cell.is-cracked,
+.game-stage-host[data-stealth="on"] .garden-cell.is-onfire {
+  color: #bdbdbd !important;
+  text-shadow: none;
+}
+
+.game-stage-host[data-stealth="on"] .garden-cell.is-ready {
+  color: #9cdcfe !important;
+}
+
+.game-stage-host[data-stealth="on"] .garden-cell.is-selected {
+  outline: 1px dotted #6a9955;
+  background: transparent;
+}
+
+.game-stage-host[data-stealth="on"] .garden-buy-card,
+.game-stage-host[data-stealth="on"] .garden-buy-card:hover {
+  border-color: transparent;
+  background: transparent;
+  color: #bdbdbd;
+}
+
+.game-stage-host[data-stealth="on"] .garden-buy-line.is-glyph,
+.game-stage-host[data-stealth="on"] .garden-buy-line.is-price {
+  color: #bdbdbd;
+  font-weight: 400;
+}
+
+.game-stage-host[data-stealth="on"] .garden-buy-line.is-stock {
+  color: #6a9955;
+}
+
+.game-stage-host[data-stealth="on"] .garden-row,
+.game-stage-host[data-stealth="on"] .garden-market-row,
+.game-stage-host[data-stealth="on"] .garden-menu-row,
+.game-stage-host[data-stealth="on"] .garden-bot-row,
+.game-stage-host[data-stealth="on"] .garden-chart-row,
+.game-stage-host[data-stealth="on"] .garden-rank-row,
+.game-stage-host[data-stealth="on"] .garden-chart-mult,
+.game-stage-host[data-stealth="on"] .garden-chart-price,
+.game-stage-host[data-stealth="on"] .garden-chart-trend {
+  color: #bdbdbd;
+}
+
+.game-stage-host[data-stealth="on"] .garden-row:hover,
+.game-stage-host[data-stealth="on"] .garden-buy-card:hover,
+.game-stage-host[data-stealth="on"] .garden-menu-row:hover:not(:disabled) {
+  color: #ffffff;
+  background: #ffffff10;
+}
+
+.game-stage-host[data-stealth="on"] .garden-menu {
+  background: var(--editor);
+  border-color: var(--border-subtle);
+  box-shadow: none;
+}
+
+.game-stage-host[data-stealth="on"] .garden-menu-balance,
+.game-stage-host[data-stealth="on"] .garden-menu-title {
+  color: #6a9955;
+}
+
+.game-stage-host[data-stealth="on"] .stage-btn,
+.game-stage-host[data-stealth="on"] .stage-btn.is-active {
+  background: transparent;
+  border-color: var(--border-subtle);
+  color: #9cdcfe;
+}

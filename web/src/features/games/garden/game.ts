@@ -159,6 +159,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let menu: MenuState | null = null;
   let chartMarket: MarketSnapshot | null = null;
   let botGardens: GardenBot[] = [];
+  // Work-safe look by default: no bright game colours unless the player opts in.
+  let stealth = localStorage.getItem("dyno.garden.stealth") !== "0";
   let farmPicker: { building: BuildingId; slot: number } | null = null;
   let buyQty = 1;
   let tool: { kind: "fertilize" | "spray"; supply: SupplyId } | null = null;
@@ -1063,6 +1065,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (code !== null) {
       bar.append(span("garden-code", `#${code}`), actionButton(t("garden.copyLink"), "share"));
     }
+    const stealthButton = actionButton(t("garden.stealth"), "toggleStealth");
+    if (stealth) stealthButton.classList.add("is-active");
+    bar.append(stealthButton);
     if (mode === "visit") bar.append(actionButton(t("garden.backHome"), "home"));
     return bar;
   }
@@ -2326,6 +2331,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     page = Math.min(page, pageCount() - 1);
     root.dataset.tab = tab;
     root.dataset.mode = mode;
+    root.dataset.stealth = stealth ? "on" : "off";
     root.dataset.offline = offline ? "on" : "off";
     root.dataset.busy = busy ? "on" : "off";
     const parts: HTMLElement[] = [buildTabs(), buildHud(), buildContent(), buildStatus()];
@@ -2667,6 +2673,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       case "sellAllProducts":
         void runAction({ kind: "sellAllProducts" }, t("farm.soldAllProducts"));
+        return;
+      case "toggleStealth":
+        stealth = !stealth;
+        localStorage.setItem("dyno.garden.stealth", stealth ? "1" : "0");
+        render();
         return;
       case "setBuyQty": {
         const qty = Number(target.dataset.qty);
