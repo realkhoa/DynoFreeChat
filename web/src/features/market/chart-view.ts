@@ -14,7 +14,8 @@ import type { MarketClient } from "./board";
 export const MAX_BARS = 90;
 
 /** Poll interval while the chart document is visible. */
-export const CHART_POLL_MS = 30_000;
+/** Candles only move once per market cycle, so one refresh a minute is plenty. */
+export const CHART_POLL_MS = 60_000;
 
 /** Resolutions offered by the toolbar. */
 export const RESOLUTIONS = ["1", "5", "15", "1D"] as const;

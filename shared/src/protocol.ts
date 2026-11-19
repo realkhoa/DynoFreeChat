@@ -31,11 +31,11 @@ export const MAX_PASS = 64;
 /** Wrong password attempts before the connection is closed. */
 export const PASS_ATTEMPTS = 5;
 
-/** Clients send one heartbeat this often. */
-export const HEARTBEAT_INTERVAL_MS = 10_000;
+/** Clients send one heartbeat this often; rarer is cheaper on WebSocket billing. */
+export const HEARTBEAT_INTERVAL_MS = 15_000;
 
 /** A connection silent for longer than this is dropped. */
-export const HEARTBEAT_TIMEOUT_MS = 30_000;
+export const HEARTBEAT_TIMEOUT_MS = 45_000;
 
 /**
  * @brief Whether a connection missed too many heartbeats.

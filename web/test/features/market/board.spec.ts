@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IndicesPayload, QuotesPayload } from "@dyno/shared/market";
 import {
+  INDICES_POLL_MS,
   MAX_WATCHLIST,
   MarketBoard,
   POLL_MS,
@@ -243,6 +244,19 @@ describe("MarketBoard", () => {
 
     expect(h.board.watchlistSymbols).toEqual(["FPT"]);
     expect(JSON.parse(h.storage.getItem("dyno.market.watchlist") ?? "[]")).toEqual(["FPT"]);
+  });
+
+  it("refreshes quotes every tick but indices only once a minute", async () => {
+    h.board.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.api.indices.mock.calls.length).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(h.api.quotes.mock.calls.length).toBe(2);
+    expect(h.api.indices.mock.calls.length).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(INDICES_POLL_MS);
+    expect(h.api.indices.mock.calls.length).toBe(2);
   });
 
   it("polls on the interval while the document is visible", async () => {

@@ -106,7 +106,7 @@ describe("ChatSocket", () => {
     fakes[0]!.open();
 
     expect(intervals).toHaveLength(1);
-    expect(intervals[0]!.ms).toBe(10_000);
+    expect(intervals[0]!.ms).toBe(15_000);
     intervals[0]!.run();
     expect(JSON.parse(fakes[0]!.sent[0]!)).toEqual({ t: "ping", state: "active", unfocus: false });
 

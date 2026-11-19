@@ -1,7 +1,7 @@
 /**
  * @file bot-manager.ts
  * @brief Owns the ten market-maker bot gardens and runs their automation.
- * @details A cron trigger pings this singleton every five minutes. Each bot
+ * @details A cron trigger pings this singleton every ten minutes. Each bot
  * garden is a normal Garden object (so friends can visit it), but its actions
  * are driven by a bounded heuristic and its leaderboard row is flagged as a bot
  * and hidden from the human board. The manager also reports each bot's sales and

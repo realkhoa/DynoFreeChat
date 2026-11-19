@@ -52,7 +52,9 @@
     },
   ],
   "triggers": {
-    "crons": ["*/5 * * * *"],
+    // Bots settle every elapsed farm cycle, so ten minutes still settles two
+    // cycles per tick while halving the Durable Object requests the cron bills.
+    "crons": ["*/10 * * * *"],
   },
   "vars": {
     "ALLOWED_ORIGINS": "localhost,https://realkhoa.github.io",

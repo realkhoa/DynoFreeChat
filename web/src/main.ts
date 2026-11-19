@@ -948,7 +948,15 @@ function toggleTheme(): void {
 
 // --------------------------------------------------------------------- rooms
 
+/** Room list poll cadence; the list only changes when someone creates a room. */
+const ROOMS_POLL_MS = 120_000;
+
+/** Guards the list fetch so double clicks and the poll never stack up. */
+let roomsInFlight = false;
+
 async function refreshRooms(): Promise<void> {
+  if (roomsInFlight) return;
+  roomsInFlight = true;
   try {
     rooms = await listRooms(apiBase, "chat");
     sidebar.render(rooms, current?.slug ?? null, pickRoom, (notice) => {
@@ -961,7 +969,15 @@ async function refreshRooms(): Promise<void> {
     if (docTabs.activeId === "rooms") roomsView.updateRooms(rooms, current?.slug ?? null);
   } catch {
     sidebar.setFoot("không tải được danh sách room");
+  } finally {
+    roomsInFlight = false;
   }
+}
+
+/** @brief Background poll: skipped while the tab is hidden. */
+function pollRooms(): void {
+  if (typeof document !== "undefined" && document.hidden) return;
+  void refreshRooms();
 }
 
 function setRoomQuery(query: string): void {
@@ -1972,7 +1988,7 @@ function wire(): void {
     render();
   }, 1_000);
 
-  window.setInterval(() => void refreshRooms(), 30_000);
+  window.setInterval(pollRooms, ROOMS_POLL_MS);
 }
 
 function boot(): void {

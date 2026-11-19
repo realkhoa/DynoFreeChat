@@ -213,6 +213,7 @@ class FakeGardenApi {
   }
 
   async bots() {
+    this.calls.push({ method: "bots" });
     return {
       bots: [
         {
@@ -252,6 +253,7 @@ class FakeGardenApi {
   }
 
   async leaderboard() {
+    this.calls.push({ method: "leaderboard" });
     return [
       {
         code: "ABCDEF",
@@ -903,6 +905,24 @@ describe("farm tab", () => {
       building: "coop",
       slot: 0,
     });
+  });
+
+  it("reuses tab data while it is still fresh", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 1_000_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:bots"]')?.click();
+    await settle();
+    const first = api.calls.filter((call) => call.method === "bots").length;
+    expect(first).toBe(1);
+
+    // Flipping away and straight back must not re-request the same list.
+    host.querySelector<HTMLButtonElement>('[data-act="tab:garden"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="tab:bots"]')?.click();
+    await settle();
+    expect(api.calls.filter((call) => call.method === "bots").length).toBe(first);
   });
 
   it("shows the pond growth and sells pond stock for meat", async () => {

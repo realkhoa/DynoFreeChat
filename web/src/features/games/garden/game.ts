@@ -112,6 +112,9 @@ const TICK_MS = 1_000;
 /** Background refresh interval for season, state and visits. */
 const POLL_MS = 60_000;
 
+/** Tab data stays fresh this long, so flipping tabs does not re-request it. */
+const DATA_TTL_MS = 30_000;
+
 /** How long an uproot confirmation stays armed. */
 const UPROOT_ARM_MS = 4_000;
 
@@ -168,6 +171,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let cleanups: Array<() => void> = [];
   let tickTimer: ReturnType<typeof setInterval> | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+  /** Whether a snapshot refresh is already on the wire. */
+  let refreshing = false;
+  /** Cache stamps and in-flight guards for the secondary tabs. */
+  let leaderboardAt = 0;
+  let leaderboardBusy = false;
+  let botsAt = 0;
+  let botsBusy = false;
+  let chartAt = 0;
+  let chartBusy = false;
+  let extrasAt = 0;
+  let extrasBusy = false;
   let uprootTimer: ReturnType<typeof setTimeout> | null = null;
   let disposeLocale: (() => void) | null = null;
   let disposed = false;
@@ -536,7 +550,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
   /** @brief Refreshes season and snapshot from the server. */
   async function refresh(): Promise<void> {
-    if (disposed || busy) return;
+    if (disposed || busy || refreshing) return;
+    refreshing = true;
     try {
       if (mode === "visit" && visitCode !== null) {
         const bundle = await api.visit(visitCode);
@@ -551,16 +566,25 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     } catch (error) {
       offline = error instanceof GardenApiError && error.code === "NETWORK";
       if (!offline) message = { text: errorText(error), kind: "err" };
+    } finally {
+      refreshing = false;
     }
     if (!disposed) render();
   }
 
   /** @brief Loads the leaderboard for the event tab. */
-  async function loadLeaderboard(): Promise<void> {
+  async function loadLeaderboard(force = false): Promise<void> {
+    if (disposed || leaderboardBusy) return;
+    if (!force && leaderboardAt !== 0 && Date.now() - leaderboardAt < DATA_TTL_MS) return;
+    leaderboardBusy = true;
     try {
       leaderboard = await api.leaderboard(100);
+      leaderboardAt = Date.now();
     } catch {
       // A missing leaderboard never blocks the garden itself.
+      leaderboardAt = 0;
+    } finally {
+      leaderboardBusy = false;
     }
     if (!disposed && (tab === "event" || tab === "rank")) render();
   }
@@ -2520,11 +2544,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /** @brief Loads the weekly tournament for the extras tab. */
-  async function loadExtras(): Promise<void> {
+  async function loadExtras(force = false): Promise<void> {
+    if (disposed || extrasBusy) return;
+    if (!force && extrasAt !== 0 && Date.now() - extrasAt < DATA_TTL_MS) return;
+    extrasBusy = true;
     try {
       tournament = await api.tournament();
+      extrasAt = Date.now();
     } catch {
       // A missing tournament never blocks the garden.
+      extrasAt = 0;
+    } finally {
+      extrasBusy = false;
     }
     if (!disposed && tab === "extras") render();
   }
@@ -2703,18 +2734,25 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /** @brief Loads the bot garden list for the bots tab. */
-  async function loadBots(): Promise<void> {
-    if (disposed) return;
+  async function loadBots(force = false): Promise<void> {
+    if (disposed || botsBusy) return;
+    if (!force && botsAt !== 0 && Date.now() - botsAt < DATA_TTL_MS) return;
+    botsBusy = true;
     try {
       const result = await api.bots();
       if (disposed) return;
       botGardens = result.bots;
+      botsAt = Date.now();
       offline = false;
       render();
     } catch {
-      if (disposed) return;
-      offline = true;
-      render();
+      if (!disposed) {
+        botsAt = 0;
+        offline = true;
+        render();
+      }
+    } finally {
+      botsBusy = false;
     }
   }
 
@@ -2775,18 +2813,25 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /** @brief Loads the global market board for the chart tab. */
-  async function loadChart(): Promise<void> {
-    if (mode !== "owner" || disposed) return;
+  async function loadChart(force = false): Promise<void> {
+    if (mode !== "owner" || disposed || chartBusy) return;
+    if (!force && chartAt !== 0 && Date.now() - chartAt < DATA_TTL_MS) return;
+    chartBusy = true;
     try {
       const result = await api.market();
       if (disposed) return;
       chartMarket = result.market;
+      chartAt = Date.now();
       offline = false;
       render();
     } catch {
-      if (disposed) return;
-      offline = true;
-      render();
+      if (!disposed) {
+        chartAt = 0;
+        offline = true;
+        render();
+      }
+    } finally {
+      chartBusy = false;
     }
   }
 

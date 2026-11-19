@@ -38,7 +38,10 @@ const DEFAULT_WATCHLIST = ["FPT", "HPG", "SSI", "VNM", "MWG", "ACB", "VIC"];
 export const MAX_WATCHLIST = 12;
 
 /** Poll interval while the document is visible. */
-export const POLL_MS = 3000;
+export const POLL_MS = 15_000;
+
+/** Indices only move once per market cycle, so they are polled less often. */
+export const INDICES_POLL_MS = 60_000;
 
 /** Ticker shape accepted from the add box. */
 const TICKER_PATTERN = /^[A-Z0-9]{1,12}$/;
@@ -193,6 +196,9 @@ export class MarketBoard {
   private errorTimer: number | null = null;
   private readonly pollMs: number;
 
+  /** Last time the index basket was fetched; quotes ride every tick instead. */
+  private lastIndicesAt = 0;
+
   /**
    * @param elements DOM hosts.
    * @param deps API client and storage.
@@ -320,9 +326,10 @@ export class MarketBoard {
     this.inFlight = true;
 
     const quotesRequest = this.watchlist.length > 0 ? this.deps.api.quotes(this.watchlist) : null;
+    const indicesDue = this.lastIndicesAt === 0 || Date.now() - this.lastIndicesAt >= INDICES_POLL_MS;
     const [quotesResult, indicesResult] = await Promise.allSettled([
       quotesRequest ?? Promise.resolve(null),
-      this.deps.api.indices(),
+      indicesDue ? this.deps.api.indices() : Promise.resolve(null),
     ]);
 
     let failure: string | null = null;
@@ -331,14 +338,15 @@ export class MarketBoard {
       this.stale = quotesResult.value.stale;
       this.lastTs = quotesResult.value.ts;
     } else if (quotesResult.status === "rejected") {
-      failure = "// [error] quote feed unavailable - retrying every 3s";
+      failure = "// [error] quote feed unavailable - retrying every 15s";
     }
 
-    if (indicesResult.status === "fulfilled") {
+    if (indicesResult.status === "fulfilled" && indicesResult.value !== null) {
       this.indexList = indicesResult.value.indices;
+      this.lastIndicesAt = Date.now();
       if (indicesResult.value.ts > this.lastTs) this.lastTs = indicesResult.value.ts;
-    } else if (failure === null) {
-      failure = "// [error] index feed unavailable - retrying every 3s";
+    } else if (indicesResult.status === "rejected" && failure === null) {
+      failure = "// [error] index feed unavailable - retrying every minute";
     }
 
     this.failure = failure;
