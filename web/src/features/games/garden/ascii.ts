@@ -7,10 +7,14 @@
  */
 
 import {
+  animalIntervalMs,
+  animalQuality,
   plotView,
   resolvedTreeEffects,
   strongestEffect,
   treeById,
+  type AnimalId,
+  type AnimalState,
   type PlotState,
   type TreeState,
 } from "@dyno/shared/garden";
@@ -210,6 +214,70 @@ export function treeCellRender(
     empty: false,
     locked: false,
     progress,
+  };
+}
+
+/** Glyph drawn for each animal species, one column wide on purpose. */
+const ANIMAL_GLYPH: Readonly<Record<AnimalId, string>> = {
+  chicken: "c",
+  duck: "d",
+  cow: "C",
+  goat: "G",
+  sheep: "S",
+};
+
+/** One rendered animal cell. */
+export interface AnimalCellRender {
+  /** Six fixed-width lines: top border, four content rows, bottom border. */
+  readonly lines: string[];
+  /** The next product is due: the cell blinks. */
+  readonly ready: boolean;
+  /** Empty building slot. */
+  readonly empty: boolean;
+  /** Quality stars of the living animal, `0` for an empty slot. */
+  readonly stars: number;
+  /** Milliseconds until the next product, `0` when it is due. */
+  readonly remainingMs: number;
+}
+
+/**
+ * @brief Renders one animal slot as a framed cell.
+ * @param animal Living animal, or `null` for an empty slot.
+ * @param now Server-clock time.
+ * @param slot Zero-based slot inside the building; printed on the top border.
+ * @details Uses the same ten-column frame as a crop plot so the farm reads as a
+ * board of cells instead of a stack of buttons: glyph, species, quality stars
+ * and the countdown to the next product.
+ */
+export function animalCellRender(animal: AnimalState | null, now: number, slot = 0): AnimalCellRender {
+  const top = border(slot);
+  const bottom = border();
+  if (animal === null) {
+    return {
+      lines: [top, row(".", "center"), row(t("garden.empty")), row(""), row("--"), bottom],
+      ready: false,
+      empty: true,
+      stars: 0,
+      remainingMs: 0,
+    };
+  }
+  const stars = animalQuality(animal, now);
+  const remainingMs = Math.max(0, animal.lastProduceAt + animalIntervalMs(animal.kind) - now);
+  const ready = remainingMs <= 0;
+  const tail = ready ? t("farm.due") : formatDuration(remainingMs, "short");
+  return {
+    lines: [
+      top,
+      row(ANIMAL_GLYPH[animal.kind], "center"),
+      row(t(`animals.${animal.kind}`)),
+      row("*".repeat(stars)),
+      row(tail),
+      bottom,
+    ],
+    ready,
+    empty: false,
+    stars,
+    remainingMs,
   };
 }
 

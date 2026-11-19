@@ -779,18 +779,55 @@ describe("rank tab", () => {
 });
 
 describe("farm tab", () => {
-  it("shows buildings, animals and sells animal products", async () => {
-    const animal = {
-      kind: "chicken" as const,
-      bornAt: CLOCK - 3_600_000,
-      pats: 2,
-      lastProduceAt: CLOCK - 60_000,
-    };
+  /** One hen with two pats, born an hour ago. */
+  const hen = {
+    kind: "chicken" as const,
+    bornAt: CLOCK - 3_600_000,
+    pats: 2,
+    lastProduceAt: CLOCK - 60_000,
+  };
+
+  it("draws every animal slot as a framed cell on the plot grid", async () => {
     const api = new FakeGardenApi(
       makeState({
         coins: 4_000_000,
         buildings: { coop: 1, barn: 0 },
-        animals: { coop: [animal, null, null, null], barn: [] },
+        animals: { coop: [hen, null, null, null], barn: [] },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:farm"]')?.click();
+    await settle();
+
+    // Two buildings sit side by side like the crop/fruit boards.
+    expect(host.querySelectorAll(".garden-farm-panel")).toHaveLength(2);
+    const cells = host.querySelectorAll<HTMLButtonElement>(".garden-animal-cell");
+    expect(cells).toHaveLength(4);
+    const lines = Array.from(cells[0]?.querySelectorAll(".garden-cell-line") ?? []).map(
+      (line) => line.textContent,
+    );
+    // Same six-line frame as a plot: border, glyph, species, stars, timer, border.
+    expect(lines).toHaveLength(6);
+    expect(lines[0]).toMatch(/^\+-+1\+$/);
+    expect(lines[1]).toContain("c");
+    expect(lines[2]).toBe("|Gà      |");
+    expect(lines[3]).toBe("|*       |");
+    expect(lines[5]).toMatch(/^\+-+\+$/);
+    expect(cells[0]?.dataset.act).toBe("patAnimal");
+    // Empty slots are cells too, not stray buttons below the board.
+    expect(cells[1]?.dataset.act).toBe("pickAnimal");
+    expect(cells[1]?.classList.contains("is-empty")).toBe(true);
+    expect(cells[1]?.textContent).toContain("Trống");
+  });
+
+  it("shows buildings, animals and sells animal products", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 4_000_000,
+        buildings: { coop: 1, barn: 0 },
+        animals: { coop: [hen, null, null, null], barn: [] },
         bag: { seeds: {}, crops: [], supplies: {}, products: [{ product: "egg", star: 2, qty: 3 }] },
       }),
     );
@@ -814,6 +851,36 @@ describe("farm tab", () => {
     row?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "sellProduct")).toBe(true);
+  });
+
+  it("buys an animal from an empty slot cell", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 4_000_000,
+        buildings: { coop: 1, barn: 0 },
+        animals: { coop: [hen, null, null, null], barn: [] },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:farm"]')?.click();
+    await settle();
+    const empty = host.querySelector<HTMLButtonElement>(".garden-animal-cell.is-empty");
+    empty?.click();
+    await settle();
+
+    const rows = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-act="buyAnimal"]'));
+    expect(rows).toHaveLength(2);
+    expect(rows[1]?.textContent).toContain("Vịt");
+    expect(rows[1]?.textContent).toContain("8.000c");
+    rows[1]?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "buyAnimal")?.action).toMatchObject({
+      building: "coop",
+      slot: 1,
+      animal: "duck",
+    });
   });
 });
 

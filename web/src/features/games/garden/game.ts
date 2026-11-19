@@ -51,7 +51,6 @@ import {
   BUILDINGS,
   animalById,
   animalIntervalMs,
-  animalQuality,
   buildingSlots,
   buildingUpgradeCost,
   buildingById,
@@ -93,7 +92,7 @@ import { loadIdentity, type Identity } from "@/shared/lib/identity";
 import type { GardenBot } from "@/features/games/garden/api";
 import { readParam, writeParams } from "@/shared/lib/urlstate";
 import type { GameContext, GameMount } from "../mount";
-import { cellRender, fitText, growthColor, labelValue, treeCellRender } from "./ascii";
+import { animalCellRender, cellRender, fitText, growthColor, labelValue, treeCellRender } from "./ascii";
 import { GardenApi, GardenApiError } from "./api";
 
 /** Repaint interval while the document is open. */
@@ -890,6 +889,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     selectedSlot = null;
     menu = null;
     uprootArmed = false;
+    farmPicker = null;
     if (next === "event") void loadLeaderboard();
     if (next === "chart") void loadChart();
     if (next === "bots") void loadBots();
@@ -1873,27 +1873,72 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
-  /** @brief Builds one animal cell or its empty buy slot. */
-  function farmSlot(building: BuildingId, slot: number): HTMLElement {
-    const animal = state?.animals[building][slot] ?? null;
-    if (animal === null) {
-      const empty = actionButton(`+ ${t("farm.emptySlot")}`, "pickAnimal");
-      empty.dataset.building = building;
-      empty.dataset.slot = String(slot);
-      return empty;
+  /** @brief Builds one animal cell on the same ASCII frame as a crop plot. */
+  function animalCell(building: BuildingId, slot: number): HTMLButtonElement {
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "garden-cell garden-animal-cell";
+    cell.dataset.act = "patAnimal";
+    cell.dataset.building = building;
+    cell.dataset.slot = String(slot);
+    for (let index = 0; index < 6; index += 1) {
+      const line = document.createElement("span");
+      line.className = "garden-cell-line";
+      cell.append(line);
     }
-    const stars = animalQuality(animal, now());
-    const interval = animalIntervalMs(animal.kind);
-    const readyAt = animal.lastProduceAt + interval;
-    const glyph = { chicken: "c", duck: "d", cow: "C", goat: "G", sheep: "S" }[animal.kind];
-    const button = actionButton(
-      `${glyph} ${t(`animals.${animal.kind}`)} ${"*".repeat(stars)} (${t("farm.pats")} ${animal.pats})`,
-      "patAnimal",
+    syncAnimalCell(cell, building, slot, now());
+    return cell;
+  }
+
+  /** @brief Repaints one animal cell from the snapshot and clock. */
+  function syncAnimalCell(cell: HTMLButtonElement, building: BuildingId, slot: number, at: number): void {
+    const animal = state?.animals[building]?.[slot] ?? null;
+    const render = animalCellRender(animal, at, slot);
+    for (let index = 0; index < 6; index += 1) {
+      const line = cell.children.item(index);
+      if (line instanceof HTMLElement) line.textContent = render.lines[index] ?? "";
+    }
+    cell.classList.toggle("is-empty", render.empty);
+    cell.classList.toggle("is-ready", render.ready);
+    cell.dataset.act = render.empty ? "pickAnimal" : "patAnimal";
+    const picker = farmPicker !== null && farmPicker.building === building && farmPicker.slot === slot;
+    cell.classList.toggle("is-selected", picker);
+    if (animal === null) {
+      cell.title = t("farm.pickAnimal", { slot: slot + 1 });
+      cell.setAttribute("aria-label", `${t("farm.emptySlot")} ${slot + 1}`);
+      return;
+    }
+    const product = animalById(animal.kind)?.product;
+    const productName = product === undefined ? "" : t(`products.${product}`);
+    cell.title = [
+      `${t(`animals.${animal.kind}`)} · ${t("farm.quality")} ${render.stars}/5`,
+      `${t("farm.pats")} ${animal.pats}`,
+      `${productName} · ${render.ready ? t("farm.due") : formatDuration(render.remainingMs, "short")}`,
+    ].join(" · ");
+    cell.setAttribute(
+      "aria-label",
+      `${t(`farm.${building}`)} · ${t("farm.slots")} ${slot + 1}: ${t(`animals.${animal.kind}`)}`,
     );
-    button.dataset.building = building;
-    button.dataset.slot = String(slot);
-    button.title = `${t("farm.quality")}: ${stars}/5 · ${formatDuration(Math.max(0, readyAt - now()), "short")}`;
-    return button;
+  }
+
+  /** @brief Builds the animal shop rows for one empty slot. */
+  function buildAnimalPicker(building: BuildingId, slot: number): HTMLElement {
+    const wrap = div("garden-seeds");
+    wrap.append(span("garden-hint", t("farm.pickAnimal", { slot: slot + 1 })));
+    for (const animal of ANIMALS.filter((entry) => entry.building === building)) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "garden-row";
+      row.dataset.act = "buyAnimal";
+      row.dataset.building = building;
+      row.dataset.slot = String(slot);
+      row.dataset.animal = animal.id;
+      row.textContent = `${fitText(t(`animals.${animal.id}`), 9)}${fitText(`${formatNumber(animal.buy)}c`, 10)}${formatDuration(animalIntervalMs(animal.id), "short")}`;
+      row.title = `${t(`animals.${animal.id}`)} · ${t(`products.${animal.product}`)}`;
+      row.disabled = (state?.coins ?? 0) < animal.buy;
+      wrap.append(row);
+    }
+    return wrap;
   }
 
   /** @brief Builds the construction tab: coop, barn and their animals. */
@@ -1901,67 +1946,51 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const wrap = div("garden-farm");
     if (state === null) return lineBlock(t("common.loading"));
     wrap.append(lineBlock(`// ${t("farm.title")}`));
+    const boards = div("garden-boards");
     for (const building of ["coop", "barn"] as const) {
       const definition = buildingById(building);
       if (definition === undefined) continue;
       const level = state.buildings[building];
-      const panel = div("garden-farm-panel");
+      const animals = state.animals[building];
+      const panel = div("garden-board-panel garden-farm-panel");
       panel.append(
         span(
-          "garden-farm-title",
-          `${t(`farm.${building}`)} · ${level > 0 ? `${t("farm.level")} ${level}/${maxBuildingLevel(building)} · ${state.animals[building].length} ${t("farm.slots")}` : t("farm.notBuilt")}`,
+          "garden-board-title",
+          `${t(`farm.${building}`)} · ${level > 0 ? `${t("farm.level")} ${level}/${maxBuildingLevel(building)} · ${animals.length} ${t("farm.slots")}` : t("farm.notBuilt")}`,
         ),
       );
       if (level === 0) {
-        panel.append(
-          actionButton(
-            t("farm.build", { cost: formatNumber(definition.price) }),
-            "buildBuilding",
-            (state.coins ?? 0) >= definition.price,
-          ).cloneNode(true) as HTMLButtonElement,
+        const build = actionButton(
+          t("farm.build", { cost: formatNumber(definition.price) }),
+          "buildBuilding",
+          (state.coins ?? 0) >= definition.price,
         );
-        // dataset must be set on the real button
-        const last = panel.lastElementChild as HTMLButtonElement;
-        last.dataset.building = building;
-        last.dataset.act = "buildBuilding";
-      } else {
-        const upgradeCost = buildingUpgradeCost(building);
-        const upgrade = actionButton(
-          level >= maxBuildingLevel(building)
-            ? t("farm.maxLevel")
-            : t("farm.upgrade", { cost: formatNumber(upgradeCost) }),
-          "upgradeBuilding",
-          level < maxBuildingLevel(building) && (state.coins ?? 0) >= upgradeCost,
-        );
-        upgrade.dataset.building = building;
-        panel.append(upgrade);
+        build.dataset.building = building;
+        panel.append(build);
+        boards.append(panel);
+        continue;
       }
-      const slots = level > 0 ? state.animals[building].length : 0;
-      if (slots > 0) {
-        const grid = div("garden-farm-slots");
-        for (let slot = 0; slot < slots; slot += 1) {
-          const cell = farmSlot(building, slot);
-          const holder = div("garden-farm-slot");
-          holder.append(cell);
-          if (farmPicker !== null && farmPicker.building === building && farmPicker.slot === slot) {
-            for (const animal of ANIMALS.filter((entry) => entry.building === building)) {
-              const buy = actionButton(
-                `${t(`animals.${animal.id}`)} ${formatNumber(animal.buy)}c`,
-                "buyAnimal",
-                (state.coins ?? 0) >= animal.buy,
-              );
-              buy.dataset.building = building;
-              buy.dataset.slot = String(slot);
-              buy.dataset.animal = animal.id;
-              holder.append(buy);
-            }
-          }
-          grid.append(holder);
-        }
-        panel.append(grid);
+      const upgradeCost = buildingUpgradeCost(building);
+      const actions = div("garden-farm-actions");
+      const upgrade = actionButton(
+        level >= maxBuildingLevel(building)
+          ? t("farm.maxLevel")
+          : t("farm.upgrade", { cost: formatNumber(upgradeCost) }),
+        "upgradeBuilding",
+        level < maxBuildingLevel(building) && (state.coins ?? 0) >= upgradeCost,
+      );
+      upgrade.dataset.building = building;
+      actions.append(upgrade);
+      panel.append(actions);
+      const grid = div("garden-animal-grid");
+      for (let slot = 0; slot < animals.length; slot += 1) grid.append(animalCell(building, slot));
+      panel.append(grid);
+      if (farmPicker !== null && farmPicker.building === building) {
+        panel.append(buildAnimalPicker(building, farmPicker.slot));
       }
-      wrap.append(panel);
+      boards.append(panel);
     }
+    wrap.append(boards);
     return wrap;
   }
 
@@ -2738,10 +2767,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function refreshTimers(): void {
     if (root === null) return;
     const at = now();
-    for (const cell of root.querySelectorAll<HTMLElement>(".garden-cell[data-slot]")) {
+    for (const cell of root.querySelectorAll<HTMLElement>(".garden-cell[data-area][data-slot]")) {
       const slot = Number(cell.dataset.slot);
       const area = cell.dataset.area === "tree" ? "tree" : "crop";
       if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncCell(cell, slot, area, at);
+    }
+    for (const cell of root.querySelectorAll<HTMLElement>(".garden-animal-cell[data-building][data-slot]")) {
+      const building = cell.dataset.building as BuildingId | undefined;
+      const slot = Number(cell.dataset.slot);
+      if (building !== undefined && Number.isInteger(slot) && cell instanceof HTMLButtonElement) {
+        syncAnimalCell(cell, building, slot, at);
+      }
     }
     if (season !== null) {
       for (const element of root.querySelectorAll<HTMLElement>("[data-restock-timer]")) {

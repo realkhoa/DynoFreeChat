@@ -211,6 +211,54 @@
   }
 }
 
+/* Farm tab: every animal slot is a framed cell on the same ten-column grid as a
+   crop plot, two buildings side by side exactly like the crop/fruit boards. */
+.garden-farm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.garden-farm-panel {
+  gap: 4px;
+}
+
+.garden-farm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.garden-animal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  gap: 6px 8px;
+  margin: 2px 0 0;
+}
+
+.garden-animal-cell.is-empty {
+  color: #4b4b4b;
+}
+
+.garden-animal-cell.is-empty:hover {
+  color: #6a9955;
+}
+
+/* Produce that is due blinks gold: the item lands in the bag on the next
+   settle, so the cell marks the moment instead of asking for a harvest. */
+.garden-animal-cell.is-ready {
+  color: #dcdcaa;
+  animation: garden-blink 1.1s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .garden-animal-cell.is-ready {
+    animation: none;
+  }
+}
+
 .garden-detail {
   flex: 0 1 300px;
   min-width: 220px;
