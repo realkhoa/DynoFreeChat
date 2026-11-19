@@ -244,6 +244,48 @@ describe("garden play", () => {
     expect(stale.payload).toMatchObject({ code: "STALE_REV" });
   });
 
+  it("keeps pesticide cover and favorite pins across a reload", async () => {
+    const registered = await register("keeper");
+    const planted = await act(registered, registered.state.rev, { kind: "plant", slot: 0, seed: "carrot" });
+    if (planted.status !== 200) throw new Error("plant failed");
+    const afterPlant = (planted.payload as GardenActResponse).state;
+
+    // Fund the wallet and drop a favorite lock into the bag without an action.
+    const bindings = env as unknown as import("../src/env").Env;
+    const garden = bindings.GARDEN.get(bindings.GARDEN.idFromName(registered.playerId));
+    await runInDurableObject(garden, (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'ledger'")
+        .toArray()[0];
+      if (row === undefined) throw new Error("ledger missing");
+      const meta = JSON.parse(row.value) as { coins: number };
+      meta.coins = 10_000;
+      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'ledger'", JSON.stringify(meta));
+      state.storage.sql.exec("INSERT INTO bag (kind, item, qty) VALUES ('tool', 'favoriteLock', 1)");
+    });
+
+    const sprayed = await act(registered, afterPlant.rev, { kind: "sprayPest", slot: 0, tree: false });
+    expect(sprayed.status).toBe(200);
+    const sprayedState = (sprayed.payload as GardenActResponse).state;
+    expect(sprayedState.plots[0]?.protectedUntil).toBeGreaterThan(sprayedState.updatedAt);
+
+    // The next read comes straight out of SQLite, so this is the persistence check.
+    const reloaded = await readState(registered);
+    expect(reloaded.state.plots[0]?.protectedUntil).toBe(sprayedState.plots[0]?.protectedUntil);
+
+    const pinned = await act(registered, reloaded.state.rev, {
+      kind: "toggleFavorite",
+      slot: 0,
+      tree: false,
+    });
+    expect(pinned.status).toBe(200);
+    const pinnedState = (pinned.payload as GardenActResponse).state;
+    expect(pinnedState.plots[0]?.favorite).toBe(true);
+
+    const final = await readState(registered);
+    expect(final.state.plots[0]?.favorite).toBe(true);
+  });
+
   it("refuses a tab it cannot afford and an unripe harvest", async () => {
     const registered = await register();
     const patch = await act(registered, registered.state.rev, { kind: "buyTab" });
