@@ -1981,6 +1981,35 @@ function setStaffRole(ledger: GardenLedger, index: number, role: StaffRole, now:
   return changed(next, now);
 }
 
+/** @brief Harvests one ripe crop or fruit for a worker. */
+function staffHarvest(ledger: GardenLedger, now: number, rng: () => number): GardenLedger | null {
+  for (let slot = 0; slot < ledger.plots.length; slot += 1) {
+    const plot = ledger.plots[slot] ?? null;
+    if (plot === null || plot.favorite === true || now < plot.readyAt) continue;
+    const result = applyGardenAction(
+      ledger,
+      { kind: "harvest", slot, tree: false, auto: true },
+      seasonAt(now),
+      now,
+      rng,
+    );
+    if (result.ok) return result.ledger;
+  }
+  for (let slot = 0; slot < ledger.trees.length; slot += 1) {
+    const tree = ledger.trees[slot] ?? null;
+    if (tree === null || tree.favorite === true || now < tree.readyAt) continue;
+    const result = applyGardenAction(
+      ledger,
+      { kind: "harvest", slot, tree: true, auto: true },
+      seasonAt(now),
+      now,
+      rng,
+    );
+    if (result.ok) return result.ledger;
+  }
+  return null;
+}
+
 /** @brief Pats the least-petted animal for a worker. */
 function staffPatAnimal(ledger: GardenLedger, now: number): GardenLedger | null {
   let best: { building: BuildingId; slot: number; pats: number } | null = null;
@@ -2123,6 +2152,7 @@ export function settleStaff(ledger: GardenLedger, now: number): GardenLedger {
         tasks += 1;
       }
     };
+    attempt((base, rng) => staffHarvest(base, now, rng));
     attempt((base, rng) => staffWater(base, now, rng));
     attempt((base, rng) => staffPlant(base, now, rng));
     attempt((base) => staffPatAnimal(base, now));

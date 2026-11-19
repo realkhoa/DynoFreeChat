@@ -83,6 +83,41 @@ describe("staff", () => {
     });
   });
 
+  it("harvests ripe crops up to its action count", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000;
+    const candidate = staffMarketAt(ledger.playerId, NOW)[1];
+    if (candidate === undefined) throw new Error("no candidate");
+    const hired = run(ledger, { kind: "hireStaff", id: candidate.id });
+    if (!hired.ok) throw new Error("hire failed");
+    const jobs = hired.ledger.staff[0]?.jobs ?? 1;
+
+    for (let slot = 0; slot < 6; slot += 1) {
+      hired.ledger.plots[slot] = {
+        slot,
+        seed: "carrot",
+        plantedAt: NOW - 60_000,
+        readyAt: NOW - 1_000,
+        effects: [],
+        watered: true,
+        fertilized: false,
+        harvests: 0,
+        fertilizer: null,
+        spray: null,
+        pest: false,
+        protectedUntil: 0,
+      };
+    }
+    // A pinned ripe crop must never be auto-harvested.
+    hired.ledger.plots[0] = { ...hired.ledger.plots[0]!, favorite: true };
+    hired.ledger.staff[0] = { ...hired.ledger.staff[0]!, lastWorkAt: NOW - 10 * FARM_CYCLE_MS };
+
+    const settled = settleStaff(hired.ledger, NOW + FARM_CYCLE_MS);
+    const harvested = settled.bag.crops.reduce((sum, stack) => sum + stack.qty, 0);
+    expect(harvested).toBe(Math.min(jobs, 5));
+    expect(settled.plots[0]?.favorite).toBe(true);
+  });
+
   it("levels hands up as they finish jobs", () => {
     const ledger = makeLedger();
     ledger.coins = 10_000_000;
