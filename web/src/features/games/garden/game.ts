@@ -193,6 +193,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let farmPicker: { building: BuildingId; slot: number } | null = null;
   let animalMenu: { building: BuildingId; slot: number; x: number; y: number; anchorTop: number } | null =
     null;
+  /** Source cell of a pending shovel move, cleared on cancel or completion. */
+  let moveSource: { slot: number; area: "crop" | "tree" } | null = null;
   let buyQty = 1;
   type GardenTool =
     { kind: "fertilize" | "spray"; supply: SupplyId } | { kind: "plant"; seed: SeedId } | { kind: "water" };
@@ -924,6 +926,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     uprootArmed = false;
     farmPicker = null;
     animalMenu = null;
+    moveSource = null;
     if (next === "event") void loadLeaderboard();
     if (next === "chart") void loadChart();
     if (next === "bots") void loadBots();
@@ -1005,6 +1008,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     selectedArea = area;
     supplyPicker = null;
     uprootArmed = false;
+    moveSource = null;
     menu = { area, slot, x, y, anchorTop, view: "actions" };
     syncGardenQuery();
     render();
@@ -1448,6 +1452,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     cell.classList.toggle("is-empty", render.empty);
     cell.classList.toggle("is-locked", render.locked);
     cell.classList.toggle("is-selected", selectedSlot === slot && selectedArea === area);
+    const favorite = (area === "tree" ? tree?.favorite : plot?.favorite) === true;
+    cell.classList.toggle("is-favorite", favorite);
+    cell.classList.toggle(
+      "is-move-source",
+      moveSource !== null && moveSource.slot === slot && moveSource.area === area,
+    );
     cell.classList.toggle("is-pest", area === "crop" ? plot?.pest === true : tree?.pest === true);
     const effects =
       area === "tree"
@@ -1605,6 +1615,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }
         lines.push(labelValue(t("garden.kind"), t("garden.reharvest")));
         if (tree.harvests > 0) lines.push(labelValue(t("garden.harvestedTimes"), String(tree.harvests)));
+        lines.push(
+          labelValue(
+            t("garden.favorite"),
+            tree.favorite === true ? t("garden.favoriteOn") : t("garden.favoriteOff"),
+          ),
+        );
       }
       if (mode === "owner") lines.push("", t("garden.actions"));
       pre.textContent = lines.join("\n");
@@ -1673,6 +1689,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       } else {
         lines.push(labelValue(t("garden.kind"), t("garden.singleHarvest")));
       }
+      lines.push(
+        labelValue(
+          t("garden.favorite"),
+          plot.favorite === true ? t("garden.favoriteOn") : t("garden.favoriteOff"),
+        ),
+      );
       if (mode === "owner") lines.push("", t("garden.actions"));
     }
     pre.textContent = lines.join("\n");
@@ -1910,12 +1932,40 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         ),
       );
     } else {
+      const tools = state?.bag.tools ?? {};
+      const favorite = plant.favorite === true;
+      const reclaimer = tools.reclaimer ?? 0;
+      const shovel = tools.shovel ?? 0;
+      const favoriteLock = tools.favoriteLock ?? 0;
       rows.append(menuRow(t("garden.sprayPest", { cost: PEST_SPRAY_COST }), "sprayPest"));
-      rows.append(menuRow(t("garden.harvest"), "harvest", { disabled: !ready }));
+      rows.append(menuRow(t("garden.harvest"), "harvest", { disabled: !ready || favorite }));
       rows.append(menuRow(t("garden.water"), "water", { disabled: ready || plant.watered }));
       rows.append(menuRow(t("garden.menuFertilize"), "menuViewFertilize", { disabled: ready }));
       rows.append(menuRow(t("garden.menuSpray"), "menuViewSpray"));
-      rows.append(menuRow(uprootArmed ? t("garden.uprootConfirm") : t("garden.uproot"), "uproot"));
+      if (menuState.area === "crop") {
+        rows.append(
+          menuRow(t("garden.reclaim", { left: reclaimer }), "menuReclaim", {
+            disabled: favorite || reclaimer < 1,
+          }),
+        );
+      }
+      rows.append(
+        menuRow(t("garden.movePlant", { left: shovel }), "menuMove", {
+          disabled: favorite || shovel < 1,
+        }),
+      );
+      rows.append(
+        menuRow(
+          favorite ? t("garden.favoriteUnlock") : t("garden.favoriteLock", { left: favoriteLock }),
+          "menuFavorite",
+          { disabled: !favorite && favoriteLock < 1 },
+        ),
+      );
+      rows.append(
+        menuRow(uprootArmed ? t("garden.uprootConfirm") : t("garden.uproot"), "uproot", {
+          disabled: favorite,
+        }),
+      );
     }
     wrap.append(rows);
     return wrap;
@@ -3063,6 +3113,36 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           render();
           return;
         }
+        if (moveSource !== null) {
+          const source = moveSource;
+          moveSource = null;
+          if (area !== source.area) {
+            message = { text: t("garden.moveSameBoard"), kind: "err" };
+            render();
+            return;
+          }
+          if (slot === source.slot) {
+            message = { text: t("garden.moveCancelled"), kind: "info" };
+            render();
+            return;
+          }
+          const occupied = area === "tree" ? treeAt(slot) !== null : plotAt(slot) !== null;
+          if (occupied) {
+            message = { text: translateError("PLOT_OCCUPIED"), kind: "err" };
+            render();
+            return;
+          }
+          if (area === "crop" && cropSlotLocked(slot)) {
+            message = { text: translateError("PLOT_LOCKED"), kind: "err" };
+            render();
+            return;
+          }
+          void runAction(
+            { kind: "movePlant", from: source.slot, to: slot, tree: area === "tree" },
+            t("garden.moved"),
+          );
+          return;
+        }
         if (tool !== null && mode === "owner") {
           if (tool.kind === "water") {
             const plant = area === "tree" ? treeAt(slot) : plotAt(slot);
@@ -3291,20 +3371,53 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         return;
       }
       case "harvest":
-      case "water":
-      case "uproot": {
+      case "water": {
         if (selectedSlot === null) return;
-        if (action === "uproot") {
-          // First press arms the confirmation and keeps the menu open; only the
-          // second press actually removes the plant.
-          const armed = uprootArmed;
-          uproot(selectedSlot, selectedArea);
-          if (armed) closeMenu();
-          return;
-        }
+        menu = null;
         if (action === "harvest") harvest(selectedSlot, selectedArea);
         else waterSelected(selectedSlot, selectedArea);
         closeMenu();
+        return;
+      }
+      case "reclaimSeed":
+      case "menuReclaim": {
+        const ctx = menu ?? (selectedSlot === null ? null : { slot: selectedSlot, area: selectedArea });
+        if (ctx === null || ctx.area !== "crop") return;
+        menu = null;
+        void runAction({ kind: "reclaimSeed", slot: ctx.slot }, t("garden.reclaimed"));
+        return;
+      }
+      case "beginMove":
+      case "menuMove": {
+        const ctx = menu ?? (selectedSlot === null ? null : { slot: selectedSlot, area: selectedArea });
+        if (ctx === null) return;
+        menu = null;
+        moveSource = { slot: ctx.slot, area: ctx.area };
+        message = { text: t("garden.moveHint"), kind: "info" };
+        render();
+        return;
+      }
+      case "toggleFavorite":
+      case "menuFavorite": {
+        const ctx = menu ?? (selectedSlot === null ? null : { slot: selectedSlot, area: selectedArea });
+        if (ctx === null) return;
+        const plant = ctx.area === "tree" ? treeAt(ctx.slot) : plotAt(ctx.slot);
+        if (plant === null) return;
+        const locking = plant.favorite !== true;
+        menu = null;
+        void runAction(
+          { kind: "toggleFavorite", slot: ctx.slot, tree: ctx.area === "tree" },
+          t(locking ? "garden.favoriteSet" : "garden.favoriteCleared"),
+        );
+        return;
+      }
+      case "uproot": {
+        if (selectedSlot === null) return;
+        // First press arms the confirmation and keeps the menu open; only the
+        // second press actually removes the plant.
+        const armed = uprootArmed;
+        uproot(selectedSlot, selectedArea);
+        if (armed) closeMenu();
         return;
       }
       case "pickFertilize":
@@ -3652,6 +3765,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Keyboard routing: plot digits, tab letters and action letters. */
   function onKeyDown(event: KeyboardEvent): void {
     if (event.key === "Escape") {
+      if (moveSource !== null) {
+        moveSource = null;
+        message = null;
+        render();
+        return;
+      }
       if (tool !== null || toolPicker !== null) {
         tool = null;
         toolPicker = null;

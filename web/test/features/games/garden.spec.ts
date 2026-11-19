@@ -1086,6 +1086,125 @@ describe("bulk supplies", () => {
   });
 });
 
+describe("rare tools", () => {
+  /** One growing carrot, optionally pinned. */
+  const crop = (slot: number, favorite = false): PlotState => ({
+    slot,
+    seed: "carrot",
+    plantedAt: CLOCK - 60_000,
+    readyAt: CLOCK + 600_000,
+    effects: [],
+    watered: false,
+    fertilized: false,
+    harvests: 0,
+    fertilizer: null,
+    spray: null,
+    pest: false,
+    protectedUntil: 0,
+    favorite,
+  });
+
+  /** Opens the plot menu for one absolute crop slot. */
+  async function openPlot(host: HTMLElement, slot: number): Promise<void> {
+    host.querySelector<HTMLButtonElement>(`.garden-cell[data-area="crop"][data-slot="${slot}"]`)?.click();
+    await settle();
+  }
+
+  it("offers the three hand tools in the plant menu", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 1_000,
+        plots: [crop(0)],
+        bag: {
+          seeds: {},
+          crops: [],
+          supplies: {},
+          tools: { reclaimer: 1, shovel: 1, favoriteLock: 1 },
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openPlot(host, 0);
+
+    const labels = Array.from(host.querySelectorAll(".garden-menu-row")).map((row) => row.textContent ?? "");
+    expect(labels.some((label) => label.includes("Thu hồi hạt (1)"))).toBe(true);
+    expect(labels.some((label) => label.includes("Dời cây (1)"))).toBe(true);
+    expect(labels.some((label) => label.includes("Khóa yêu thích (1)"))).toBe(true);
+
+    host.querySelector<HTMLButtonElement>('[data-act="menuFavorite"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "toggleFavorite")?.action).toMatchObject({
+      kind: "toggleFavorite",
+      slot: 0,
+      tree: false,
+    });
+  });
+
+  it("reclaims the seed from the plant menu", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 1_000,
+        plots: [crop(0)],
+        bag: { seeds: {}, crops: [], supplies: {}, tools: { reclaimer: 1 } },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openPlot(host, 0);
+    host.querySelector<HTMLButtonElement>('[data-act="menuReclaim"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "reclaimSeed")?.action).toMatchObject({
+      kind: "reclaimSeed",
+      slot: 0,
+    });
+    expect(host.querySelector(".stage-status")?.textContent).toContain("Đã thu hồi hạt giống");
+  });
+
+  it("moves a crop to the empty cell clicked next", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 1_000,
+        plots: [crop(0)],
+        bag: { seeds: {}, crops: [], supplies: {}, tools: { shovel: 1 } },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openPlot(host, 0);
+
+    host.querySelector<HTMLButtonElement>('[data-act="menuMove"]')?.click();
+    await settle();
+    expect(host.querySelector(".stage-status")?.textContent).toContain("Chọn ô trống");
+    expect(host.querySelector(".garden-cell.is-move-source")).not.toBeNull();
+
+    host.querySelector<HTMLButtonElement>('.garden-cell[data-area="crop"][data-slot="1"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "movePlant")?.action).toMatchObject({
+      kind: "movePlant",
+      from: 0,
+      to: 1,
+      tree: false,
+    });
+    expect(host.querySelector(".stage-status")?.textContent).toContain("Đã dời cây");
+  });
+
+  it("marks a pinned plant and refuses to harvest or uproot it", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 1_000, plots: [crop(0, true)] }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const cell = host.querySelector('.garden-cell[data-area="crop"][data-slot="0"]');
+    expect(cell?.classList.contains("is-favorite")).toBe(true);
+    await openPlot(host, 0);
+
+    const row = (act: string) => host.querySelector<HTMLButtonElement>(`[data-act="${act}"]`);
+    expect(row("harvest")?.disabled).toBe(true);
+    expect(row("uproot")?.disabled).toBe(true);
+    expect(host.querySelector('[data-act="menuFavorite"]')?.textContent).toContain("Bỏ khóa yêu thích");
+  });
+});
+
 describe("levels tab", () => {
   it("shows farming, ranching and artisaning bars", async () => {
     const api = new FakeGardenApi(makeState());

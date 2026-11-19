@@ -510,6 +510,12 @@ export function applyGardenAction(
       return spray(ledger, action.slot, action.supply, now, action.tree, rng);
     case "uproot":
       return action.tree ? uprootTree(ledger, action.slot, now) : uproot(ledger, action.slot, now);
+    case "reclaimSeed":
+      return reclaimSeed(ledger, action.slot, now);
+    case "movePlant":
+      return movePlant(ledger, action.from, action.to, action.tree, now);
+    case "toggleFavorite":
+      return toggleFavorite(ledger, action.slot, action.tree, now);
     case "buyTab":
       return buyTab(ledger, now);
     case "buyPatch":
@@ -681,6 +687,7 @@ function harvest(
 ): RuleResult {
   const plot = ledger.plots[slot] ?? null;
   if (plot === null) return { ok: false, code: "PLOT_EMPTY" };
+  if (plot.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
   if (now < plot.readyAt) return { ok: false, code: "NOT_READY" };
 
   const next = clone(ledger);
@@ -720,6 +727,7 @@ function harvest(
       effects: rollEffectsFor(events, rng, mutationBonus),
       pest: false,
       protectedUntil: plot.protectedUntil,
+      favorite: plot.favorite,
       watered: false,
       fertilized: false,
       harvests: plot.harvests + 1,
@@ -742,6 +750,7 @@ function harvestTree(
 ): RuleResult {
   const tree = ledger.trees[slot] ?? null;
   if (tree === null) return { ok: false, code: "PLOT_EMPTY" };
+  if (tree.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
   if (now < tree.readyAt) return { ok: false, code: "NOT_READY" };
   const definition = treeById(tree.tree);
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
@@ -759,6 +768,7 @@ function harvestTree(
     effects: rollEffectsFor(events, rng, sprayBonus),
     pest: false,
     protectedUntil: tree.protectedUntil,
+    favorite: tree.favorite,
     watered: false,
     fertilized: false,
     harvests: tree.harvests + 1,
@@ -1031,7 +1041,9 @@ function tickSpray(active: ActiveSpray | null): ActiveSpray | null {
 
 /** @brief Removes one crop without a refund. */
 function uproot(ledger: GardenLedger, slot: number, now: number): RuleResult {
-  if (ledger.plots[slot] === null) return { ok: false, code: "PLOT_EMPTY" };
+  const plot = ledger.plots[slot] ?? null;
+  if (plot === null) return { ok: false, code: "PLOT_EMPTY" };
+  if (plot.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
   const next = clone(ledger);
   next.plots[slot] = null;
   return changed(next, now);
@@ -1039,9 +1051,93 @@ function uproot(ledger: GardenLedger, slot: number, now: number): RuleResult {
 
 /** @brief Removes one tree without a refund. */
 function uprootTree(ledger: GardenLedger, slot: number, now: number): RuleResult {
-  if (ledger.trees[slot] === null) return { ok: false, code: "PLOT_EMPTY" };
+  const tree = ledger.trees[slot] ?? null;
+  if (tree === null) return { ok: false, code: "PLOT_EMPTY" };
+  if (tree.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
   const next = clone(ledger);
   next.trees[slot] = null;
+  return changed(next, now);
+}
+
+/** @brief Spends one hand tool from the bag, or reports that none is left. */
+function spendTool(ledger: GardenLedger, tool: ToolId): boolean {
+  return (ledger.bag.tools?.[tool] ?? 0) > 0;
+}
+
+/** @brief Pops the planted seed back into the bag, spending a reclaimer. */
+function reclaimSeed(ledger: GardenLedger, slot: number, now: number): RuleResult {
+  const plot = ledger.plots[slot] ?? null;
+  if (plot === null) return { ok: false, code: "PLOT_EMPTY" };
+  if (plot.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
+  if (!spendTool(ledger, "reclaimer")) return { ok: false, code: "NO_TOOL" };
+
+  const next = clone(ledger);
+  next.bag.tools = { ...(next.bag.tools ?? {}) };
+  next.bag.tools.reclaimer = (next.bag.tools.reclaimer ?? 0) - 1;
+  next.bag.seeds[plot.seed] = (next.bag.seeds[plot.seed] ?? 0) + 1;
+  next.plots[slot] = null;
+  grantXp(next, "farming", 20);
+  return changed(next, now);
+}
+
+/** @brief Relocates one plant, keeping its growth and charges, for a shovel. */
+function movePlant(ledger: GardenLedger, from: number, to: number, tree: boolean, now: number): RuleResult {
+  if (from === to) return { ok: false, code: "BAD_REQUEST" };
+  if (!spendTool(ledger, "shovel")) return { ok: false, code: "NO_TOOL" };
+
+  if (tree) {
+    const plant = ledger.trees[from] ?? null;
+    if (plant === null) return { ok: false, code: "PLOT_EMPTY" };
+    if (plant.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
+    if (to < 0 || to >= ledger.trees.length) return { ok: false, code: "PLOT_LOCKED" };
+    if ((ledger.trees[to] ?? null) !== null) return { ok: false, code: "PLOT_OCCUPIED" };
+
+    const next = clone(ledger);
+    next.bag.tools = { ...(next.bag.tools ?? {}) };
+    next.bag.tools.shovel = (next.bag.tools.shovel ?? 0) - 1;
+    next.trees[to] = { ...plant, slot: to };
+    next.trees[from] = null;
+    return changed(next, now);
+  }
+
+  const plant = ledger.plots[from] ?? null;
+  if (plant === null) return { ok: false, code: "PLOT_EMPTY" };
+  if (plant.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
+  if (to < 0 || to >= ledger.plots.length || !isCropPatchOpen(ledger, to)) {
+    return { ok: false, code: "PLOT_LOCKED" };
+  }
+  if ((ledger.plots[to] ?? null) !== null) return { ok: false, code: "PLOT_OCCUPIED" };
+
+  const next = clone(ledger);
+  next.bag.tools = { ...(next.bag.tools ?? {}) };
+  next.bag.tools.shovel = (next.bag.tools.shovel ?? 0) - 1;
+  next.plots[to] = { ...plant, slot: to };
+  next.plots[from] = null;
+  return changed(next, now);
+}
+
+/**
+ * @brief Pins or unpins one plant.
+ * @details Pinning spends a favorite lock; unpinning is always free. A pinned
+ * plant survives uproot, harvest, bulk harvest, shovels and reclaimers.
+ */
+function toggleFavorite(ledger: GardenLedger, slot: number, tree: boolean, now: number): RuleResult {
+  const plant = tree ? (ledger.trees[slot] ?? null) : (ledger.plots[slot] ?? null);
+  if (plant === null) return { ok: false, code: "PLOT_EMPTY" };
+
+  const next = clone(ledger);
+  if (plant.favorite === true) {
+    const updated = { ...plant, favorite: false };
+    if (tree) next.trees[slot] = updated as (typeof next.trees)[number];
+    else next.plots[slot] = updated as (typeof next.plots)[number];
+    return changed(next, now);
+  }
+  if (!spendTool(ledger, "favoriteLock")) return { ok: false, code: "NO_TOOL" };
+  next.bag.tools = { ...(next.bag.tools ?? {}) };
+  next.bag.tools.favoriteLock = (next.bag.tools.favoriteLock ?? 0) - 1;
+  const updated = { ...plant, favorite: true };
+  if (tree) next.trees[slot] = updated as (typeof next.trees)[number];
+  else next.plots[slot] = updated as (typeof next.plots)[number];
   return changed(next, now);
 }
 
@@ -1092,14 +1188,14 @@ function harvestAll(ledger: GardenLedger, now: number, rng: () => number): RuleR
       for (let plot = 0; plot < PLOTS_PER_PATCH; plot += 1) {
         const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
         const entry = ledger.plots[slot] ?? null;
-        if (entry !== null && now >= entry.readyAt) crops.push(slot);
+        if (entry !== null && entry.favorite !== true && now >= entry.readyAt) crops.push(slot);
       }
     }
   }
   const trees: number[] = [];
   for (let slot = 0; slot < ledger.trees.length; slot += 1) {
     const entry = ledger.trees[slot] ?? null;
-    if (entry !== null && now >= entry.readyAt) trees.push(slot);
+    if (entry !== null && entry.favorite !== true && now >= entry.readyAt) trees.push(slot);
   }
   const count = crops.length + trees.length;
   if (count === 0) return { ok: false, code: "NOTHING_TO_DO" };
@@ -1778,7 +1874,7 @@ function setStaffRole(ledger: GardenLedger, index: number, role: StaffRole, now:
 function staffHarvest(ledger: GardenLedger, now: number, rng: () => number): GardenLedger | null {
   for (let slot = 0; slot < ledger.plots.length; slot += 1) {
     const plot = ledger.plots[slot] ?? null;
-    if (plot === null || now < plot.readyAt) continue;
+    if (plot === null || plot.favorite === true || now < plot.readyAt) continue;
     const result = applyGardenAction(
       ledger,
       { kind: "harvest", slot, tree: false, auto: true },
@@ -1790,7 +1886,7 @@ function staffHarvest(ledger: GardenLedger, now: number, rng: () => number): Gar
   }
   for (let slot = 0; slot < ledger.trees.length; slot += 1) {
     const tree = ledger.trees[slot] ?? null;
-    if (tree === null || now < tree.readyAt) continue;
+    if (tree === null || tree.favorite === true || now < tree.readyAt) continue;
     const result = applyGardenAction(
       ledger,
       { kind: "harvest", slot, tree: true, auto: true },

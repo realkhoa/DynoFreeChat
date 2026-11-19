@@ -628,6 +628,153 @@ describe("garden ledger rules", () => {
     expect(result.ledger.trees[0]?.effects).toContain("golden");
   });
 
+  it("reclaims a seed with a reclaimer", () => {
+    const ledger = makeLedger();
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+
+    const denied = run(ledger, { kind: "reclaimSeed", slot: 0 });
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) expect(denied.code).toBe("NO_TOOL");
+
+    ledger.bag.tools = { reclaimer: 1 };
+    const reclaimed = run(ledger, { kind: "reclaimSeed", slot: 0 });
+    expect(reclaimed.ok).toBe(true);
+    if (!reclaimed.ok) return;
+    expect(reclaimed.ledger.plots[0]).toBeNull();
+    expect(reclaimed.ledger.bag.seeds.carrot).toBe(4);
+    expect(reclaimed.ledger.bag.tools.reclaimer ?? 0).toBe(0);
+
+    // A pinned plant keeps its seed.
+    const pinned: GardenLedger = {
+      ...ledger,
+      plots: [{ ...ledger.plots[0]!, favorite: true }, ...ledger.plots.slice(1)],
+      bag: { ...ledger.bag, tools: { reclaimer: 1 } },
+    };
+    const refused = run(pinned, { kind: "reclaimSeed", slot: 0 });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.code).toBe("FAVORITE_LOCKED");
+  });
+
+  it("moves a crop and a tree with a shovel", () => {
+    const ledger = makeLedger();
+    ledger.bag.tools = { shovel: 2 };
+    const crop = {
+      slot: 0,
+      seed: "carrot" as const,
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    ledger.plots[0] = crop;
+
+    const moved = run(ledger, { kind: "movePlant", from: 0, to: 5, tree: false });
+    expect(moved.ok).toBe(true);
+    if (!moved.ok) return;
+    expect(moved.ledger.plots[0]).toBeNull();
+    expect(moved.ledger.plots[5]?.seed).toBe("carrot");
+    expect(moved.ledger.plots[5]?.slot).toBe(5);
+    expect(moved.ledger.plots[5]?.readyAt).toBe(crop.readyAt);
+    expect(moved.ledger.bag.tools.shovel).toBe(1);
+
+    // The destination must be empty.
+    moved.ledger.plots[6] = { ...crop, slot: 6 };
+    const blocked = run(moved.ledger, { kind: "movePlant", from: 5, to: 6, tree: false });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.code).toBe("PLOT_OCCUPIED");
+
+    moved.ledger.trees[0] = {
+      slot: 0,
+      tree: "apple",
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const movedTree = run(moved.ledger, { kind: "movePlant", from: 0, to: 1, tree: true });
+    expect(movedTree.ok).toBe(true);
+    if (!movedTree.ok) return;
+    expect(movedTree.ledger.trees[1]?.tree).toBe("apple");
+    expect(movedTree.ledger.trees[0]).toBeNull();
+    expect(movedTree.ledger.bag.tools.shovel).toBe(0);
+
+    const noTool = run(movedTree.ledger, { kind: "movePlant", from: 1, to: 2, tree: true });
+    expect(noTool.ok).toBe(false);
+    if (!noTool.ok) expect(noTool.code).toBe("NO_TOOL");
+  });
+
+  it("pins a plant so nothing harvests, uproots, moves or reclaims it", () => {
+    const ledger = makeLedger();
+    ledger.bag.tools = { favoriteLock: 1, shovel: 1, reclaimer: 1 };
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW - 5 * 60_000,
+      readyAt: NOW - 1_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+
+    const pinned = run(ledger, { kind: "toggleFavorite", slot: 0, tree: false });
+    expect(pinned.ok).toBe(true);
+    if (!pinned.ok) return;
+    expect(pinned.ledger.plots[0]?.favorite).toBe(true);
+    expect(pinned.ledger.bag.tools.favoriteLock ?? 0).toBe(0);
+
+    for (const action of [
+      { kind: "harvest", slot: 0, tree: false },
+      { kind: "uproot", slot: 0, tree: false },
+      { kind: "movePlant", from: 0, to: 1, tree: false },
+      { kind: "reclaimSeed", slot: 0 },
+    ] as GardenAction[]) {
+      const refused = run(pinned.ledger, action);
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) expect(refused.code).toBe("FAVORITE_LOCKED");
+    }
+    // Bulk harvest skips the pinned plant instead of failing on it.
+    expect(run(pinned.ledger, { kind: "harvestAll" }).ok).toBe(false);
+
+    // Unpinning is free; pinning again needs another lock.
+    const unpinned = run(pinned.ledger, { kind: "toggleFavorite", slot: 0, tree: false });
+    expect(unpinned.ok).toBe(true);
+    if (!unpinned.ok) return;
+    expect(unpinned.ledger.plots[0]?.favorite).toBe(false);
+    const noLock = run(unpinned.ledger, { kind: "toggleFavorite", slot: 0, tree: false });
+    expect(noLock.ok).toBe(false);
+    if (!noLock.ok) expect(noLock.code).toBe("NO_TOOL");
+  });
+
   it("buys a rare watering machine and it waters ten percent per cycle", () => {
     const base = seasonFor(NOW);
     const season = {

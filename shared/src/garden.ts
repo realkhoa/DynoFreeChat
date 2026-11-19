@@ -689,7 +689,7 @@ export function machineCraftCost(machine: MachineDefinition): number {
 }
 
 /** Rare tools sold in the market. */
-export type ToolId = "autoWater";
+export type ToolId = "autoWater" | "reclaimer" | "shovel" | "favoriteLock";
 
 /** One rare tool definition. */
 export interface ToolDefinition {
@@ -699,8 +699,18 @@ export interface ToolDefinition {
   readonly price: number;
 }
 
-/** Rare tool catalog. */
-export const TOOLS: readonly ToolDefinition[] = [{ id: "autoWater", price: 1_000_000 }];
+/**
+ * Rare tool catalog.
+ * @details `autoWater` works on a timer, while the three hand tools are spent
+ * once per use: `reclaimer` pops a seed back out of a planted crop, `shovel`
+ * relocates one plant, and `favoriteLock` pins a plant so nothing removes it.
+ */
+export const TOOLS: readonly ToolDefinition[] = [
+  { id: "autoWater", price: 1_000_000 },
+  { id: "reclaimer", price: 600_000 },
+  { id: "shovel", price: 900_000 },
+  { id: "favoriteLock", price: 300_000 },
+];
 
 /** Chance a rare tool appears in one shop restock (`< 20%`). */
 export const TOOL_STOCK_CHANCE = 0.15;
@@ -873,6 +883,8 @@ export interface PlotState {
   readonly fertilizer: ActiveFertilizer | null;
   /** Active spray, or `null`. */
   readonly spray: ActiveSpray | null;
+  /** Pinned by a favorite lock: nothing harvests, moves or removes it. */
+  readonly favorite?: boolean;
 }
 
 /** One planted fruit tree. */
@@ -901,6 +913,8 @@ export interface TreeState {
   readonly fertilizer: ActiveFertilizer | null;
   /** Active spray, or `null`. */
   readonly spray: ActiveSpray | null;
+  /** Pinned by a favorite lock: nothing harvests, moves or removes it. */
+  readonly favorite?: boolean;
 }
 
 /** One stack of harvested produce in the bag. */
@@ -1968,6 +1982,9 @@ export type GardenAction =
     }
   | { readonly kind: "spray"; readonly slot: number; readonly tree: boolean; readonly supply: SprayId }
   | { readonly kind: "uproot"; readonly slot: number; readonly tree: boolean }
+  | { readonly kind: "reclaimSeed"; readonly slot: number }
+  | { readonly kind: "movePlant"; readonly from: number; readonly to: number; readonly tree: boolean }
+  | { readonly kind: "toggleFavorite"; readonly slot: number; readonly tree: boolean }
   | { readonly kind: "buyTab" }
   | { readonly kind: "buyPatch"; readonly tab: number }
   | { readonly kind: "waterAll" }
@@ -2059,6 +2076,8 @@ export type GardenErrorCode =
   | "NO_EGG"
   | "NO_FREE_SLOT"
   | "NO_PRODUCT"
+  | "NO_TOOL"
+  | "FAVORITE_LOCKED"
   | "TOOL_SOLD_OUT"
   | "WAREHOUSE_LOCKED"
   | "MACHINE_LOCKED"
@@ -2333,6 +2352,22 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const supply = typeof value.supply === "string" ? sprayById(value.supply) : undefined;
     return supply === undefined ? null : { kind, supply: supply.id };
   }
+  if (kind === "reclaimSeed") {
+    const slot = readSlot(value.slot, MAX_CROPS);
+    return slot === null ? null : { kind, slot };
+  }
+  if (kind === "movePlant") {
+    const isTree = value.tree === true;
+    const from = readSlot(value.from, isTree ? MAX_TREES : MAX_CROPS);
+    const to = readSlot(value.to, isTree ? MAX_TREES : MAX_CROPS);
+    if (from === null || to === null || from === to) return null;
+    return { kind, from, to, tree: isTree };
+  }
+  if (kind === "toggleFavorite") {
+    const isTree = value.tree === true;
+    const slot = readSlot(value.slot, isTree ? MAX_TREES : MAX_CROPS);
+    return slot === null ? null : { kind, slot, tree: isTree };
+  }
   if (kind === "buySupply") {
     const supply = typeof value.supply === "string" ? supplyById(value.supply) : undefined;
     const qty = value.qty;
@@ -2539,11 +2574,10 @@ export function seasonAt(now: number): SeasonSnapshot {
   const shopRng = createRng(hash32(`garden:shop:${restockWave}`));
   const toolRng = createRng(hash32(`garden:tools:${restockWave}`));
   const tools: ShopToolOffer[] = [];
-  for (const tool of TOOLS) {
-    // Rare stock: a restock carries the tool less than twenty percent of the time.
-    if (toolRng() < TOOL_STOCK_CHANCE) {
-      tools.push({ tool: tool.id, price: tool.price, stock: 1 });
-    }
+  // Rare stock: a restock carries at most one hand tool, and only some of them.
+  if (toolRng() < TOOL_STOCK_CHANCE) {
+    const picked = TOOLS[Math.floor(toolRng() * TOOLS.length)];
+    if (picked !== undefined) tools.push({ tool: picked.id, price: picked.price, stock: 1 });
   }
 
   const eventSeedRng = createRng(hash32(`garden:eventSeeds:${restockWave}`));

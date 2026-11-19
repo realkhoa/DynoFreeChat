@@ -58,6 +58,7 @@ import {
   combinedGrowScale,
   ANIMALS,
   BUILDINGS,
+  toolById,
   type BuildingId,
   FARM_CYCLE_MS,
   animalMeatPrice,
@@ -238,6 +239,14 @@ describe("farm buildings", () => {
     const three = productPrice({ product: "egg", star: 3, qty: 1 }, season);
     expect(three).toBeGreaterThan(one);
     expect(ANIMALS.some((entry) => entry.product === "wool" && entry.intervalCycles === 7)).toBe(true);
+  });
+
+  it("sells the three hand tools next to the watering machine", () => {
+    const ids = TOOLS.map((tool) => tool.id);
+    expect(ids).toContain("reclaimer");
+    expect(ids).toContain("shovel");
+    expect(ids).toContain("favoriteLock");
+    expect(toolById("reclaimer")?.price).toBeGreaterThan(0);
   });
 
   it("adds a fish pond with fish and snails", () => {
@@ -729,6 +738,20 @@ describe("garden wire parsing", () => {
     // A spray is not a fertilizer and vice versa.
     expect(parseGardenAction({ kind: "fertilizeAll", supply: "goldenSpray" })).toBeNull();
     expect(parseGardenAction({ kind: "sprayAll", supply: "speedGrow" })).toBeNull();
+    expect(parseGardenAction({ kind: "reclaimSeed", slot: 3 })).toEqual({ kind: "reclaimSeed", slot: 3 });
+    expect(parseGardenAction({ kind: "movePlant", from: 0, to: 9, tree: false })).toEqual({
+      kind: "movePlant",
+      from: 0,
+      to: 9,
+      tree: false,
+    });
+    expect(parseGardenAction({ kind: "movePlant", from: 4, to: 4, tree: false })).toBeNull();
+    expect(parseGardenAction({ kind: "toggleFavorite", slot: 0, tree: true })).toEqual({
+      kind: "toggleFavorite",
+      slot: 0,
+      tree: true,
+    });
+    expect(parseGardenAction({ kind: "toggleFavorite", slot: 999, tree: true })).toBeNull();
   });
 
   it("validates actions and rejects malformed ones", () => {

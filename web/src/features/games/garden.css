@@ -148,6 +148,17 @@
   outline-offset: 1px;
 }
 
+/* A favorite lock paints the top border gold so pinned plants stand out. */
+.garden-cell.is-favorite .garden-cell-line:first-child {
+  color: #d7ba7d;
+}
+
+/* Shovel source: dashed gold frame while picking the destination cell. */
+.garden-cell.is-move-source {
+  outline: 1px dashed #d7ba7d;
+  outline-offset: 1px;
+}
+
 .garden-cell.is-empty,
 .garden-cell.is-locked {
   color: #4b4b4b;
