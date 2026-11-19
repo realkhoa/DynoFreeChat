@@ -26,6 +26,8 @@ import {
   cropKey,
   canonicalEffects,
   effectsMultiplier,
+  effectsMultiplierRaw,
+  MAX_EFFECT_MULTIPLIER,
   driedStarForSell,
   cropSellPrice,
   soilGrowthFactor,
@@ -267,6 +269,10 @@ describe("farm buildings", () => {
   it("stacks the same mutation on one fruit", () => {
     expect(canonicalEffects(["diamond", "diamond"])).toEqual(["diamond", "diamond"]);
     expect(effectsMultiplier(["diamond", "diamond"])).toBe(81);
+    const wild = ["diamond", "diamond", "diamond", "cosmic", "cosmic", "cosmic", "plasma", "plasma"] as const;
+    expect(effectsMultiplierRaw([...wild])).toBeGreaterThan(MAX_EFFECT_MULTIPLIER);
+    expect(effectsMultiplier([...wild])).toBe(MAX_EFFECT_MULTIPLIER);
+    expect(MAX_EFFECT_MULTIPLIER).toBe(1000);
     expect(canonicalEffects(Array<"golden">(7).fill("golden"))).toHaveLength(MAX_EFFECT_STACK);
     expect(cropKey("carrot", ["golden", "golden"])).toBe("carrot:golden:golden");
     expect(parseCropKey("carrot:golden:golden")?.effects).toEqual(["golden", "golden"]);

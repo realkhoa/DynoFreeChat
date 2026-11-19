@@ -394,6 +394,19 @@ describe("garden tab", () => {
     expect(host.querySelector(".garden-side-time")?.textContent).toMatch(/m|s/);
   });
 
+  it("flags the mutation multiplier cap in the detail panel", async () => {
+    const wild = ["diamond", "diamond", "diamond", "cosmic", "cosmic", "cosmic"] as const;
+    const api = new FakeGardenApi(makeState({ plots: [{ ...RIPE_PLOT, effects: [...wild] }] }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    await settle();
+    const info = host.querySelector(".garden-menu-info")?.textContent ?? "";
+    expect(info).toContain("x1000");
+    expect(info).toContain("giới hạn x1000");
+  });
+
   it("shows stacked mutations and their combined multiplier", async () => {
     const api = new FakeGardenApi(makeState({ plots: [{ ...RIPE_PLOT, effects: ["diamond", "diamond"] }] }));
     const { host, game } = await mountGame(api);

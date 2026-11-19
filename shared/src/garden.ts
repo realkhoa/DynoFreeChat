@@ -2290,8 +2290,23 @@ export function strongestEffect(effects: readonly EffectId[]): EffectDefinition 
  * @brief Combined value multiplier of a mutation set.
  * @param effects Mutations on one fruit.
  */
+/** @brief Combined multiplier before the {@link MAX_EFFECT_MULTIPLIER} cap. */
+export function effectsMultiplierRaw(effects: readonly EffectId[]): number {
+  const counts = new Map<EffectId, number>();
+  for (const id of effects) {
+    counts.set(id, Math.min(MAX_EFFECT_STACK, (counts.get(id) ?? 0) + 1));
+  }
+  let total = 1;
+  for (const [id, count] of counts) {
+    const factor = effectById(id)?.multiplier ?? 1;
+    for (let copy = 0; copy < count; copy += 1) total *= factor;
+  }
+  return total;
+}
+
+/** @brief Combined sale multiplier, capped so no fruit can go to the moon. */
 export function effectsMultiplier(effects: readonly EffectId[]): number {
-  return effects.reduce((total, id) => total * (effectById(id)?.multiplier ?? 1), 1);
+  return Math.min(MAX_EFFECT_MULTIPLIER, effectsMultiplierRaw(effects));
 }
 
 /** @brief Looks one event up by id. */
@@ -2369,7 +2384,15 @@ export function isRecoveryKey(value: unknown): value is string {
 
 /** @brief Canonical effect order for bag keys and comparisons. */
 /** Most copies of one mutation a single fruit can carry. */
-export const MAX_EFFECT_STACK = 5;
+export const MAX_EFFECT_STACK = 3;
+
+/**
+ * Ceiling for the combined mutation multiplier on one fruit.
+ * @details Stacked mutations multiply, so a lucky long grow could otherwise
+ * reach billions per fruit. The cap keeps one fruit in the low hundreds of
+ * thousands of coins even at the top of the mutation table.
+ */
+export const MAX_EFFECT_MULTIPLIER = 1000;
 
 /**
  * @brief Orders mutations by catalog order and keeps duplicates.

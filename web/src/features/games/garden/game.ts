@@ -45,6 +45,8 @@ import {
   effectById,
   gardenCounts,
   effectsMultiplier,
+  effectsMultiplierRaw,
+  MAX_EFFECT_MULTIPLIER,
   nextPatchPrice,
   nextTabPrice,
   resolvedCropEffects,
@@ -367,7 +369,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return count > 1 ? `${label} ×${count} (x${per})` : `${label} x${per}`;
     });
     const total = effectsMultiplier(effects);
-    return effects.length > 1 ? `${parts.join(" + ")} = x${total}` : (parts[0] ?? "");
+    const cap =
+      effectsMultiplierRaw(effects) > total
+        ? ` ${t("garden.effectCap", { cap: MAX_EFFECT_MULTIPLIER })}`
+        : "";
+    return effects.length > 1 ? `${parts.join(" + ")} = x${total}${cap}` : (parts[0] ?? "");
   }
 
   /** @brief Plots for the active mode. */
