@@ -400,8 +400,8 @@ describe("garden tab", () => {
     expect(host.querySelector(".garden-side-time")?.textContent).toMatch(/m|s/);
   });
 
-  it("flags the mutation multiplier cap in the detail panel", async () => {
-    const wild = ["diamond", "diamond", "diamond", "cosmic", "cosmic", "cosmic"] as const;
+  it("shows huge stacked multipliers without a cap", async () => {
+    const wild = ["diamond", "diamond", "diamond", "cosmic", "cosmic", "cosmic", "plasma", "plasma"] as const;
     const api = new FakeGardenApi(makeState({ plots: [{ ...RIPE_PLOT, effects: [...wild] }] }));
     const { host, game } = await mountGame(api);
     mounted.push(game);
@@ -409,8 +409,8 @@ describe("garden tab", () => {
     host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
     await settle();
     const info = host.querySelector(".garden-menu-info")?.textContent ?? "";
-    expect(info).toContain("x1000");
-    expect(info).toContain("giới hạn x1000");
+    expect(info).toContain("= x18289152");
+    expect(info).not.toContain("giới hạn");
   });
 
   it("shows stacked mutations and their combined multiplier", async () => {
@@ -1208,7 +1208,7 @@ describe("bulk supplies", () => {
   it("sprays the whole garden from one pick", async () => {
     const api = new FakeGardenApi(
       makeState({
-        coins: 1_000,
+        coins: 100_000,
         plots: [crop(0, CLOCK + 600_000), crop(1, CLOCK + 600_000)],
         trees: [tree(0)],
       }),

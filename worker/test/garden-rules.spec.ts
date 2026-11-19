@@ -22,6 +22,7 @@ import {
   rollEffectsFor,
   seasonAt as seasonFor,
   sprayById,
+  sprayBoostFor,
   type GardenAction,
 } from "@dyno/shared/garden";
 import {
@@ -107,7 +108,8 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.bag.seeds.carrot).toBe(2);
     const plot = planted.ledger.plots[0];
     expect(plot).not.toBeNull();
-    expect(plot?.effects).toEqual(["golden", "frozen", "moonlit", "shriveled", "pale"]);
+    // Stack copies are expected; compare the distinct mutation set.
+    expect([...new Set(plot?.effects ?? [])]).toEqual(["golden", "frozen", "moonlit", "shriveled", "pale"]);
     expect(plot?.readyAt).toBeGreaterThan(NOW);
     expect(planted.ledger.stats.planted).toBe(1);
     expect(planted.ledger.rev).toBe(makeLedger().rev + 1);
@@ -273,10 +275,10 @@ describe("garden ledger rules", () => {
     });
   });
 
-  it("sprays raise the next mutation roll and wear off", () => {
+  it("sprays boost the next mutation roll without granting one", () => {
     const tomato = makeLedger();
     tomato.bag.seeds.tomato = 1;
-    tomato.coins = 500;
+    tomato.coins = 100_000;
     const bought = run(tomato, { kind: "buySupply", supply: "snowSpray", qty: 1 });
     if (!bought.ok) throw new Error("buy failed");
     const planted = run(bought.ledger, { kind: "plant", slot: 0, seed: "tomato" }, NOW, 0.9);
@@ -289,12 +291,14 @@ describe("garden ledger rules", () => {
     if (!sprayed.ok) return;
     expect(sprayed.ledger.plots[0]?.spray).toEqual({ id: "snowSpray", left: 2 });
     expect(sprayed.ledger.bag.supplies.snowSpray).toBe(0);
+    // Spraying alone never adds a mutation.
+    expect(sprayed.ledger.plots[0]?.effects).toEqual(planted.ledger.plots[0]?.effects);
 
     const picked = run(sprayed.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt, 0.1);
     expect(picked.ok).toBe(true);
     if (!picked.ok) return;
     expect(picked.ledger.plots[0]?.effects).toEqual(
-      rollEffectsFor(eventsAt(plot.readyAt), () => 0.1, sprayById("snowSpray")?.effectChances ?? {}),
+      rollEffectsFor(eventsAt(plot.readyAt), () => 0.1, {}, sprayBoostFor({ id: "snowSpray", left: 2 })),
     );
     expect(picked.ledger.plots[0]?.spray).toEqual({ id: "snowSpray", left: 1 });
   });
@@ -628,7 +632,7 @@ describe("garden ledger rules", () => {
 
   it("sprays every uncharged plant at once and bills per plant", () => {
     const ledger = makeLedger();
-    ledger.coins = 1_000;
+    ledger.coins = 1_000_000;
     const crop = (slot: number, spray: { id: "frostSpray"; left: number } | null) => ({
       slot,
       seed: "carrot" as const,
@@ -664,13 +668,13 @@ describe("garden ledger rules", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.ledger.bag.supplies.goldenSpray ?? 0).toBe(0);
-    expect(result.ledger.coins).toBe(1_000 - 2 * 80);
+    expect(result.ledger.coins).toBe(1_000_000 - 2 * 25_000);
     expect(result.ledger.plots[0]?.spray?.id).toBe("goldenSpray");
     expect(result.ledger.plots[1]?.spray?.id).toBe("frostSpray");
     expect(result.ledger.trees[0]?.spray?.id).toBe("goldenSpray");
-    // rng 0.05 is under the 15% golden chance, so both plants mutated.
-    expect(result.ledger.plots[0]?.effects).toContain("golden");
-    expect(result.ledger.trees[0]?.effects).toContain("golden");
+    // Charging a spray never adds a mutation by itself.
+    expect(result.ledger.plots[0]?.effects).toEqual([]);
+    expect(result.ledger.trees[0]?.effects).toEqual([]);
   });
 
   it("reclaims a seed with a reclaimer", () => {

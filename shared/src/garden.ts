@@ -408,16 +408,29 @@ export interface FertilizerDefinition {
   readonly price: number;
 }
 
-/** One spray: raises mutation chances for a number of harvests. */
+/** Multiplier an active spray applies to the base chance of its mutations. */
+export const SPRAY_MUTATION_BOOST = 1.05;
+
+/** One spray: raises the base mutation chance for a number of harvests. */
 export interface SprayDefinition {
   /** Stable id. */
   readonly id: SprayId;
-  /** Extra effect chances added on every roll while active. */
-  readonly effectChances: Readonly<Partial<Record<EffectId, number>>>;
+  /** Mutations whose base chance this spray multiplies. */
+  readonly effects: readonly EffectId[];
   /** Harvest cycles the boost survives. */
   readonly harvests: number;
   /** Shop price. */
   readonly price: number;
+}
+
+/** @brief Per-mutation chance multipliers from the active spray, if any. */
+export function sprayBoostFor(spray: ActiveSpray | null): Readonly<Partial<Record<EffectId, number>>> {
+  if (spray === null) return {};
+  const definition = sprayById(spray.id);
+  if (definition === undefined) return {};
+  const boost: Partial<Record<EffectId, number>> = {};
+  for (const id of definition.effects) boost[id] = SPRAY_MUTATION_BOOST;
+  return boost;
 }
 
 /** Fertilizer catalog. */
@@ -427,16 +440,16 @@ export const FERTILIZERS: readonly FertilizerDefinition[] = [
   { id: "superGrow", growMultiplier: 0.45, harvests: 4, price: 140 },
 ];
 
-/** Spray catalog. */
+/** Spray catalog; mutation sprays are premium items now. */
 export const SPRAYS: readonly SprayDefinition[] = [
-  { id: "goldenSpray", effectChances: { golden: 0.15 }, harvests: 2, price: 80 },
-  { id: "frostSpray", effectChances: { frozen: 0.15 }, harvests: 2, price: 80 },
-  { id: "snowSpray", effectChances: { snow: 0.15 }, harvests: 2, price: 80 },
+  { id: "goldenSpray", effects: ["golden"], harvests: 2, price: 25_000 },
+  { id: "frostSpray", effects: ["frozen"], harvests: 2, price: 20_000 },
+  { id: "snowSpray", effects: ["snow"], harvests: 2, price: 20_000 },
   {
     id: "stormSpray",
-    effectChances: { snow: 0.05, chill: 0.05, sunray: 0.05, smoked: 0.05, cracked: 0.05, onfire: 0.05 },
+    effects: ["snow", "chill", "sunray", "smoked", "cracked", "onfire"],
     harvests: 3,
-    price: 150,
+    price: 75_000,
   },
 ];
 
@@ -2498,8 +2511,8 @@ export function strongestEffect(effects: readonly EffectId[]): EffectDefinition 
  * @brief Combined value multiplier of a mutation set.
  * @param effects Mutations on one fruit.
  */
-/** @brief Combined multiplier before the {@link MAX_EFFECT_MULTIPLIER} cap. */
-export function effectsMultiplierRaw(effects: readonly EffectId[]): number {
+/** @brief Combined multiplier of every mutation copy on one fruit. */
+export function effectsMultiplier(effects: readonly EffectId[]): number {
   const counts = new Map<EffectId, number>();
   for (const id of effects) {
     counts.set(id, Math.min(MAX_EFFECT_STACK, (counts.get(id) ?? 0) + 1));
@@ -2512,9 +2525,9 @@ export function effectsMultiplierRaw(effects: readonly EffectId[]): number {
   return total;
 }
 
-/** @brief Combined sale multiplier, capped so no fruit can go to the moon. */
-export function effectsMultiplier(effects: readonly EffectId[]): number {
-  return Math.min(MAX_EFFECT_MULTIPLIER, effectsMultiplierRaw(effects));
+/** @brief Alias kept for callers that only need the combined multiplier. */
+export function effectsMultiplierRaw(effects: readonly EffectId[]): number {
+  return effectsMultiplier(effects);
 }
 
 /** @brief Looks one event up by id. */
@@ -2592,15 +2605,15 @@ export function isRecoveryKey(value: unknown): value is string {
 
 /** @brief Canonical effect order for bag keys and comparisons. */
 /** Most copies of one mutation a single fruit can carry. */
-export const MAX_EFFECT_STACK = 3;
+export const MAX_EFFECT_STACK = 5;
 
 /**
- * Ceiling for the combined mutation multiplier on one fruit.
- * @details Stacked mutations multiply, so a lucky long grow could otherwise
- * reach billions per fruit. The cap keeps one fruit in the low hundreds of
- * thousands of coins even at the top of the mutation table.
+ * Chance to earn each extra copy of a mutation that already rolled.
+ * @details Index is the copy being attempted: the second copy is a quarter of
+ * the time, the fifth one in two hundred. Each mutation type rolls its own
+ * chain, so different mutations never share a probability pool.
  */
-export const MAX_EFFECT_MULTIPLIER = 1000;
+export const EFFECT_STACK_CHANCES: readonly number[] = [0, 0, 0.25, 0.05, 0.01, 0.005];
 
 /**
  * @brief Orders mutations by catalog order and keeps duplicates.
@@ -3068,10 +3081,11 @@ export function rollEffectsFor(
   events: readonly EventDefinition[],
   rng: () => number,
   bonus: Readonly<Partial<Record<EffectId, number>>> = {},
+  boost: Readonly<Partial<Record<EffectId, number>>> = {},
 ): EffectId[] {
   // Each event rolls independently, so two events can stack the same mutation.
   const rolled: EffectId[] = [];
-  for (const event of events) rolled.push(...rollEffects(event, rng, bonus));
+  for (const event of events) rolled.push(...rollEffects(event, rng, bonus, boost));
   return canonicalEffects(rolled);
 }
 
@@ -3104,16 +3118,25 @@ export function rollEffects(
   event: EventDefinition,
   rng: () => number,
   bonus: Readonly<Partial<Record<EffectId, number>>> = {},
+  boost: Readonly<Partial<Record<EffectId, number>>> = {},
 ): EffectId[] {
   const rolled: EffectId[] = [];
   // One independent roll per weather mutation, in catalog order, so a fruit can
   // carry several mutations at once and the sequence stays deterministic.
   for (const effect of EFFECTS) {
     if (!effect.natural) continue;
-    const chance =
+    const base =
       (BASE_EFFECT_CHANCES[effect.id] ?? 0) + (event.effectChances[effect.id] ?? 0) + (bonus[effect.id] ?? 0);
+    const chance = base * (boost[effect.id] ?? 1);
     if (chance <= 0) continue;
-    if (rng() < chance) rolled.push(effect.id);
+    if (rng() >= chance) continue;
+    // A hit can stack more copies of the same mutation, each rarer than the last.
+    rolled.push(effect.id);
+    for (let copy = 2; copy <= MAX_EFFECT_STACK; copy += 1) {
+      const stackChance = EFFECT_STACK_CHANCES[copy] ?? 0;
+      if (stackChance <= 0 || rng() >= stackChance) break;
+      rolled.push(effect.id);
+    }
   }
   return rolled;
 }
@@ -3128,7 +3151,13 @@ export function rollEffects(
  * own chances independently, and every rolled mutation stacks on the fruit, so
  * one plant can collect every weather effect if it lives long enough.
  */
-export function weatherEffects(kindId: string, slot: number, plantedAt: number, until: number): EffectId[] {
+export function weatherEffects(
+  kindId: string,
+  slot: number,
+  plantedAt: number,
+  until: number,
+  spray: ActiveSpray | null = null,
+): EffectId[] {
   const end = Math.max(plantedAt, until);
   const first = Math.floor((plantedAt - EPOCH_MS) / EVENT_WAVE_MS) + 1;
   const last = Math.floor((end - EPOCH_MS) / EVENT_WAVE_MS);
@@ -3136,7 +3165,7 @@ export function weatherEffects(kindId: string, slot: number, plantedAt: number, 
   for (let wave = first; wave <= last && wave - first < 200; wave += 1) {
     const events = eventsAt(EPOCH_MS + wave * EVENT_WAVE_MS);
     const rng = createRng(hash32(`${kindId}:${slot}:${wave}`));
-    effects.push(...rollEffectsFor(events, rng));
+    effects.push(...rollEffectsFor(events, rng, {}, sprayBoostFor(spray)));
   }
   return canonicalEffects(effects);
 }
@@ -3145,7 +3174,7 @@ export function weatherEffects(kindId: string, slot: number, plantedAt: number, 
 export function resolvedCropEffects(plot: PlotState, until: number): EffectId[] {
   return canonicalEffects([
     ...plot.effects,
-    ...weatherEffects(plot.seed, plot.slot, plot.plantedAt, Math.min(until, plot.readyAt)),
+    ...weatherEffects(plot.seed, plot.slot, plot.plantedAt, Math.min(until, plot.readyAt), plot.spray),
   ]);
 }
 
@@ -3153,7 +3182,7 @@ export function resolvedCropEffects(plot: PlotState, until: number): EffectId[] 
 export function resolvedTreeEffects(tree: TreeState, until: number): EffectId[] {
   return canonicalEffects([
     ...tree.effects,
-    ...weatherEffects(tree.tree, tree.slot, tree.plantedAt, Math.min(until, tree.readyAt)),
+    ...weatherEffects(tree.tree, tree.slot, tree.plantedAt, Math.min(until, tree.readyAt), tree.spray),
   ]);
 }
 

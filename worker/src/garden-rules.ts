@@ -125,6 +125,7 @@ import {
   resolvedTreeEffects,
   fertilizerById,
   sprayById,
+  sprayBoostFor,
   totalCrops,
   totalTrees,
   treeById,
@@ -819,9 +820,8 @@ function harvest(
   const seed = seedById(plot.seed);
   if (seed !== undefined && seed.regrow) {
     const events = eventsAt(now);
-    const sprayBonus = plot.spray === null ? {} : (sprayById(plot.spray.id)?.effectChances ?? {});
     const petMutation = petEffect(ledger, "mutation");
-    const mutationBonus = { ...sprayBonus };
+    const mutationBonus: Partial<Record<EffectId, number>> = {};
     if (petMutation > 0) {
       for (const effect of EFFECTS)
         if (effect.natural) mutationBonus[effect.id] = (mutationBonus[effect.id] ?? 0) + petMutation;
@@ -832,7 +832,7 @@ function harvest(
       plantedAt: now,
       readyAt:
         now + Math.round(growTimeForEvents(seed, events, plot.fertilizer) * soilGrowthFactor(fertility)),
-      effects: rollEffectsFor(events, rng, mutationBonus),
+      effects: rollEffectsFor(events, rng, mutationBonus, sprayBoostFor(plot.spray)),
       pest: false,
       protectedUntil: plot.protectedUntil,
       favorite: plot.favorite,
@@ -867,13 +867,12 @@ function harvestTree(
   addCrop(next.bag.crops, tree.tree, resolvedTreeEffects(tree, now), 1, tree.pest);
   next.stats.harvested += 1;
   const events = eventsAt(now);
-  const sprayBonus = tree.spray === null ? {} : (sprayById(tree.spray.id)?.effectChances ?? {});
   next.trees[slot] = {
     slot,
     tree: tree.tree,
     plantedAt: now,
     readyAt: now + growTimeForEvents(definition, events, tree.fertilizer),
-    effects: rollEffectsFor(events, rng, sprayBonus),
+    effects: rollEffectsFor(events, rng, {}, sprayBoostFor(tree.spray)),
     pest: false,
     protectedUntil: tree.protectedUntil,
     favorite: tree.favorite,
@@ -975,17 +974,12 @@ function spray(
   const owned = ledger.bag.supplies[supply] ?? 0;
   if (owned < 1) return { ok: false, code: "NO_SUPPLY" };
 
-  // A spray immediately rolls its mutation chances onto the growing fruit, so
-  // the player sees the effect now, while the charge still boosts regrowth rolls.
-  const added: EffectId[] = [];
-  for (const [id, chance] of Object.entries(definition.effectChances)) {
-    if (typeof chance === "number" && chance > 0 && rng() < chance) added.push(id as EffectId);
-  }
+  // A spray only raises the base mutation chance while it lasts: it never
+  // grants a mutation by itself.
   const next = clone(ledger);
   next.bag.supplies[supply] = owned - 1;
   const updated = {
     ...plant,
-    effects: canonicalEffects([...plant.effects, ...added]),
     spray: { id: supply, left: definition.harvests },
   };
   if (tree) next.trees[slot] = updated as (typeof next.trees)[number];
@@ -1097,13 +1091,8 @@ function sprayAll(
   for (const target of targets.slice(0, affordable)) {
     const plant = target.tree ? next.trees[target.slot] : next.plots[target.slot];
     if (plant === null || plant === undefined) continue;
-    const added: EffectId[] = [];
-    for (const [id, chance] of Object.entries(definition.effectChances)) {
-      if (typeof chance === "number" && chance > 0 && rng() < chance) added.push(id as EffectId);
-    }
     const updated = {
       ...plant,
-      effects: canonicalEffects([...plant.effects, ...added]),
       spray: { id: supply, left: definition.harvests },
     };
     if (target.tree) next.trees[target.slot] = updated as (typeof next.trees)[number];

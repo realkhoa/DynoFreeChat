@@ -43,6 +43,7 @@ import {
   TREES_PER_TAB,
   SEEDS,
   SPRAYS,
+  SPRAY_MUTATION_BOOST,
   fertilizerById,
   sprayById,
   TREES,
@@ -50,8 +51,6 @@ import {
   effectById,
   gardenCounts,
   effectsMultiplier,
-  effectsMultiplierRaw,
-  MAX_EFFECT_MULTIPLIER,
   nextPatchPrice,
   nextTabPrice,
   resolvedCropEffects,
@@ -378,11 +377,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return count > 1 ? `${label} ×${count} (x${per})` : `${label} x${per}`;
     });
     const total = effectsMultiplier(effects);
-    const cap =
-      effectsMultiplierRaw(effects) > total
-        ? ` ${t("garden.effectCap", { cap: MAX_EFFECT_MULTIPLIER })}`
-        : "";
-    return effects.length > 1 ? `${parts.join(" + ")} = x${total}${cap}` : (parts[0] ?? "");
+    return effects.length > 1 ? `${parts.join(" + ")} = x${total}` : (parts[0] ?? "");
   }
 
   /** @brief Plots for the active mode. */
@@ -1824,7 +1819,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const detail =
         "growMultiplier" in supply
           ? `x${supply.growMultiplier} · ${supply.harvests}`
-          : `+mut · ${supply.harvests}`;
+          : `x${SPRAY_MUTATION_BOOST} mut · ${supply.harvests}`;
       row.textContent = `${fitText(t(`supplies.${supply.id}`), 14)}${fitText(`${owned}`, 3)}${fitText(`${buyPriceOf(supply.id, supply.price)}c`, 5)}${detail}`;
       wrap.append(row);
     }

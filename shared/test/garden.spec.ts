@@ -26,8 +26,6 @@ import {
   cropKey,
   canonicalEffects,
   effectsMultiplier,
-  effectsMultiplierRaw,
-  MAX_EFFECT_MULTIPLIER,
   driedStarForSell,
   cropSellPrice,
   soilGrowthFactor,
@@ -47,6 +45,9 @@ import {
   parseGardenAuth,
   plotView,
   rollEffects,
+  sprayBoostFor,
+  SPRAY_MUTATION_BOOST,
+  EFFECT_STACK_CHANCES,
   FERTILIZERS,
   SPRAYS,
   TREES,
@@ -163,7 +164,10 @@ describe("garden catalog", () => {
     expect(SPRAYS).toHaveLength(4);
     expect(fertilizerById("speedGrow")?.growMultiplier).toBeLessThan(1);
     expect(fertilizerById("superGrow")?.harvests).toBe(4);
-    expect(sprayById("goldenSpray")?.effectChances.golden).toBe(0.15);
+    expect(sprayById("goldenSpray")?.effects).toEqual(["golden"]);
+    expect(sprayById("goldenSpray")?.price).toBeGreaterThan(10_000);
+    expect(SPRAY_MUTATION_BOOST).toBe(1.05);
+    expect(sprayBoostFor({ id: "goldenSpray", left: 2 }).golden).toBe(SPRAY_MUTATION_BOOST);
     expect(supplyById("compost")?.price).toBe(25);
     expect(supplyById("unknown")).toBeUndefined();
   });
@@ -314,20 +318,27 @@ describe("farm buildings", () => {
     expect(ANIMALS.find((animal) => animal.id === "snail")?.product).toBe("snailMeat");
   });
 
-  it("stacks the same mutation on one fruit", () => {
+  it("stacks the same mutation with rarer extra copies", () => {
     expect(canonicalEffects(["diamond", "diamond"])).toEqual(["diamond", "diamond"]);
     expect(effectsMultiplier(["diamond", "diamond"])).toBe(81);
-    const wild = ["diamond", "diamond", "diamond", "cosmic", "cosmic", "cosmic", "plasma", "plasma"] as const;
-    expect(effectsMultiplierRaw([...wild])).toBeGreaterThan(MAX_EFFECT_MULTIPLIER);
-    expect(effectsMultiplier([...wild])).toBe(MAX_EFFECT_MULTIPLIER);
-    expect(MAX_EFFECT_MULTIPLIER).toBe(1000);
     expect(canonicalEffects(Array<"golden">(7).fill("golden"))).toHaveLength(MAX_EFFECT_STACK);
+    expect(EFFECT_STACK_CHANCES[2]).toBe(0.25);
+    expect(EFFECT_STACK_CHANCES[3]).toBe(0.05);
+    expect(EFFECT_STACK_CHANCES[4]).toBe(0.01);
+    expect(EFFECT_STACK_CHANCES[5]).toBe(0.005);
     expect(cropKey("carrot", ["golden", "golden"])).toBe("carrot:golden:golden");
     expect(parseCropKey("carrot:golden:golden")?.effects).toEqual(["golden", "golden"]);
+
+    const guaranteed = { id: "calm" as const, growScale: 1, sellBonus: 1, effectChances: { golden: 1 } };
+    const luck = rollEffects(guaranteed, () => 0);
+    expect(luck.filter((id) => id === "golden")).toHaveLength(MAX_EFFECT_STACK);
+    // A 0.3 roll earns the first copy but misses the 25% second one.
+    const single = rollEffects(guaranteed, () => 0.3);
+    expect(single.filter((id) => id === "golden")).toHaveLength(1);
     const goldenHour = EVENTS.find((event) => event.id === "goldenHour");
     if (goldenHour !== undefined) {
       const stacked = rollEffectsFor([goldenHour, goldenHour], () => 0);
-      expect(stacked.filter((id) => id === "golden")).toHaveLength(2);
+      expect(stacked.filter((id) => id === "golden").length).toBeGreaterThanOrEqual(2);
     }
   });
 
@@ -727,9 +738,16 @@ describe("garden growth math", () => {
     const goldenHour = EVENTS.find((event) => event.id === "goldenHour");
     const frost = EVENTS.find((event) => event.id === "frost");
     if (goldenHour === undefined || frost === undefined) throw new Error("catalog");
-    expect(rollEffects(goldenHour, () => 0.01)).toEqual(["golden", "frozen", "moonlit", "shriveled", "pale"]);
-    expect(rollEffects(goldenHour, () => 0.1)).toEqual(["golden"]);
-    expect(rollEffects(frost, () => 0.05)).toEqual(["frozen"]);
+    // Stacking copies are expected; the distinct set is what matters here.
+    expect([...new Set(rollEffects(goldenHour, () => 0.01))]).toEqual([
+      "golden",
+      "frozen",
+      "moonlit",
+      "shriveled",
+      "pale",
+    ]);
+    expect(rollEffects(goldenHour, () => 0.1)).toContain("golden");
+    expect(rollEffects(frost, () => 0.05)).toContain("frozen");
     expect(rollEffects(frost, () => 0.5)).toEqual([]);
   });
 
@@ -739,14 +757,17 @@ describe("garden growth math", () => {
       if (event === undefined) throw new Error(`catalog ${id}`);
       return event;
     };
-    expect(rollEffects(byId("snowfall"), () => 0.1)).toEqual(["snow"]);
-    expect(rollEffects(byId("coldSnap"), () => 0.1)).toEqual(["chill"]);
-    expect(rollEffects(byId("heatwave"), () => 0.1)).toEqual(["sunray"]);
-    expect(rollEffects(byId("drought"), () => 0.1)).toEqual(["cracked"]);
-    expect(rollEffects(byId("wildfire"), () => 0.05)).toEqual(["onfire"]);
+    expect(rollEffects(byId("snowfall"), () => 0.1)).toContain("snow");
+    expect(rollEffects(byId("coldSnap"), () => 0.1)).toContain("chill");
+    expect(rollEffects(byId("heatwave"), () => 0.1)).toContain("sunray");
+    expect(rollEffects(byId("drought"), () => 0.1)).toContain("cracked");
+    expect(rollEffects(byId("wildfire"), () => 0.05)).toContain("onfire");
 
     // Several events can roll their effects in one go.
-    expect(rollEffectsFor([byId("snowfall"), byId("coldSnap")], () => 0.1)).toEqual(["snow", "chill"]);
+    expect([...new Set(rollEffectsFor([byId("snowfall"), byId("coldSnap")], () => 0.1))]).toEqual([
+      "snow",
+      "chill",
+    ]);
   });
 
   it("keeps every weather effect rollable except water", () => {
