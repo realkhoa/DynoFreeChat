@@ -1284,6 +1284,8 @@ export interface StaffDefinition {
   readonly wage: number;
   /** Personality traits. */
   readonly traits: readonly StaffTrait[];
+  /** Jobs this worker finishes in one work cycle (paid staff do more). */
+  readonly jobs: number;
 }
 
 /** One hired worker. */
@@ -1303,12 +1305,23 @@ export interface StaffState {
   readonly lastPaidAt: number;
   /** Consecutive unpaid settles; three and the worker quits. */
   readonly unpaid: number;
+  /** Level, `1..STAFF_MAX_LEVEL`; higher levels work faster. */
+  readonly level: number;
+  /** Experience inside the current level. */
+  readonly xp: number;
+  /** Jobs finished per work cycle. */
+  readonly jobs: number;
 }
 
 /** Labour market rotation and slot rules. */
-export const STAFF_MARKET_MS = 4 * 60 * 60_000;
-export const STAFF_SLOTS = 1;
+export const STAFF_MARKET_MS = 60 * 60_000;
+/** Hired hands a garden can keep at once. */
+export const STAFF_SLOTS = 100;
 export const STAFF_QUIT_UNPAID = 3;
+/** Level ceiling and experience rules for hired staff. */
+export const STAFF_MAX_LEVEL = 10;
+/** Experience granted per finished job. */
+export const STAFF_XP_PER_TASK = 12;
 
 /** Names used by the deterministic labour market. */
 export const STAFF_NAMES: readonly string[] = [
@@ -1331,18 +1344,20 @@ export function staffWindowAt(now: number): number {
   return Math.floor((now - EPOCH_MS) / STAFF_MARKET_MS);
 }
 
-/** @brief Deterministic labour market for one player (three candidates). */
+/** @brief Deterministic labour market for one player (ten candidates). */
 export function staffMarketAt(playerId: string, now: number): StaffDefinition[] {
   const window = staffWindowAt(now);
   const rng = createRng(hash32(`staff:${playerId}:${window}`));
   const badTraits: StaffTrait[] = ["lazy", "slow", "clumsy", "greedy"];
   const goodTraits: StaffTrait[] = ["diligent", "greenThumb"];
   const candidates: StaffDefinition[] = [];
-  for (let index = 0; index < 3; index += 1) {
+  for (let index = 0; index < 10; index += 1) {
     const name = STAFF_NAMES[Math.floor(rng() * STAFF_NAMES.length)] ?? "Minh";
     const speed = 1 + Math.floor(rng() * 5);
     const skill = 1 + Math.floor(rng() * 5);
     const wage = 400 + speed * 80 + skill * 80;
+    // Better-paid candidates juggle more jobs per cycle.
+    const jobs = wage >= 1_000 ? 3 : wage >= 800 ? 2 : 1;
     const traits: StaffTrait[] = [];
     for (let pick = 0; pick < 2; pick += 1) {
       const trait = badTraits[Math.floor(rng() * badTraits.length)];
@@ -1352,14 +1367,45 @@ export function staffMarketAt(playerId: string, now: number): StaffDefinition[] 
       const good = goodTraits[Math.floor(rng() * goodTraits.length)];
       if (good !== undefined) traits.push(good);
     }
-    candidates.push({ id: `s${window}-${index}`, name, speed, skill, wage, traits });
+    candidates.push({ id: `s${window}-${index}`, name, speed, skill, wage, traits, jobs });
   }
   return candidates;
 }
 
 /** @brief One-off hiring fee for a candidate. */
 export function staffHireCost(candidate: StaffDefinition): number {
-  return 50_000 + candidate.speed * 10_000 + candidate.skill * 15_000;
+  return 50_000 + candidate.speed * 10_000 + candidate.skill * 15_000 + candidate.jobs * 20_000;
+}
+
+/** @brief Cycles between two work turns; level and traits speed it up. */
+export function staffWorkInterval(worker: Pick<StaffState, "speed" | "level" | "traits">): number {
+  const base =
+    6 -
+    worker.speed +
+    (worker.traits.includes("slow") ? 1 : 0) -
+    (worker.traits.includes("diligent") ? 1 : 0) -
+    Math.floor(worker.level / 2);
+  return Math.max(1, base);
+}
+
+/** @brief Experience needed to leave one level. */
+export function staffXpToLevel(level: number): number {
+  return level * 100;
+}
+
+/**
+ * @brief Applies experience, rolling any level-ups it earns.
+ * @return The new level and the experience left inside it.
+ */
+export function staffGainXp(level: number, xp: number): { level: number; xp: number } {
+  let nextLevel = Math.max(1, Math.min(STAFF_MAX_LEVEL, level));
+  let nextXp = Math.max(0, xp);
+  while (nextLevel < STAFF_MAX_LEVEL && nextXp >= staffXpToLevel(nextLevel)) {
+    nextXp -= staffXpToLevel(nextLevel);
+    nextLevel += 1;
+  }
+  if (nextLevel >= STAFF_MAX_LEVEL) nextXp = Math.min(nextXp, staffXpToLevel(STAFF_MAX_LEVEL));
+  return { level: nextLevel, xp: nextXp };
 }
 
 /* ------------------------------------------------------------------ skills */

@@ -80,6 +80,9 @@ import {
   equippedPetEffect,
   rollPet,
   staffHireCost,
+  staffGainXp,
+  staffWorkInterval,
+  type StaffTrait,
   skillThreshold,
   addSkillXp,
   farmingSellBonus,
@@ -293,6 +296,19 @@ describe("farm buildings", () => {
     expect(driedStarForSell(800)).toBe(5);
   });
 
+  it("pays better staff to juggle more jobs and levels them up", () => {
+    const candidates = staffMarketAt("staff-test", EPOCH_MS + 4 * 60 * 60_000);
+    expect(candidates.every((candidate) => candidate.jobs >= 1 && candidate.jobs <= 3)).toBe(true);
+    const byCost = [...candidates].sort((left, right) => staffHireCost(left) - staffHireCost(right));
+    expect(byCost.at(-1)?.jobs ?? 0).toBeGreaterThanOrEqual(byCost[0]?.jobs ?? 0);
+
+    const cheap = { speed: 3, level: 1, traits: [] as StaffTrait[] };
+    const veteran = { speed: 3, level: 7, traits: [] as StaffTrait[] };
+    expect(staffWorkInterval(veteran)).toBeLessThan(staffWorkInterval(cheap));
+    expect(staffGainXp(1, 150)).toEqual({ level: 2, xp: 50 });
+    expect(staffGainXp(9, 100_000).level).toBe(10);
+  });
+
   it("queues keg jobs that brew wine", () => {
     const keg = MACHINES.find((machine) => machine.id === "keg");
     expect(keg?.queued).toBe(true);
@@ -400,7 +416,7 @@ describe("skills", () => {
 describe("staff", () => {
   it("offers a deterministic labour market with hiring fees", () => {
     const market = staffMarketAt("p1", EPOCH_MS);
-    expect(market).toHaveLength(3);
+    expect(market).toHaveLength(10);
     expect(staffMarketAt("p1", EPOCH_MS)).toEqual(market);
     for (const candidate of market) {
       expect(candidate.wage).toBeGreaterThan(0);

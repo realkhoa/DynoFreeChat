@@ -10,8 +10,10 @@ import {
   FARM_CYCLE_MS,
   contractOffers,
   seasonAt,
+  STAFF_SLOTS,
   staffHireCost,
   staffMarketAt,
+  staffWorkInterval,
   type GardenAction,
 } from "@dyno/shared/garden";
 import { applyGardenAction, createLedger, settleStaff, type GardenLedger } from "../src/garden-rules";
@@ -35,19 +37,87 @@ function run(ledger: GardenLedger, action: GardenAction, at = NOW) {
 }
 
 describe("staff", () => {
-  it("hires a candidate and blocks a second hire at one slot", () => {
+  it("hires many hands and fills a hundred slots", () => {
     const ledger = makeLedger();
-    ledger.coins = 1_000_000;
-    const candidate = staffMarketAt(ledger.playerId, NOW)[0];
-    if (candidate === undefined) throw new Error("no candidate");
-    const hired = run(ledger, { kind: "hireStaff", id: candidate.id });
+    ledger.coins = 10_000_000;
+    const candidates = staffMarketAt(ledger.playerId, NOW);
+    const first = candidates[0];
+    if (first === undefined) throw new Error("no candidate");
+    const hired = run(ledger, { kind: "hireStaff", id: first.id });
     expect(hired.ok).toBe(true);
     if (!hired.ok) return;
     expect(hired.ledger.staff).toHaveLength(1);
-    expect(hired.ledger.coins).toBe(1_000_000 - staffHireCost(candidate));
-    expect(
-      run(hired.ledger, { kind: "hireStaff", id: staffMarketAt(ledger.playerId, NOW)[1]!.id }),
-    ).toMatchObject({ ok: false, code: "STAFF_FULL" });
+    expect(hired.ledger.staff[0]).toMatchObject({ level: 1, xp: 0, jobs: first.jobs });
+    expect(hired.ledger.coins).toBe(10_000_000 - staffHireCost(first));
+
+    // A hundred slots means the next candidate is still welcome.
+    const second = candidates[1];
+    if (second === undefined) throw new Error("no second candidate");
+    const both = run(hired.ledger, { kind: "hireStaff", id: second.id });
+    expect(both.ok).toBe(true);
+    if (!both.ok) return;
+    expect(both.ledger.staff).toHaveLength(2);
+
+    // Only a full roster refuses.
+    const full: GardenLedger = {
+      ...both.ledger,
+      staff: Array.from({ length: STAFF_SLOTS }, (_unused, index) => ({
+        id: `w${index}`,
+        name: `W${index}`,
+        speed: 1,
+        skill: 1,
+        wage: 100,
+        traits: [],
+        jobs: 1,
+        role: "gardener" as const,
+        level: 1,
+        xp: 0,
+        lastWorkAt: NOW,
+        lastPaidAt: NOW,
+        unpaid: 0,
+      })),
+    };
+    expect(run(full, { kind: "hireStaff", id: candidates[2]!.id })).toMatchObject({
+      ok: false,
+      code: "STAFF_FULL",
+    });
+  });
+
+  it("levels hands up as they finish jobs", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000;
+    const candidate = staffMarketAt(ledger.playerId, NOW)[0];
+    if (candidate === undefined) throw new Error("no candidate");
+    const hired = run(ledger, { kind: "hireStaff", id: candidate.id });
+    if (!hired.ok) throw new Error("hire failed");
+    const worker = hired.ledger.staff[0];
+    if (worker === undefined) throw new Error("worker missing");
+
+    let current = hired.ledger;
+    const interval = staffWorkInterval(worker);
+    for (let turn = 0; turn < 12; turn += 1) {
+      for (let slot = 0; slot < 12; slot += 1) {
+        current.plots[slot] = {
+          slot,
+          seed: "carrot",
+          plantedAt: NOW,
+          readyAt: NOW - 1_000,
+          effects: [],
+          watered: false,
+          fertilized: false,
+          harvests: 0,
+          fertilizer: null,
+          spray: null,
+          pest: false,
+          protectedUntil: 0,
+        };
+      }
+      current = settleStaff(current, NOW + (turn + 1) * interval * FARM_CYCLE_MS + 1);
+    }
+    const grown = current.staff[0];
+    expect(grown?.xp ?? 0).toBeGreaterThan(0);
+    expect(grown?.level ?? 1).toBeGreaterThan(1);
+    expect(staffWorkInterval(grown ?? worker)).toBeLessThan(interval);
   });
 
   it("works slowly, pays wages and switches roles", () => {

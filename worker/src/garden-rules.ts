@@ -36,8 +36,11 @@ import {
   EFFECTS,
   STAFF_QUIT_UNPAID,
   STAFF_SLOTS,
+  staffGainXp,
   staffHireCost,
   staffMarketAt,
+  staffWorkInterval,
+  STAFF_XP_PER_TASK,
   type StaffRole,
   type StaffState,
   PET_MAX_LEVEL,
@@ -1849,7 +1852,10 @@ function hireStaff(ledger: GardenLedger, id: string, now: number): RuleResult {
     skill: candidate.skill,
     wage: candidate.wage,
     traits: [...candidate.traits],
+    jobs: candidate.jobs,
     role: "gardener",
+    level: 1,
+    xp: 0,
     lastWorkAt: now,
     lastPaidAt: now,
     unpaid: 0,
@@ -1975,29 +1981,34 @@ export function settleStaff(ledger: GardenLedger, now: number): GardenLedger {
       if (worker === undefined) continue;
     }
 
-    const interval =
-      6 -
-      worker.speed +
-      (worker.traits.includes("slow") ? 1 : 0) -
-      (worker.traits.includes("diligent") ? 1 : 0);
-    if (now - worker.lastWorkAt < Math.max(1, interval) * FARM_CYCLE_MS) continue;
+    if (now - worker.lastWorkAt < staffWorkInterval(worker) * FARM_CYCLE_MS) continue;
 
-    const rng = createRng(hash32(`staffwork:${worker.id}:${worker.lastWorkAt}:${now}`));
+    // Expensive hires finish several jobs before resting again.
     let worked: GardenLedger | null = null;
-    if (!(worker.traits.includes("lazy") && rng() < 0.2)) {
-      if (worker.role === "waterer") worked = staffWater(current, now, rng);
+    let tasks = 0;
+    for (let task = 0; task < Math.max(1, Math.min(3, worker.jobs)); task += 1) {
+      const rng = createRng(hash32(`staffwork:${worker.id}:${worker.lastWorkAt}:${now}:${task}`));
+      if (worker.traits.includes("lazy") && rng() < 0.2) continue;
+      const base = worked ?? current;
+      let result: GardenLedger | null;
+      if (worker.role === "waterer") result = staffWater(base, now, rng);
       else {
-        worked = staffHarvest(current, now, rng);
-        if (worked === null) worked = staffPlant(current, now, rng);
+        result = staffHarvest(base, now, rng);
+        if (result === null) result = staffPlant(base, now, rng);
       }
+      if (result === null) break;
+      worked = result;
+      tasks += 1;
     }
 
     const after = clone(worked ?? current);
     const currentWorker = after.staff[index];
     if (currentWorker === undefined) continue;
-    after.staff[index] = { ...currentWorker, lastWorkAt: now };
-    if (worked !== null && worker.traits.includes("greedy") && rng() < 0.05) {
-      after.coins = Math.max(0, after.coins - 200);
+    const grown = staffGainXp(currentWorker.level, currentWorker.xp + tasks * STAFF_XP_PER_TASK);
+    after.staff[index] = { ...currentWorker, lastWorkAt: now, level: grown.level, xp: grown.xp };
+    if (worked !== null && worker.traits.includes("greedy") && tasks > 0) {
+      const greed = createRng(hash32(`staffgreed:${worker.id}:${worker.lastWorkAt}:${now}`));
+      if (greed() < 0.05) after.coins = Math.max(0, after.coins - 200);
     }
     current = after;
   }

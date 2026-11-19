@@ -1347,6 +1347,40 @@ describe("staff", () => {
     expect(api.calls.some((call) => call.action?.kind === "hireStaff")).toBe(true);
   });
 
+  it("lists every hired hand with levels and jobs", async () => {
+    const workers = Array.from({ length: 12 }, (_unused, index) => ({
+      id: `w${index}`,
+      name: `W${index}`,
+      speed: 3,
+      skill: 3,
+      wage: 900,
+      traits: [],
+      jobs: index % 2 === 0 ? 2 : 1,
+      role: "gardener" as const,
+      level: 1 + (index % 4),
+      xp: 30,
+      lastWorkAt: CLOCK,
+      lastPaidAt: CLOCK,
+      unpaid: 0,
+    }));
+    const api = new FakeGardenApi(makeState({ coins: 1_000_000, extras: { ...EXTRAS, staff: workers } }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    expect(host.querySelector(".garden-staff")?.textContent).toContain("12/100");
+    expect(host.querySelector('[data-act="staffList"]')?.textContent).toContain("+4");
+    host.querySelector<HTMLButtonElement>('[data-act="staffList"]')?.click();
+    await settle();
+
+    const rows = host.querySelectorAll('[data-act="staffMenuSelect"]');
+    expect(rows).toHaveLength(12);
+    host.querySelector<HTMLButtonElement>('[data-act="staffMenuSelect"]')?.click();
+    await settle();
+    const menu = host.querySelector(".garden-staff-menu");
+    expect(menu?.textContent).toContain("Cấp 1");
+    expect(menu?.textContent).toContain("việc/chu kỳ");
+  });
+
   it("shows a staff slot in the garden and hires from the extras tab", async () => {
     const api = new FakeGardenApi(makeState({ coins: 1_000_000 }));
     const { host, game } = await mountGame(api);
