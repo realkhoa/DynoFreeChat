@@ -1651,6 +1651,27 @@ describe("market tab", () => {
     expect(api.calls.some((call) => call.action?.kind === "buySeed")).toBe(true);
   });
 
+  it("lists rare seeds in their own market category", async () => {
+    const season = {
+      ...SEASON,
+      shop: {
+        ...SEASON.shop,
+        offers: [...SEASON.shop.offers, { seed: "beanstalk" as const, price: 3_000_000, stock: 1 }],
+      },
+    };
+    const api = new FakeGardenApi(makeState({ coins: 50_000_000 }));
+    api.seasonValue = season;
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
+    await settle();
+
+    expect(host.textContent).toContain("Hạt hiếm");
+    const card = host.querySelector<HTMLButtonElement>('[data-act="buy"][data-seed="beanstalk"]');
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toContain("3.000.000c");
+  });
+
   it("buys seeds and supplies in bulk from the quantity selector", async () => {
     const api = new FakeGardenApi(makeState({ coins: 5_000 }));
     const { host, game } = await mountGame(api);

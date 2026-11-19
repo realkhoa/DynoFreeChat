@@ -140,11 +140,21 @@ describe("garden catalog", () => {
       "ginseng",
       "moonflower",
       "frostberry",
+      "beanstalk",
+      "emberLily",
+      "sugarApple",
+      "durian",
+      "lotus",
+      "venusFlyTrap",
+      "starfruit",
+      "hazelnut",
+      "olive",
     ]);
     for (const seed of SEEDS) {
       expect(seed.art).toHaveLength(4);
       expect(seed.growMs).toBeGreaterThan(0);
-      expect(seed.sell).toBeGreaterThan(seed.buy);
+      // Premium multi-harvest seeds deliberately sell far under their price.
+      if (seed.rare !== true) expect(seed.sell).toBeGreaterThan(seed.buy);
     }
   });
 
@@ -229,6 +239,41 @@ describe("weather effect stacking", () => {
 });
 
 describe("farm buildings", () => {
+  it("sells premium rare seeds one or two at a time", () => {
+    const premium = [
+      "beanstalk",
+      "emberLily",
+      "sugarApple",
+      "durian",
+      "lotus",
+      "venusFlyTrap",
+      "starfruit",
+      "hazelnut",
+      "olive",
+    ] as const;
+    for (const id of premium) {
+      const seed = seedById(id);
+      expect(seed?.rare).toBe(true);
+      expect(seed?.rareChance ?? 0).toBeGreaterThan(0);
+      if (seed?.regrow === true) expect(seed.sell).toBe(Math.floor(seed.buy * 0.05));
+      else if (seed !== undefined) expect(seed.sell).toBe(Math.round(seed.buy * 1.5));
+    }
+    expect(seedById("beanstalk")?.regrow).toBe(true);
+    expect(seedById("hazelnut")?.regrow).toBe(true);
+
+    let withRare = 0;
+    for (let wave = 0; wave < 600; wave += 1) {
+      const at = EPOCH_MS + wave * SHOP_RESTOCK_MS + 1;
+      const rare = seasonAt(at).shop.offers.filter((offer) => seedById(offer.seed)?.rare === true);
+      expect(rare.length).toBeLessThanOrEqual(2);
+      for (const offer of rare) expect(offer.stock).toBe(1);
+      if (rare.length > 0) withRare += 1;
+    }
+    expect(withRare).toBeGreaterThan(0);
+    // Rare seeds keep their fixed price, so market buy pressure skips them.
+    expect(marketBuyBaseItems(seasonAt(EPOCH_MS + 1)).some((row) => row.item === "beanstalk")).toBe(false);
+  });
+
   it("has a four-to-twelve slot ladder for both buildings", () => {
     for (const building of BUILDINGS) {
       expect(building.slots[0]).toBe(4);
@@ -344,15 +389,12 @@ function buildingUpgradeCostForTest(id: BuildingId): number {
 
 describe("event seeds", () => {
   it("appears in about one percent of restocks", () => {
+    const eventSeeds = new Set(["moonflower", "frostberry"]);
     let withEventSeed = 0;
     const samples = 300;
     for (let index = 0; index < samples; index += 1) {
       const at = EPOCH_MS + (index + 1) * SHOP_RESTOCK_MS + 1_000;
-      if (
-        seasonAt(at).shop.offers.some((offer) => SEEDS.find((seed) => seed.id === offer.seed)?.rare === true)
-      ) {
-        withEventSeed += 1;
-      }
+      if (seasonAt(at).shop.offers.some((offer) => eventSeeds.has(offer.seed))) withEventSeed += 1;
     }
     expect(withEventSeed / samples).toBeLessThan(0.05);
   });
@@ -510,7 +552,9 @@ describe("market pressure", () => {
 
   it("lists every sellable and buyable item with a base price", () => {
     expect(marketBaseItems(seasonAt(EPOCH_MS))).toHaveLength(SEEDS.length + TREES.length);
-    expect(marketBuyBaseItems(seasonAt(EPOCH_MS))).toHaveLength(SEEDS.length + 7);
+    expect(marketBuyBaseItems(seasonAt(EPOCH_MS))).toHaveLength(
+      SEEDS.filter((seed) => seed.rare !== true).length + 7,
+    );
   });
 
   it("uses six-minute aligned cycles", () => {

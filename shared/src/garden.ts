@@ -134,7 +134,16 @@ export type SeedId =
   | "dragonFruit"
   | "ginseng"
   | "moonflower"
-  | "frostberry";
+  | "frostberry"
+  | "beanstalk"
+  | "emberLily"
+  | "sugarApple"
+  | "durian"
+  | "lotus"
+  | "venusFlyTrap"
+  | "starfruit"
+  | "hazelnut"
+  | "olive";
 
 /** Fruit tree ids shipped in this build. */
 export type TreeId = "apple" | "grape" | "orange" | "plum" | "apricot" | "coconut" | "elderberry";
@@ -221,6 +230,8 @@ export interface SeedDefinition {
   readonly regrow: boolean;
   /** Rare event seed: only sold when a restock roll hits. */
   readonly rare?: boolean;
+  /** Per-restock chance for a rare seed; defaults to EVENT_SEED_CHANCE. */
+  readonly rareChance?: number;
   /** Extra sell multiplier while one of these events runs. */
   readonly eventBonus?: { readonly events: readonly EventId[]; readonly multiplier: number };
   /** Glyphs for the four stages: seed, sprout, young, ripe. */
@@ -278,6 +289,98 @@ export const SEEDS: readonly SeedDefinition[] = [
     regrow: false,
     rare: true,
     eventBonus: { events: ["frost", "snowfall"], multiplier: 2 },
+  },
+  // Premium rare seeds: sold one at a time in their own shop category.
+  // Multi-harvest crops pay 5% of the seed price per pick; single harvests 150%.
+  {
+    id: "beanstalk",
+    growMs: 60 * 60_000,
+    buy: 3_000_000,
+    sell: 150_000,
+    art: [".", "v", "Y", "B"],
+    regrow: true,
+    rare: true,
+    rareChance: 0.02,
+  },
+  {
+    id: "emberLily",
+    growMs: 20 * 60_000,
+    buy: 5_000_000,
+    sell: 250_000,
+    art: [".", "v", "Y", "e"],
+    regrow: true,
+    rare: true,
+    rareChance: 0.01,
+  },
+  {
+    id: "sugarApple",
+    growMs: 25 * 60_000,
+    buy: 5_000_000,
+    sell: 250_000,
+    art: [".", "v", "Y", "S"],
+    regrow: true,
+    rare: true,
+    rareChance: 0.01,
+  },
+  {
+    id: "durian",
+    growMs: 30 * 60_000,
+    buy: 5_000_000,
+    sell: 250_000,
+    art: [".", "v", "Y", "D"],
+    regrow: true,
+    rare: true,
+    rareChance: 0.01,
+  },
+  {
+    id: "lotus",
+    growMs: 35 * 60_000,
+    buy: 10_000_000,
+    sell: 500_000,
+    art: [".", "v", "Y", "L"],
+    regrow: true,
+    rare: true,
+    rareChance: 0.01,
+  },
+  {
+    id: "venusFlyTrap",
+    growMs: 90 * 60_000,
+    buy: 10_000_000,
+    sell: 15_000_000,
+    art: [".", "v", "Y", "V"],
+    regrow: false,
+    rare: true,
+    rareChance: 0.005,
+  },
+  {
+    id: "starfruit",
+    growMs: 40 * 60_000,
+    buy: 10_000_000,
+    sell: 500_000,
+    art: [".", "v", "Y", "*"],
+    regrow: true,
+    rare: true,
+    rareChance: 0.005,
+  },
+  {
+    id: "hazelnut",
+    growMs: 100 * 60_000,
+    buy: 10_000_000,
+    sell: 500_000,
+    art: [".", "v", "Y", "H"],
+    regrow: true,
+    rare: true,
+    rareChance: 0.005,
+  },
+  {
+    id: "olive",
+    growMs: 45 * 60_000,
+    buy: 20_000_000,
+    sell: 1_000_000,
+    art: [".", "v", "Y", "O"],
+    regrow: true,
+    rare: true,
+    rareChance: 0.0025,
   },
 ];
 
@@ -2043,6 +2146,7 @@ export function marketBuyBaseItems(
 ): Array<{ item: SeedId | SupplyId; kind: "seed" | "supply"; base: number }> {
   const rows: Array<{ item: SeedId | SupplyId; kind: "seed" | "supply"; base: number }> = [];
   for (const seed of SEEDS) {
+    if (seed.rare === true) continue;
     // The rotation discount is part of the base; market pressure stacks on it.
     const offer = season?.shop.offers.find((entry) => entry.seed === seed.id);
     rows.push({ item: seed.id, kind: "seed", base: offer?.price ?? seed.buy });
@@ -2854,11 +2958,21 @@ export function seasonAt(now: number): SeasonSnapshot {
     const stock = 2 + Math.floor(shopRng() * 9);
     return { seed: seed.id, price, stock };
   });
+  // Rare seeds: at most two per restock, one unit each, often none at all.
+  const rarePool: SeedId[] = [];
   for (const seed of SEEDS) {
     if (seed.rare !== true) continue;
-    if (eventSeedRng() < EVENT_SEED_CHANCE) {
-      offers.push({ seed: seed.id, price: seed.buy, stock: 1 });
-    }
+    if (eventSeedRng() < (seed.rareChance ?? EVENT_SEED_CHANCE)) rarePool.push(seed.id);
+  }
+  const rarePicked: SeedId[] = [];
+  while (rarePicked.length < 2 && rarePool.length > 0) {
+    const index = Math.floor(eventSeedRng() * rarePool.length);
+    const [id] = rarePool.splice(index, 1);
+    if (id !== undefined) rarePicked.push(id);
+  }
+  for (const id of rarePicked) {
+    const seed = seedById(id);
+    if (seed !== undefined) offers.push({ seed: id, price: seed.buy, stock: 1 });
   }
 
   const priceRng = createRng(hash32(`garden:price:${restockWave}`));

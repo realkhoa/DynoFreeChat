@@ -2866,13 +2866,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     };
 
     const seedItems: Parameters<typeof makeBuyCard>[0][] = [];
+    const rareSeedItems: Parameters<typeof makeBuyCard>[0][] = [];
     for (const offer of season.shop.offers) {
-      seedItems.push({
+      const definition = seedById(offer.seed);
+      const rare = definition?.rare === true;
+      (rare ? rareSeedItems : seedItems).push({
         act: "buy",
         key: `seed:${offer.seed}`,
         name: seedName(offer.seed),
-        glyph: seedById(offer.seed)?.art[3] ?? "?",
-        price: buyPriceOf(offer.seed, offer.price),
+        glyph: definition?.art[3] ?? "?",
+        // Rare seeds keep their fixed price; only normal seeds feel the market.
+        price: rare ? offer.price : buyPriceOf(offer.seed, offer.price),
         stock: offer.stock,
         owned: state.bag.seeds[offer.seed] ?? 0,
         data: { seed: offer.seed },
@@ -2915,6 +2919,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     wrap.append(lineBlock(`// ${t("market.shop")} · ${t("market.sortAsc")}`));
     addBuySection(seedItems);
+    wrap.append(lineBlock(`// ${t("market.rareSeeds")}`));
+    if (rareSeedItems.length === 0) wrap.append(lineBlock(t("market.rareEmpty")));
+    else addBuySection(rareSeedItems);
     wrap.append(lineBlock(`// ${t("market.supplies")} · ${t("market.sortAsc")}`));
     addBuySection(supplyItems);
     wrap.append(lineBlock(`// ${t("market.tools")}`));
