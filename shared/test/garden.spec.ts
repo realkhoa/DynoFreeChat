@@ -380,6 +380,16 @@ describe("farm buildings", () => {
     expect(staffGainXp(9, 100_000).level).toBe(10);
   });
 
+  it("doubles crop value with every quality star", () => {
+    const season = seasonAt(EPOCH_MS);
+    const one = cropSellPrice({ item: "carrot", effects: [], star: 1, qty: 1 }, season);
+    const two = cropSellPrice({ item: "carrot", effects: [], star: 2, qty: 1 }, season);
+    const five = cropSellPrice({ item: "carrot", effects: [], star: 5, qty: 1 }, season);
+    expect(two).toBe(one * 2);
+    expect(five).toBe(one * 16);
+    expect(cropKey("carrot", [], 1)).toBe("carrot");
+  });
+
   it("doubles the wheel price with every daily spin", () => {
     expect(wheelCost(0)).toBe(20_000);
     expect(wheelCost(1)).toBe(40_000);
@@ -921,14 +931,20 @@ describe("garden wire parsing", () => {
     });
     expect(parseGardenAction({ kind: "plantTree", slot: 0, tree: "nope" })).toBeNull();
     expect(cropKey("apple", ["wet"])).toBe("apple:wet");
-    expect(parseCropKey("apple:wet")).toEqual({ item: "apple", effects: ["wet"] });
-    expect(parseCropKey("apple")).toEqual({ item: "apple", effects: [] });
+    expect(parseCropKey("apple:wet")).toEqual({ item: "apple", effects: ["wet"], star: 1 });
+    expect(parseCropKey("apple")).toEqual({ item: "apple", effects: [], star: 1 });
   });
 
   it("round-trips crop bag keys", () => {
     expect(cropKey("tomato", ["wet"])).toBe("tomato:wet");
-    expect(parseCropKey("tomato:wet")).toEqual({ item: "tomato", effects: ["wet"] });
-    expect(parseCropKey("corn")).toEqual({ item: "corn", effects: [] });
+    expect(parseCropKey("tomato:wet")).toEqual({ item: "tomato", effects: ["wet"], star: 1 });
+    expect(parseCropKey("corn")).toEqual({ item: "corn", effects: [], star: 1 });
+    expect(cropKey("tomato", [], 3)).toBe("tomato#3");
+    expect(parseCropKey("tomato:wet#4")).toEqual({
+      item: "tomato",
+      effects: ["wet"],
+      star: 4,
+    });
     expect(parseCropKey("unknown:wet")).toBeNull();
     expect(parseCropKey("tomato:nope")).toBeNull();
   });
@@ -1054,6 +1070,7 @@ describe("garden wire parsing", () => {
       item: "corn",
       effects: ["wet"],
       pest: false,
+      star: 1,
       qty: 2,
     });
     expect(parseGardenAction({ kind: "fertilize", slot: 0, tree: false, supply: "speedGrow" })).toEqual({

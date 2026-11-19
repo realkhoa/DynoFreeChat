@@ -805,18 +805,28 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /** @brief Sells one harvested stack. */
-  function sellStack(item: ItemId, effects: readonly EffectId[], pest = false): void {
+  function sellStack(item: ItemId, effects: readonly EffectId[], pest = false, star = 1): void {
     if (state === null || season === null) return;
     const stack = state.bag.crops.find(
       (entry) =>
-        entry.item === item && sameEffectSet(entry.effects, effects) && (entry.pest === true) === pest,
+        entry.item === item &&
+        sameEffectSet(entry.effects, effects) &&
+        (entry.pest === true) === pest &&
+        (entry.star ?? 1) === star,
     );
     if (stack === undefined) return;
     const gross = cropSellPrice(stack, season) * stack.qty;
     // The server keeps 10% of every sale; show the amount actually received.
     const gain = gross - Math.round(gross * 0.1);
     void runAction(
-      { kind: "sellCrop", item, effects: stack.effects, pest: stack.pest === true, qty: stack.qty },
+      {
+        kind: "sellCrop",
+        item,
+        effects: stack.effects,
+        pest: stack.pest === true,
+        star: stack.star ?? 1,
+        qty: stack.qty,
+      },
       t("market.sold", { seed: itemName(item), coins: gain }),
     );
   }
@@ -2950,12 +2960,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const value = cropSellPrice(stack, season) * stack.qty;
       const row = rowButton(
         "garden-market-row",
-        `${itemName(stack.item)} ${fitText(effectBadge(stack.effects), 8)}${stack.pest === true ? "[sâu]" : ""}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
+        `${itemName(stack.item)} ${stack.star ?? 1}★ ${fitText(effectBadge(stack.effects), 8)}${stack.pest === true ? "[sâu]" : ""}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
         "sell",
       );
       row.dataset.item = stack.item;
       row.dataset.effects = JSON.stringify(stack.effects);
       row.dataset.pest = stack.pest === true ? "1" : "0";
+      row.dataset.star = String(stack.star ?? 1);
       exchange.append(row);
     }
     if (state.bag.crops.length > 0) {
@@ -4469,7 +4480,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         } catch {
           effects = [];
         }
-        sellStack(item, effects, target.dataset.pest === "1");
+        const star = Number(target.dataset.star ?? 1);
+        sellStack(item, effects, target.dataset.pest === "1", Number.isInteger(star) ? star : 1);
         return;
       }
       case "sellAll":

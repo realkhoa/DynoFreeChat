@@ -168,7 +168,8 @@ export function soldDiff(before: readonly CropStack[], after: readonly CropStack
     const left = after.find(
       (entry) =>
         entry.item === stack.item &&
-        cropKey(entry.item, entry.effects) === cropKey(stack.item, stack.effects),
+        cropKey(entry.item, entry.effects, entry.star ?? 1) ===
+          cropKey(stack.item, stack.effects, stack.star ?? 1),
     );
     const removed = stack.qty - (left?.qty ?? 0);
     if (removed > 0) sold[stack.item] = (sold[stack.item] ?? 0) + removed;
@@ -628,6 +629,7 @@ export class Garden extends DurableObject<Env> {
         crops.push({
           item: parsed.item,
           effects: parsed.effects,
+          ...(parsed.star > 1 ? { star: parsed.star } : {}),
           ...(row.kind === "cropPest" ? { pest: true } : {}),
           qty: row.qty,
         });
@@ -763,7 +765,7 @@ export class Garden extends DurableObject<Env> {
     // Infested stacks sell at half price, so their row kind carries the flag.
     for (const stack of bag.crops) {
       const kind = stack.pest === true ? "cropPest" : "crop";
-      desired.set(`${kind}:${cropKey(stack.item, stack.effects)}`, stack.qty);
+      desired.set(`${kind}:${cropKey(stack.item, stack.effects, stack.star ?? 1)}`, stack.qty);
     }
     for (const stack of bag.products ?? []) desired.set(`product:${stack.product}:${stack.star}`, stack.qty);
     for (const [tool, qty] of Object.entries(bag.tools ?? {})) {

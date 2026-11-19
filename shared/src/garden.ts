@@ -1263,6 +1263,8 @@ export interface CropStack {
   readonly effects: readonly EffectId[];
   /** Harvested from a pest-damaged plant; sells for half. */
   readonly pest?: boolean;
+  /** Quality stars, `1..5`; every star doubles the value. Defaults to 1. */
+  readonly star?: number;
   /** Units in the stack. */
   readonly qty: number;
 }
@@ -2453,6 +2455,7 @@ export type GardenAction =
       readonly item: ItemId;
       readonly effects: readonly EffectId[];
       readonly pest?: boolean;
+      readonly star?: number;
       readonly qty: number;
     }
   | { readonly kind: "sprayPest"; readonly slot: number; readonly tree: boolean }
@@ -2761,17 +2764,22 @@ export function canonicalEffects(effects: readonly EffectId[]): EffectId[] {
 }
 
 /** @brief Builds the bag key for one produce stack. */
-export function cropKey(item: ItemId, effects: readonly EffectId[]): string {
+export function cropKey(item: ItemId, effects: readonly EffectId[], star = 1): string {
   const canonical = canonicalEffects(effects);
-  return canonical.length === 0 ? item : `${item}:${canonical.join(":")}`;
+  const quality = Math.max(1, Math.min(5, Math.floor(star)));
+  const base = canonical.length === 0 ? item : `${item}:${canonical.join(":")}`;
+  return quality > 1 ? `${base}#${quality}` : base;
 }
 
 /**
  * @brief Parses one bag key back into a stack identity.
  * @return The item and its mutation list, or `null` when malformed.
  */
-export function parseCropKey(key: string): { item: ItemId; effects: EffectId[] } | null {
-  const [itemPart, ...effectParts] = key.split(":");
+export function parseCropKey(key: string): { item: ItemId; effects: EffectId[]; star: number } | null {
+  const [base, starPart] = key.split("#");
+  const star = starPart === undefined ? 1 : Number(starPart);
+  if (!Number.isInteger(star) || star < 1 || star > 5) return null;
+  const [itemPart, ...effectParts] = (base ?? "").split(":");
   const item = itemPart === undefined ? undefined : itemById(itemPart);
   if (item === undefined) return null;
   const effects: EffectId[] = [];
@@ -2780,7 +2788,7 @@ export function parseCropKey(key: string): { item: ItemId; effects: EffectId[] }
     if (effect === undefined) return null;
     effects.push(effect.id);
   }
-  return { item: item.id as ItemId, effects: canonicalEffects(effects) };
+  return { item: item.id as ItemId, effects: canonicalEffects(effects), star };
 }
 
 /**
@@ -2882,11 +2890,14 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
       if (effect === undefined) return null;
       effects.push(effect.id);
     }
+    const star = value.star === undefined ? 1 : value.star;
+    if (typeof star !== "number" || !Number.isInteger(star) || star < 1 || star > 5) return null;
     return {
       kind,
       item: item.id as ItemId,
       effects: canonicalEffects(effects),
       pest: value.pest === true,
+      star,
       qty,
     };
   }
@@ -3442,7 +3453,8 @@ export function cropSellPrice(stack: CropStack, season: SeasonSnapshot): number 
       ? seed.eventBonus.multiplier
       : 1;
   const pest = stack.pest === true ? PEST_VALUE_MULTIPLIER : 1;
-  return Math.round(base * multiplier * bonus * pest);
+  const quality = 2 ** (Math.max(1, Math.min(5, stack.star ?? 1)) - 1);
+  return Math.round(base * multiplier * bonus * pest * quality);
 }
 
 /** @brief Total value of every crop in a bag. */

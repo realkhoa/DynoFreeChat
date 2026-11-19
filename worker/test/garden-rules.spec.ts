@@ -151,9 +151,14 @@ describe("garden ledger rules", () => {
     if (!picked.ok) return;
     expect(picked.ledger.trees[0]?.harvests).toBe(1);
     expect(picked.ledger.trees[0]?.readyAt).toBeGreaterThan(tree.readyAt);
-    expect(picked.ledger.bag.crops).toEqual([
-      { item: "apple", effects: resolvedTreeEffects(tree, tree.readyAt), qty: 1 },
-    ]);
+    const stack = picked.ledger.bag.crops[0];
+    expect(stack).toMatchObject({
+      item: "apple",
+      effects: resolvedTreeEffects(tree, tree.readyAt),
+      qty: 1,
+    });
+    expect(stack?.star ?? 1).toBeGreaterThanOrEqual(1);
+    expect(stack?.star ?? 1).toBeLessThanOrEqual(5);
   });
 
   it("refuses a tree it cannot afford and an occupied tree slot", () => {
@@ -187,7 +192,8 @@ describe("garden ledger rules", () => {
     expect(harvested.ok).toBe(true);
     if (!harvested.ok) return;
     expect(harvested.ledger.plots[0]).toBeNull();
-    expect(harvested.ledger.bag.crops).toEqual([{ item: "carrot", effects: [], qty: 1 }]);
+    expect(harvested.ledger.bag.crops[0]).toMatchObject({ item: "carrot", effects: [], qty: 1 });
+    expect((harvested.ledger.bag.crops[0]?.star ?? 1) >= 1).toBe(true);
     expect(harvested.ledger.stats.harvested).toBe(1);
   });
 
@@ -206,9 +212,11 @@ describe("garden ledger rules", () => {
     expect(first.ledger.plots[0]?.harvests).toBe(1);
     expect(first.ledger.plots[0]?.readyAt).toBeGreaterThan(plot.readyAt);
     expect(first.ledger.plots[0]?.effects).toEqual(rollEffectsFor(eventsAt(plot.readyAt), () => 0.1));
-    expect(first.ledger.bag.crops).toEqual([
-      { item: "tomato", effects: resolvedCropEffects(plot, plot.readyAt), qty: 1 },
-    ]);
+    expect(first.ledger.bag.crops[0]).toMatchObject({
+      item: "tomato",
+      effects: resolvedCropEffects(plot, plot.readyAt),
+      qty: 1,
+    });
 
     expect(run(first.ledger, { kind: "harvest", slot: 0, tree: false })).toMatchObject({
       ok: false,

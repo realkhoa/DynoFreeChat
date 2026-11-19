@@ -1716,6 +1716,34 @@ describe("market tab", () => {
     expect(card?.textContent).toContain("Hết hàng");
   });
 
+  it("shows crop quality stars and sells the matching stack", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 1_000,
+        bag: {
+          seeds: {},
+          crops: [{ item: "carrot", effects: [], star: 3, qty: 2 }],
+          supplies: {},
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
+    await settle();
+
+    const row = host.querySelector<HTMLButtonElement>('[data-act="sell"]');
+    expect(row?.textContent).toContain("3★");
+    row?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "sellCrop")?.action).toMatchObject({
+      kind: "sellCrop",
+      item: "carrot",
+      star: 3,
+      qty: 2,
+    });
+  });
+
   it("lists rare seeds in their own market category", async () => {
     const season = {
       ...SEASON,

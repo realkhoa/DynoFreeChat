@@ -635,7 +635,16 @@ export function applyGardenAction(
     case "buySupply":
       return buySupply(ledger, action.supply, action.qty, season, now);
     case "sellCrop":
-      return sellCrop(ledger, action.item, action.effects, action.qty, action.pest === true, season, now);
+      return sellCrop(
+        ledger,
+        action.item,
+        action.effects,
+        action.star ?? 1,
+        action.qty,
+        action.pest === true,
+        season,
+        now,
+      );
     case "sellAll":
       return sellAll(ledger, season, now);
     default:
@@ -798,6 +807,34 @@ function plantTree(
  * @details Root crops are pulled and leave empty soil; reharvest plants keep
  * the plant, reset the growth clock and roll a fresh effect for the next fruit.
  */
+/**
+ * @brief Rolls the quality star of one harvested crop.
+ * @details Farming level, fertilizer, spray, soil fertility and pests all
+ * nudge a deterministic roll; each extra star doubles the stack's value.
+ */
+function rollCropQuality(
+  ledger: GardenLedger,
+  key: string,
+  fertilized: boolean,
+  sprayed: boolean,
+  pest: boolean,
+  soil: number,
+  now: number,
+): number {
+  const bonus =
+    ledger.skills.farming.level * 0.02 +
+    (fertilized ? 0.1 : 0) +
+    (sprayed ? 0.06 : 0) +
+    (Math.max(0, Math.min(100, soil)) / 100) * 0.05 +
+    (pest ? -0.25 : 0);
+  const score = createRng(hash32(`quality:${ledger.playerId}:${key}:${now}`))() + bonus;
+  if (score >= 0.93) return 5;
+  if (score >= 0.8) return 4;
+  if (score >= 0.6) return 3;
+  if (score >= 0.35) return 2;
+  return 1;
+}
+
 function harvest(
   ledger: GardenLedger,
   slot: number,
@@ -812,9 +849,18 @@ function harvest(
 
   const next = clone(ledger);
   const harvestedEffects = resolvedCropEffects(plot, now);
-  addCrop(next.bag.crops, plot.seed, harvestedEffects, 1, plot.pest);
+  const star = rollCropQuality(
+    ledger,
+    `crop:${slot}`,
+    plot.fertilizer !== null,
+    plot.spray !== null,
+    plot.pest,
+    ledger.soil[slot] ?? SOIL_START,
+    now,
+  );
+  addCrop(next.bag.crops, plot.seed, harvestedEffects, 1, plot.pest, star);
   if (rng() < petEffect(ledger, "extraHarvest")) {
-    addCrop(next.bag.crops, plot.seed, harvestedEffects, 1, plot.pest);
+    addCrop(next.bag.crops, plot.seed, harvestedEffects, 1, plot.pest, star);
     next.weekHarvested += 1;
   }
   for (const effect of harvestedEffects) collect(next, `effect:${effect}`);
@@ -879,7 +925,16 @@ function harvestTree(
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
 
   const next = clone(ledger);
-  addCrop(next.bag.crops, tree.tree, resolvedTreeEffects(tree, now), 1, tree.pest);
+  const star = rollCropQuality(
+    ledger,
+    `tree:${slot}`,
+    tree.fertilizer !== null,
+    tree.spray !== null,
+    tree.pest,
+    SOIL_START,
+    now,
+  );
+  addCrop(next.bag.crops, tree.tree, resolvedTreeEffects(tree, now), 1, tree.pest, star);
   next.stats.harvested += 1;
   const events = eventsAt(now);
   next.trees[slot] = {
@@ -2671,12 +2726,19 @@ function sellCrop(
   ledger: GardenLedger,
   item: ItemId,
   effects: readonly EffectId[],
+  star: number,
   qty: number,
   pest: boolean,
   season: SeasonSnapshot,
   now: number,
 ): RuleResult {
-  const stack = ledger.bag.crops.find((entry) => entry.item === item && sameEffects(entry.effects, effects));
+  const stack = ledger.bag.crops.find(
+    (entry) =>
+      entry.item === item &&
+      sameEffects(entry.effects, effects) &&
+      (entry.star ?? 1) === star &&
+      (entry.pest === true) === pest,
+  );
   if (stack === undefined || stack.qty < qty) return { ok: false, code: "NO_CROP" };
 
   const next = clone(ledger);
@@ -2701,7 +2763,7 @@ function sellCrop(
       .map((entry) => (entry === future ? { ...entry, qty: left } : entry))
       .filter((entry) => entry.qty > 0);
   }
-  removeCrop(next.bag.crops, item, effects, pest, qty);
+  removeCrop(next.bag.crops, item, effects, pest, star, qty);
   return changed(next, now);
 }
 
@@ -2807,19 +2869,32 @@ function addCrop(
   effects: readonly EffectId[],
   qty: number,
   pest = false,
+  star = 1,
 ): void {
   const canonical = canonicalEffects(effects);
+  const quality = Math.max(1, Math.min(5, Math.floor(star)));
   const stack = crops.find(
-    (entry) => entry.item === item && sameEffects(entry.effects, canonical) && (entry.pest === true) === pest,
+    (entry) =>
+      entry.item === item &&
+      sameEffects(entry.effects, canonical) &&
+      (entry.pest === true) === pest &&
+      (entry.star ?? 1) === quality,
   );
   if (stack === undefined) {
-    crops.push({ item, effects: canonical, ...(pest ? { pest: true } : {}), qty });
+    crops.push({
+      item,
+      effects: canonical,
+      ...(pest ? { pest: true } : {}),
+      ...(quality > 1 ? { star: quality } : {}),
+      qty,
+    });
     return;
   }
   crops[crops.indexOf(stack)] = {
     item,
     effects: canonical,
     ...(pest ? { pest: true } : {}),
+    ...(quality > 1 ? { star: quality } : {}),
     qty: stack.qty + qty,
   };
 }
@@ -2830,10 +2905,15 @@ function removeCrop(
   item: ItemId,
   effects: readonly EffectId[],
   pest: boolean,
+  star: number,
   qty: number,
 ): void {
   const index = crops.findIndex(
-    (entry) => entry.item === item && sameEffects(entry.effects, effects) && (entry.pest === true) === pest,
+    (entry) =>
+      entry.item === item &&
+      sameEffects(entry.effects, effects) &&
+      (entry.star ?? 1) === star &&
+      (entry.pest === true) === pest,
   );
   if (index < 0) return;
   const stack = crops[index];
