@@ -593,7 +593,14 @@ export class Garden extends DurableObject<Env> {
         continue;
       }
       const parsed = parseCropKey(row.item);
-      if (parsed !== null) crops.push({ item: parsed.item, effects: parsed.effects, qty: row.qty });
+      if (parsed !== null) {
+        crops.push({
+          item: parsed.item,
+          effects: parsed.effects,
+          ...(row.kind === "cropPest" ? { pest: true } : {}),
+          qty: row.qty,
+        });
+      }
     }
     return { seeds, crops, supplies, products, tools };
   }
@@ -722,7 +729,11 @@ export class Garden extends DurableObject<Env> {
     for (const [seed, qty] of Object.entries(bag.seeds)) {
       if (qty !== undefined && qty > 0) desired.set(`seed:${seed}`, qty);
     }
-    for (const stack of bag.crops) desired.set(`crop:${cropKey(stack.item, stack.effects)}`, stack.qty);
+    // Infested stacks sell at half price, so their row kind carries the flag.
+    for (const stack of bag.crops) {
+      const kind = stack.pest === true ? "cropPest" : "crop";
+      desired.set(`${kind}:${cropKey(stack.item, stack.effects)}`, stack.qty);
+    }
     for (const stack of bag.products ?? []) desired.set(`product:${stack.product}:${stack.star}`, stack.qty);
     for (const [tool, qty] of Object.entries(bag.tools ?? {})) {
       if (qty !== undefined && qty > 0) desired.set(`tool:${tool}`, qty);

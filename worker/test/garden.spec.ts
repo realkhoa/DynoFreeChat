@@ -286,6 +286,29 @@ describe("garden play", () => {
     expect(final.state.plots[0]?.favorite).toBe(true);
   });
 
+  it("keeps the infested flag on harvested crops", async () => {
+    const registered = await register("infested");
+    const planted = await act(registered, registered.state.rev, { kind: "plant", slot: 0, seed: "carrot" });
+    if (planted.status !== 200) throw new Error("plant failed");
+    const afterPlant = (planted.payload as GardenActResponse).state;
+
+    // Make the crop ripe and pest-damaged straight in storage.
+    const bindings = env as unknown as import("../src/env").Env;
+    const garden = bindings.GARDEN.get(bindings.GARDEN.idFromName(registered.playerId));
+    await runInDurableObject(garden, (_instance, state) => {
+      state.storage.sql.exec("UPDATE plots SET ready_at = ?, pest = 1 WHERE slot = 0", Date.now() - 1_000);
+    });
+
+    const harvested = await act(registered, afterPlant.rev, { kind: "harvest", slot: 0, tree: false });
+    expect(harvested.status).toBe(200);
+    const harvestedState = (harvested.payload as GardenActResponse).state;
+    expect(harvestedState.bag.crops[0]?.pest).toBe(true);
+
+    // Reloaded from SQLite the half-price flag must still be there.
+    const reloaded = await readState(registered);
+    expect(reloaded.state.bag.crops[0]?.pest).toBe(true);
+  });
+
   it("refuses a tab it cannot afford and an unripe harvest", async () => {
     const registered = await register();
     const patch = await act(registered, registered.state.rev, { kind: "buyTab" });
