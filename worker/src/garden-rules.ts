@@ -1981,31 +1981,53 @@ function setStaffRole(ledger: GardenLedger, index: number, role: StaffRole, now:
   return changed(next, now);
 }
 
-/** @brief Harvests the first ready crop/tree for a worker. */
-function staffHarvest(ledger: GardenLedger, now: number, rng: () => number): GardenLedger | null {
-  for (let slot = 0; slot < ledger.plots.length; slot += 1) {
-    const plot = ledger.plots[slot] ?? null;
-    if (plot === null || plot.favorite === true || now < plot.readyAt) continue;
-    const result = applyGardenAction(
-      ledger,
-      { kind: "harvest", slot, tree: false, auto: true },
-      seasonAt(now),
-      now,
-      rng,
-    );
-    return result.ok ? result.ledger : null;
+/** @brief Pats the least-petted animal for a worker. */
+function staffPatAnimal(ledger: GardenLedger, now: number): GardenLedger | null {
+  let best: { building: BuildingId; slot: number; pats: number } | null = null;
+  for (const building of BUILDING_IDS) {
+    const animals = ledger.animals[building] ?? [];
+    for (let slot = 0; slot < animals.length; slot += 1) {
+      const animal = animals[slot];
+      if (animal === null || animal === undefined) continue;
+      if (best === null || animal.pats < best.pats) best = { building, slot, pats: animal.pats };
+    }
   }
-  for (let slot = 0; slot < ledger.trees.length; slot += 1) {
-    const tree = ledger.trees[slot] ?? null;
-    if (tree === null || tree.favorite === true || now < tree.readyAt) continue;
-    const result = applyGardenAction(
-      ledger,
-      { kind: "harvest", slot, tree: true, auto: true },
-      seasonAt(now),
-      now,
-      rng,
-    );
-    return result.ok ? result.ledger : null;
+  if (best === null) return null;
+  const result = patAnimal(ledger, best.building, best.slot, now);
+  return result.ok ? result.ledger : null;
+}
+
+/** @brief Loads one idle warehouse machine for a worker. */
+function staffMachine(ledger: GardenLedger, now: number): GardenLedger | null {
+  for (const [rawId, machine] of Object.entries(ledger.machines)) {
+    if (machine === undefined) continue;
+    const id = rawId as MachineId;
+    const definition = machineById(id);
+    if (definition === undefined) continue;
+    if (machine.job !== undefined && now < machine.job.readyAt) continue;
+    if (definition.queued !== true && now - machine.lastCraftAt < definition.cooldownCycles * FARM_CYCLE_MS) {
+      continue;
+    }
+
+    let item: ItemId | undefined;
+    if (definition.input.kind === "product") {
+      const inputProduct = definition.input.product;
+      if (!ledger.bag.products.some((stack) => stack.product === inputProduct && stack.qty > 0)) continue;
+    } else {
+      const allowed = definition.input.seeds;
+      const stack = ledger.bag.crops.find((entry) => {
+        const seed = seedById(entry.item);
+        const fruit = treeById(entry.item);
+        if (seed === undefined && (definition.allProduce !== true || fruit === undefined)) return false;
+        if (allowed !== undefined && (seed === undefined || !allowed.includes(seed.id))) return false;
+        return entry.qty > 0;
+      });
+      if (stack === undefined) continue;
+      item = stack.item;
+    }
+
+    const result = craftMachine(ledger, id, item, now);
+    if (result.ok) return result.ledger;
   }
   return null;
 }
@@ -2084,30 +2106,34 @@ export function settleStaff(ledger: GardenLedger, now: number): GardenLedger {
 
     if (now - worker.lastWorkAt < staffWorkInterval(worker) * FARM_CYCLE_MS) continue;
 
-    // Expensive hires finish several jobs before resting again.
-    let worked: GardenLedger | null = null;
+    // One pass over every kind of chore: water, plant, pat animals, feed a
+    // machine. Better-paid hands repeat each chore up to `jobs` times.
+    let worked: GardenLedger = current;
     let tasks = 0;
-    for (let task = 0; task < Math.max(1, Math.min(3, worker.jobs)); task += 1) {
-      const rng = createRng(hash32(`staffwork:${worker.id}:${worker.lastWorkAt}:${now}:${task}`));
-      if (worker.traits.includes("lazy") && rng() < 0.2) continue;
-      const base = worked ?? current;
-      let result: GardenLedger | null;
-      if (worker.role === "waterer") result = staffWater(base, now, rng);
-      else {
-        result = staffHarvest(base, now, rng);
-        if (result === null) result = staffPlant(base, now, rng);
+    let seedCounter = 0;
+    const jobs = Math.max(1, Math.min(3, worker.jobs));
+    const attempt = (chore: (base: GardenLedger, rng: () => number) => GardenLedger | null): void => {
+      for (let repeat = 0; repeat < jobs; repeat += 1) {
+        const rng = createRng(hash32(`staffwork:${worker.id}:${worker.lastWorkAt}:${now}:${seedCounter}`));
+        seedCounter += 1;
+        if (worker.traits.includes("lazy") && rng() < 0.2) continue;
+        const next = chore(worked, rng);
+        if (next === null) break;
+        worked = next;
+        tasks += 1;
       }
-      if (result === null) break;
-      worked = result;
-      tasks += 1;
-    }
+    };
+    attempt((base, rng) => staffWater(base, now, rng));
+    attempt((base, rng) => staffPlant(base, now, rng));
+    attempt((base) => staffPatAnimal(base, now));
+    attempt((base) => staffMachine(base, now));
 
-    const after = clone(worked ?? current);
+    const after = clone(worked);
     const currentWorker = after.staff[index];
     if (currentWorker === undefined) continue;
     const grown = staffGainXp(currentWorker.level, currentWorker.xp + tasks * STAFF_XP_PER_TASK);
     after.staff[index] = { ...currentWorker, lastWorkAt: now, level: grown.level, xp: grown.xp };
-    if (worked !== null && worker.traits.includes("greedy") && tasks > 0) {
+    if (tasks > 0 && worker.traits.includes("greedy")) {
       const greed = createRng(hash32(`staffgreed:${worker.id}:${worker.lastWorkAt}:${now}`));
       if (greed() < 0.05) after.coins = Math.max(0, after.coins - 200);
     }

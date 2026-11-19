@@ -101,7 +101,7 @@ describe("staff", () => {
           slot,
           seed: "carrot",
           plantedAt: NOW,
-          readyAt: NOW - 1_000,
+          readyAt: NOW + 10 * 60 * 60_000,
           effects: [],
           watered: false,
           fertilized: false,
@@ -120,39 +120,45 @@ describe("staff", () => {
     expect(staffWorkInterval(grown ?? worker)).toBeLessThan(interval);
   });
 
-  it("works slowly, pays wages and switches roles", () => {
+  it("does every chore once per cycle and pays wages", () => {
     const ledger = makeLedger();
     ledger.coins = 1_000_000;
     const candidate = staffMarketAt(ledger.playerId, NOW)[0];
     if (candidate === undefined) throw new Error("no candidate");
     const hired = run(ledger, { kind: "hireStaff", id: candidate.id });
     if (!hired.ok) throw new Error("hire failed");
+
+    // One growing crop to water, one empty plot and seeds to plant.
     hired.ledger.plots[0] = {
       slot: 0,
       seed: "carrot",
-      plantedAt: NOW - 1_000_000,
-      readyAt: NOW - 1,
+      plantedAt: NOW - 60_000,
+      readyAt: NOW + 10 * 60 * 60_000,
       effects: [],
       pest: false,
       protectedUntil: 0,
-      watered: true,
+      watered: false,
       fertilized: false,
       harvests: 0,
       fertilizer: null,
       spray: null,
     };
+    // An animal to pet and a machine with an egg ready to load.
+    hired.ledger.buildings.coop = 1;
+    hired.ledger.animals.coop = [{ kind: "chicken", bornAt: NOW - 60_000, pats: 0, lastProduceAt: NOW }];
+    hired.ledger.warehouse = 1;
+    hired.ledger.machines = { mayoMaker: { level: 1, lastCraftAt: 0 } };
+    hired.ledger.bag.products = [{ product: "egg", star: 1, qty: 1 }];
     hired.ledger.staff[0] = { ...hired.ledger.staff[0]!, lastWorkAt: NOW - 10 * FARM_CYCLE_MS };
-    const settled = settleStaff(hired.ledger, NOW);
-    expect(settled.bag.crops.length + (settled.plots[0] === null ? 0 : 0)).toBeGreaterThanOrEqual(0);
-    // The worker either harvested or replanted within its slow cadence.
-    const worked =
-      settled.bag.crops.length > 0 ||
-      settled.stats.harvested > 0 ||
-      settled.plots[0] === null ||
-      (settled.plots[0] !== null && settled.plots[0]?.plantedAt === NOW);
-    expect(worked).toBe(true);
-    expect(settled.coins).toBeLessThanOrEqual(hired.ledger.coins);
-    expect(run(settled, { kind: "setStaffRole", index: 0, role: "waterer" }).ok).toBe(true);
+
+    const settled = settleStaff(hired.ledger, NOW + FARM_CYCLE_MS);
+    expect(settled.plots[0]?.watered).toBe(true);
+    expect(settled.bag.seeds.carrot ?? 0).toBeLessThan(3);
+    expect(settled.plots[1]?.seed).toBe("carrot");
+    expect(settled.animals.coop[0]?.pats).toBeGreaterThan(0);
+    expect(settled.bag.products?.some((stack) => stack.product === "mayo")).toBe(true);
+    expect(settled.coins).toBeLessThan(hired.ledger.coins);
+    expect(settled.staff[0]?.xp ?? 0).toBeGreaterThan(0);
     expect(run(settled, { kind: "fireStaff", index: 0 }).ok).toBe(true);
   });
 

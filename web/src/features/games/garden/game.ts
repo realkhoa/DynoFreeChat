@@ -1123,19 +1123,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       wrap.append(menuRow(t("common.close"), "staffMenuClose"));
     } else {
       const traits = worker.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
-      wrap.append(lineBlock(`${worker.name} · ${t(`staffRole.${worker.role}`)} · ${worker.wage}c`));
+      wrap.append(lineBlock(`${worker.name} · ${worker.wage}c`));
       wrap.append(
         lineBlock(
           `// ${t("staff.level")} ${worker.level} · ${worker.xp}/${staffXpToLevel(worker.level)} XP · ${t("staff.jobs", { count: worker.jobs })}`,
         ),
       );
       wrap.append(lineBlock(`// ${traits}`));
-      wrap.append(
-        menuRow(t("staffRole.gardener"), "staffMenuGardener", { data: { index: String(staffMenu.index) } }),
-      );
-      wrap.append(
-        menuRow(t("staffRole.waterer"), "staffMenuWaterer", { data: { index: String(staffMenu.index) } }),
-      );
       wrap.append(menuRow(t("staff.fire"), "staffMenuFire", { data: { index: String(staffMenu.index) } }));
       wrap.append(menuRow(t("common.close"), "staffMenuClose"));
     }
@@ -3083,7 +3077,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const traits = worker.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
       wrap.append(
         lineBlock(
-          `// ${worker.name} · ${t("staff.level")} ${worker.level} (${worker.xp} XP) · ${t(`staffRole.${worker.role}`)} · ${t("staff.jobs", { count: worker.jobs })} · ${worker.wage}c · ${traits}`,
+          `// ${worker.name} · ${t("staff.level")} ${worker.level} (${worker.xp} XP) · ${t("staff.jobs", { count: worker.jobs })} · ${worker.wage}c · ${traits}`,
         ),
       );
       const gardener = actionButton(t("staffRole.gardener"), "staffRoleGardener");
