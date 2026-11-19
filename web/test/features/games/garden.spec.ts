@@ -1066,7 +1066,7 @@ describe("bulk supplies", () => {
     expect(host.querySelector(".stage-status")?.textContent).toContain("Đã xịt");
   });
 
-  it("shows Build, not Upgrade, when the snapshot predates the pond", async () => {
+  it("hides the pond when the snapshot predates it", async () => {
     const api = new FakeGardenApi(
       makeState({
         coins: 9_000_000,
@@ -1078,12 +1078,11 @@ describe("bulk supplies", () => {
 
     host.querySelector<HTMLButtonElement>('[data-act="tab:farm"]')?.click();
     await settle();
-    const panels = host.querySelectorAll(".garden-farm-panel");
-    const pond = panels.item(panels.length - 1);
-    expect(pond.textContent).toContain("Hồ cá");
-    expect(pond.textContent).toContain("chưa xây");
-    expect(pond.querySelector('[data-act="upgradeBuilding"]')).toBeNull();
-    expect(pond.querySelector('[data-act="buildBuilding"]')).not.toBeNull();
+    // An old worker has no pond key: no panel, no Build, above all no Upgrade.
+    expect(host.querySelectorAll(".garden-farm-panel")).toHaveLength(2);
+    const titles = Array.from(host.querySelectorAll(".garden-board-title")).map((el) => el.textContent ?? "");
+    expect(titles.some((title) => title.includes("Hồ cá"))).toBe(false);
+    expect(host.querySelector('[data-act="upgradeBuilding"]')).toBeNull();
   });
 });
 

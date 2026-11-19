@@ -2152,8 +2152,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (const building of BUILDING_IDS) {
       const definition = buildingById(building);
       if (definition === undefined) continue;
-      // A snapshot cached before the pond existed has no pond key yet.
-      const level = state.buildings[building] ?? 0;
+      // A worker older than the pond serves no pond key at all: hide the panel
+      // instead of offering a Build the backend would reject.
+      const stored = state.buildings[building];
+      if (building === "pond" && stored === undefined) continue;
+      const level = stored ?? 0;
       const animals = state.animals[building] ?? [];
       const panel = div("garden-board-panel garden-farm-panel");
       const growth =
