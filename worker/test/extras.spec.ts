@@ -9,12 +9,22 @@ import {
   EVENT_WAVE_MS,
   WHEEL_PITY,
   wheelCost,
+  dailyQuestsFor,
+  wheelDayAt,
+  prestigeRequirement,
   contractOffers,
   merchantOffers,
   seasonAt,
   type GardenAction,
 } from "@dyno/shared/garden";
-import { applyGardenAction, createLedger, settleExtras, type GardenLedger } from "../src/garden-rules";
+import {
+  advanceQuests,
+  applyGardenAction,
+  createLedger,
+  dailyAssetTax,
+  settleExtras,
+  type GardenLedger,
+} from "../src/garden-rules";
 
 const NOW = EPOCH_MS + 5 * EVENT_WAVE_MS + 1_000;
 
@@ -169,6 +179,64 @@ describe("extras", () => {
     expect(next.ok).toBe(true);
     if (!next.ok) return;
     expect(next.ledger.coins).toBe(reset.coins - wheelCost(0));
+  });
+
+  it("charges the daily asset and wealth tax once per day", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000_000;
+    const tax = dailyAssetTax(ledger);
+    expect(tax).toBeGreaterThan(0);
+    const next = settleExtras(ledger, NOW + 24 * 60 * 60_000);
+    expect(next.taxLast).toBeGreaterThan(0);
+    expect(next.coins + next.taxLast).toBeGreaterThanOrEqual(ledger.coins);
+    expect(next.taxLast).toBeGreaterThanOrEqual(tax);
+    const again = settleExtras(next, NOW + 24 * 60 * 60_000 + 1_000);
+    expect(again.coins).toBe(next.coins);
+  });
+
+  it("tracks daily quests and pays a claim once", () => {
+    const ledger = makeLedger();
+    ledger.coins = 1_000_000;
+    const quests = dailyQuestsFor(ledger.playerId, wheelDayAt(NOW));
+    expect(quests).toHaveLength(3);
+    const quest = quests[0];
+    if (quest === undefined) throw new Error("no quest");
+
+    const before = ledger;
+    const after = {
+      ...ledger,
+      stats: { ...ledger.stats, planted: ledger.stats.planted + 5, harvested: ledger.stats.harvested + 5 },
+    };
+    const tracked = advanceQuests(before, after, { kind: "plant", slot: 0, seed: "carrot" }, NOW);
+    const expected = quest.kind === "plant" ? 5 : quest.kind === "harvest" ? 5 : 0;
+    expect(tracked.questProgress[quest.id] ?? 0).toBe(Math.min(quest.target, expected));
+
+    tracked.questProgress[quest.id] = quest.target;
+    const claimed = run(tracked, { kind: "claimQuest", id: quest.id });
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) return;
+    expect(claimed.ledger.coins).toBe(tracked.coins + quest.reward);
+    expect(claimed.ledger.questClaims).toContain(quest.id);
+    expect(run(claimed.ledger, { kind: "claimQuest", id: quest.id })).toMatchObject({
+      ok: false,
+      code: "ALREADY_CLAIMED",
+    });
+  });
+
+  it("prestiges only after the lifetime earnings requirement", () => {
+    const ledger = makeLedger();
+    const blocked = run(ledger, { kind: "prestige" });
+    expect(blocked.ok).toBe(false);
+
+    ledger.coins = 5_000_000_000;
+    ledger.stats = { ...ledger.stats, earned: prestigeRequirement(0) };
+    const prestiged = run(ledger, { kind: "prestige" });
+    expect(prestiged.ok).toBe(true);
+    if (!prestiged.ok) return;
+    expect(prestiged.ledger.prestige).toBe(1);
+    expect(prestiged.ledger.code).toBe(ledger.code);
+    expect(prestiged.ledger.coins).toBeLessThan(1_000_000);
+    expect(prestiged.ledger.plots.every((plot) => plot === null)).toBe(true);
   });
 
   it("settles daily streak, weekly bucket and achievements", () => {

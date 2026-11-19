@@ -42,6 +42,9 @@ import {
   PLOTS_PER_PATCH,
   TREES_PER_TAB,
   SEEDS,
+  prestigeGrowScale,
+  prestigeRequirement,
+  prestigeSellBonus,
   SPRAYS,
   SPRAY_MUTATION_BOOST,
   fertilizerById,
@@ -221,6 +224,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let machineMenu: { id: MachineId; x: number; y: number; anchorTop: number } | null = null;
   let specialPicker: number | null = null;
   let bulkPanel: "plan" | "uproot" | null = null;
+  let confirmPrestige = false;
   let uprootPriceDraft = "";
   let giftCode = "";
   let giftAmount = "1000";
@@ -3164,6 +3168,61 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (extras.wheelLast.length > 0)
       wrap.append(lineBlock(`// ${t("extras.wheelLast")}: ${extras.wheelLast}`));
 
+    wrap.append(lineBlock(`// ${t("quests.title")}`));
+    for (const quest of extras.quests ?? []) {
+      const label = `${t("quests.progress", {
+        progress: Math.min(quest.progress, quest.target),
+        target: quest.target,
+      })} · +${formatCompact(quest.reward)}c`;
+      if (quest.claimed) {
+        wrap.append(lineBlock(`// ${t(`quests.${quest.id}`)} — ${t("quests.claimed")}`));
+      } else {
+        const button = actionButton(
+          `${t(`quests.${quest.id}`)} · ${label}`,
+          "claimQuest",
+          quest.progress >= quest.target,
+        );
+        button.dataset.id = quest.id;
+        wrap.append(button);
+      }
+    }
+    if ((extras.quests ?? []).length === 0) wrap.append(lineBlock(t("quests.empty")));
+
+    const prestigeLevel = extras.prestige ?? 0;
+    const prestigeNeed = prestigeRequirement(prestigeLevel);
+    wrap.append(lineBlock(`// ${t("prestige.title")}`));
+    wrap.append(
+      lineBlock(
+        t("prestige.level", {
+          level: prestigeLevel,
+          sell: Math.round((prestigeSellBonus(prestigeLevel) - 1) * 100),
+          grow: Math.round((1 - prestigeGrowScale(prestigeLevel)) * 100),
+        }),
+      ),
+    );
+    if (state.stats.earned >= prestigeNeed) {
+      wrap.append(
+        actionButton(
+          confirmPrestige
+            ? t("prestige.confirm", { level: prestigeLevel + 1 })
+            : t("prestige.ready", { level: prestigeLevel + 1 }),
+          "prestige",
+        ),
+      );
+    } else {
+      wrap.append(
+        lineBlock(
+          t("prestige.progress", {
+            earned: formatCompact(state.stats.earned),
+            need: formatCompact(prestigeNeed),
+          }),
+        ),
+      );
+    }
+    if ((extras.taxLast ?? 0) > 0) {
+      wrap.append(lineBlock(`// ${t("tax.last", { coins: formatCompact(extras.taxLast ?? 0) })}`));
+    }
+
     wrap.append(lineBlock(`// ${t("gift.title")}`));
     const giftRow = div("garden-restore-row");
     const giftCodeInput = document.createElement("input");
@@ -3939,6 +3998,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         toolPicker = null;
         render();
         return;
+      case "claimQuest": {
+        const id = target.dataset.id;
+        if (id !== undefined) void runAction({ kind: "claimQuest", id }, t("quests.claimedMsg"));
+        return;
+      }
+      case "prestige": {
+        if (!confirmPrestige) {
+          confirmPrestige = true;
+          render();
+          return;
+        }
+        confirmPrestige = false;
+        void runAction({ kind: "prestige" }, t("prestige.done"));
+        return;
+      }
       case "plantAllSeed": {
         const seed = target.dataset.seed as SeedId | undefined;
         if (seed !== undefined) {

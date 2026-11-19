@@ -10,6 +10,7 @@ import { resolve } from "node:path";
 import {
   ACHIEVEMENTS,
   ANIMALS,
+  DAILY_QUESTS,
   EFFECTS,
   EVENTS,
   FERTILIZERS,
@@ -228,6 +229,7 @@ describe("dictionary completeness", () => {
     for (const pet of PETS) keys.push(`pets.${pet.id}`);
     for (const rarity of Object.keys(PET_RARITY_ODDS)) keys.push(`petRarity.${rarity}`);
     for (const achievement of ACHIEVEMENTS) keys.push(`achievements.${achievement.id}`);
+    for (const quest of DAILY_QUESTS) keys.push(`quests.${quest.id}`);
     for (const skill of ["farming", "ranching", "artisaning"]) {
       keys.push(`skills.${skill}`, `skills.${skill}.desc`);
     }

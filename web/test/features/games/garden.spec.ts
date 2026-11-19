@@ -1705,6 +1705,54 @@ describe("chart tab", () => {
   });
 });
 
+describe("daily quests and prestige", () => {
+  it("claims a completed quest and confirms prestige", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        stats: { planted: 0, harvested: 0, earned: 200_000_000_000, spent: 0, tax: 0 },
+        extras: {
+          ...EXTRAS,
+          prestige: 0,
+          taxLast: 12_345,
+          quests: [
+            {
+              id: "water10",
+              kind: "water",
+              target: 10,
+              progress: 10,
+              reward: 30_000,
+              claimed: false,
+            },
+          ],
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:extras"]')?.click();
+    await settle();
+
+    const claim = host.querySelector<HTMLButtonElement>('[data-act="claimQuest"]');
+    expect(claim).not.toBeNull();
+    claim?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "claimQuest")?.action).toMatchObject({
+      kind: "claimQuest",
+      id: "water10",
+    });
+    expect(host.textContent).toContain("12.345c");
+
+    const prestige = host.querySelector<HTMLButtonElement>('[data-act="prestige"]');
+    expect(prestige).not.toBeNull();
+    prestige?.click();
+    await settle();
+    expect(host.querySelector('[data-act="prestige"]')?.textContent).toContain("Xác nhận");
+    host.querySelector<HTMLButtonElement>('[data-act="prestige"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "prestige")).toBe(true);
+  });
+});
+
 describe("compact amounts", () => {
   it("shortens huge balances instead of overflowing", async () => {
     const api = new FakeGardenApi(makeState({ coins: 2_225_901_652_616 }));

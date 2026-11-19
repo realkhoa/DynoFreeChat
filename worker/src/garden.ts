@@ -61,6 +61,7 @@ import { json, readJson } from "./http";
 import { BOT_ACTION_LIMIT, planBotActions } from "./bot-brain";
 import {
   applyGardenAction,
+  advanceQuests,
   createLedger,
   emptyCrops,
   emptyTrees,
@@ -491,6 +492,12 @@ export class Garden extends DurableObject<Env> {
       wheelPity: raw.wheelPity ?? 0,
       wheelLast: raw.wheelLast ?? "",
       wheelDay: typeof raw.wheelDay === "number" ? raw.wheelDay : 0,
+      prestige: typeof raw.prestige === "number" ? raw.prestige : 0,
+      questDay: typeof raw.questDay === "number" ? raw.questDay : 0,
+      questProgress: raw.questProgress ?? {},
+      questClaims: raw.questClaims ?? [],
+      taxDay: typeof raw.taxDay === "number" ? raw.taxDay : 0,
+      taxLast: typeof raw.taxLast === "number" ? raw.taxLast : 0,
       futures: raw.futures ?? [],
       contractClaims: raw.contractClaims ?? [],
       merchantClaims: raw.merchantClaims ?? [],
@@ -1012,7 +1019,12 @@ export class Garden extends DurableObject<Env> {
     const result = applyGardenAction(settled, action as GardenAction, season, now);
     if (!result.ok) return json({ code: result.code }, 400);
 
-    const finalLedger = settleMachines(result.ledger, now);
+    // Claiming and prestiging handle their own bookkeeping.
+    const advanced =
+      action.kind === "claimQuest" || action.kind === "prestige"
+        ? result.ledger
+        : advanceQuests(settled, result.ledger, action, now);
+    const finalLedger = settleMachines(advanced, now);
     this.write(finalLedger);
     // Leaderboard writes cost a row each: water/fertilize/spray never change the
     // published numbers, so only publish when coins, tabs or harvest stats move.

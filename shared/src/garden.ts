@@ -1836,6 +1836,74 @@ export interface ExtrasSnapshot {
   readonly weekHarvested: number;
   /** Hired staff and their slots. */
   readonly staff: readonly StaffState[];
+  /** Permanent prestige level; each level adds 5% sale value. */
+  readonly prestige?: number;
+  /** Daily quests for the current local day. */
+  readonly quests?: readonly QuestSnapshot[];
+  /** Coins taken by the last daily asset tax. */
+  readonly taxLast?: number;
+}
+
+/** Kinds of daily quest progress the server tracks. */
+export type QuestKind = "water" | "plant" | "harvest" | "earn" | "pat" | "craft";
+
+/** One daily quest template. */
+export interface QuestDefinition {
+  readonly id: string;
+  readonly kind: QuestKind;
+  readonly target: number;
+  readonly reward: number;
+}
+
+/** One quest as shown to the player. */
+export interface QuestSnapshot {
+  readonly id: string;
+  readonly kind: QuestKind;
+  readonly target: number;
+  readonly progress: number;
+  readonly reward: number;
+  readonly claimed: boolean;
+}
+
+/** Daily quest pool. */
+export const DAILY_QUESTS: readonly QuestDefinition[] = [
+  { id: "water10", kind: "water", target: 10, reward: 30_000 },
+  { id: "plant10", kind: "plant", target: 10, reward: 40_000 },
+  { id: "harvest15", kind: "harvest", target: 15, reward: 60_000 },
+  { id: "earn100k", kind: "earn", target: 100_000, reward: 80_000 },
+  { id: "pat5", kind: "pat", target: 5, reward: 50_000 },
+  { id: "craft2", kind: "craft", target: 2, reward: 70_000 },
+];
+
+/** @brief Three deterministic daily quests for a player and local day. */
+export function dailyQuestsFor(playerId: string, day: number): QuestDefinition[] {
+  const pool = [...DAILY_QUESTS];
+  const rng = createRng(hash32(`quests:${playerId}:${day}`));
+  const picked: QuestDefinition[] = [];
+  while (picked.length < 3 && pool.length > 0) {
+    const index = Math.floor(rng() * pool.length);
+    const [quest] = pool.splice(index, 1);
+    if (quest !== undefined) picked.push(quest);
+  }
+  return picked;
+}
+
+/** Lifetime earnings needed before the next prestige. */
+export const PRESTIGE_BASE_EARNED = 100_000_000_000;
+
+/** @brief Lifetime earnings required to prestige again. */
+export function prestigeRequirement(level: number): number {
+  return PRESTIGE_BASE_EARNED * (Math.max(0, level) + 1);
+}
+
+/** @brief Sale multiplier granted by prestige levels. */
+export function prestigeSellBonus(level: number): number {
+  return 1 + Math.max(0, level) * 0.05;
+}
+
+/** @brief Growth-time multiplier granted by prestige levels. */
+export function prestigeGrowScale(level: number): number {
+  return Math.max(0.5, 1 - Math.max(0, level) * 0.03);
 }
 
 /** @brief Day index since epoch. */
@@ -2480,6 +2548,8 @@ export type GardenAction =
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
   | { readonly kind: "sellAll" }
+  | { readonly kind: "claimQuest"; readonly id: string }
+  | { readonly kind: "prestige" }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
   | {
@@ -3017,6 +3087,10 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     if (item === undefined) return null;
     return { kind, machine: machine.id, item: item.id as ItemId };
   }
+  if (kind === "claimQuest") {
+    return typeof value.id === "string" && value.id.length > 0 ? { kind, id: value.id } : null;
+  }
+  if (kind === "prestige") return { kind };
   if (kind === "giftCoins") {
     const code = typeof value.code === "string" ? value.code.toUpperCase() : "";
     const amount = value.amount;

@@ -116,6 +116,10 @@ import {
   HARVEST_ALL_COST,
   createRng,
   cropSellPrice,
+  dailyQuestsFor,
+  prestigeSellBonus,
+  prestigeGrowScale,
+  prestigeRequirement,
   eventsAt,
   growTimeForEvents,
   rollEffectsFor,
@@ -274,6 +278,18 @@ export interface GardenLedger {
   wheelLast: string;
   /** Day index the daily wheel counters belong to. */
   wheelDay: number;
+  /** Permanent prestige level, each adding 5% sale value. */
+  prestige: number;
+  /** Local day index of the daily quest board. */
+  questDay: number;
+  /** Progress per active quest id. */
+  questProgress: Record<string, number>;
+  /** Claimed quest ids for the current day. */
+  questClaims: string[];
+  /** Local day index the last asset tax was charged for. */
+  taxDay: number;
+  /** Coins taken by the last asset tax. */
+  taxLast: number;
   /** Locked sale prices. */
   futures: FutureLock[];
   contractClaims: string[];
@@ -380,6 +396,12 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     wheelPity: 0,
     wheelLast: "",
     wheelDay: wheelDayAt(input.now),
+    prestige: 0,
+    questDay: wheelDayAt(input.now),
+    questProgress: {},
+    questClaims: [],
+    taxDay: wheelDayAt(input.now),
+    taxLast: 0,
     futures: [],
     contractClaims: [],
     merchantClaims: [],
@@ -445,6 +467,16 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
     equippedPet: ledger.equippedPet,
     lastHatch: ledger.lastHatch,
     staff: ledger.staff.map((worker) => ({ ...worker, traits: [...worker.traits] })),
+    prestige: ledger.prestige,
+    quests: dailyQuestsFor(ledger.playerId, ledger.questDay).map((quest) => ({
+      id: quest.id,
+      kind: quest.kind,
+      target: quest.target,
+      progress: Math.min(quest.target, ledger.questProgress[quest.id] ?? 0),
+      reward: quest.reward,
+      claimed: ledger.questClaims.includes(quest.id),
+    })),
+    taxLast: ledger.taxLast,
   };
 }
 
@@ -530,6 +562,10 @@ export function applyGardenAction(
       return plantAll(ledger, action.seed, now, rng);
     case "uprootBulk":
       return uprootBulk(ledger, action, season, now);
+    case "claimQuest":
+      return claimQuest(ledger, action.id, now);
+    case "prestige":
+      return prestige(ledger, now);
     case "plantTree":
       return plantTree(ledger, action.slot, action.tree, now, rng);
     case "harvest":
@@ -812,8 +848,12 @@ function plant(
     readyAt:
       now +
       Math.round(
-        growTimeForEvents(seed, events, null, dayPhaseAt(now).phase.growScale) *
-          soilGrowthFactor(ledger.soil[slot] ?? SOIL_START),
+        growTimeForEvents(
+          seed,
+          events,
+          null,
+          dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
+        ) * soilGrowthFactor(ledger.soil[slot] ?? SOIL_START),
       ),
     effects: rollEffectsFor(events, rng),
     pest: false,
@@ -850,7 +890,14 @@ function plantTree(
     slot,
     tree: tree.id,
     plantedAt: now,
-    readyAt: now + growTimeForEvents(tree, events, null, dayPhaseAt(now).phase.growScale),
+    readyAt:
+      now +
+      growTimeForEvents(
+        tree,
+        events,
+        null,
+        dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
+      ),
     effects: rollEffectsFor(events, rng),
     pest: false,
     protectedUntil: 0,
@@ -952,8 +999,12 @@ function harvest(
       readyAt:
         now +
         Math.round(
-          growTimeForEvents(seed, events, plot.fertilizer, dayPhaseAt(now).phase.growScale) *
-            soilGrowthFactor(fertility),
+          growTimeForEvents(
+            seed,
+            events,
+            plot.fertilizer,
+            dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
+          ) * soilGrowthFactor(fertility),
         ),
       effects: rollEffectsFor(events, rng, mutationBonus, sprayBoostFor(plot.spray)),
       pest: false,
@@ -1003,7 +1054,14 @@ function harvestTree(
     slot,
     tree: tree.tree,
     plantedAt: now,
-    readyAt: now + growTimeForEvents(definition, events, tree.fertilizer, dayPhaseAt(now).phase.growScale),
+    readyAt:
+      now +
+      growTimeForEvents(
+        definition,
+        events,
+        tree.fertilizer,
+        dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
+      ),
     effects: rollEffectsFor(events, rng, {}, sprayBoostFor(tree.spray)),
     pest: false,
     protectedUntil: tree.protectedUntil,
@@ -2021,6 +2079,84 @@ function equipPet(ledger: GardenLedger, pet: PetId, now: number): RuleResult {
   return changed(next, now);
 }
 
+/**
+ * @brief Advances the active daily quests from one successful action.
+ * @details Deltas are read from the ledger snapshot, so bulk actions count
+ * every affected plot instead of just one click.
+ */
+export function advanceQuests(
+  before: GardenLedger,
+  after: GardenLedger,
+  action: GardenAction,
+  now: number,
+): GardenLedger {
+  const day = wheelDayAt(now);
+  const next = clone(after);
+  if (next.questDay !== day) {
+    next.questDay = day;
+    next.questProgress = {};
+    next.questClaims = [];
+  }
+  const watered = (ledger: GardenLedger): number =>
+    ledger.plots.filter((plot) => plot !== null && plot.watered).length +
+    ledger.trees.filter((tree) => tree !== null && tree.watered).length;
+  const deltas: Record<string, number> = {
+    water: Math.max(0, watered(after) - watered(before)),
+    plant: Math.max(0, after.stats.planted - before.stats.planted),
+    harvest: Math.max(0, after.stats.harvested - before.stats.harvested),
+    earn: Math.max(0, after.stats.earned - before.stats.earned),
+    pat: action.kind === "patAnimal" ? 1 : 0,
+    craft: action.kind === "craftMachine" ? 1 : 0,
+  };
+  for (const quest of dailyQuestsFor(next.playerId, day)) {
+    const gained = deltas[quest.kind] ?? 0;
+    if (gained <= 0 || next.questClaims.includes(quest.id)) continue;
+    next.questProgress[quest.id] = Math.min(quest.target, (next.questProgress[quest.id] ?? 0) + gained);
+  }
+  return next;
+}
+
+/** @brief Claims one completed daily quest. */
+function claimQuest(ledger: GardenLedger, id: string, now: number): RuleResult {
+  const day = wheelDayAt(now);
+  const next = clone(ledger);
+  if (next.questDay !== day) {
+    next.questDay = day;
+    next.questProgress = {};
+    next.questClaims = [];
+  }
+  const quest = dailyQuestsFor(next.playerId, day).find((entry) => entry.id === id);
+  if (quest === undefined) return { ok: false, code: "NO_CONTRACT" };
+  if (next.questClaims.includes(id)) return { ok: false, code: "ALREADY_CLAIMED" };
+  if ((next.questProgress[id] ?? 0) < quest.target) return { ok: false, code: "BAD_REQUEST" };
+  next.coins += quest.reward;
+  next.questClaims.push(id);
+  return changed(next, now);
+}
+
+/** @brief Resets the garden for permanent prestige bonuses. */
+function prestige(ledger: GardenLedger, now: number): RuleResult {
+  if (ledger.stats.earned < prestigeRequirement(ledger.prestige)) {
+    return { ok: false, code: "BAD_REQUEST" };
+  }
+  const fresh = createLedger({
+    playerId: ledger.playerId,
+    nick: ledger.nick,
+    color: ledger.color,
+    code: ledger.code,
+    tokenHash: ledger.tokenHash,
+    recoveryHash: ledger.recoveryHash,
+    now,
+  });
+  fresh.prestige = ledger.prestige + 1;
+  fresh.questDay = wheelDayAt(now);
+  fresh.taxDay = wheelDayAt(now);
+  fresh.rev = ledger.rev + 1;
+  fresh.updatedAt = now;
+  fresh.lastSeen = now;
+  return { ok: true, ledger: fresh, changed: true };
+}
+
 /** @brief Spins the lucky wheel; one rare seed every twenty spins guaranteed. */
 function spinWheel(ledger: GardenLedger, now: number): RuleResult {
   const day = wheelDayAt(now);
@@ -2309,6 +2445,30 @@ export function settleStaff(ledger: GardenLedger, now: number): GardenLedger {
  * @param ledger Garden before settlement.
  * @param now Server clock.
  */
+/** @brief Current value of the garden's permanent assets. */
+export function assetValue(ledger: GardenLedger): number {
+  let value = ledger.tabs * 10_000_000;
+  for (const level of Object.values(ledger.buildings)) value += (level ?? 0) * 50_000_000;
+  for (const machine of Object.values(ledger.machines)) value += (machine?.level ?? 0) * 20_000_000;
+  value += ledger.staff.length * 2_000_000;
+  const animals =
+    ledger.animals.coop.length + ledger.animals.barn.length + (ledger.animals.pond?.length ?? 0);
+  value += animals * 1_000_000;
+  return value;
+}
+
+/**
+ * @brief Daily property/wealth tax.
+ * @details A small cut of asset value plus 0.25% of coins above one billion,
+ * so idle trillion-coin wallets actually drain while new gardens pay almost
+ * nothing.
+ */
+export function dailyAssetTax(ledger: GardenLedger): number {
+  const assets = assetValue(ledger) * 0.001;
+  const wealth = Math.max(0, ledger.coins - 1_000_000_000) * 0.0025;
+  return Math.max(0, Math.floor(assets + wealth));
+}
+
 export function settleExtras(ledger: GardenLedger, now: number): GardenLedger {
   let changedAny = false;
   const next = clone(ledger);
@@ -2319,6 +2479,13 @@ export function settleExtras(ledger: GardenLedger, now: number): GardenLedger {
     next.wheelDay = today;
     next.wheelSpins = 0;
     next.wheelPity = 0;
+    changedAny = true;
+  }
+  // Daily quest board rotates with the local day.
+  if (next.questDay !== today) {
+    next.questDay = today;
+    next.questProgress = {};
+    next.questClaims = [];
     changedAny = true;
   }
 
@@ -2371,6 +2538,17 @@ export function settleExtras(ledger: GardenLedger, now: number): GardenLedger {
     if (achievement.seed !== undefined) {
       next.bag.seeds[achievement.seed] = (next.bag.seeds[achievement.seed] ?? 0) + (achievement.seedQty ?? 1);
     }
+    changedAny = true;
+  }
+
+  // Property tax is charged once per local day, after streak/achievement
+  // rewards land, from the final wallet.
+  if (next.taxDay !== today) {
+    const tax = dailyAssetTax(next);
+    next.coins = Math.max(0, next.coins - tax);
+    next.stats = { ...next.stats, spent: next.stats.spent + tax };
+    next.taxDay = today;
+    next.taxLast = tax;
     changedAny = true;
   }
 
@@ -2808,7 +2986,8 @@ function sellCrop(
   const marketPrice = Math.round(
     cropSellPrice(stack, season) *
       (1 + petEffect(ledger, "sell")) *
-      (1 + farmingSellBonus(ledger.skills.farming.level)),
+      (1 + farmingSellBonus(ledger.skills.farming.level)) *
+      prestigeSellBonus(ledger.prestige),
   );
   const future = ledger.futures.find(
     (entry) => entry.item === item && entry.expiresAt > now && entry.qty > 0,
@@ -2838,7 +3017,8 @@ function sellAll(ledger: GardenLedger, season: SeasonSnapshot, now: number): Rul
     const base = Math.round(
       cropSellPrice(stack, season) *
         (1 + petEffect(ledger, "sell")) *
-        (1 + farmingSellBonus(ledger.skills.farming.level)),
+        (1 + farmingSellBonus(ledger.skills.farming.level)) *
+        prestigeSellBonus(ledger.prestige),
     );
     const future = next.futures.find(
       (entry) => entry.item === stack.item && entry.expiresAt > now && entry.qty > 0,
@@ -2914,6 +3094,8 @@ function clone(ledger: GardenLedger): GardenLedger {
     ) as Partial<Record<MachineId, MachineState>>,
     stats: { ...ledger.stats },
     shopStock: { ...ledger.shopStock },
+    questProgress: { ...ledger.questProgress },
+    questClaims: [...ledger.questClaims],
   };
 }
 
