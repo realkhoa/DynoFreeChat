@@ -560,6 +560,7 @@ export type ProductId =
   | "roe"
   | "snailMeat"
   | "dried"
+  | "wine"
   | "mayo"
   | "cheese"
   | "pickles"
@@ -645,6 +646,7 @@ export const PRODUCTS: readonly ProductDefinition[] = [
   { id: "roe", base: 900 },
   { id: "snailMeat", base: 600 },
   { id: "dried", base: 400 },
+  { id: "wine", base: 1_500 },
   // Warehouse outputs: value already includes the recipe multiplier.
   { id: "mayo", base: 1_600 },
   { id: "cheese", base: 12_000 },
@@ -655,7 +657,7 @@ export const PRODUCTS: readonly ProductDefinition[] = [
 
 /** Warehouse machine ids. */
 export type MachineId =
-  "seedMaker" | "mayoMaker" | "cheesePress" | "pickleJar" | "oilPress" | "loom" | "dryer";
+  "seedMaker" | "mayoMaker" | "cheesePress" | "pickleJar" | "oilPress" | "loom" | "dryer" | "keg";
 
 /** One machine recipe. */
 export interface MachineDefinition {
@@ -675,6 +677,22 @@ export interface MachineDefinition {
   readonly allProduce?: boolean;
   /** Derives the output star from the input's base sale price (the dryer). */
   readonly gradeByPrice?: boolean;
+  /**
+   * Queues a timed job instead of crafting instantly: the input leaves the bag
+   * while it brews, so the market cannot sell it, and the output lands when the
+   * job finishes (the keg).
+   */
+  readonly queued?: boolean;
+}
+
+/** One timed job running inside a machine. */
+export interface MachineJob {
+  /** Item being processed; it lives in the machine, not in the bag. */
+  readonly item: ItemId;
+  /** Server time the job started. */
+  readonly startedAt: number;
+  /** Server time the output is ready to collect. */
+  readonly readyAt: number;
 }
 
 /** Price of the warehouse itself. */
@@ -739,6 +757,16 @@ export const MACHINES: readonly MachineDefinition[] = [
     allProduce: true,
     gradeByPrice: true,
   },
+  {
+    id: "keg",
+    input: { kind: "seedCrop" },
+    output: { kind: "product", product: "wine" },
+    multiplier: 20,
+    cooldownCycles: 4,
+    allProduce: true,
+    gradeByPrice: true,
+    queued: true,
+  },
 ];
 
 /** @brief Machine definition by id. */
@@ -752,6 +780,8 @@ export interface MachineState {
   readonly level: number;
   /** Server time of the last craft. */
   readonly lastCraftAt: number;
+  /** Timed job currently brewing, if any. */
+  readonly job?: MachineJob;
 }
 
 /** @brief Seeds a seed maker returns for one crop at a level. */
@@ -2128,6 +2158,7 @@ export type GardenAction =
       readonly machine: MachineId;
       readonly item?: ItemId;
     }
+  | { readonly kind: "collectMachine"; readonly machine: MachineId }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
   | { readonly kind: "sellAll" };
@@ -2602,6 +2633,10 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const item = typeof value.item === "string" ? itemById(value.item) : undefined;
     if (item === undefined) return null;
     return { kind, machine: machine.id, item: item.id as ItemId };
+  }
+  if (kind === "collectMachine") {
+    const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
+    return machine === undefined ? null : { kind, machine: machine.id };
   }
   if (kind === "waterAll" || kind === "harvestAll") return { kind };
   if (kind === "sellAllProducts") return { kind };

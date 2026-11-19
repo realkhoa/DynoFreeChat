@@ -309,6 +309,63 @@ describe("garden play", () => {
     expect(reloaded.state.bag.crops[0]?.pest).toBe(true);
   });
 
+  it("collects a finished keg job through the action API", async () => {
+    const registered = await register("brewer");
+    const bindings = env as unknown as import("../src/env").Env;
+    const garden = bindings.GARDEN.get(bindings.GARDEN.idFromName(registered.playerId));
+    await runInDurableObject(garden, (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'ledger'")
+        .toArray()[0];
+      if (row === undefined) throw new Error("ledger missing");
+      const meta = JSON.parse(row.value) as { coins: number };
+      meta.coins = 30_000_000;
+      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'ledger'", JSON.stringify(meta));
+      state.storage.sql.exec("INSERT INTO bag (kind, item, qty) VALUES ('crop', 'apple', 1)");
+    });
+
+    const warehouse = await act(registered, registered.state.rev, { kind: "buildWarehouse" });
+    if (warehouse.status !== 200) throw new Error("warehouse failed");
+    const builtWarehouse = (warehouse.payload as GardenActResponse).state;
+    const keg = await act(registered, builtWarehouse.rev, { kind: "buildMachine", machine: "keg" });
+    if (keg.status !== 200) throw new Error("keg failed");
+    const builtKeg = (keg.payload as GardenActResponse).state;
+
+    const scheduled = await act(registered, builtKeg.rev, {
+      kind: "craftMachine",
+      machine: "keg",
+      item: "apple",
+    });
+    if (scheduled.status !== 200) throw new Error("schedule failed");
+    const scheduledState = (scheduled.payload as GardenActResponse).state;
+    expect(scheduledState.bag.crops).toHaveLength(0);
+    expect(scheduledState.warehouse.machines.keg?.job?.item).toBe("apple");
+
+    // Fast-forward the job in storage, then collect it through the API.
+    await runInDurableObject(garden, (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'ledger'")
+        .toArray()[0];
+      if (row === undefined) throw new Error("ledger missing");
+      const meta = JSON.parse(row.value) as {
+        machines?: Record<string, { job?: { readyAt: number } }>;
+      };
+      const job = meta.machines?.keg?.job;
+      if (job === undefined) throw new Error("job missing");
+      job.readyAt = Date.now() - 1_000;
+      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'ledger'", JSON.stringify(meta));
+    });
+
+    const collected = await act(registered, scheduledState.rev, {
+      kind: "collectMachine",
+      machine: "keg",
+    });
+    expect(collected.status).toBe(200);
+    const collectedState = (collected.payload as GardenActResponse).state;
+    expect(collectedState.warehouse.machines.keg?.job).toBeUndefined();
+    expect(collectedState.bag.products?.some((stack) => stack.product === "wine")).toBe(true);
+  });
+
   it("refuses a tab it cannot afford and an unripe harvest", async () => {
     const registered = await register();
     const patch = await act(registered, registered.state.rev, { kind: "buyTab" });

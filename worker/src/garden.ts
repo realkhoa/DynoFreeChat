@@ -58,6 +58,7 @@ import {
   emptyCrops,
   emptyTrees,
   settleFarm,
+  settleMachines,
   settleTools,
   settlePest,
   settleExtras,
@@ -916,7 +917,7 @@ export class Garden extends DurableObject<Env> {
 
     const now = Date.now();
     const settled = settleStaff(
-      settleExtras(settlePest(settleTools(settleFarm(ledger, now), now), now), now),
+      settleExtras(settlePest(settleTools(settleFarm(settleMachines(ledger, now), now), now), now), now),
       now,
     );
     if (settled !== ledger) this.write(settled);
@@ -951,6 +952,8 @@ export class Garden extends DurableObject<Env> {
 
     const now = Date.now();
     const season = this.seasonFor(request, now);
+    // Machines settle after the action, so an explicit collect still finds its
+    // finished job; state reads settle them anyway.
     const settled = settleStaff(
       settleExtras(settlePest(settleTools(settleFarm(ledger, now), now), now), now),
       now,
@@ -958,22 +961,23 @@ export class Garden extends DurableObject<Env> {
     const result = applyGardenAction(settled, action as GardenAction, season, now);
     if (!result.ok) return json({ code: result.code }, 400);
 
-    this.write(result.ledger);
+    const finalLedger = settleMachines(result.ledger, now);
+    this.write(finalLedger);
     // Leaderboard writes cost a row each: water/fertilize/spray never change the
     // published numbers, so only publish when coins, tabs or harvest stats move.
     if (
-      result.ledger.coins !== ledger.coins ||
-      result.ledger.tabs !== ledger.tabs ||
-      result.ledger.stats.earned !== ledger.stats.earned ||
-      result.ledger.stats.harvested !== ledger.stats.harvested
+      finalLedger.coins !== ledger.coins ||
+      finalLedger.tabs !== ledger.tabs ||
+      finalLedger.stats.earned !== ledger.stats.earned ||
+      finalLedger.stats.harvested !== ledger.stats.harvested
     ) {
-      await this.publish(result.ledger);
+      await this.publish(finalLedger);
     }
     return json({
-      state: ledgerSnapshot(result.ledger),
+      state: ledgerSnapshot(finalLedger),
       season,
       serverNow: now,
-      sold: soldDiff(ledger.bag.crops, result.ledger.bag.crops),
+      sold: soldDiff(ledger.bag.crops, finalLedger.bag.crops),
       bought: boughtDiff(action),
     });
   }

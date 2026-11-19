@@ -27,6 +27,7 @@ import {
   createLedger,
   ledgerSnapshot,
   settleFarm,
+  settleMachines,
   settleTools,
   type GardenLedger,
 } from "../src/garden-rules";
@@ -916,6 +917,48 @@ describe("garden ledger rules", () => {
     });
     expect(refused.ok).toBe(false);
     if (!refused.ok) expect(refused.code).toBe("NO_INPUT");
+  });
+
+  it("brews a keg job without leaving the input in the bag", () => {
+    const ledger = makeLedger();
+    ledger.coins = 30_000_000;
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const keg = run(built.ledger, { kind: "buildMachine", machine: "keg" });
+    if (!keg.ok) throw new Error("keg failed");
+    keg.ledger.bag.crops = [
+      { item: "apple", effects: [], qty: 1 },
+      { item: "carrot", effects: [], qty: 1 },
+    ];
+
+    const scheduled = run(keg.ledger, { kind: "craftMachine", machine: "keg", item: "apple" });
+    expect(scheduled.ok).toBe(true);
+    if (!scheduled.ok) return;
+    // The apple left the bag, so the market cannot sell it while it brews.
+    expect(scheduled.ledger.bag.crops).toEqual([{ item: "carrot", effects: [], qty: 1 }]);
+    expect(scheduled.ledger.machines.keg?.job).toMatchObject({
+      item: "apple",
+      startedAt: NOW,
+      readyAt: NOW + 4 * FARM_CYCLE_MS,
+    });
+
+    const early = run(scheduled.ledger, { kind: "collectMachine", machine: "keg" });
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.code).toBe("NOT_READY");
+
+    const settled = settleMachines(scheduled.ledger, NOW + 4 * FARM_CYCLE_MS);
+    expect(settled.machines.keg?.job).toBeUndefined();
+    expect(settled.bag.products).toEqual([{ product: "wine", star: 4, qty: 1 }]);
+
+    // Once idle again the keg accepts the next fruit.
+    const next = run(
+      settled,
+      { kind: "craftMachine", machine: "keg", item: "carrot" },
+      NOW + 4 * FARM_CYCLE_MS,
+    );
+    expect(next.ok).toBe(true);
+    if (!next.ok) return;
+    expect(next.ledger.machines.keg?.job?.item).toBe("carrot");
   });
 
   it("sprays pesticide and harvests infested produce at half value", () => {

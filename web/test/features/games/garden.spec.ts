@@ -1410,8 +1410,12 @@ describe("warehouse tab", () => {
     host.querySelector<HTMLButtonElement>('[data-act="tab:warehouse"]')?.click();
     await settle();
 
+    // Machines open a menu; no input rows are rendered inline.
+    expect(host.querySelectorAll('[data-act="craftMachine"]')).toHaveLength(0);
+    host.querySelector<HTMLButtonElement>('[data-act="machineMenuOpen"][data-machine="dryer"]')?.click();
+    await settle();
     const fruit = host.querySelector<HTMLButtonElement>(
-      '[data-act="craftMachine"][data-machine="dryer"][data-item="apple"]',
+      '[data-act="machineCraft"][data-machine="dryer"][data-item="apple"]',
     );
     expect(fruit).not.toBeNull();
     fruit?.click();
@@ -1420,6 +1424,67 @@ describe("warehouse tab", () => {
       kind: "craftMachine",
       machine: "dryer",
       item: "apple",
+    });
+  });
+
+  it("brews a keg job and only collects it when ready", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        warehouse: {
+          level: 1,
+          machines: {
+            keg: {
+              level: 1,
+              lastCraftAt: CLOCK,
+              job: { item: "apple", startedAt: CLOCK, readyAt: CLOCK + 600_000 },
+            },
+          },
+        },
+        bag: { seeds: {}, crops: [{ item: "apple", effects: [], qty: 1 }], supplies: {} },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:warehouse"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="machineMenuOpen"][data-machine="keg"]')?.click();
+    await settle();
+
+    const menu = host.querySelector(".garden-machine-menu");
+    expect(menu?.textContent).toContain("Đang ủ Táo");
+    expect(menu?.querySelector("[data-machine-until]")).not.toBeNull();
+    // While brewing, the craft rows and the collect row stay hidden.
+    expect(menu?.querySelector('[data-act="machineCraft"]')).toBeNull();
+    expect(menu?.querySelector('[data-act="machineCollect"]')).toBeNull();
+
+    // A ready keg offers collection.
+    const readyApi = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        warehouse: {
+          level: 1,
+          machines: {
+            keg: {
+              level: 1,
+              lastCraftAt: CLOCK - 600_000,
+              job: { item: "apple", startedAt: CLOCK - 600_000, readyAt: CLOCK - 1 },
+            },
+          },
+        },
+      }),
+    );
+    const ready = await mountGame(readyApi);
+    mounted.push(ready.game);
+    ready.host.querySelector<HTMLButtonElement>('[data-act="tab:warehouse"]')?.click();
+    await settle();
+    ready.host.querySelector<HTMLButtonElement>('[data-act="machineMenuOpen"][data-machine="keg"]')?.click();
+    await settle();
+    ready.host.querySelector<HTMLButtonElement>('[data-act="machineCollect"]')?.click();
+    await settle();
+    expect(readyApi.calls.find((call) => call.action?.kind === "collectMachine")?.action).toMatchObject({
+      kind: "collectMachine",
+      machine: "keg",
     });
   });
 
@@ -1435,8 +1500,10 @@ describe("warehouse tab", () => {
     mounted.push(game);
     host.querySelector<HTMLButtonElement>('[data-act="tab:warehouse"]')?.click();
     await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="machineMenuOpen"][data-machine="mayoMaker"]')?.click();
+    await settle();
     const craft = host.querySelector<HTMLButtonElement>(
-      '[data-act="craftMachine"][data-machine="mayoMaker"]',
+      '[data-act="machineCraft"][data-machine="mayoMaker"]',
     );
     expect(craft).not.toBeNull();
     craft?.click();

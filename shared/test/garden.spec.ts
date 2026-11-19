@@ -293,6 +293,20 @@ describe("farm buildings", () => {
     expect(driedStarForSell(800)).toBe(5);
   });
 
+  it("queues keg jobs that brew wine", () => {
+    const keg = MACHINES.find((machine) => machine.id === "keg");
+    expect(keg?.queued).toBe(true);
+    expect(keg?.allProduce).toBe(true);
+    expect(keg?.gradeByPrice).toBe(true);
+    expect(keg?.output).toEqual({ kind: "product", product: "wine" });
+    expect(productById("wine")?.base).toBe(1_500);
+    expect(parseGardenAction({ kind: "collectMachine", machine: "keg" })).toEqual({
+      kind: "collectMachine",
+      machine: "keg",
+    });
+    expect(parseGardenAction({ kind: "collectMachine", machine: "nope" })).toBeNull();
+  });
+
   it("prices meat below the purchase price, lifted by pond growth", () => {
     expect(animalMeatPrice("cow", 1)).toBeLessThan(animalByIdForTest("cow"));
     expect(animalMeatPrice("fish", 1, 20)).toBeGreaterThan(animalMeatPrice("fish", 1, 0));
