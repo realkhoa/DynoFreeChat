@@ -81,6 +81,48 @@
   align-items: flex-start;
 }
 
+/* Right rail: bag contents, upgrade levels and live garden status. */
+.garden-side {
+  flex: 0 0 214px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 2px 0 2px 12px;
+  border-left: 1px solid var(--border-subtle);
+  color: #d4d4d4;
+  font: 9.5px/15px var(--font-mono);
+}
+
+.garden-side-title {
+  color: #6a9955;
+}
+
+.garden-side-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.garden-side-icon {
+  width: 13px;
+  text-align: center;
+}
+
+.garden-side-label {
+  color: #9cdcfe;
+}
+
+.garden-side-value {
+  margin-left: auto;
+  color: #dcdcaa;
+  text-align: right;
+}
+
+.garden-side-time {
+  color: #ce9178;
+}
+
 /* Crops and fruit trees share a page as two parallel 3x3 boards. */
 .garden-boards {
   display: flex;
@@ -949,6 +991,11 @@
 
 .game-stage-host[data-stealth="on"] .garden-cell.is-ready {
   color: #9cdcfe !important;
+}
+
+.game-stage-host[data-stealth="on"] .garden-side-label,
+.game-stage-host[data-stealth="on"] .garden-side-value {
+  color: #bdbdbd;
 }
 
 .game-stage-host[data-stealth="on"] .garden-cell.is-selected {

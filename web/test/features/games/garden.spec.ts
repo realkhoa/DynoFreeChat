@@ -361,6 +361,39 @@ describe("garden tab", () => {
     expect(host.querySelector(".garden-code")?.textContent).toBe("#ABCDEF");
   });
 
+  it("shows the bag, upgrades and field status in the right rail", async () => {
+    const guarded: PlotState = { ...RIPE_PLOT, readyAt: CLOCK + 60_000, protectedUntil: CLOCK + 120_000 };
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 1_000,
+        plots: [guarded, { ...guarded, slot: 1 }],
+        buildings: { coop: 1, barn: 0, pond: 0 },
+        bag: {
+          seeds: { carrot: 3 },
+          crops: [{ item: "carrot", effects: [], qty: 2 }],
+          supplies: { compost: 1 },
+          tools: { shovel: 1 },
+          products: [{ product: "egg", star: 1, qty: 4 }],
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const side = host.querySelector(".garden-side");
+    expect(side).not.toBeNull();
+    const text = side?.textContent ?? "";
+    expect(text).toContain("Túi đồ");
+    expect(text).toContain("Nâng cấp");
+    expect(text).toContain("Trạng thái");
+    // Bag totals: 3 seeds in 1 kind, 2 harvested, 1 supply, 1 tool, 4 eggs.
+    expect(text).toContain("3 · 1 loại");
+    // The whole field is under pesticide cover, with a live countdown.
+    expect(text).toContain("Thuốc sâu");
+    expect(text).toContain("cả vườn");
+    expect(host.querySelector(".garden-side-time")?.textContent).toMatch(/m|s/);
+  });
+
   it("opens the seed picker on an empty plot and plants a seed", async () => {
     const api = new FakeGardenApi(makeState());
     const { host, game } = await mountGame(api);

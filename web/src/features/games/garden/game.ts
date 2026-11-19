@@ -1995,6 +1995,162 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /**
+   * @brief Builds one row inside the right-hand status rail.
+   * @param icon Unicode glyph shown first.
+   * @param label Row label.
+   * @param value Value text; when `until` is set a live countdown follows it.
+   * @param until Server time the value expires, for countdown rows.
+   */
+  function sideRow(icon: string, label: string, value: string, until: number | null = null): HTMLDivElement {
+    const row = div("garden-side-row");
+    row.append(span("garden-side-icon", icon), span("garden-side-label", label));
+    const cell = span("garden-side-value", value);
+    if (until !== null && until > now()) {
+      const timer = span("garden-side-time", formatDuration(until - now(), "short"));
+      timer.dataset.sideUntil = String(until);
+      cell.append(" · ", timer);
+    }
+    row.append(cell);
+    return row;
+  }
+
+  /**
+   * @brief Builds the right rail: bag contents, upgrades and live status.
+   * @param at Server-clock time used for the countdowns.
+   * @details The rail answers "what do I own, what is upgraded and what is
+   * running" without leaving the board. Pesticide coverage is shown for the
+   * whole field, since `sprayPestAll` can protect every plant at once.
+   */
+  function buildSidebar(at: number): HTMLElement {
+    const side = div("garden-side");
+    const view = mode === "visit" ? visiting : state;
+    if (view === null) return side;
+
+    side.append(span("garden-side-title", `// ${t("side.bag")}`));
+    const seeds = Object.values(view.bag.seeds).reduce((sum, qty) => sum + (qty ?? 0), 0);
+    const seedKinds = Object.values(view.bag.seeds).filter((qty) => (qty ?? 0) > 0).length;
+    const seedRow = sideRow(
+      "🌱",
+      t("side.seeds"),
+      `${formatNumber(seeds)} · ${seedKinds} ${t("side.kinds")}`,
+    );
+    seedRow.title = Object.entries(view.bag.seeds)
+      .filter(([, qty]) => (qty ?? 0) > 0)
+      .map(([id, qty]) => `${t(`seeds.${id}.short`)} ×${qty}`)
+      .join(" · ");
+    side.append(seedRow);
+    const supplyRow = sideRow(
+      "🧪",
+      t("side.supplies"),
+      formatNumber(Object.values(view.bag.supplies).reduce((sum, qty) => sum + (qty ?? 0), 0)),
+    );
+    supplyRow.title = Object.entries(view.bag.supplies)
+      .filter(([, qty]) => (qty ?? 0) > 0)
+      .map(([id, qty]) => `${t(`supplies.${id}`)} ×${qty}`)
+      .join(" · ");
+    side.append(supplyRow);
+    const tools = view.bag.tools ?? {};
+    const toolRow = sideRow(
+      "🛠",
+      t("side.tools"),
+      formatNumber(Object.values(tools).reduce((sum, qty) => sum + (qty ?? 0), 0)),
+    );
+    toolRow.title = Object.entries(tools)
+      .filter(([, qty]) => (qty ?? 0) > 0)
+      .map(([id, qty]) => `${t(`tools.${id}`)} ×${qty}`)
+      .join(" · ");
+    side.append(toolRow);
+    const products = view.bag.products ?? [];
+    const productRow = sideRow(
+      "🥚",
+      t("side.products"),
+      formatNumber(products.reduce((sum, stack) => sum + stack.qty, 0)),
+    );
+    productRow.title = products
+      .map((stack) => `${t(`products.${stack.product}`)} ${stack.star}★ ×${stack.qty}`)
+      .join(" · ");
+    side.append(productRow);
+    const cropRow = sideRow(
+      "🌾",
+      t("side.crops"),
+      formatNumber(view.bag.crops.reduce((sum, stack) => sum + stack.qty, 0)),
+    );
+    cropRow.title = view.bag.crops.map((stack) => `${itemName(stack.item)} ×${stack.qty}`).join(" · ");
+    side.append(cropRow);
+
+    side.append(span("garden-side-title", `// ${t("side.upgrades")}`));
+    const extras = view.extras;
+    side.append(sideRow("🌡", t("side.greenhouse"), `${extras.greenhouse}/${GREENHOUSE_PRICES.length}`));
+    const machines = Object.keys(view.warehouse.machines ?? {}).length;
+    side.append(
+      sideRow(
+        "🏚",
+        t("side.warehouse"),
+        `${view.warehouse.level} · ${machines}/${MACHINES.length} ${t("side.machines")}`,
+      ),
+    );
+    const coop = view.buildings.coop ?? 0;
+    const barn = view.buildings.barn ?? 0;
+    const pond = view.buildings.pond ?? 0;
+    side.append(sideRow("🏠", t("side.buildings"), `C${coop} · B${barn} · P${pond}`));
+    side.append(sideRow("🐟", t("farm.pond"), `${pond} · ${t("farm.growth")} ${view.pondGrowth ?? 0}%`));
+    const pet = extras.equippedPet === null ? t("side.none") : t(`pets.${extras.equippedPet}`);
+    side.append(sideRow("🐾", t("side.pet"), pet));
+    side.append(
+      extras.insuranceUntil > at
+        ? sideRow("🛟", t("side.insurance"), t("side.active"), extras.insuranceUntil)
+        : sideRow("🛟", t("side.insurance"), t("side.none")),
+    );
+    const patches = view.unlockedPatches.reduce((sum, count) => sum + count, 0);
+    side.append(sideRow("📑", t("side.tabs"), `${view.tabs}/${MAX_TABS} · ${patches} ${t("side.patches")}`));
+
+    side.append(span("garden-side-title", `// ${t("side.status")}`));
+    if (season !== null && season.events.length > 0) {
+      const names = season.events.map((event) => t(`events.${event.id}`)).join(", ");
+      side.append(sideRow("🌦", t("side.weather"), names, season.event.endsAt));
+    } else {
+      side.append(sideRow("🌦", t("side.weather"), t("events.calm")));
+    }
+
+    const plants = [...(currentPlots() ?? []), ...(currentTrees() ?? [])].filter(
+      (plant): plant is PlotState | TreeState => plant !== null,
+    );
+    const guarded = plants.filter((plant) => plant.protectedUntil > at);
+    const guardUntil = guarded.reduce((max, plant) => Math.max(max, plant.protectedUntil), 0);
+    const coverage =
+      guarded.length === 0
+        ? t("side.pestNone")
+        : guarded.length >= plants.length
+          ? t("side.pestAll")
+          : `${guarded.length}/${plants.length}`;
+    side.append(sideRow("🛡", t("side.pesticide"), coverage, guardUntil > at ? guardUntil : null));
+
+    const watered = plants.filter((plant) => plant.watered).length;
+    const fed = plants.filter((plant) => plant.fertilizer !== null).length;
+    const charged = plants.filter((plant) => plant.spray !== null).length;
+    side.append(sideRow("💧", t("side.watered"), `${watered}/${plants.length}`));
+    side.append(sideRow("🌿", t("side.fertilized"), `${fed}/${plants.length}`));
+    side.append(sideRow("✨", t("side.sprayed"), `${charged}/${plants.length}`));
+
+    const soil = view.soil ?? [];
+    const fertility =
+      soil.length === 0 ? 100 : Math.round(soil.reduce((sum, value) => sum + value, 0) / soil.length);
+    side.append(sideRow("🟫", t("side.soil"), `${fertility}%`));
+    const pests = plants.filter((plant) => plant.pest).length;
+    side.append(sideRow("🐛", t("side.pests"), pests === 0 ? t("side.none") : String(pests)));
+
+    const skills = view.skills;
+    side.append(
+      sideRow(
+        "⭐",
+        t("side.skills"),
+        `F${skills.farming.level} · R${skills.ranching.level} · A${skills.artisaning.level}`,
+      ),
+    );
+    return side;
+  }
+
   /** @brief Builds the garden tab: pager plus the crop grid and fruit stack. */
   function buildGarden(): HTMLElement {
     const wrap = div("garden-garden");
@@ -2140,7 +2296,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const treePanel = div("garden-board-panel");
     treePanel.append(span("garden-board-title", t("garden.trees")), buildTreeBoard());
     boards.append(cropPanel, treePanel);
-    layout.append(boards);
+    layout.append(boards, buildSidebar(now()));
     wrap.append(layout);
     return wrap;
   }
@@ -3092,6 +3248,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         element.textContent = `// ${t("market.restockLine", {
           time: formatDuration(Math.max(0, season.shop.restockAt - at)),
         })}`;
+      }
+    }
+    for (const element of root.querySelectorAll<HTMLElement>(".garden-side-time[data-side-until]")) {
+      const until = Number(element.dataset.sideUntil);
+      if (Number.isFinite(until)) {
+        element.textContent = formatDuration(Math.max(0, until - at), "short");
       }
     }
     for (const element of root.querySelectorAll<HTMLElement>("[data-market-timer]")) {
