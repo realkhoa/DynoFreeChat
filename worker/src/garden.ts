@@ -489,6 +489,7 @@ export class Garden extends DurableObject<Env> {
       wheelSpins: raw.wheelSpins ?? 0,
       wheelPity: raw.wheelPity ?? 0,
       wheelLast: raw.wheelLast ?? "",
+      wheelDay: typeof raw.wheelDay === "number" ? raw.wheelDay : 0,
       futures: raw.futures ?? [],
       contractClaims: raw.contractClaims ?? [],
       merchantClaims: raw.merchantClaims ?? [],

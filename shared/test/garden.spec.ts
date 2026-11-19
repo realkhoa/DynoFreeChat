@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EPOCH_MS,
+  wheelCost,
   EVENTS,
   EVENT_WAVE_MS,
   GARDEN_AUTH_HEADER,
@@ -373,6 +374,14 @@ describe("farm buildings", () => {
     expect(staffWorkInterval(veteran)).toBeLessThan(staffWorkInterval(cheap));
     expect(staffGainXp(1, 150)).toEqual({ level: 2, xp: 50 });
     expect(staffGainXp(9, 100_000).level).toBe(10);
+  });
+
+  it("doubles the wheel price with every daily spin", () => {
+    expect(wheelCost(0)).toBe(20_000);
+    expect(wheelCost(1)).toBe(40_000);
+    expect(wheelCost(2)).toBe(80_000);
+    expect(wheelCost(34)).toBe(10_000 * 2 ** 35);
+    expect(wheelCost(60)).toBe(10_000 * 2 ** 35);
   });
 
   it("queues keg jobs that brew wine", () => {

@@ -8,7 +8,7 @@ import {
   EPOCH_MS,
   EVENT_WAVE_MS,
   WHEEL_PITY,
-  WHEEL_PRICE,
+  wheelCost,
   contractOffers,
   merchantOffers,
   seasonAt,
@@ -138,13 +138,37 @@ describe("extras", () => {
 
   it("guarantees a rare wheel prize at pity", () => {
     const ledger = makeLedger();
-    ledger.coins = WHEEL_PRICE;
+    ledger.coins = wheelCost(0);
     ledger.wheelPity = WHEEL_PITY - 1;
     const spun = run(ledger, { kind: "spinWheel" });
     expect(spun.ok).toBe(true);
     if (!spun.ok) return;
     expect(spun.ledger.wheelLast.startsWith("seed:")).toBe(true);
     expect(spun.ledger.wheelPity).toBe(0);
+  });
+
+  it("doubles the wheel price per daily spin and resets at midnight", () => {
+    const ledger = makeLedger();
+    ledger.coins = 1_000_000;
+    const first = run(ledger, { kind: "spinWheel" });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.ledger.wheelSpins).toBe(1);
+    expect(first.ledger.coins).toBe(1_000_000 - wheelCost(0));
+    const second = run(first.ledger, { kind: "spinWheel" });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.ledger.wheelSpins).toBe(2);
+    expect(second.ledger.coins).toBe(first.ledger.coins - wheelCost(1));
+
+    // Midnight resets the counter (and the doubling) for the new day.
+    const tomorrow = NOW + 24 * 60 * 60_000;
+    const reset = settleExtras(second.ledger, tomorrow);
+    expect(reset.wheelSpins).toBe(0);
+    const next = run(reset, { kind: "spinWheel" }, tomorrow);
+    expect(next.ok).toBe(true);
+    if (!next.ok) return;
+    expect(next.ledger.coins).toBe(reset.coins - wheelCost(0));
   });
 
   it("settles daily streak, weekly bucket and achievements", () => {

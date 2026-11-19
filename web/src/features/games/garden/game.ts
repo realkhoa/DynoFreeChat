@@ -32,7 +32,7 @@ import {
   staffHireCost,
   staffXpToLevel,
   staffMarketAt,
-  WHEEL_PRICE,
+  wheelCost,
   petById,
   contractOffers,
   merchantOffers,
@@ -3058,11 +3058,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         ),
       );
     }
+    const wheelPrice = wheelCost(extras.wheelSpins);
     wrap.append(
       actionButton(
-        t("extras.wheel", { cost: formatNumber(WHEEL_PRICE) }),
+        t("extras.wheel", { cost: formatNumber(wheelPrice) }),
         "extrasWheel",
-        state.coins >= WHEEL_PRICE,
+        state.coins >= wheelPrice,
+      ),
+      lineBlock(
+        `// ${t("extras.wheelToday", {
+          spins: extras.wheelSpins,
+          cost: formatNumber(wheelCost(extras.wheelSpins + 1)),
+        })}`,
       ),
     );
     wrap.append(

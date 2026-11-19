@@ -37,6 +37,7 @@ import {
   SPLICE_MAX_BONUS,
   WHEEL_PITY,
   WHEEL_PRICE,
+  wheelCost,
   EGG_PRICE,
   EFFECTS,
   STAFF_QUIT_UNPAID,
@@ -269,6 +270,8 @@ export interface GardenLedger {
   wheelSpins: number;
   wheelPity: number;
   wheelLast: string;
+  /** Day index the daily wheel counters belong to. */
+  wheelDay: number;
   /** Locked sale prices. */
   futures: FutureLock[];
   contractClaims: string[];
@@ -374,6 +377,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     wheelSpins: 0,
     wheelPity: 0,
     wheelLast: "",
+    wheelDay: dayIndexAt(input.now),
     futures: [],
     contractClaims: [],
     merchantClaims: [],
@@ -1892,11 +1896,14 @@ function equipPet(ledger: GardenLedger, pet: PetId, now: number): RuleResult {
 
 /** @brief Spins the lucky wheel; one rare seed every twenty spins guaranteed. */
 function spinWheel(ledger: GardenLedger, now: number): RuleResult {
-  if (ledger.coins < WHEEL_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const day = dayIndexAt(now);
+  const spin = ledger.wheelDay === day ? ledger.wheelSpins : 0;
+  const cost = wheelCost(spin);
+  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
   const next = clone(ledger);
-  next.coins -= WHEEL_PRICE;
-  const spin = next.wheelSpins;
-  const rng = createRng(hash32(`wheel:${ledger.playerId}:${spin}`));
+  next.coins -= cost;
+  next.wheelDay = day;
+  const rng = createRng(hash32(`wheel:${ledger.playerId}:${day}:${spin}`));
   const pity = next.wheelPity + 1 >= WHEEL_PITY;
   const roll = rng();
   let prizeKey = "coins:5000";
@@ -2178,6 +2185,15 @@ export function settleStaff(ledger: GardenLedger, now: number): GardenLedger {
 export function settleExtras(ledger: GardenLedger, now: number): GardenLedger {
   let changedAny = false;
   const next = clone(ledger);
+
+  // The wheel counter resets at midnight: fresh spins, fresh doubling.
+  const today = dayIndexAt(now);
+  if (next.wheelDay !== today) {
+    next.wheelDay = today;
+    next.wheelSpins = 0;
+    next.wheelPity = 0;
+    changedAny = true;
+  }
 
   // Weekly bucket tracks only progress made this week.
   const week = weekKeyAt(now);

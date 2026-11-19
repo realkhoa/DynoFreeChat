@@ -1256,9 +1256,20 @@ export const SPLICE_MAX_BONUS = 20;
 /** Compost: harvested crops needed per fertilizer. */
 export const COMPOST_RATIO = 2;
 
-/** Lucky wheel price and pity spins. */
+/** Lucky wheel base price and pity spins. */
 export const WHEEL_PRICE = 10_000;
 export const WHEEL_PITY = 20;
+
+/**
+ * @brief Coins the next wheel spin costs today.
+ * @param spins Spins already done today; the price doubles after each one.
+ * @details `WHEEL_PRICE * 2^(spins + 1)`, capped so the number stays in the
+ * safe integer range even for absurd daily counts.
+ */
+export function wheelCost(spins: number): number {
+  const exponent = Math.min(35, Math.max(0, Math.floor(spins)) + 1);
+  return WHEEL_PRICE * 2 ** exponent;
+}
 
 /** Futures: fee rate and lock length. */
 export const FUTURE_FEE_RATE = 0.05;
