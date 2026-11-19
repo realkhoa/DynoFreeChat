@@ -976,6 +976,117 @@ describe("farm tab", () => {
   });
 });
 
+describe("bulk supplies", () => {
+  /** One growing carrot. */
+  const crop = (slot: number, readyAt: number): PlotState => ({
+    slot,
+    seed: "carrot",
+    plantedAt: CLOCK - 60_000,
+    readyAt,
+    effects: [],
+    watered: false,
+    fertilized: false,
+    harvests: 0,
+    fertilizer: null,
+    spray: null,
+    pest: false,
+    protectedUntil: 0,
+  });
+
+  /** One growing apple tree. */
+  const tree = (slot: number): TreeState => ({
+    slot,
+    tree: "apple",
+    plantedAt: CLOCK - 60_000,
+    readyAt: CLOCK + 600_000,
+    effects: [],
+    watered: false,
+    fertilized: false,
+    harvests: 0,
+    fertilizer: null,
+    spray: null,
+    pest: false,
+    protectedUntil: 0,
+  });
+
+  it("fertilizes the whole garden from one pick without owning the supply", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 1_000,
+        plots: [crop(0, CLOCK + 600_000), crop(1, CLOCK + 600_000), crop(2, CLOCK - 1_000)],
+        trees: [tree(0)],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const quick = host.querySelectorAll<HTMLButtonElement>('[data-act="pickAllSupply"]')[0];
+    expect(quick?.textContent).toContain("Bón phân nhanh");
+    quick?.click();
+    await settle();
+
+    // Every fertilizer is offered, even with an empty bag.
+    const rows = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-act="quickSupplyAll"]'));
+    expect(rows).toHaveLength(3);
+    expect(rows.some((row) => row.textContent?.includes("× 3"))).toBe(true);
+    const speed = rows.find((row) => row.dataset.supply === "speedGrow");
+    expect(speed?.disabled).toBe(false);
+    speed?.click();
+    await settle();
+
+    const action = api.calls.find((call) => call.action?.kind === "fertilizeAll")?.action;
+    expect(action).toMatchObject({ kind: "fertilizeAll", supply: "speedGrow" });
+    expect(host.querySelector(".stage-status")?.textContent).toContain("Đã bón");
+  });
+
+  it("sprays the whole garden from one pick", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 1_000,
+        plots: [crop(0, CLOCK + 600_000), crop(1, CLOCK + 600_000)],
+        trees: [tree(0)],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelectorAll<HTMLButtonElement>('[data-act="pickAllSupply"]')[1]?.click();
+    await settle();
+    const rows = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-act="quickSupplyAll"]'));
+    expect(rows).toHaveLength(4);
+    const golden = rows.find((row) => row.dataset.supply === "goldenSpray");
+    expect(golden?.disabled).toBe(false);
+    golden?.click();
+    await settle();
+
+    expect(api.calls.find((call) => call.action?.kind === "sprayAll")?.action).toMatchObject({
+      kind: "sprayAll",
+      supply: "goldenSpray",
+    });
+    expect(host.querySelector(".stage-status")?.textContent).toContain("Đã xịt");
+  });
+
+  it("shows Build, not Upgrade, when the snapshot predates the pond", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 9_000_000,
+        buildings: { coop: 0, barn: 0 } as unknown as GardenSnapshot["buildings"],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:farm"]')?.click();
+    await settle();
+    const panels = host.querySelectorAll(".garden-farm-panel");
+    const pond = panels.item(panels.length - 1);
+    expect(pond.textContent).toContain("Hồ cá");
+    expect(pond.textContent).toContain("chưa xây");
+    expect(pond.querySelector('[data-act="upgradeBuilding"]')).toBeNull();
+    expect(pond.querySelector('[data-act="buildBuilding"]')).not.toBeNull();
+  });
+});
+
 describe("levels tab", () => {
   it("shows farming, ranching and artisaning bars", async () => {
     const api = new FakeGardenApi(makeState());

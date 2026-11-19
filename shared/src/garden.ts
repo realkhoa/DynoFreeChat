@@ -308,6 +308,26 @@ export const SPRAYS: readonly SprayDefinition[] = [
   },
 ];
 
+/** The fields a bulk fertilizer or spray reads from a crop or a tree. */
+export interface SupplyTarget {
+  /** Server time the plant is ready to harvest. */
+  readonly readyAt: number;
+  /** Whether a fertilizer charge is already active. */
+  readonly fertilized: boolean;
+  /** Active spray charge, or `null`. */
+  readonly spray: ActiveSpray | null;
+}
+
+/** @brief Whether a plant still benefits from a fertilizer: growing and dry. */
+export function needsFertilizer(plant: SupplyTarget, now: number): boolean {
+  return now < plant.readyAt && !plant.fertilized;
+}
+
+/** @brief Whether a plant still accepts a spray charge. */
+export function needsSpray(plant: SupplyTarget): boolean {
+  return plant.spray === null;
+}
+
 /** One active fertilizer on a planted slot. */
 export interface ActiveFertilizer {
   /** Which fertilizer. */
@@ -1990,6 +2010,8 @@ export type GardenAction =
     }
   | { readonly kind: "sprayPest"; readonly slot: number; readonly tree: boolean }
   | { readonly kind: "sprayPestAll" }
+  | { readonly kind: "fertilizeAll"; readonly supply: FertilizerId }
+  | { readonly kind: "sprayAll"; readonly supply: SprayId }
   | { readonly kind: "buildMachine"; readonly machine: MachineId }
   | { readonly kind: "upgradeMachine"; readonly machine: MachineId }
   | {
@@ -2302,6 +2324,14 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const supply = typeof value.supply === "string" ? sprayById(value.supply) : undefined;
     if (slot === null || supply === undefined) return null;
     return { kind, slot, tree: isTree, supply: supply.id };
+  }
+  if (kind === "fertilizeAll") {
+    const supply = typeof value.supply === "string" ? fertilizerById(value.supply) : undefined;
+    return supply === undefined ? null : { kind, supply: supply.id };
+  }
+  if (kind === "sprayAll") {
+    const supply = typeof value.supply === "string" ? sprayById(value.supply) : undefined;
+    return supply === undefined ? null : { kind, supply: supply.id };
   }
   if (kind === "buySupply") {
     const supply = typeof value.supply === "string" ? supplyById(value.supply) : undefined;

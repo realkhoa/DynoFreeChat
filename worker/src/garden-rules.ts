@@ -82,6 +82,8 @@ import {
   animalMeatPrice,
   animalQuality,
   breedEggProduct,
+  needsFertilizer,
+  needsSpray,
   pondGrowthFactor,
   buildingById,
   buildingSlots,
@@ -538,6 +540,10 @@ export function applyGardenAction(
       return sprayPest(ledger, action.slot, action.tree, now);
     case "sprayPestAll":
       return sprayPestAll(ledger, now);
+    case "fertilizeAll":
+      return fertilizeAll(ledger, action.supply, season, now);
+    case "sprayAll":
+      return sprayAll(ledger, action.supply, season, now, rng);
     case "renovateSoil":
       return renovateSoil(ledger, now);
     case "fulfillContract":
@@ -866,6 +872,128 @@ function spray(
   };
   if (tree) next.trees[slot] = updated as (typeof next.trees)[number];
   else next.plots[slot] = updated as (typeof next.plots)[number];
+  return changed(next, now);
+}
+
+/** @brief Market price of one supply unit for a pay-after-use bulk charge. */
+function bulkSupplyUnit(season: SeasonSnapshot, supply: SupplyId, base: number): number {
+  return Math.max(0, season.buyPrices?.[supply] ?? base);
+}
+
+/**
+ * @brief Fertilizes every growing, dry plant at once, billed per plant.
+ * @param ledger Garden before the action.
+ * @param supply Fertilizer picked by the player.
+ * @param season Season snapshot holding the market price of that supply.
+ * @param now Server clock.
+ * @details No bag stock is needed: the player pays the market price per plant
+ * after the fact, and only as many plants as the wallet covers are treated.
+ */
+function fertilizeAll(
+  ledger: GardenLedger,
+  supply: FertilizerId,
+  season: SeasonSnapshot,
+  now: number,
+): RuleResult {
+  const definition = fertilizerById(supply);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+  const unit = bulkSupplyUnit(season, supply, definition.price);
+
+  const targets: Array<{ tree: boolean; slot: number }> = [];
+  ledger.plots.forEach((plot, slot) => {
+    if (plot !== null && needsFertilizer(plot, now)) targets.push({ tree: false, slot });
+  });
+  ledger.trees.forEach((tree, slot) => {
+    if (tree !== null && needsFertilizer(tree, now)) targets.push({ tree: true, slot });
+  });
+  if (targets.length === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  const affordable = unit <= 0 ? targets.length : Math.min(targets.length, Math.floor(ledger.coins / unit));
+  if (affordable <= 0) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  let cost = 0;
+  for (const target of targets.slice(0, affordable)) {
+    if (target.tree) {
+      const tree = next.trees[target.slot];
+      if (tree === null || tree === undefined) continue;
+      const remaining = Math.max(0, tree.readyAt - now);
+      next.trees[target.slot] = {
+        ...tree,
+        readyAt:
+          now >= tree.readyAt
+            ? tree.readyAt
+            : now + Math.max(1_000, Math.round(remaining * definition.growMultiplier)),
+        fertilized: true,
+        fertilizer: { id: supply, left: definition.harvests },
+      };
+    } else {
+      const plot = next.plots[target.slot];
+      if (plot === null || plot === undefined) continue;
+      const remaining = Math.max(0, plot.readyAt - now);
+      next.plots[target.slot] = {
+        ...plot,
+        readyAt:
+          now >= plot.readyAt
+            ? plot.readyAt
+            : now + Math.max(1_000, Math.round(remaining * definition.growMultiplier)),
+        fertilized: true,
+        fertilizer: { id: supply, left: definition.harvests },
+      };
+    }
+    cost += unit;
+  }
+  next.coins -= cost;
+  next.stats.spent += cost;
+  return changed(next, now);
+}
+
+/**
+ * @brief Sprays every plant that has no charge yet, billed per plant.
+ * @details Same pay-after-use deal as {@link fertilizeAll}: one pick, one bill,
+ * and each plant rolls its own mutation chances immediately.
+ */
+function sprayAll(
+  ledger: GardenLedger,
+  supply: SprayId,
+  season: SeasonSnapshot,
+  now: number,
+  rng: () => number,
+): RuleResult {
+  const definition = sprayById(supply);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+  const unit = bulkSupplyUnit(season, supply, definition.price);
+
+  const targets: Array<{ tree: boolean; slot: number }> = [];
+  ledger.plots.forEach((plot, slot) => {
+    if (plot !== null && needsSpray(plot)) targets.push({ tree: false, slot });
+  });
+  ledger.trees.forEach((tree, slot) => {
+    if (tree !== null && needsSpray(tree)) targets.push({ tree: true, slot });
+  });
+  if (targets.length === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  const affordable = unit <= 0 ? targets.length : Math.min(targets.length, Math.floor(ledger.coins / unit));
+  if (affordable <= 0) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  let cost = 0;
+  for (const target of targets.slice(0, affordable)) {
+    const plant = target.tree ? next.trees[target.slot] : next.plots[target.slot];
+    if (plant === null || plant === undefined) continue;
+    const added: EffectId[] = [];
+    for (const [id, chance] of Object.entries(definition.effectChances)) {
+      if (typeof chance === "number" && chance > 0 && rng() < chance) added.push(id as EffectId);
+    }
+    const updated = {
+      ...plant,
+      effects: canonicalEffects([...plant.effects, ...added]),
+      spray: { id: supply, left: definition.harvests },
+    };
+    if (target.tree) next.trees[target.slot] = updated as (typeof next.trees)[number];
+    else next.plots[target.slot] = updated as (typeof next.plots)[number];
+    cost += unit;
+  }
+  next.coins -= cost;
+  next.stats.spent += cost;
   return changed(next, now);
 }
 

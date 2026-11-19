@@ -38,6 +38,8 @@ import {
   TREES_PER_TAB,
   SEEDS,
   SPRAYS,
+  fertilizerById,
+  sprayById,
   TREES,
   cropSellPrice,
   effectById,
@@ -58,6 +60,8 @@ import {
   animalMeatPrice,
   animalQuality,
   breedEggProduct,
+  needsFertilizer,
+  needsSpray,
   buildingSlots,
   buildingUpgradeCost,
   buildingById,
@@ -193,7 +197,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   type GardenTool =
     { kind: "fertilize" | "spray"; supply: SupplyId } | { kind: "plant"; seed: SeedId } | { kind: "water" };
   let tool: GardenTool | null = null;
-  let toolPicker: "fertilize" | "spray" | "plant" | null = null;
+  let toolPicker: "fertilize" | "spray" | "plant" | "fertilizeAll" | "sprayAll" | null = null;
   let pendingSelection: { area: "crop" | "tree"; slot: number } | null = null;
   let pendingPage: number | null = null;
   let message: Message | null = null;
@@ -299,6 +303,26 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Market-adjusted purchase price for a seed or supply. */
   function buyPriceOf(item: string, base: number): number {
     return season?.buyPrices?.[item] ?? base;
+  }
+
+  /**
+   * @brief Counts plants that still accept a bulk fertilizer or spray.
+   * @param kind Bulk supply family.
+   * @param at Server-clock time, used by the fertilizer check.
+   * @details Mirrors the worker rule: fertilizer skips ripe and already-fed
+   * plants, spray skips plants that still carry a charge.
+   */
+  function supplyTargetCount(kind: "fertilize" | "spray", at: number): number {
+    let count = 0;
+    for (const plant of state?.plots ?? []) {
+      if (plant === null) continue;
+      if (kind === "fertilize" ? needsFertilizer(plant, at) : needsSpray(plant)) count += 1;
+    }
+    for (const plant of state?.trees ?? []) {
+      if (plant === null) continue;
+      if (kind === "fertilize" ? needsFertilizer(plant, at) : needsSpray(plant)) count += 1;
+    }
+    return count;
   }
 
   /** @brief Localized full name of any bag item. */
@@ -1950,12 +1974,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       tools.append(
         actionButton(t("garden.useFertilizer"), "pickTool", true),
         actionButton(t("garden.useSpray"), "pickTool", true),
+        actionButton(t("garden.fertilizeAll"), "pickAllSupply", true),
+        actionButton(t("garden.sprayAll"), "pickAllSupply", true),
         actionButton(t("garden.plantQuick"), "pickPlantTool"),
         actionButton(t("garden.waterQuick"), "quickWater"),
       );
       for (const button of tools.querySelectorAll<HTMLButtonElement>('[data-act="pickTool"]')) {
         button.dataset.kind =
           button.textContent?.includes(t("garden.useFertilizer")) === true ? "fertilize" : "spray";
+      }
+      for (const button of tools.querySelectorAll<HTMLButtonElement>('[data-act="pickAllSupply"]')) {
+        button.dataset.kind =
+          button.textContent?.includes(t("garden.fertilizeAll")) === true ? "fertilize" : "spray";
       }
       if (tool !== null) {
         const activeLabel =
@@ -1987,6 +2017,27 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
               "pickPlantSeed",
             );
             button.dataset.seed = seed.id;
+            picker.append(button);
+          }
+          wrap.append(picker);
+        } else if (toolPicker === "fertilizeAll" || toolPicker === "sprayAll") {
+          const bulkKind = toolPicker === "fertilizeAll" ? "fertilize" : "spray";
+          const catalog = bulkKind === "fertilize" ? FERTILIZERS : SPRAYS;
+          const targets = supplyTargetCount(bulkKind, now());
+          picker.append(
+            span("garden-hint", t("garden.pickAllSupply", { count: targets, plants: t("garden.plants") })),
+          );
+          const coins = state?.coins ?? 0;
+          for (const supply of catalog) {
+            const unit = buyPriceOf(supply.id, supply.price);
+            const affordable = unit <= 0 ? targets : Math.min(targets, Math.floor(coins / unit));
+            const button = actionButton(
+              `${t(`supplies.${supply.id}`)} · ${formatNumber(unit)}c × ${affordable}`,
+              "quickSupplyAll",
+              targets > 0 && affordable > 0,
+            );
+            button.dataset.kind = bulkKind;
+            button.dataset.supply = supply.id;
             picker.append(button);
           }
           wrap.append(picker);
@@ -2101,7 +2152,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (const building of BUILDING_IDS) {
       const definition = buildingById(building);
       if (definition === undefined) continue;
-      const level = state.buildings[building];
+      // A snapshot cached before the pond existed has no pond key yet.
+      const level = state.buildings[building] ?? 0;
       const animals = state.animals[building] ?? [];
       const panel = div("garden-board-panel garden-farm-panel");
       const growth =
@@ -3059,6 +3111,45 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const kind = target.dataset.kind === "spray" ? "spray" : "fertilize";
         toolPicker = toolPicker === kind ? null : kind;
         render();
+        return;
+      }
+      case "pickAllSupply": {
+        const kind = target.dataset.kind === "spray" ? "sprayAll" : "fertilizeAll";
+        toolPicker = toolPicker === kind ? null : kind;
+        tool = null;
+        render();
+        return;
+      }
+      case "quickSupplyAll": {
+        const kind = target.dataset.kind === "spray" ? "spray" : "fertilize";
+        const supply = target.dataset.supply as SupplyId | undefined;
+        if (supply === undefined || state === null) return;
+        const definition = kind === "fertilize" ? fertilizerById(supply) : sprayById(supply);
+        if (definition === undefined) return;
+        const eligible = supplyTargetCount(kind, now());
+        if (eligible <= 0) {
+          message = { text: t("garden.noTargets"), kind: "info" };
+          render();
+          return;
+        }
+        const unit = buyPriceOf(supply, definition.price);
+        const count = unit <= 0 ? eligible : Math.min(eligible, Math.floor(state.coins / unit));
+        if (count <= 0) {
+          message = { text: t("errors.NOT_ENOUGH_COINS"), kind: "err" };
+          render();
+          return;
+        }
+        toolPicker = null;
+        const cost = count * unit;
+        void runAction(
+          kind === "fertilize"
+            ? { kind: "fertilizeAll", supply: supply as FertilizerId }
+            : { kind: "sprayAll", supply: supply as SprayId },
+          t(kind === "fertilize" ? "garden.fertilizedAll" : "garden.sprayedAll", {
+            count,
+            cost: formatNumber(cost),
+          }),
+        );
         return;
       }
       case "quickWater":

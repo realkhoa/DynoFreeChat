@@ -493,6 +493,141 @@ describe("garden ledger rules", () => {
     expect(meat.ledger.coins).toBeGreaterThan(before);
   });
 
+  it("fertilizes the whole garden and bills per plant without bag stock", () => {
+    const ledger = makeLedger();
+    ledger.coins = 1_000;
+    const crop = (slot: number, readyAt: number) => ({
+      slot,
+      seed: "carrot" as const,
+      plantedAt: NOW,
+      readyAt,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    });
+    ledger.plots[0] = crop(0, NOW + 10 * 60_000);
+    ledger.plots[1] = crop(1, NOW + 10 * 60_000);
+    // Already fed and ripe plants are skipped.
+    ledger.plots[2] = { ...crop(2, NOW + 10 * 60_000), fertilized: true };
+    ledger.plots[3] = crop(3, NOW - 1_000);
+    ledger.trees[0] = {
+      slot: 0,
+      tree: "apple",
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+
+    const result = run(ledger, { kind: "fertilizeAll", supply: "speedGrow" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ledger.bag.supplies.speedGrow ?? 0).toBe(0);
+    expect(result.ledger.coins).toBe(1_000 - 3 * 60);
+    expect(result.ledger.stats.spent).toBe(3 * 60);
+    expect(result.ledger.plots[0]?.fertilized).toBe(true);
+    expect(result.ledger.plots[1]?.fertilized).toBe(true);
+    expect(result.ledger.plots[2]?.fertilizer).toBeNull();
+    expect(result.ledger.plots[3]?.fertilized).toBe(false);
+    expect(result.ledger.trees[0]?.fertilized).toBe(true);
+    // The speedGrow multiplier shortens the remaining growth.
+    expect(result.ledger.plots[0]?.readyAt).toBeLessThan(NOW + 10 * 60_000);
+  });
+
+  it("stops the bulk bill at the wallet and refuses an empty target list", () => {
+    const ledger = makeLedger();
+    ledger.coins = 130;
+    const crop = (slot: number) => ({
+      slot,
+      seed: "carrot" as const,
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    });
+    ledger.plots[0] = crop(0);
+    ledger.plots[1] = crop(1);
+    ledger.plots[2] = crop(2);
+
+    const partial = run(ledger, { kind: "fertilizeAll", supply: "speedGrow" });
+    expect(partial.ok).toBe(true);
+    if (!partial.ok) return;
+    expect(partial.ledger.coins).toBe(10);
+    expect(partial.ledger.plots.filter((plot) => plot?.fertilized === true)).toHaveLength(2);
+
+    const empty = run(makeLedger(), { kind: "sprayAll", supply: "goldenSpray" });
+    expect(empty.ok).toBe(false);
+    if (!empty.ok) expect(empty.code).toBe("NOTHING_TO_DO");
+
+    const broke = run({ ...ledger, coins: 0 }, { kind: "fertilizeAll", supply: "speedGrow" });
+    expect(broke.ok).toBe(false);
+    if (!broke.ok) expect(broke.code).toBe("NOT_ENOUGH_COINS");
+  });
+
+  it("sprays every uncharged plant at once and bills per plant", () => {
+    const ledger = makeLedger();
+    ledger.coins = 1_000;
+    const crop = (slot: number, spray: { id: "frostSpray"; left: number } | null) => ({
+      slot,
+      seed: "carrot" as const,
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray,
+      pest: false,
+      protectedUntil: 0,
+    });
+    ledger.plots[0] = crop(0, null);
+    ledger.plots[1] = crop(1, { id: "frostSpray", left: 1 });
+    ledger.trees[0] = {
+      slot: 0,
+      tree: "apple",
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+
+    const result = run(ledger, { kind: "sprayAll", supply: "goldenSpray" }, NOW, 0.05);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ledger.bag.supplies.goldenSpray ?? 0).toBe(0);
+    expect(result.ledger.coins).toBe(1_000 - 2 * 80);
+    expect(result.ledger.plots[0]?.spray?.id).toBe("goldenSpray");
+    expect(result.ledger.plots[1]?.spray?.id).toBe("frostSpray");
+    expect(result.ledger.trees[0]?.spray?.id).toBe("goldenSpray");
+    // rng 0.05 is under the 15% golden chance, so both plants mutated.
+    expect(result.ledger.plots[0]?.effects).toContain("golden");
+    expect(result.ledger.trees[0]?.effects).toContain("golden");
+  });
+
   it("buys a rare watering machine and it waters ten percent per cycle", () => {
     const base = seasonFor(NOW);
     const season = {

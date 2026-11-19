@@ -718,6 +718,17 @@ describe("garden wire parsing", () => {
     });
     expect(parseGardenAction({ kind: "sellAnimal", building: "nope", slot: 0 })).toBeNull();
     expect(parseGardenAction({ kind: "breedAnimal", building: "coop", slot: 12 })).toBeNull();
+    expect(parseGardenAction({ kind: "fertilizeAll", supply: "speedGrow" })).toEqual({
+      kind: "fertilizeAll",
+      supply: "speedGrow",
+    });
+    expect(parseGardenAction({ kind: "sprayAll", supply: "goldenSpray" })).toEqual({
+      kind: "sprayAll",
+      supply: "goldenSpray",
+    });
+    // A spray is not a fertilizer and vice versa.
+    expect(parseGardenAction({ kind: "fertilizeAll", supply: "goldenSpray" })).toBeNull();
+    expect(parseGardenAction({ kind: "sprayAll", supply: "speedGrow" })).toBeNull();
   });
 
   it("validates actions and rejects malformed ones", () => {
