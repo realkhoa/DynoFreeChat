@@ -107,7 +107,7 @@ import {
   type TreeState,
   type VisitSnapshot,
 } from "@dyno/shared/garden";
-import { formatDuration, formatNumber, onLocaleChange, t, tList, translateError } from "@/shared/i18n";
+import { formatCompact, formatDuration, onLocaleChange, t, tList, translateError } from "@/shared/i18n";
 import { loadIdentity, type Identity } from "@/shared/lib/identity";
 import type { GardenBot } from "@/features/games/garden/api";
 import { readParam, writeParams } from "@/shared/lib/urlstate";
@@ -1122,7 +1122,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       for (const candidate of staffMarketAt(state.playerId, now())) {
         const traits = candidate.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
         const row = menuRow(
-          `${candidate.name} · ${candidate.speed}⚡ · ${t("staff.jobs", { count: candidate.jobs })} · ${candidate.wage}c · ${traits} · ${formatNumber(staffHireCost(candidate))}c`,
+          `${candidate.name} · ${candidate.speed}⚡ · ${t("staff.jobs", { count: candidate.jobs })} · ${candidate.wage}c · ${traits} · ${formatCompact(staffHireCost(candidate))}c`,
           "staffMenuHire",
           { data: { id: candidate.id } },
         );
@@ -1183,7 +1183,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       ),
     );
     const coins = state.coins;
-    head.append(span("garden-menu-balance", `$ ${formatNumber(coins)}c`));
+    head.append(span("garden-menu-balance", `$ ${formatCompact(coins)}c`));
     const close = document.createElement("button");
     close.type = "button";
     close.className = "garden-menu-close";
@@ -1214,7 +1214,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           incubation > 0 ? t("farm.breeding") : formatDuration(Math.max(0, readyAt - at), "short"),
         ),
       );
-      lines.push(labelValue(t("farm.upkeep"), `${formatNumber(definition.upkeep)}c/${t("farm.cycle")}`));
+      lines.push(labelValue(t("farm.upkeep"), `${formatCompact(definition.upkeep)}c/${t("farm.cycle")}`));
     }
     if (animalMenu.building === "pond") {
       lines.push(labelValue(t("farm.growth"), `${state.pondGrowth ?? 0}%`));
@@ -1227,7 +1227,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         ),
       );
     }
-    lines.push("", labelValue(t("farm.meat"), `${formatNumber(meat)}c`));
+    lines.push("", labelValue(t("farm.meat"), `${formatCompact(meat)}c`));
     const info = document.createElement("pre");
     info.className = "garden-menu-info";
     info.textContent = lines.join("\n");
@@ -1255,7 +1255,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       );
     }
     rows.append(
-      menuRow(t("farm.sellAnimal", { price: `${formatNumber(meat)}c` }), "animalMenuSell", {
+      menuRow(t("farm.sellAnimal", { price: `${formatCompact(meat)}c` }), "animalMenuSell", {
         disabled: incubation > 0,
       }),
     );
@@ -1408,9 +1408,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     bar.append(span("garden-tabs-spacer", ""));
     const balance = mode === "visit" ? visiting?.coins : state?.coins;
     if (balance !== undefined) {
-      const chip = span("garden-balance", `$ ${formatNumber(balance)}c`);
+      const chip = span("garden-balance", `$ ${formatCompact(balance)}c`);
       chip.title = t("garden.balance");
-      chip.setAttribute("aria-label", `${t("garden.balance")}: ${formatNumber(balance)} coins`);
+      chip.setAttribute("aria-label", `${t("garden.balance")}: ${formatCompact(balance)} coins`);
       bar.append(chip);
     }
     const code = currentCode();
@@ -1684,7 +1684,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           lines.push(
             labelValue(
               t("garden.finalSell"),
-              `${formatNumber(cropSellPrice({ item: tree.tree, effects: resolvedTreeEffects(tree, at), qty: 1 }, season))}c`,
+              `${formatCompact(cropSellPrice({ item: tree.tree, effects: resolvedTreeEffects(tree, at), qty: 1 }, season))}c`,
             ),
           );
         }
@@ -1754,7 +1754,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         lines.push(
           labelValue(
             t("garden.finalSell"),
-            `${formatNumber(cropSellPrice({ item: plot.seed, effects: resolvedCropEffects(plot, at), qty: 1 }, season))}c`,
+            `${formatCompact(cropSellPrice({ item: plot.seed, effects: resolvedCropEffects(plot, at), qty: 1 }, season))}c`,
           ),
         );
       }
@@ -1924,7 +1924,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       ),
     );
     const coins = mode === "visit" ? visiting?.coins : state?.coins;
-    if (coins !== undefined) head.append(span("garden-menu-balance", `$ ${formatNumber(coins)}c`));
+    if (coins !== undefined) head.append(span("garden-menu-balance", `$ ${formatCompact(coins)}c`));
     const close = document.createElement("button");
     close.type = "button";
     close.className = "garden-menu-close";
@@ -1994,7 +1994,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         menuRow(
           t("garden.menuBuyPatch", {
             patch: label.patch,
-            cost: `${formatNumber(patchCost(Math.floor(menuState.slot / CROPS_PER_TAB)))}c`,
+            cost: `${formatCompact(patchCost(Math.floor(menuState.slot / CROPS_PER_TAB)))}c`,
           }),
           "menuBuyPatch",
         ),
@@ -2087,7 +2087,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const seedRow = sideRow(
       "🌱",
       t("side.seeds"),
-      `${formatNumber(seeds)} · ${seedKinds} ${t("side.kinds")}`,
+      `${formatCompact(seeds)} · ${seedKinds} ${t("side.kinds")}`,
     );
     seedRow.title = Object.entries(view.bag.seeds)
       .filter(([, qty]) => (qty ?? 0) > 0)
@@ -2097,7 +2097,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const supplyRow = sideRow(
       "🧪",
       t("side.supplies"),
-      formatNumber(Object.values(view.bag.supplies).reduce((sum, qty) => sum + (qty ?? 0), 0)),
+      formatCompact(Object.values(view.bag.supplies).reduce((sum, qty) => sum + (qty ?? 0), 0)),
     );
     supplyRow.title = Object.entries(view.bag.supplies)
       .filter(([, qty]) => (qty ?? 0) > 0)
@@ -2108,7 +2108,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const toolRow = sideRow(
       "🛠",
       t("side.tools"),
-      formatNumber(Object.values(tools).reduce((sum, qty) => sum + (qty ?? 0), 0)),
+      formatCompact(Object.values(tools).reduce((sum, qty) => sum + (qty ?? 0), 0)),
     );
     toolRow.title = Object.entries(tools)
       .filter(([, qty]) => (qty ?? 0) > 0)
@@ -2119,7 +2119,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const productRow = sideRow(
       "🥚",
       t("side.products"),
-      formatNumber(products.reduce((sum, stack) => sum + stack.qty, 0)),
+      formatCompact(products.reduce((sum, stack) => sum + stack.qty, 0)),
     );
     productRow.title = products
       .map((stack) => `${t(`products.${stack.product}`)} ${stack.star}★ ×${stack.qty}`)
@@ -2128,7 +2128,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const cropRow = sideRow(
       "🌾",
       t("side.crops"),
-      formatNumber(view.bag.crops.reduce((sum, stack) => sum + stack.qty, 0)),
+      formatCompact(view.bag.crops.reduce((sum, stack) => sum + stack.qty, 0)),
     );
     cropRow.title = view.bag.crops.map((stack) => `${itemName(stack.item)} ×${stack.qty}`).join(" · ");
     side.append(cropRow);
@@ -2241,11 +2241,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return;
     }
     if (local >= (view.unlocked[patch] ?? 0)) {
-      button.textContent = `+ ${formatNumber(SPECIAL_PLOT_PRICE)}c`;
+      button.textContent = `+ ${formatCompact(SPECIAL_PLOT_PRICE)}c`;
       button.classList.add("is-locked");
       button.dataset.act = "buySpecialPlot";
       button.dataset.patch = String(patch);
-      button.title = t("special.buyPlot", { cost: formatNumber(SPECIAL_PLOT_PRICE) });
+      button.title = t("special.buyPlot", { cost: formatCompact(SPECIAL_PLOT_PRICE) });
       return;
     }
     const plot = view.plots[slot] ?? null;
@@ -2274,7 +2274,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       row.append(span("garden-special-patch", `V${patch + 1}`));
       if (view === null || patch >= view.patches) {
         const buy = actionButton(
-          t("special.buyPatch", { cost: formatNumber(SPECIAL_PATCH_PRICE) }),
+          t("special.buyPatch", { cost: formatCompact(SPECIAL_PATCH_PRICE) }),
           "buySpecialPatch",
         );
         buy.dataset.patch = String(patch);
@@ -2469,7 +2469,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           const unit = buyPriceOf(supply.id, supply.price);
           const affordable = unit <= 0 ? targets : Math.min(targets, Math.floor(coins / unit));
           const button = actionButton(
-            `${t(`supplies.${supply.id}`)} · ${formatNumber(unit)}c × ${affordable}`,
+            `${t(`supplies.${supply.id}`)} · ${formatCompact(unit)}c × ${affordable}`,
             "quickSupplyAll",
             targets > 0 && affordable > 0,
           );
@@ -2594,7 +2594,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       row.dataset.building = building;
       row.dataset.slot = String(slot);
       row.dataset.animal = animal.id;
-      row.textContent = `${fitText(t(`animals.${animal.id}`), 9)}${fitText(`${formatNumber(animal.buy)}c`, 10)}${formatDuration(animalIntervalMs(animal.id), "short")}`;
+      row.textContent = `${fitText(t(`animals.${animal.id}`), 9)}${fitText(`${formatCompact(animal.buy)}c`, 10)}${formatDuration(animalIntervalMs(animal.id), "short")}`;
       row.title = `${t(`animals.${animal.id}`)} · ${t(`products.${animal.product}`)}`;
       row.disabled = (state?.coins ?? 0) < animal.buy;
       wrap.append(row);
@@ -2628,7 +2628,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       );
       if (level === 0) {
         const build = actionButton(
-          t("farm.build", { cost: formatNumber(definition.price) }),
+          t("farm.build", { cost: formatCompact(definition.price) }),
           "buildBuilding",
           (state.coins ?? 0) >= definition.price,
         );
@@ -2642,7 +2642,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const upgrade = actionButton(
         level >= maxBuildingLevel(building)
           ? t("farm.maxLevel")
-          : t("farm.upgrade", { cost: formatNumber(upgradeCost) }),
+          : t("farm.upgrade", { cost: formatCompact(upgradeCost) }),
         "upgradeBuilding",
         level < maxBuildingLevel(building) && (state.coins ?? 0) >= upgradeCost,
       );
@@ -2761,7 +2761,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const upgrade = menuRow(
       built.level >= MACHINE_MAX_LEVEL
         ? t("farm.maxLevel")
-        : t("warehouse.upgrade", { cost: formatNumber(MACHINE_PRICE) }),
+        : t("warehouse.upgrade", { cost: formatCompact(MACHINE_PRICE) }),
       "machineUpgrade",
       {
         data: { machine: definition.id },
@@ -2825,7 +2825,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (state.warehouse.level === 0) {
       wrap.append(
         actionButton(
-          t("warehouse.build", { cost: formatNumber(WAREHOUSE_PRICE) }),
+          t("warehouse.build", { cost: formatCompact(WAREHOUSE_PRICE) }),
           "buildWarehouse",
           (state.coins ?? 0) >= WAREHOUSE_PRICE,
         ),
@@ -2839,7 +2839,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (built === undefined) {
         panel.append(
           actionButton(
-            t("warehouse.buildMachine", { cost: formatNumber(MACHINE_PRICE) }),
+            t("warehouse.buildMachine", { cost: formatCompact(MACHINE_PRICE) }),
             "buildMachine",
             (state.coins ?? 0) >= MACHINE_PRICE,
           ).cloneNode(true) as HTMLButtonElement,
@@ -2861,7 +2861,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const upgrade = actionButton(
           built.level >= MACHINE_MAX_LEVEL
             ? t("farm.maxLevel")
-            : t("warehouse.upgrade", { cost: formatNumber(MACHINE_PRICE) }),
+            : t("warehouse.upgrade", { cost: formatCompact(MACHINE_PRICE) }),
           "upgradeMachine",
           built.level < MACHINE_MAX_LEVEL && (state.coins ?? 0) >= MACHINE_PRICE,
         );
@@ -2929,12 +2929,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       card.dataset.act = item.act;
       for (const [key, value] of Object.entries(item.data)) card.dataset[key] = value;
-      card.title = `${item.name} · ${formatNumber(item.price)}c × ${buyQty} = ${formatNumber(item.price * buyQty)}c`;
+      card.title = `${item.name} · ${formatCompact(item.price)}c × ${buyQty} = ${formatCompact(item.price * buyQty)}c`;
       card.append(
         span("garden-buy-line is-glyph", item.glyph),
         span("garden-buy-line is-name", item.name),
-        span("garden-buy-line is-price", `${formatNumber(item.price)}c`),
-        span("garden-buy-line", `x${buyQty}=${formatNumber(item.price * buyQty)}c`),
+        span("garden-buy-line is-price", `${formatCompact(item.price)}c`),
+        span("garden-buy-line", `x${buyQty}=${formatCompact(item.price * buyQty)}c`),
         span(
           "garden-buy-line is-stock",
           soldOut
@@ -3022,7 +3022,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const value = cropSellPrice(stack, season) * stack.qty;
       const row = rowButton(
         "garden-market-row",
-        `${itemName(stack.item)} ${stack.star ?? 1}★ ${fitText(effectBadge(stack.effects), 8)}${stack.pest === true ? t("market.pestTag") : ""}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
+        `${itemName(stack.item)} ${stack.star ?? 1}★ ${fitText(effectBadge(stack.effects), 8)}${stack.pest === true ? t("market.pestTag") : ""}${fitText(`x${stack.qty}`, 4)}${fitText(`${formatCompact(value)}c`, 7)}[${t("market.sell")}]`,
         "sell",
       );
       row.dataset.item = stack.item;
@@ -3048,7 +3048,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const unit = season === null ? 0 : productPrice(stack, season);
       const row = rowButton(
         "garden-market-row",
-        `${t(`products.${stack.product}`)} ${fitText(`${"*".repeat(stack.star)}`, 6)}${fitText(`x${stack.qty}`, 5)}${fitText(`${unit}c`, 7)}[${t("market.sell")}]`,
+        `${t(`products.${stack.product}`)} ${fitText(`${"*".repeat(stack.star)}`, 6)}${fitText(`x${stack.qty}`, 5)}${fitText(`${formatCompact(unit)}c`, 7)}[${t("market.sell")}]`,
         "sellProduct",
       );
       row.dataset.product = stack.product;
@@ -3115,7 +3115,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       t("extras.spliceLine", { bonus: extras.spliceBonus }),
       t("extras.collectionLine", { count: extras.collection.length }),
       t("extras.weekLine", {
-        earned: formatNumber(extras.weekEarned),
+        earned: formatCompact(extras.weekEarned),
         harvested: extras.weekHarvested,
       }),
       extras.insuranceUntil > at
@@ -3133,7 +3133,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (cost > 0) {
       wrap.append(
         actionButton(
-          t("extras.greenhouse", { cost: formatNumber(cost) }),
+          t("extras.greenhouse", { cost: formatCompact(cost) }),
           "extrasGreenhouse",
           state.coins >= cost,
         ),
@@ -3142,20 +3142,20 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const wheelPrice = wheelCost(extras.wheelSpins);
     wrap.append(
       actionButton(
-        t("extras.wheel", { cost: formatNumber(wheelPrice) }),
+        t("extras.wheel", { cost: formatCompact(wheelPrice) }),
         "extrasWheel",
         state.coins >= wheelPrice,
       ),
       lineBlock(
         `// ${t("extras.wheelToday", {
           spins: extras.wheelSpins,
-          cost: formatNumber(wheelCost(extras.wheelSpins + 1)),
+          cost: formatCompact(wheelCost(extras.wheelSpins + 1)),
         })}`,
       ),
     );
     wrap.append(
       actionButton(
-        t("extras.hatch", { cost: formatNumber(EGG_PRICE) }),
+        t("extras.hatch", { cost: formatCompact(EGG_PRICE) }),
         "extrasHatch",
         state.coins >= EGG_PRICE,
       ),
@@ -3209,7 +3209,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(lineBlock(`// ${t("staff.market")}`));
     for (const candidate of staffMarketAt(state.playerId, at)) {
       const traits = candidate.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
-      const label = `${candidate.name} · ${candidate.speed}⚡ · ${candidate.wage}c/lương · ${traits} · ${t("staff.hireFee", { cost: formatNumber(staffHireCost(candidate)) })}`;
+      const label = `${candidate.name} · ${candidate.speed}⚡ · ${candidate.wage}c/lương · ${traits} · ${t("staff.hireFee", { cost: formatCompact(staffHireCost(candidate)) })}`;
       const hire = actionButton(label, "staffHire", extras.staff.length < STAFF_SLOTS);
       hire.dataset.id = candidate.id;
       wrap.append(hire);
@@ -3235,7 +3235,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(lineBlock(`// ${t("extras.contracts")}`));
     for (const offer of contractOffers(state.playerId, at)) {
       const claimed = extras.contractClaims.includes(offer.id);
-      const label = `${t(`products.${offer.product}`)} ≥${offer.star}★ x${offer.qty} → ${formatNumber(offer.reward)}c`;
+      const label = `${t(`products.${offer.product}`)} ≥${offer.star}★ x${offer.qty} → ${formatCompact(offer.reward)}c`;
       if (claimed) wrap.append(lineBlock(`// ${label} [${t("extras.claimed")}]`));
       else {
         const button = actionButton(label, "extrasContract");
@@ -3248,7 +3248,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (const offer of merchantOffers(state.playerId, at)) {
       const claimed = extras.merchantClaims.includes(offer.id);
       const name = offer.kind === "seed" ? seedName(offer.item as SeedId) : t(`tools.${offer.item}`);
-      const label = `${name} x${offer.stock} — ${formatNumber(offer.price)}c`;
+      const label = `${name} x${offer.stock} — ${formatCompact(offer.price)}c`;
       if (claimed) wrap.append(lineBlock(`// ${label} [${t("extras.claimed")}]`));
       else {
         const button = actionButton(label, "extrasMerchant");
@@ -3261,7 +3261,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(lineBlock(`// ${t("extras.futures")}`));
     if (extras.futures.length === 0) wrap.append(lineBlock(t("extras.noFutures")));
     for (const future of extras.futures) {
-      wrap.append(lineBlock(`// ${itemName(future.item)} x${future.qty} @ ${formatNumber(future.price)}c`));
+      wrap.append(lineBlock(`// ${itemName(future.item)} x${future.qty} @ ${formatCompact(future.price)}c`));
     }
     for (const item of new Set((state.bag.crops ?? []).map((stack) => stack.item))) {
       const button = actionButton(t("extras.lockFuture", { item: itemName(item) }), "extrasFuture");
@@ -3316,7 +3316,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     tournament.forEach((entry, index) => {
       wrap.append(
         lineBlock(
-          `#${index + 1} ${entry.nick} — ${formatNumber(entry.earned)}c · ${entry.harvested} ${t("rank.harvested")}`,
+          `#${index + 1} ${entry.nick} — ${formatCompact(entry.earned)}c · ${entry.harvested} ${t("rank.harvested")}`,
         ),
       );
     });
@@ -3371,8 +3371,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       row.append(
         span("garden-rank-cell", `#${index + 1}`),
         span("garden-rank-cell is-name", `${entry.nick} · ${entry.code}`),
-        span("garden-rank-cell", `${formatNumber(entry.coins ?? 0)}c`),
-        span("garden-rank-cell", `${formatNumber(entry.earned)}c`),
+        span("garden-rank-cell", `${formatCompact(entry.coins ?? 0)}c`),
+        span("garden-rank-cell", `${formatCompact(entry.earned)}c`),
         span("garden-rank-cell", `${roi >= 0 ? "+" : ""}${roi}%`),
         span("garden-rank-cell", String(entry.harvested)),
       );
@@ -3392,7 +3392,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (const bot of botGardens) {
       const row = rowButton(
         "garden-bot-row",
-        `${fitText(bot.nick, 12)}${fitText(bot.focus === undefined ? "" : `[${t("bots.focusCarrot")}]`, 10)}${fitText(`#${bot.code}`, 10)}${fitText(`${formatNumber(bot.coins)}c`, 10)}`,
+        `${fitText(bot.nick, 12)}${fitText(bot.focus === undefined ? "" : `[${t("bots.focusCarrot")}]`, 10)}${fitText(`#${bot.code}`, 10)}${fitText(`${formatCompact(bot.coins)}c`, 10)}`,
         "visitBot",
       );
       row.dataset.code = bot.code;
@@ -3454,7 +3454,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       row.classList.add(trend);
       row.append(
         span("garden-chart-name", itemName(item.item)),
-        span("garden-chart-price", `${formatNumber(item.price)}c`),
+        span("garden-chart-price", `${formatCompact(item.price)}c`),
         span("garden-chart-mult", `x${item.multiplier.toFixed(2)}`),
         span(
           "garden-chart-trend",
@@ -3475,7 +3475,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const name = offer.kind === "seed" ? seedName(offer.item as SeedId) : t(`supplies.${offer.item}`);
         row.append(
           span("garden-chart-name", name),
-          span("garden-chart-price", `${formatNumber(offer.price)}c`),
+          span("garden-chart-price", `${formatCompact(offer.price)}c`),
           span("garden-chart-mult", `x${offer.multiplier.toFixed(2)}`),
           span(
             "garden-chart-trend",
@@ -3545,7 +3545,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         `${t("event.rank", {
           rank: index + 1,
           nick: mine ? t("event.you") : entry.nick,
-          coins: formatNumber(entry.earned),
+          coins: formatCompact(entry.earned),
         })} [${t("event.visit")}]`,
         "visit",
       );
@@ -3996,7 +3996,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             : { kind: "sprayAll", supply: supply as SprayId },
           t(kind === "fertilize" ? "garden.fertilizedAll" : "garden.sprayedAll", {
             count,
-            cost: formatNumber(cost),
+            cost: formatCompact(cost),
           }),
         );
         return;
@@ -4425,7 +4425,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }
         void runAction(
           { kind: "giftCoins", code, amount },
-          t("gift.sentCoins", { amount: formatNumber(amount) }),
+          t("gift.sentCoins", { amount: formatCompact(amount) }),
         );
         return;
       }

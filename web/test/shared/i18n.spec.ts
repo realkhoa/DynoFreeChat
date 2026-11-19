@@ -25,6 +25,7 @@ import {
 import { DICTIONARIES } from "@/shared/i18n/dictionary";
 import {
   detectLocale,
+  formatCompact,
   formatDuration,
   formatNumber,
   getLocale,
@@ -164,6 +165,15 @@ describe("formatting", () => {
     expect(formatNumber(12345)).toBe("12,345");
     setLocale("vi");
     expect(formatNumber(12345)).toBe("12.345");
+  });
+
+  it("shortens long amounts with m, b and t", () => {
+    expect(formatCompact(999_999)).toBe(formatNumber(999_999));
+    expect(formatCompact(3_000_000)).toBe("3m");
+    expect(formatCompact(12_345_678)).toBe("12.3m");
+    expect(formatCompact(1_500_000_000)).toBe("1.5b");
+    expect(formatCompact(2_225_901_652_616)).toBe("2.23t");
+    expect(formatCompact(-2_000_000)).toBe("-2m");
   });
 });
 

@@ -163,6 +163,29 @@ export function formatNumber(value: number): string {
 }
 
 /**
+ * @brief Formats a long amount with an m/b/t suffix.
+ * @details Money scales past a trillion, so grouped digits would run off a
+ * phone screen. Values under one million stay grouped; above that the number
+ * is shortened to `12.35m`, `1.5b` or `2.23t` with at most two decimals.
+ */
+export function formatCompact(value: number): string {
+  const abs = Math.abs(value);
+  if (abs < 1_000_000) return formatNumber(value);
+  const units: readonly [suffix: string, size: number][] = [
+    ["t", 1_000_000_000_000],
+    ["b", 1_000_000_000],
+    ["m", 1_000_000],
+  ];
+  for (const [suffix, size] of units) {
+    if (abs < size) continue;
+    const scaled = value / size;
+    const decimals = Math.abs(scaled) >= 100 ? 0 : Math.abs(scaled) >= 10 ? 1 : 2;
+    return `${Number(scaled.toFixed(decimals))}${suffix}`;
+  }
+  return formatNumber(value);
+}
+
+/**
  * @brief Localizes a server error code, tolerating unknown codes.
  * @param code Machine readable error code.
  */

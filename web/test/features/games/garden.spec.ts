@@ -1705,6 +1705,17 @@ describe("chart tab", () => {
   });
 });
 
+describe("compact amounts", () => {
+  it("shortens huge balances instead of overflowing", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 2_225_901_652_616 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    const balance = host.querySelector(".garden-balance")?.textContent ?? "";
+    expect(balance).toContain("2.23t");
+    expect(balance).not.toContain("2.225.901.652.616");
+  });
+});
+
 describe("mobile layout", () => {
   it("ships responsive garden rules for stacking and small cells", () => {
     const css = readFileSync(resolve(process.cwd(), "src/features/games/garden.css"), "utf8");
@@ -1807,7 +1818,7 @@ describe("market tab", () => {
     expect(host.textContent).toContain("Hạt hiếm");
     const card = host.querySelector<HTMLButtonElement>('[data-act="buy"][data-seed="beanstalk"]');
     expect(card).not.toBeNull();
-    expect(card?.textContent).toContain("3.000.000c");
+    expect(card?.textContent).toContain("3mc");
   });
 
   it("buys seeds and supplies in bulk from the quantity selector", async () => {
