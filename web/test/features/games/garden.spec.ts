@@ -394,6 +394,20 @@ describe("garden tab", () => {
     expect(host.querySelector(".garden-side-time")?.textContent).toMatch(/m|s/);
   });
 
+  it("shows stacked mutations and their combined multiplier", async () => {
+    const api = new FakeGardenApi(makeState({ plots: [{ ...RIPE_PLOT, effects: ["diamond", "diamond"] }] }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    await settle();
+    const info = host.querySelector(".garden-menu-info")?.textContent ?? "";
+    expect(info).toContain("Kim cương ×2");
+    expect(info).toContain("x81");
+    const cell = host.querySelectorAll(".garden-cell")[0];
+    expect(cell?.classList.contains("is-diamond")).toBe(true);
+  });
+
   it("opens the seed picker on an empty plot and plants a seed", async () => {
     const api = new FakeGardenApi(makeState());
     const { host, game } = await mountGame(api);
@@ -1363,6 +1377,39 @@ describe("extras tab", () => {
 });
 
 describe("warehouse tab", () => {
+  it("dries crops and fruit with the warehouse dryer", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        warehouse: { level: 1, machines: { dryer: { level: 1, lastCraftAt: 0 } } },
+        bag: {
+          seeds: {},
+          crops: [
+            { item: "carrot", effects: [], qty: 1 },
+            { item: "apple", effects: [], qty: 1 },
+          ],
+          supplies: {},
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:warehouse"]')?.click();
+    await settle();
+
+    const fruit = host.querySelector<HTMLButtonElement>(
+      '[data-act="craftMachine"][data-machine="dryer"][data-item="apple"]',
+    );
+    expect(fruit).not.toBeNull();
+    fruit?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "craftMachine")?.action).toMatchObject({
+      kind: "craftMachine",
+      machine: "dryer",
+      item: "apple",
+    });
+  });
+
   it("builds a warehouse and crafts produce with machines", async () => {
     const api = new FakeGardenApi(
       makeState({

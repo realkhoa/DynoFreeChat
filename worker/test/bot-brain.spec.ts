@@ -28,7 +28,8 @@ function weakPlot(slot: number, seed: SeedId): PlotState {
   return {
     slot,
     seed,
-    plantedAt: NOW - 500,
+    // Planted exactly now: no weather wave can roll a mutation onto it.
+    plantedAt: NOW,
     readyAt: NOW + 600_000,
     effects: [],
     pest: true,
@@ -46,7 +47,9 @@ describe("bot brain", () => {
     const ledger = makeLedger();
     ledger.coins = 50_000;
     ledger.bag.seeds = { carrot: 3 };
-    ledger.plots[0] = weakPlot(0, "carrot");
+    // A shriveled, pest-damaged carrot is worth less than its seed even when a
+    // market-boom wave lifts prices, so the bot must free the slot.
+    ledger.plots[0] = { ...weakPlot(0, "carrot"), effects: ["shriveled"] };
     const actions = planBotActions(ledger, seasonAt(NOW), NOW, () => 0.5);
     expect(actions.some((action) => action.kind === "uproot" && action.slot === 0)).toBe(true);
     // It either replants an owned seed or buys a better one for the freed slot.

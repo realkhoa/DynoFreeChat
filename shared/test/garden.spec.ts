@@ -24,11 +24,15 @@ import {
   STARTING_TABS,
   createRng,
   cropKey,
+  canonicalEffects,
+  effectsMultiplier,
+  driedStarForSell,
   cropSellPrice,
   soilGrowthFactor,
   soilRenovateCost,
   effectById,
   EFFECTS,
+  MAX_EFFECT_STACK,
   eventAt,
   formatGardenAuth,
   gardenCounts,
@@ -59,6 +63,8 @@ import {
   combinedGrowScale,
   ANIMALS,
   BUILDINGS,
+  MACHINES,
+  productById,
   toolById,
   type BuildingId,
   FARM_CYCLE_MS,
@@ -256,6 +262,29 @@ describe("farm buildings", () => {
     expect(pond?.slots).toEqual([4, 6, 9, 12]);
     expect(ANIMALS.find((animal) => animal.id === "fish")?.product).toBe("roe");
     expect(ANIMALS.find((animal) => animal.id === "snail")?.product).toBe("snailMeat");
+  });
+
+  it("stacks the same mutation on one fruit", () => {
+    expect(canonicalEffects(["diamond", "diamond"])).toEqual(["diamond", "diamond"]);
+    expect(effectsMultiplier(["diamond", "diamond"])).toBe(81);
+    expect(canonicalEffects(Array<"golden">(7).fill("golden"))).toHaveLength(MAX_EFFECT_STACK);
+    expect(cropKey("carrot", ["golden", "golden"])).toBe("carrot:golden:golden");
+    expect(parseCropKey("carrot:golden:golden")?.effects).toEqual(["golden", "golden"]);
+    const goldenHour = EVENTS.find((event) => event.id === "goldenHour");
+    if (goldenHour !== undefined) {
+      const stacked = rollEffectsFor([goldenHour, goldenHour], () => 0);
+      expect(stacked.filter((id) => id === "golden")).toHaveLength(2);
+    }
+  });
+
+  it("dries any produce into price-graded goods", () => {
+    const dryer = MACHINES.find((machine) => machine.id === "dryer");
+    expect(dryer?.allProduce).toBe(true);
+    expect(dryer?.gradeByPrice).toBe(true);
+    expect(productById("dried")?.base).toBe(400);
+    expect(driedStarForSell(9)).toBe(1);
+    expect(driedStarForSell(260)).toBe(4);
+    expect(driedStarForSell(800)).toBe(5);
   });
 
   it("prices meat below the purchase price, lifted by pond growth", () => {

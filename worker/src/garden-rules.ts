@@ -92,6 +92,7 @@ import {
   MACHINE_PRICE,
   WAREHOUSE_PRICE,
   converterOutput,
+  driedStarForSell,
   machineById,
   seedMakerOutput,
   seedById,
@@ -2269,24 +2270,39 @@ function craftMachine(
     }
   } else {
     const seedId = item === undefined ? undefined : seedById(item);
-    if (seedId === undefined) return { ok: false, code: "NO_INPUT" };
+    const fruitId = item === undefined ? undefined : treeById(item);
+
+    // Most machines only take crops; the dryer also takes fruit.
+    if (definition.allProduce !== true && seedId === undefined) return { ok: false, code: "NO_INPUT" };
+    if (definition.output.kind === "seeds" && seedId === undefined) return { ok: false, code: "NO_INPUT" };
+    if (definition.allProduce === true && seedId === undefined && fruitId === undefined) {
+      return { ok: false, code: "NO_INPUT" };
+    }
     const allowed = definition.input.seeds;
-    if (allowed !== undefined && !allowed.includes(seedId.id)) return { ok: false, code: "NO_INPUT" };
-    const stack = next.bag.crops.find((entry) => entry.item === seedId.id);
+    if (allowed !== undefined && (seedId === undefined || !allowed.includes(seedId.id))) {
+      return { ok: false, code: "NO_INPUT" };
+    }
+    const key = seedId?.id ?? fruitId?.id;
+    if (key === undefined) return { ok: false, code: "NO_INPUT" };
+    const stack = next.bag.crops.find((entry) => entry.item === key);
     if (stack === undefined || stack.qty < 1) return { ok: false, code: "NO_INPUT" };
     next.bag.crops = next.bag.crops
       .map((entry) => (entry === stack ? { ...entry, qty: entry.qty - 1 } : entry))
       .filter((entry) => entry.qty > 0);
     const bonus = artisaningOutputBonus(next.skills.artisaning.level);
     if (definition.output.kind === "seeds") {
-      next.bag.seeds[seedId.id] =
-        (next.bag.seeds[seedId.id] ?? 0) +
+      const seed = seedId;
+      if (seed === undefined) return { ok: false, code: "NO_INPUT" };
+      next.bag.seeds[seed.id] =
+        (next.bag.seeds[seed.id] ?? 0) +
         Math.max(1, Math.round(seedMakerOutput(machine.level) * (1 + bonus)));
     } else {
+      const sell = seedId?.sell ?? fruitId?.sell ?? 0;
+      const star = definition.gradeByPrice === true ? driedStarForSell(sell) : 1;
       addProduct(
         next.bag.products,
         definition.output.product,
-        1,
+        star,
         Math.max(1, Math.round(converterOutput(machine.level) * (1 + bonus))),
       );
     }

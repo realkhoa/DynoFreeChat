@@ -559,6 +559,7 @@ export type ProductId =
   | "wool"
   | "roe"
   | "snailMeat"
+  | "dried"
   | "mayo"
   | "cheese"
   | "pickles"
@@ -643,6 +644,7 @@ export const PRODUCTS: readonly ProductDefinition[] = [
   { id: "wool", base: 1_000 },
   { id: "roe", base: 900 },
   { id: "snailMeat", base: 600 },
+  { id: "dried", base: 400 },
   // Warehouse outputs: value already includes the recipe multiplier.
   { id: "mayo", base: 1_600 },
   { id: "cheese", base: 12_000 },
@@ -652,7 +654,8 @@ export const PRODUCTS: readonly ProductDefinition[] = [
 ];
 
 /** Warehouse machine ids. */
-export type MachineId = "seedMaker" | "mayoMaker" | "cheesePress" | "pickleJar" | "oilPress" | "loom";
+export type MachineId =
+  "seedMaker" | "mayoMaker" | "cheesePress" | "pickleJar" | "oilPress" | "loom" | "dryer";
 
 /** One machine recipe. */
 export interface MachineDefinition {
@@ -668,6 +671,10 @@ export interface MachineDefinition {
   readonly multiplier: number;
   /** Cycles between two crafts. */
   readonly cooldownCycles: number;
+  /** Accepts tree fruit as well as crops (the dryer does). */
+  readonly allProduce?: boolean;
+  /** Derives the output star from the input's base sale price (the dryer). */
+  readonly gradeByPrice?: boolean;
 }
 
 /** Price of the warehouse itself. */
@@ -723,6 +730,15 @@ export const MACHINES: readonly MachineDefinition[] = [
     multiplier: 100,
     cooldownCycles: 2,
   },
+  {
+    id: "dryer",
+    input: { kind: "seedCrop" },
+    output: { kind: "product", product: "dried" },
+    multiplier: 8,
+    cooldownCycles: 3,
+    allProduce: true,
+    gradeByPrice: true,
+  },
 ];
 
 /** @brief Machine definition by id. */
@@ -746,6 +762,17 @@ export function seedMakerOutput(level: number): number {
 /** @brief Products a converter returns for one input at a level. */
 export function converterOutput(level: number): number {
   return Math.max(1, Math.min(MACHINE_MAX_LEVEL, level));
+}
+
+/**
+ * @brief Star the dryer stamps on dried goods, from the input's base value.
+ * @param sell Base sale price of the crop or fruit being dried.
+ * @details Every quadrupling of the input price adds one star, so a cheap
+ * carrot dries into one-star goods and ginseng or elderberry into five-star.
+ */
+export function driedStarForSell(sell: number): number {
+  const tier = Math.floor(Math.log2(Math.max(1, sell) / 25)) + 1;
+  return Math.max(1, Math.min(5, tier));
 }
 
 /** @brief Requirements of one machine craft. */
@@ -2341,9 +2368,24 @@ export function isRecoveryKey(value: unknown): value is string {
 }
 
 /** @brief Canonical effect order for bag keys and comparisons. */
+/** Most copies of one mutation a single fruit can carry. */
+export const MAX_EFFECT_STACK = 5;
+
+/**
+ * @brief Orders mutations by catalog order and keeps duplicates.
+ * @details Mutations stack: two Diamonds multiply the price twice. The only
+ * limit is {@link MAX_EFFECT_STACK} copies of the same mutation, so a long
+ * growing window cannot multiply without bound.
+ */
 export function canonicalEffects(effects: readonly EffectId[]): EffectId[] {
-  const unique = new Set(effects);
-  return EFFECTS.filter((effect) => unique.has(effect.id)).map((effect) => effect.id);
+  const counts = new Map<EffectId, number>();
+  for (const id of effects) counts.set(id, (counts.get(id) ?? 0) + 1);
+  const out: EffectId[] = [];
+  for (const effect of EFFECTS) {
+    const count = Math.min(MAX_EFFECT_STACK, counts.get(effect.id) ?? 0);
+    for (let copy = 0; copy < count; copy += 1) out.push(effect.id);
+  }
+  return out;
 }
 
 /** @brief Builds the bag key for one produce stack. */
@@ -2753,11 +2795,10 @@ export function rollEffectsFor(
   rng: () => number,
   bonus: Readonly<Partial<Record<EffectId, number>>> = {},
 ): EffectId[] {
-  const rolled = new Set<EffectId>();
-  for (const event of events) {
-    for (const id of rollEffects(event, rng, bonus)) rolled.add(id);
-  }
-  return canonicalEffects([...rolled]);
+  // Each event rolls independently, so two events can stack the same mutation.
+  const rolled: EffectId[] = [];
+  for (const event of events) rolled.push(...rollEffects(event, rng, bonus));
+  return canonicalEffects(rolled);
 }
 
 /** @brief Growth time under several simultaneous events. */
@@ -2817,13 +2858,13 @@ export function weatherEffects(kindId: string, slot: number, plantedAt: number, 
   const end = Math.max(plantedAt, until);
   const first = Math.floor((plantedAt - EPOCH_MS) / EVENT_WAVE_MS) + 1;
   const last = Math.floor((end - EPOCH_MS) / EVENT_WAVE_MS);
-  const effects = new Set<EffectId>();
+  const effects: EffectId[] = [];
   for (let wave = first; wave <= last && wave - first < 200; wave += 1) {
     const events = eventsAt(EPOCH_MS + wave * EVENT_WAVE_MS);
     const rng = createRng(hash32(`${kindId}:${slot}:${wave}`));
-    for (const id of rollEffectsFor(events, rng)) effects.add(id);
+    effects.push(...rollEffectsFor(events, rng));
   }
-  return canonicalEffects([...effects]);
+  return canonicalEffects(effects);
 }
 
 /** @brief All mutations on a crop: manual ones plus accumulated weather. */

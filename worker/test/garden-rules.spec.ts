@@ -12,6 +12,7 @@ import {
   EPOCH_MS,
   EVENT_WAVE_MS,
   FARM_CYCLE_MS,
+  cropSellPrice,
   eventsAt,
   nextTabPrice,
   resolvedCropEffects,
@@ -842,6 +843,79 @@ describe("garden ledger rules", () => {
     expect(crafted.ok).toBe(true);
     if (!crafted.ok) return;
     expect(crafted.ledger.bag.products).toEqual([{ product: "mayo", star: 2, qty: 1 }]);
+  });
+
+  it("stacks copies of the same mutation on one fruit", () => {
+    const ledger = makeLedger();
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW - 5 * 60_000,
+      readyAt: NOW - 1_000,
+      effects: ["diamond", "diamond"],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const harvested = run(ledger, { kind: "harvest", slot: 0, tree: false });
+    expect(harvested.ok).toBe(true);
+    if (!harvested.ok) return;
+    const stack = harvested.ledger.bag.crops[0];
+    expect(stack?.effects.filter((id) => id === "diamond")).toHaveLength(2);
+    if (stack === undefined) return;
+    const doubled = cropSellPrice({ item: "carrot", effects: stack.effects, qty: 1 }, seasonFor(NOW));
+    const single = cropSellPrice({ item: "carrot", effects: ["diamond"], qty: 1 }, seasonFor(NOW));
+    expect(doubled).toBeGreaterThan(single * 8);
+  });
+
+  it("dries crops and fruit with a price-graded star", () => {
+    const ledger = makeLedger();
+    ledger.coins = 30_000_000;
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const dryer = run(built.ledger, { kind: "buildMachine", machine: "dryer" });
+    if (!dryer.ok) throw new Error("dryer failed");
+    dryer.ledger.bag.crops = [
+      { item: "carrot", effects: [], qty: 1 },
+      { item: "apple", effects: [], qty: 1 },
+    ];
+
+    const dried = run(dryer.ledger, { kind: "craftMachine", machine: "dryer", item: "carrot" });
+    expect(dried.ok).toBe(true);
+    if (!dried.ok) return;
+    expect(dried.ledger.bag.products).toEqual([{ product: "dried", star: 1, qty: 1 }]);
+
+    // The dryer runs on a three-cycle cooldown.
+    const early = run(dried.ledger, { kind: "craftMachine", machine: "dryer", item: "apple" });
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.code).toBe("MACHINE_COOLDOWN");
+
+    const fruit = run(
+      dried.ledger,
+      { kind: "craftMachine", machine: "dryer", item: "apple" },
+      NOW + 3 * FARM_CYCLE_MS,
+    );
+    expect(fruit.ok).toBe(true);
+    if (!fruit.ok) return;
+    expect(fruit.ledger.bag.products?.find((stack) => stack.star === 4)).toMatchObject({
+      product: "dried",
+      qty: 1,
+    });
+
+    // The seed maker still refuses fruit.
+    const seedMaker = run(fruit.ledger, { kind: "buildMachine", machine: "seedMaker" });
+    if (!seedMaker.ok) throw new Error("seed maker failed");
+    const refused = run(seedMaker.ledger, {
+      kind: "craftMachine",
+      machine: "seedMaker",
+      item: "apple",
+    });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.code).toBe("NO_INPUT");
   });
 
   it("sprays pesticide and harvests infested produce at half value", () => {

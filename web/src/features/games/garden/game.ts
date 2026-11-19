@@ -350,17 +350,24 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function effectBadge(effects: readonly EffectId[]): string {
     const strongest = strongestEffect(effects);
     if (strongest === null) return "";
-    return effects.length > 1
-      ? `${t(`effects.${strongest.id}`)}+${effects.length - 1}`
-      : t(`effects.${strongest.id}`);
+    const copies = effects.filter((id) => id === strongest.id).length;
+    const others = effects.length - copies;
+    const base = copies > 1 ? `${t(`effects.${strongest.id}`)} ×${copies}` : t(`effects.${strongest.id}`);
+    return others > 0 ? `${base}+${others}` : base;
   }
 
   /** @brief Full mutation summary for the detail panel, with the total. */
   function effectListText(effects: readonly EffectId[]): string {
     if (effects.length === 0) return t("garden.effectNone");
-    const parts = effects.map((id) => `${t(`effects.${id}`)} x${effectById(id)?.multiplier ?? 1}`);
+    const counts = new Map<EffectId, number>();
+    for (const id of effects) counts.set(id, (counts.get(id) ?? 0) + 1);
+    const parts = [...counts].map(([id, count]) => {
+      const label = t(`effects.${id}`);
+      const per = effectById(id)?.multiplier ?? 1;
+      return count > 1 ? `${label} ×${count} (x${per})` : `${label} x${per}`;
+    });
     const total = effectsMultiplier(effects);
-    return effects.length > 1 ? `${parts.join(", ")} = x${total}` : (parts[0] ?? "");
+    return effects.length > 1 ? `${parts.join(" + ")} = x${total}` : (parts[0] ?? "");
   }
 
   /** @brief Plots for the active mode. */
@@ -2502,20 +2509,26 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           panel.append(craft);
         } else {
           const allowed = machine.input.seeds;
+          const allowFruit = machine.allProduce === true;
           const items = (state.bag.crops ?? [])
-            .filter((stack) => seedById(stack.item) !== undefined)
+            .filter(
+              (stack) =>
+                seedById(stack.item) !== undefined || (allowFruit && treeById(stack.item) !== undefined),
+            )
             .filter((stack) => allowed === undefined || allowed.includes(stack.item as SeedId))
             .map((stack) => stack.item);
           panel.append(
             span(
               "garden-hint",
-              allowed === undefined
-                ? t("warehouse.pickCrop")
-                : `${t("warehouse.needs")}: ${allowed.map((seed) => seedName(seed)).join(", ")}`,
+              allowed !== undefined
+                ? `${t("warehouse.needs")}: ${allowed.map((seed) => seedName(seed)).join(", ")}`
+                : allowFruit
+                  ? t("warehouse.pickProduce")
+                  : t("warehouse.pickCrop"),
             ),
           );
           for (const item of new Set(items)) {
-            const craft = actionButton(`[ ${seedName(item as SeedId)} ]`, "craftMachine");
+            const craft = actionButton(`[ ${itemName(item)} ]`, "craftMachine");
             craft.dataset.machine = machine.id;
             craft.dataset.item = item;
             craft.disabled = remaining > 0;
