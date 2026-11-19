@@ -1217,7 +1217,7 @@ describe("bulk supplies", () => {
     mounted.push(game);
 
     const quick = host.querySelectorAll<HTMLButtonElement>('[data-act="pickAllSupply"]')[0];
-    expect(quick?.textContent).toContain("Bulk Fertilize");
+    expect(quick?.textContent).toContain("Bón phân hàng loạt");
     quick?.click();
     await settle();
 
@@ -1409,9 +1409,9 @@ describe("levels tab", () => {
     host.querySelector<HTMLButtonElement>('[data-act="tab:levels"]')?.click();
     await settle();
     const text = host.querySelector(".garden-levels")?.textContent ?? "";
-    expect(text).toContain("Farming");
-    expect(text).toContain("Ranching");
-    expect(text).toContain("Artisaning");
+    expect(text).toContain("Trồng trọt");
+    expect(text).toContain("Chăn nuôi");
+    expect(text).toContain("Chế biến");
     expect(text).toContain("Lv 0/10");
   });
 });

@@ -3022,7 +3022,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const value = cropSellPrice(stack, season) * stack.qty;
       const row = rowButton(
         "garden-market-row",
-        `${itemName(stack.item)} ${stack.star ?? 1}★ ${fitText(effectBadge(stack.effects), 8)}${stack.pest === true ? "[sâu]" : ""}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
+        `${itemName(stack.item)} ${stack.star ?? 1}★ ${fitText(effectBadge(stack.effects), 8)}${stack.pest === true ? t("market.pestTag") : ""}${fitText(`x${stack.qty}`, 4)}${fitText(`${value}c`, 7)}[${t("market.sell")}]`,
         "sell",
       );
       row.dataset.item = stack.item;

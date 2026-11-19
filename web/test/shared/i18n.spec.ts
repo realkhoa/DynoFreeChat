@@ -5,7 +5,24 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EFFECTS, EVENTS } from "@dyno/shared/garden";
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  ACHIEVEMENTS,
+  ANIMALS,
+  EFFECTS,
+  EVENTS,
+  FERTILIZERS,
+  MACHINES,
+  PET_RARITY_ODDS,
+  PETS,
+  PRODUCTS,
+  SEEDS,
+  SPRAYS,
+  TOOLS,
+  TREES,
+} from "@dyno/shared/garden";
+import { DICTIONARIES } from "@/shared/i18n/dictionary";
 import {
   detectLocale,
   formatDuration,
@@ -95,7 +112,7 @@ describe("translation", () => {
   });
 
   it("translates Vietnamese by default and switches to English", () => {
-    expect(t("tabs.garden")).toBe("garden");
+    expect(t("tabs.garden")).toBe("vườn");
     expect(t("garden.coins")).toBe("coin");
     setLocale("en");
     expect(t("garden.coins")).toBe("coins");
@@ -163,5 +180,100 @@ describe("garden catalog strings", () => {
       }
     }
     setLocale("vi");
+  });
+});
+
+/** Walks every .ts file under a directory. */
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) return sourceFiles(path);
+    return entry.name.endsWith(".ts") ? [path] : [];
+  });
+}
+
+describe("dictionary completeness", () => {
+  const vi = DICTIONARIES.vi as Record<string, string>;
+  const en = DICTIONARIES.en as Record<string, string>;
+
+  it("keeps both locales in sync with non-empty strings", () => {
+    expect(Object.keys(vi).sort()).toEqual(Object.keys(en).sort());
+    for (const [key, value] of Object.entries(vi)) {
+      expect(value.trim(), `vi ${key}`).not.toBe("");
+      expect(en[key]?.trim(), `en ${key}`).not.toBe("");
+    }
+  });
+
+  it("translates every catalog id", () => {
+    const keys: string[] = [];
+    for (const seed of SEEDS) keys.push(`seeds.${seed.id}`, `seeds.${seed.id}.short`);
+    for (const tree of TREES) keys.push(`trees.${tree.id}`, `trees.${tree.id}.short`);
+    for (const effect of EFFECTS) keys.push(`effects.${effect.id}`);
+    for (const event of EVENTS) keys.push(`events.${event.id}`, `events.${event.id}.desc`);
+    for (const supply of [...FERTILIZERS, ...SPRAYS]) keys.push(`supplies.${supply.id}`);
+    for (const tool of TOOLS) keys.push(`tools.${tool.id}`);
+    for (const animal of ANIMALS) keys.push(`animals.${animal.id}`);
+    for (const product of PRODUCTS) keys.push(`products.${product.id}`);
+    for (const machine of MACHINES) keys.push(`machines.${machine.id}`);
+    for (const pet of PETS) keys.push(`pets.${pet.id}`);
+    for (const rarity of Object.keys(PET_RARITY_ODDS)) keys.push(`petRarity.${rarity}`);
+    for (const achievement of ACHIEVEMENTS) keys.push(`achievements.${achievement.id}`);
+    for (const skill of ["farming", "ranching", "artisaning"]) {
+      keys.push(`skills.${skill}`, `skills.${skill}.desc`);
+    }
+    for (const trait of ["lazy", "slow", "clumsy", "greedy", "diligent", "greenThumb"]) {
+      keys.push(`staffTrait.${trait}`);
+    }
+    for (const role of ["gardener", "waterer"]) keys.push(`staffRole.${role}`);
+    for (const tab of [
+      "garden",
+      "market",
+      "event",
+      "chart",
+      "bots",
+      "rank",
+      "farm",
+      "warehouse",
+      "extras",
+      "levels",
+    ]) {
+      keys.push(`tabs.${tab}`);
+    }
+    for (const phase of ["day", "dusk", "night", "dawn"]) keys.push(`phase.${phase}`);
+
+    for (const key of keys) {
+      expect(vi[key], `vi ${key}`).toBeTruthy();
+      expect(en[key], `en ${key}`).toBeTruthy();
+    }
+  });
+
+  it("translates every literal t() key used by the web app", () => {
+    const source = sourceFiles(resolve(process.cwd(), "src")).filter(
+      (path) => !path.endsWith("dictionary.ts"),
+    );
+    const keys = new Set<string>();
+    for (const path of source) {
+      const text = readFileSync(path, "utf8");
+      for (const match of text.matchAll(/\bt\(\s*["'`]([^"'`$]+)["'`]/g)) {
+        if (match[1] !== undefined) keys.add(match[1]);
+      }
+    }
+    for (const key of keys) {
+      expect(vi[key], `vi ${key}`).toBeTruthy();
+      expect(en[key], `en ${key}`).toBeTruthy();
+    }
+  });
+
+  it("translates every garden error code", () => {
+    const path = resolve(process.cwd(), "../shared/src/garden.ts");
+    const text = readFileSync(path, "utf8");
+    const block = text.match(/export type GardenErrorCode =([\s\S]*?);/);
+    expect(block).not.toBeNull();
+    const codes = [...(block?.[1] ?? "").matchAll(/"([A-Z_]+)"/g)].map((match) => match[1]);
+    expect(codes.length).toBeGreaterThan(0);
+    for (const code of codes) {
+      expect(vi[`errors.${code}`], `vi errors.${code}`).toBeTruthy();
+      expect(en[`errors.${code}`], `en errors.${code}`).toBeTruthy();
+    }
   });
 });
