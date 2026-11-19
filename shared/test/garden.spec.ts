@@ -946,6 +946,24 @@ describe("garden wire parsing", () => {
       slot: 26,
     });
     expect(parseGardenAction({ kind: "waterSpecial", slot: 27 })).toBeNull();
+    expect(parseGardenAction({ kind: "giftCoins", code: "abcdef", amount: 500 })).toEqual({
+      kind: "giftCoins",
+      code: "ABCDEF",
+      amount: 500,
+    });
+    expect(parseGardenAction({ kind: "giftCoins", code: "ABCDEF", amount: 0 })).toBeNull();
+    expect(parseGardenAction({ kind: "giftSeed", code: "ABCDEF", seed: "carrot", qty: 1 })).toEqual({
+      kind: "giftSeed",
+      code: "ABCDEF",
+      seed: "carrot",
+      qty: 1,
+    });
+    expect(parseGardenAction({ kind: "giftTool", code: "ABCDEF", tool: "shovel", qty: 1 })).toEqual({
+      kind: "giftTool",
+      code: "ABCDEF",
+      tool: "shovel",
+      qty: 1,
+    });
   });
 
   it("validates actions and rejects malformed ones", () => {

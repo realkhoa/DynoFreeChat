@@ -10,6 +10,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import {
+  ACTIONS_PER_MINUTE,
   GARDEN_PROTOCOL_VERSION,
   GUEST_WATER_CUT_RATIO,
   CROPS_PER_TAB,
@@ -24,6 +25,9 @@ import {
   applyBuyMarket,
   applyMarket,
   seasonAt,
+  seedById,
+  supplyById,
+  toolById,
   SOIL_START,
   SPECIAL_PATCHES,
   SPECIAL_PLOTS_PER_PATCH,
@@ -86,6 +90,9 @@ export const MARKET_HEADER = "x-dyno-market";
 
 /** Internal header that authorises a bot automation tick. */
 export const BOT_HEADER = "x-dyno-bot-tick";
+
+/** Internal header used for gift transfers between two Garden objects. */
+export const GIFT_HEADER = "x-dyno-gift";
 
 /** Owners seen less than this long ago count as online visitors see it. */
 export const ONLINE_WINDOW_MS = 30_000;
@@ -400,6 +407,7 @@ export class Garden extends DurableObject<Env> {
 
     if (request.method === "POST" && url.pathname === "/register") return this.register(request);
     if (request.method === "POST" && url.pathname === "/bot-tick") return this.botTick(request);
+    if (request.method === "POST" && url.pathname === "/gift") return this.giftInbox(request);
     if (request.method === "GET" && url.pathname === "/state") return this.state(request);
     if (request.method === "POST" && url.pathname === "/act") return this.act(request);
     if (request.method === "GET" && url.pathname === "/snapshot") return this.snapshot();
@@ -982,6 +990,15 @@ export class Garden extends DurableObject<Env> {
     if (action === null) return json({ code: "BAD_REQUEST" }, 400);
 
     const now = Date.now();
+    // Gifts move value between two gardens, so they cannot be a pure rule.
+    if (
+      action.kind === "giftCoins" ||
+      action.kind === "giftSeed" ||
+      action.kind === "giftSupply" ||
+      action.kind === "giftTool"
+    ) {
+      return this.sendGift(ledger, action, now, request);
+    }
     const season = this.seasonFor(request, now);
     // Machines settle after the action, so an explicit collect still finds its
     // finished job; state reads settle them anyway.
@@ -1011,6 +1028,123 @@ export class Garden extends DurableObject<Env> {
       sold: soldDiff(ledger.bag.crops, finalLedger.bag.crops),
       bought: boughtDiff(action),
     });
+  }
+
+  /**
+   * @brief Moves coins or goods from this garden to another one.
+   * @details The recipient is resolved through the hub's code table, credited
+   * first, and only then debited here so a failed transfer never creates value.
+   */
+  private async sendGift(
+    ledger: GardenLedger,
+    action: Extract<GardenAction, { kind: "giftCoins" | "giftSeed" | "giftSupply" | "giftTool" }>,
+    now: number,
+    request: Request,
+  ): Promise<Response> {
+    if (action.code === ledger.code) return json({ code: "GIFT_SELF" }, 400);
+
+    const hub = this.env.GARDEN_HUB.get(this.env.GARDEN_HUB.idFromName(HUB_NAME));
+    const found = await hub.fetch(`https://hub/by-code?code=${encodeURIComponent(action.code)}`);
+    if (!found.ok) return json({ code: "BAD_CODE" }, 400);
+    const target = (await found.json()) as { playerId?: unknown };
+    if (typeof target.playerId !== "string" || target.playerId.length === 0) {
+      return json({ code: "BAD_CODE" }, 400);
+    }
+
+    const next = structuredClone(ledger);
+    let payload: Record<string, unknown>;
+    if (action.kind === "giftCoins") {
+      if (next.coins < action.amount) return json({ code: "NOT_ENOUGH_COINS" }, 400);
+      next.coins -= action.amount;
+      payload = { kind: "coins", amount: action.amount };
+    } else if (action.kind === "giftSeed") {
+      const owned = next.bag.seeds[action.seed] ?? 0;
+      if (owned < action.qty) return json({ code: "NO_SEED" }, 400);
+      next.bag.seeds[action.seed] = owned - action.qty;
+      payload = { kind: "seed", id: action.seed, qty: action.qty };
+    } else if (action.kind === "giftSupply") {
+      const owned = next.bag.supplies[action.supply] ?? 0;
+      if (owned < action.qty) return json({ code: "NO_SUPPLY" }, 400);
+      next.bag.supplies[action.supply] = owned - action.qty;
+      payload = { kind: "supply", id: action.supply, qty: action.qty };
+    } else {
+      const tools = (next.bag.tools ??= {});
+      const owned = tools[action.tool] ?? 0;
+      if (owned < action.qty) return json({ code: "NO_TOOL" }, 400);
+      tools[action.tool] = owned - action.qty;
+      payload = { kind: "tool", id: action.tool, qty: action.qty };
+    }
+
+    const inbox = this.env.GARDEN.get(this.env.GARDEN.idFromName(target.playerId));
+    const delivered = await inbox.fetch("https://garden/gift", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        [GIFT_HEADER]: this.env.BOT_SECRET ?? "",
+      },
+      body: JSON.stringify({ ...payload, fromCode: ledger.code, fromNick: ledger.nick }),
+    });
+    if (!delivered.ok) {
+      const body = (await delivered.json()) as { code?: unknown };
+      return json({ code: typeof body.code === "string" ? body.code : "BAD_REQUEST" }, delivered.status);
+    }
+
+    next.rev += 1;
+    next.updatedAt = now;
+    next.lastSeen = now;
+    this.write(next);
+    if (action.kind === "giftCoins") await this.publish(next);
+    const season = this.seasonFor(request, now);
+    return json({
+      state: this.snapshotWithStock(next, season),
+      season,
+      serverNow: now,
+    });
+  }
+
+  /** @brief Credits one incoming gift; internal gardens only. */
+  private async giftInbox(request: Request): Promise<Response> {
+    const secret = this.env.BOT_SECRET;
+    if (secret !== undefined && secret.length > 0 && request.headers.get(GIFT_HEADER) !== secret) {
+      return json({ code: "UNAUTHORIZED" }, 401);
+    }
+    const ledger = this.read();
+    if (ledger === null) return json({ code: "NO_GARDEN" }, 404);
+
+    const body = await readJson(request);
+    const kind = body.kind;
+    const now = Date.now();
+    const next = structuredClone(ledger);
+    if (kind === "coins") {
+      const amount = body.amount;
+      if (typeof amount !== "number" || !Number.isInteger(amount) || amount < 1) {
+        return json({ code: "BAD_REQUEST" }, 400);
+      }
+      next.coins += amount;
+    } else if (kind === "seed" || kind === "supply" || kind === "tool") {
+      const id = typeof body.id === "string" ? body.id : "";
+      const qty = body.qty;
+      if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 99) {
+        return json({ code: "BAD_REQUEST" }, 400);
+      }
+      if (kind === "seed") {
+        if (seedById(id) === undefined) return json({ code: "BAD_REQUEST" }, 400);
+        next.bag.seeds[id as SeedId] = (next.bag.seeds[id as SeedId] ?? 0) + qty;
+      } else if (kind === "supply") {
+        if (supplyById(id) === undefined) return json({ code: "BAD_REQUEST" }, 400);
+        next.bag.supplies[id as SupplyId] = (next.bag.supplies[id as SupplyId] ?? 0) + qty;
+      } else {
+        if (toolById(id) === undefined) return json({ code: "BAD_REQUEST" }, 400);
+        next.bag.tools = { ...(next.bag.tools ?? {}) };
+        next.bag.tools[id as ToolId] = (next.bag.tools[id as ToolId] ?? 0) + qty;
+      }
+    } else {
+      return json({ code: "BAD_REQUEST" }, 400);
+    }
+    next.rev += 1;
+    next.updatedAt = now;
+    this.write(next);
+    return json({ ok: true });
   }
 
   /** @brief Renames the player without touching the garden identity. */

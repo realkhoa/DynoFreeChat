@@ -102,6 +102,7 @@ import {
   type SeedId,
   type SprayId,
   type SupplyId,
+  type ToolId,
   type TreeId,
   type TreeState,
   type VisitSnapshot,
@@ -219,6 +220,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let moveSource: { slot: number; area: "crop" | "tree" } | null = null;
   let machineMenu: { id: MachineId; x: number; y: number; anchorTop: number } | null = null;
   let specialPicker: number | null = null;
+  let giftCode = "";
+  let giftAmount = "1000";
   let buyQty = 1;
   type GardenTool =
     { kind: "fertilize" | "spray"; supply: SupplyId } | { kind: "plant"; seed: SeedId } | { kind: "water" };
@@ -3073,6 +3076,48 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (extras.wheelLast.length > 0)
       wrap.append(lineBlock(`// ${t("extras.wheelLast")}: ${extras.wheelLast}`));
 
+    wrap.append(lineBlock(`// ${t("gift.title")}`));
+    const giftRow = div("garden-restore-row");
+    const giftCodeInput = document.createElement("input");
+    giftCodeInput.type = "text";
+    giftCodeInput.className = "stage-input garden-gift-code";
+    giftCodeInput.placeholder = t("gift.code");
+    giftCodeInput.value = giftCode;
+    giftCodeInput.dataset.role = "giftCode";
+    giftCodeInput.setAttribute("aria-label", t("gift.code"));
+    const giftAmountInput = document.createElement("input");
+    giftAmountInput.type = "number";
+    giftAmountInput.min = "1";
+    giftAmountInput.className = "stage-input garden-gift-amount";
+    giftAmountInput.placeholder = t("gift.amount");
+    giftAmountInput.value = giftAmount;
+    giftAmountInput.dataset.role = "giftAmount";
+    giftAmountInput.setAttribute("aria-label", t("gift.amount"));
+    giftRow.append(giftCodeInput, giftAmountInput, actionButton(t("gift.sendCoins"), "giftCoins"));
+    wrap.append(giftRow);
+
+    const giftGoods = div("garden-tools");
+    giftGoods.append(span("garden-hint", t("gift.goods")));
+    for (const [seed, qty] of Object.entries(state.bag.seeds)) {
+      if ((qty ?? 0) < 1) continue;
+      const button = actionButton(`${seedName(seed as SeedId)} ×1`, "giftSeed");
+      button.dataset.seed = seed;
+      giftGoods.append(button);
+    }
+    for (const [supply, qty] of Object.entries(state.bag.supplies)) {
+      if ((qty ?? 0) < 1) continue;
+      const button = actionButton(`${t(`supplies.${supply}`)} ×1`, "giftSupply");
+      button.dataset.supply = supply;
+      giftGoods.append(button);
+    }
+    for (const [tool, qty] of Object.entries(state.bag.tools ?? {})) {
+      if ((qty ?? 0) < 1) continue;
+      const button = actionButton(`${t(`tools.${tool}`)} ×1`, "giftTool");
+      button.dataset.tool = tool;
+      giftGoods.append(button);
+    }
+    wrap.append(giftGoods);
+
     wrap.append(lineBlock(`// ${t("staff.market")}`));
     for (const candidate of staffMarketAt(state.playerId, at)) {
       const traits = candidate.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
@@ -4222,6 +4267,43 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       case "staffMenuGardener":
       case "staffMenuWaterer":
+      case "giftCoins": {
+        const code = giftCode.trim().toUpperCase();
+        const amount = Number(giftAmount);
+        if (code.length === 0) {
+          message = { text: t("gift.noCode"), kind: "err" };
+          render();
+          return;
+        }
+        if (!Number.isInteger(amount) || amount < 1) {
+          message = { text: t("gift.badAmount"), kind: "err" };
+          render();
+          return;
+        }
+        void runAction(
+          { kind: "giftCoins", code, amount },
+          t("gift.sentCoins", { amount: formatNumber(amount) }),
+        );
+        return;
+      }
+      case "giftSeed":
+      case "giftSupply":
+      case "giftTool": {
+        const code = giftCode.trim().toUpperCase();
+        if (code.length === 0) {
+          message = { text: t("gift.noCode"), kind: "err" };
+          render();
+          return;
+        }
+        const action: GardenAction =
+          target.dataset.act === "giftSeed"
+            ? { kind: "giftSeed", code, seed: target.dataset.seed as SeedId, qty: 1 }
+            : target.dataset.act === "giftSupply"
+              ? { kind: "giftSupply", code, supply: target.dataset.supply as SupplyId, qty: 1 }
+              : { kind: "giftTool", code, tool: target.dataset.tool as ToolId, qty: 1 };
+        void runAction(action, t("gift.sent"));
+        return;
+      }
       case "staffList": {
         const rect = target.getBoundingClientRect();
         openStaffMenu("list", rect.left + 6, rect.bottom + 2, rect.top);
@@ -4479,6 +4561,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
     if (target.dataset.role === "restore") restoreDraft = target.value;
+    if (target.dataset.role === "giftCode") giftCode = target.value;
+    if (target.dataset.role === "giftAmount") giftAmount = target.value;
   }
 
   /** @brief Closes the context menu when the pointer lands outside it. */

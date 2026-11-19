@@ -420,6 +420,44 @@ describe("garden play", () => {
     expect(reloaded.state.shopStock[offer.seed]).toBe(offer.stock - 1);
   });
 
+  it("gifts coins and seeds to another garden", async () => {
+    const giver = await register("giver");
+    const receiver = await register("receiver", uniqueIp());
+
+    const coins = await act(giver, giver.state.rev, {
+      kind: "giftCoins",
+      code: receiver.state.code,
+      amount: 10,
+    });
+    expect(coins.status).toBe(200);
+    const coinsState = (coins.payload as GardenActResponse).state;
+    expect(coinsState.coins).toBe(giver.state.coins - 10);
+
+    const receiverAfterCoins = await readState(receiver);
+    expect(receiverAfterCoins.state.coins).toBe(receiver.state.coins + 10);
+
+    const seeds = await act(giver, coinsState.rev, {
+      kind: "giftSeed",
+      code: receiver.state.code,
+      seed: "carrot",
+      qty: 1,
+    });
+    expect(seeds.status).toBe(200);
+    const seedsState = (seeds.payload as GardenActResponse).state;
+    expect(seedsState.bag.seeds.carrot).toBe((giver.state.bag.seeds.carrot ?? 0) - 1);
+
+    const receiverAfterSeed = await readState(receiver);
+    expect(receiverAfterSeed.state.bag.seeds.carrot).toBe((receiver.state.bag.seeds.carrot ?? 0) + 1);
+
+    const self = await act(giver, seedsState.rev, {
+      kind: "giftCoins",
+      code: giver.state.code,
+      amount: 1,
+    });
+    expect(self.status).toBe(400);
+    expect(self.payload).toMatchObject({ code: "GIFT_SELF" });
+  });
+
   it("refuses a tab it cannot afford and an unripe harvest", async () => {
     const registered = await register();
     const patch = await act(registered, registered.state.rev, { kind: "buyTab" });

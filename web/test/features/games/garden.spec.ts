@@ -1438,6 +1438,43 @@ describe("staff", () => {
     expect(menu?.textContent).toContain("việc/chu kỳ");
   });
 
+  it("gifts coins and items from the extras tab", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 5_000,
+        bag: { seeds: { carrot: 2 }, crops: [], supplies: { compost: 1 } },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:extras"]')?.click();
+    await settle();
+
+    const code = host.querySelector<HTMLInputElement>(".garden-gift-code");
+    expect(code).not.toBeNull();
+    if (code !== null) {
+      code.value = "abcdef";
+      code.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="giftCoins"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "giftCoins")?.action).toMatchObject({
+      kind: "giftCoins",
+      code: "ABCDEF",
+      amount: 1000,
+    });
+
+    host.querySelector<HTMLButtonElement>('[data-act="giftSeed"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "giftSeed")?.action).toMatchObject({
+      kind: "giftSeed",
+      code: "ABCDEF",
+      seed: "carrot",
+      qty: 1,
+    });
+  });
+
   it("shows a staff slot in the garden and hires from the extras tab", async () => {
     const api = new FakeGardenApi(makeState({ coins: 1_000_000 }));
     const { host, game } = await mountGame(api);

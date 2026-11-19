@@ -2353,7 +2353,16 @@ export type GardenAction =
   | { readonly kind: "collectMachine"; readonly machine: MachineId }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
-  | { readonly kind: "sellAll" };
+  | { readonly kind: "sellAll" }
+  | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
+  | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
+  | {
+      readonly kind: "giftSupply";
+      readonly code: string;
+      readonly supply: SupplyId;
+      readonly qty: number;
+    }
+  | { readonly kind: "giftTool"; readonly code: string; readonly tool: ToolId; readonly qty: number };
 
 /** Error codes; the client localizes them, the server never sends prose. */
 export type GardenErrorCode =
@@ -2407,7 +2416,8 @@ export type GardenErrorCode =
   | "NO_PET"
   | "STAFF_FULL"
   | "NO_CANDIDATE"
-  | "CANNOT_VISIT_SELF";
+  | "CANNOT_VISIT_SELF"
+  | "GIFT_SELF";
 
 /** Successful response to a garden action. */
 export interface GardenActResponse {
@@ -2854,6 +2864,31 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const item = typeof value.item === "string" ? itemById(value.item) : undefined;
     if (item === undefined) return null;
     return { kind, machine: machine.id, item: item.id as ItemId };
+  }
+  if (kind === "giftCoins") {
+    const code = typeof value.code === "string" ? value.code.toUpperCase() : "";
+    const amount = value.amount;
+    if (!isGardenCode(code)) return null;
+    if (typeof amount !== "number" || !Number.isInteger(amount) || amount < 1 || amount > 1_000_000_000_000) {
+      return null;
+    }
+    return { kind, code, amount };
+  }
+  if (kind === "giftSeed" || kind === "giftSupply" || kind === "giftTool") {
+    const code = typeof value.code === "string" ? value.code.toUpperCase() : "";
+    if (!isGardenCode(code)) return null;
+    const qty = value.qty;
+    if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 99) return null;
+    if (kind === "giftSeed") {
+      const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+      return seed === undefined ? null : { kind, code, seed: seed.id, qty };
+    }
+    if (kind === "giftSupply") {
+      const supply = typeof value.supply === "string" ? supplyById(value.supply) : undefined;
+      return supply === undefined ? null : { kind, code, supply: supply.id, qty };
+    }
+    const tool = typeof value.tool === "string" ? toolById(value.tool) : undefined;
+    return tool === undefined ? null : { kind, code, tool: tool.id, qty };
   }
   if (kind === "collectMachine") {
     const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
