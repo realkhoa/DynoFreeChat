@@ -1759,6 +1759,14 @@ export function dayIndexAt(now: number): number {
   return Math.floor((now - EPOCH_MS) / DAY_MS);
 }
 
+/** UTC+7 offset so the daily wheel resets at local midnight. */
+export const WHEEL_DAY_OFFSET_MS = 7 * 60 * 60_000;
+
+/** @brief Vietnam-local day index used by the daily lucky wheel. */
+export function wheelDayAt(now: number): number {
+  return Math.floor((now + WHEEL_DAY_OFFSET_MS - EPOCH_MS) / DAY_MS);
+}
+
 /** @brief Current contract rotation window. */
 export function contractWindowAt(now: number): number {
   return Math.floor((now - EPOCH_MS) / CONTRACT_WINDOW_MS);

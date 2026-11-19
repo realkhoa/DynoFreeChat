@@ -69,6 +69,7 @@ import {
   SPRAYS,
   SEEDS,
   dayIndexAt,
+  wheelDayAt,
   weekKeyAt,
   seasonAt,
   SOIL_STEP,
@@ -377,7 +378,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     wheelSpins: 0,
     wheelPity: 0,
     wheelLast: "",
-    wheelDay: dayIndexAt(input.now),
+    wheelDay: wheelDayAt(input.now),
     futures: [],
     contractClaims: [],
     merchantClaims: [],
@@ -1896,7 +1897,7 @@ function equipPet(ledger: GardenLedger, pet: PetId, now: number): RuleResult {
 
 /** @brief Spins the lucky wheel; one rare seed every twenty spins guaranteed. */
 function spinWheel(ledger: GardenLedger, now: number): RuleResult {
-  const day = dayIndexAt(now);
+  const day = wheelDayAt(now);
   const spin = ledger.wheelDay === day ? ledger.wheelSpins : 0;
   const cost = wheelCost(spin);
   if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
@@ -2187,7 +2188,7 @@ export function settleExtras(ledger: GardenLedger, now: number): GardenLedger {
   const next = clone(ledger);
 
   // The wheel counter resets at midnight: fresh spins, fresh doubling.
-  const today = dayIndexAt(now);
+  const today = wheelDayAt(now);
   if (next.wheelDay !== today) {
     next.wheelDay = today;
     next.wheelSpins = 0;
