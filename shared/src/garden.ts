@@ -32,6 +32,15 @@ export const STARTING_TABS = 1;
 /** Hard cap on bought tabs, so the garden stays bounded. */
 export const MAX_TABS = 4;
 
+/** Special garden: three premium patches of nine plots each. */
+export const SPECIAL_PATCHES = 3;
+export const SPECIAL_PLOTS_PER_PATCH = 9;
+export const SPECIAL_SLOTS = SPECIAL_PATCHES * SPECIAL_PLOTS_PER_PATCH;
+/** Coins charged to open one special patch. */
+export const SPECIAL_PATCH_PRICE = 10_000_000_000;
+/** Coins charged to open one special plot inside an owned patch. */
+export const SPECIAL_PLOT_PRICE = 1_000_000_000;
+
 /** Price of the first bought crop patch inside a tab, in coins. */
 export const PATCH_BASE_PRICE = 5_000;
 
@@ -1733,6 +1742,12 @@ export interface GardenSnapshot {
   readonly farmSettledAt: number;
   /** Fish pond growth in percent, `0..100`; every ten cycles adds ten. */
   readonly pondGrowth: number;
+  /** Owned special patches, `0..SPECIAL_PATCHES`. */
+  readonly specialPatches: number;
+  /** Unlocked plots per owned special patch, `0..SPECIAL_PLOTS_PER_PATCH`. */
+  readonly specialUnlocked: readonly number[];
+  /** Special plots outside the normal crop grid; never auto-sold. */
+  readonly specialPlots: readonly (PlotState | null)[];
   /** Warehouse and built machines. */
   readonly warehouse: WarehouseState;
   /** Fertility percent per crop cell, index = absolute slot. */
@@ -1775,6 +1790,12 @@ export interface VisitSnapshot {
   readonly animals: Readonly<Record<BuildingId, readonly (AnimalState | null)[]>>;
   /** Fish pond growth in percent, `0..100`. */
   readonly pondGrowth: number;
+  /** Owned special patches. */
+  readonly specialPatches: number;
+  /** Unlocked plots per owned special patch. */
+  readonly specialUnlocked: readonly number[];
+  /** Special plots outside the normal crop grid. */
+  readonly specialPlots: readonly (PlotState | null)[];
   /** Warehouse and its machines. */
   readonly warehouse: WarehouseState;
   /** Fertility percent per crop cell. */
@@ -2155,6 +2176,12 @@ export type GardenAction =
   | { readonly kind: "toggleFavorite"; readonly slot: number; readonly tree: boolean }
   | { readonly kind: "buyTab" }
   | { readonly kind: "buyPatch"; readonly tab: number }
+  | { readonly kind: "buySpecialPatch"; readonly patch: number }
+  | { readonly kind: "buySpecialPlot"; readonly patch: number }
+  | { readonly kind: "plantSpecial"; readonly slot: number; readonly seed: SeedId }
+  | { readonly kind: "harvestSpecial"; readonly slot: number }
+  | { readonly kind: "waterSpecial"; readonly slot: number }
+  | { readonly kind: "uprootSpecial"; readonly slot: number }
   | { readonly kind: "waterAll" }
   | { readonly kind: "harvestAll" }
   | { readonly kind: "buildBuilding"; readonly building: BuildingId }
@@ -2617,6 +2644,35 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
       pest: value.pest === true,
       qty,
     };
+  }
+  if (kind === "buySpecialPatch") {
+    const patch = value.patch;
+    if (typeof patch !== "number" || !Number.isInteger(patch) || patch < 0 || patch >= SPECIAL_PATCHES) {
+      return null;
+    }
+    return { kind, patch };
+  }
+  if (kind === "buySpecialPlot") {
+    const patch = value.patch;
+    if (typeof patch !== "number" || !Number.isInteger(patch) || patch < 0 || patch >= SPECIAL_PATCHES) {
+      return null;
+    }
+    return { kind, patch };
+  }
+  if (kind === "plantSpecial") {
+    const slot = value.slot;
+    const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= SPECIAL_SLOTS) {
+      return null;
+    }
+    return seed === undefined ? null : { kind, slot, seed: seed.id };
+  }
+  if (kind === "harvestSpecial" || kind === "waterSpecial" || kind === "uprootSpecial") {
+    const slot = value.slot;
+    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= SPECIAL_SLOTS) {
+      return null;
+    }
+    return { kind, slot };
   }
   if (kind === "buyTab") return { kind };
   if (kind === "buildWarehouse") return { kind };

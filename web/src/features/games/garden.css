@@ -81,6 +81,55 @@
   align-items: flex-start;
 }
 
+/* Premium plots above the boards; nothing here is auto-sold. */
+.garden-special {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 0 8px;
+}
+
+.garden-special-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.garden-special-patch {
+  width: 22px;
+  color: #6a9955;
+  font: 9.5px/13px var(--font-mono);
+}
+
+.garden-special-cell {
+  padding: 1px 5px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 2px;
+  color: #d4d4d4;
+  font: 9.5px/14px var(--font-mono);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.garden-special-cell:hover {
+  background: var(--hover-row);
+}
+
+.garden-special-cell.is-empty {
+  color: #4b4b4b;
+}
+
+.garden-special-cell.is-locked {
+  color: #6a9955;
+}
+
+.garden-special-cell.is-ready {
+  color: #6fe3b5;
+  animation: garden-blink 1.1s step-end infinite;
+}
+
 /* Right rail: bag contents, upgrade levels and live garden status. */
 .garden-side {
   flex: 0 0 214px;
@@ -1034,7 +1083,8 @@
 .game-stage-host[data-stealth="on"] .garden-cell.is-glimmering,
 .game-stage-host[data-stealth="on"] .garden-cell.is-twisted,
 .game-stage-host[data-stealth="on"] .garden-cell.is-diamond,
-.game-stage-host[data-stealth="on"] .garden-cell.is-burnt {
+.game-stage-host[data-stealth="on"] .garden-cell.is-burnt,
+.game-stage-host[data-stealth="on"] .garden-special-cell {
   color: #bdbdbd !important;
   text-shadow: none;
 }

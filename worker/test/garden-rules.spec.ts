@@ -12,6 +12,8 @@ import {
   EPOCH_MS,
   EVENT_WAVE_MS,
   FARM_CYCLE_MS,
+  SPECIAL_PATCH_PRICE,
+  SPECIAL_PLOT_PRICE,
   cropSellPrice,
   eventsAt,
   nextTabPrice,
@@ -493,6 +495,47 @@ describe("garden ledger rules", () => {
     if (!meat.ok) throw new Error("sell failed");
     expect(meat.ledger.animals.pond[0]).toBeNull();
     expect(meat.ledger.coins).toBeGreaterThan(before);
+  });
+
+  it("opens special patches and keeps their crops out of bulk work", () => {
+    const ledger = makeLedger();
+    ledger.coins = 100_000_000_000;
+    const patch = run(ledger, { kind: "buySpecialPatch", patch: 0 });
+    expect(patch.ok).toBe(true);
+    if (!patch.ok) return;
+    expect(patch.ledger.specialPatches).toBe(1);
+    expect(patch.ledger.coins).toBe(100_000_000_000 - SPECIAL_PATCH_PRICE);
+
+    // Patches open in order and plots one by one.
+    expect(run(patch.ledger, { kind: "buySpecialPatch", patch: 2 }).ok).toBe(false);
+    expect(run(patch.ledger, { kind: "plantSpecial", slot: 0, seed: "carrot" }).ok).toBe(false);
+
+    const plot = run(patch.ledger, { kind: "buySpecialPlot", patch: 0 });
+    expect(plot.ok).toBe(true);
+    if (!plot.ok) return;
+    expect(plot.ledger.specialUnlocked[0]).toBe(1);
+    expect(plot.ledger.coins).toBe(patch.ledger.coins - SPECIAL_PLOT_PRICE);
+
+    const planted = run(plot.ledger, { kind: "plantSpecial", slot: 0, seed: "carrot" });
+    expect(planted.ok).toBe(true);
+    if (!planted.ok) return;
+    expect(planted.ledger.specialPlots[0]?.seed).toBe("carrot");
+    expect(planted.ledger.plots[0]).toBeNull();
+
+    const crop = planted.ledger.specialPlots[0];
+    if (crop === null || crop === undefined) throw new Error("special crop missing");
+    const harvested = run(planted.ledger, { kind: "harvestSpecial", slot: 0 }, crop.readyAt);
+    expect(harvested.ok).toBe(true);
+    if (!harvested.ok) return;
+    expect(harvested.ledger.bag.crops.some((stack) => stack.item === "carrot")).toBe(true);
+    expect(harvested.ledger.specialPlots[0]).toBeNull();
+
+    // Bulk harvest ignores the premium board entirely.
+    const ripe = { ...crop, readyAt: NOW - 1_000 };
+    const withRipe = { ...harvested.ledger, specialPlots: [ripe, ...harvested.ledger.specialPlots.slice(1)] };
+    const bulk = run(withRipe, { kind: "harvestAll" });
+    expect(bulk.ok).toBe(false);
+    if (!bulk.ok) expect(bulk.code).toBe("NOTHING_TO_DO");
   });
 
   it("fertilizes the whole garden and bills per plant without bag stock", () => {

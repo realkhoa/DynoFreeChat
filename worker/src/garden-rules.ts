@@ -17,6 +17,11 @@ import {
   STARTING_SEEDS,
   TREES_PER_TAB,
   FARM_CYCLE_MS,
+  SPECIAL_PATCHES,
+  SPECIAL_PATCH_PRICE,
+  SPECIAL_PLOTS_PER_PATCH,
+  SPECIAL_PLOT_PRICE,
+  SPECIAL_SLOTS,
   WATER_ALL_COST,
   SELL_TAX_RATE,
   SOIL_START,
@@ -221,6 +226,12 @@ export interface GardenLedger {
   pestSettledAt: number;
   /** Fertility percent per crop cell. */
   soil: number[];
+  /** Owned special patches (premium plots that never auto-sell). */
+  specialPatches: number;
+  /** Unlocked plots per special patch. */
+  specialUnlocked: number[];
+  /** Premium plots outside the normal crop grid. */
+  specialPlots: (PlotState | null)[];
   /** Last crop planted on each cell, for rotation. */
   lastCrop: (SeedId | null)[];
   /** Greenhouse level. */
@@ -338,6 +349,9 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     toolsSettledAt: input.now,
     pestSettledAt: input.now,
     soil: new Array<number>(totalCrops(STARTING_TABS)).fill(SOIL_START),
+    specialPatches: 0,
+    specialUnlocked: new Array<number>(SPECIAL_PATCHES).fill(0),
+    specialPlots: new Array<PlotState | null>(SPECIAL_SLOTS).fill(null),
     lastCrop: new Array<SeedId | null>(totalCrops(STARTING_TABS)).fill(null),
     greenhouse: 0,
     pet: 0,
@@ -455,6 +469,9 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     farmSettledAt: ledger.farmSettledAt,
     pondGrowth: ledger.pondGrowth ?? 0,
     soil: [...ledger.soil],
+    specialPatches: ledger.specialPatches ?? 0,
+    specialUnlocked: [...(ledger.specialUnlocked ?? [])],
+    specialPlots: (ledger.specialPlots ?? []).map((plot) => (plot === null ? null : { ...plot })),
     extras: extrasSnapshot(ledger),
     skills: {
       farming: { ...ledger.skills.farming },
@@ -525,6 +542,18 @@ export function applyGardenAction(
       return buyTab(ledger, now);
     case "buyPatch":
       return buyPatch(ledger, action.tab, now);
+    case "buySpecialPatch":
+      return buySpecialPatch(ledger, action.patch, now);
+    case "buySpecialPlot":
+      return buySpecialPlot(ledger, action.patch, now);
+    case "plantSpecial":
+      return withSpecial(ledger, plant, action.slot, action.seed, now, rng);
+    case "harvestSpecial":
+      return withSpecial(ledger, harvest, action.slot, now, rng);
+    case "waterSpecial":
+      return withSpecial(ledger, water, action.slot, now);
+    case "uprootSpecial":
+      return withSpecial(ledger, uproot, action.slot, now);
     case "waterAll":
       return waterAll(ledger, now);
     case "buildBuilding":
@@ -604,6 +633,78 @@ export function applyGardenAction(
     default:
       return { ok: false, code: "BAD_REQUEST" };
   }
+}
+
+/** @brief Whether one special plot is owned and unlocked. */
+function specialSlotOpen(ledger: GardenLedger, slot: number): boolean {
+  if (slot < 0 || slot >= SPECIAL_SLOTS) return false;
+  const patch = Math.floor(slot / SPECIAL_PLOTS_PER_PATCH);
+  const local = slot % SPECIAL_PLOTS_PER_PATCH;
+  if (patch >= (ledger.specialPatches ?? 0)) return false;
+  return local < (ledger.specialUnlocked?.[patch] ?? 0);
+}
+
+/** @brief Opens the next special patch (ten billion coins, in order). */
+function buySpecialPatch(ledger: GardenLedger, patch: number, now: number): RuleResult {
+  if (patch !== (ledger.specialPatches ?? 0)) return { ok: false, code: "PLOT_LOCKED" };
+  if (patch >= SPECIAL_PATCHES) return { ok: false, code: "MAX_PATCHES" };
+  if (ledger.coins < SPECIAL_PATCH_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= SPECIAL_PATCH_PRICE;
+  next.stats.spent += SPECIAL_PATCH_PRICE;
+  next.specialPatches = patch + 1;
+  if (next.specialUnlocked[patch] === undefined) next.specialUnlocked[patch] = 0;
+  return changed(next, now);
+}
+
+/** @brief Opens one plot inside an owned special patch (a billion coins). */
+function buySpecialPlot(ledger: GardenLedger, patch: number, now: number): RuleResult {
+  if (patch < 0 || patch >= (ledger.specialPatches ?? 0)) return { ok: false, code: "PLOT_LOCKED" };
+  const unlocked = ledger.specialUnlocked?.[patch] ?? 0;
+  if (unlocked >= SPECIAL_PLOTS_PER_PATCH) return { ok: false, code: "MAX_PATCHES" };
+  if (ledger.coins < SPECIAL_PLOT_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= SPECIAL_PLOT_PRICE;
+  next.stats.spent += SPECIAL_PLOT_PRICE;
+  next.specialUnlocked[patch] = unlocked + 1;
+  return changed(next, now);
+}
+
+/**
+ * @brief Runs a normal crop rule against the special plot vector.
+ * @details The normal board and the special board share the crop rules; this
+ * projects the ledger so `plots` temporarily points at the special vector,
+ * then folds the result back (soil and tab state stay untouched).
+ */
+function withSpecial<T extends readonly unknown[]>(
+  ledger: GardenLedger,
+  rule: (projected: GardenLedger, slot: number, ...rest: T) => RuleResult,
+  slot: number,
+  ...rest: T
+): RuleResult {
+  if (!specialSlotOpen(ledger, slot)) return { ok: false, code: "PLOT_LOCKED" };
+  const projected: GardenLedger = {
+    ...ledger,
+    tabs: 1,
+    unlockedPatches: [SPECIAL_PLOTS_PER_PATCH],
+    plots: ledger.specialPlots,
+    soil: new Array<number>(SPECIAL_SLOTS).fill(SOIL_START),
+  };
+  const result = rule(projected, slot, ...rest);
+  if (!result.ok) return result;
+  return {
+    ...result,
+    ledger: {
+      ...result.ledger,
+      plots: ledger.plots,
+      soil: ledger.soil,
+      tabs: ledger.tabs,
+      unlockedPatches: ledger.unlockedPatches,
+      specialPlots: result.ledger.plots,
+    },
+  };
 }
 
 /** @brief Plants one bagged seed. */
@@ -2586,6 +2687,9 @@ function clone(ledger: GardenLedger): GardenLedger {
     farmSettledAt: ledger.farmSettledAt,
     pondGrowth: ledger.pondGrowth ?? 0,
     soil: [...ledger.soil],
+    specialPatches: ledger.specialPatches ?? 0,
+    specialUnlocked: [...(ledger.specialUnlocked ?? [])],
+    specialPlots: (ledger.specialPlots ?? []).map((plot) => (plot === null ? null : { ...plot })),
     skills: {
       farming: { ...ledger.skills.farming },
       ranching: { ...ledger.skills.ranching },

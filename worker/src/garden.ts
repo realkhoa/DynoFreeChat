@@ -25,6 +25,9 @@ import {
   applyMarket,
   seasonAt,
   SOIL_START,
+  SPECIAL_PATCHES,
+  SPECIAL_PLOTS_PER_PATCH,
+  SPECIAL_SLOTS,
   totalCrops,
   weekKeyAt,
   DEFAULT_SKILLS,
@@ -440,6 +443,17 @@ export class Garden extends DurableObject<Env> {
       toolsSettledAt: raw.toolsSettledAt ?? raw.updatedAt ?? 0,
       pestSettledAt: raw.pestSettledAt ?? raw.updatedAt ?? 0,
       soil: this.readSoil(tabs, raw.soil),
+      specialPatches:
+        typeof raw.specialPatches === "number"
+          ? Math.max(0, Math.min(SPECIAL_PATCHES, raw.specialPatches))
+          : 0,
+      specialUnlocked: Array.from({ length: SPECIAL_PATCHES }, (_unused, index) =>
+        Math.max(0, Math.min(SPECIAL_PLOTS_PER_PATCH, raw.specialUnlocked?.[index] ?? 0)),
+      ),
+      specialPlots: Array.from({ length: SPECIAL_SLOTS }, (_unused, index) => {
+        const plot = raw.specialPlots?.[index] ?? null;
+        return plot === null ? null : { ...plot };
+      }),
       lastCrop: raw.lastCrop ?? new Array<SeedId | null>(totalCrops(tabs)).fill(null),
       greenhouse: raw.greenhouse ?? 0,
       pet: raw.pet ?? 0,
@@ -1083,6 +1097,9 @@ export class Garden extends DurableObject<Env> {
         pond: (ledger.animals.pond ?? []).map((animal) => (animal === null ? null : { ...animal })),
       },
       pondGrowth: ledger.pondGrowth ?? 0,
+      specialPatches: ledger.specialPatches ?? 0,
+      specialUnlocked: [...(ledger.specialUnlocked ?? [])],
+      specialPlots: (ledger.specialPlots ?? []).map((plot) => (plot === null ? null : { ...plot })),
       warehouse: {
         level: ledger.warehouse,
         machines: { ...ledger.machines },

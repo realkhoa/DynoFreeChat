@@ -17,6 +17,10 @@ import {
   PEST_SPRAY_COST,
   SKILL_MAX_LEVEL,
   SOIL_START,
+  SPECIAL_PATCH_PRICE,
+  SPECIAL_PLOT_PRICE,
+  SPECIAL_PLOTS_PER_PATCH,
+  SPECIAL_SLOTS,
   skillThreshold,
   ACHIEVEMENTS,
   EGG_PRICE,
@@ -215,6 +219,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** Source cell of a pending shovel move, cleared on cancel or completion. */
   let moveSource: { slot: number; area: "crop" | "tree" } | null = null;
   let machineMenu: { id: MachineId; x: number; y: number; anchorTop: number } | null = null;
+  let specialPicker: number | null = null;
   let buyQty = 1;
   type GardenTool =
     { kind: "fertilize" | "spray"; supply: SupplyId } | { kind: "plant"; seed: SeedId } | { kind: "water" };
@@ -969,6 +974,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     animalMenu = null;
     moveSource = null;
     machineMenu = null;
+    specialPicker = null;
     if (next === "event") void loadLeaderboard();
     if (next === "chart") void loadChart();
     if (next === "bots") void loadBots();
@@ -2195,6 +2201,107 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return side;
   }
 
+  /** @brief Special plots for the active mode. */
+  function specialView(): {
+    patches: number;
+    unlocked: readonly number[];
+    plots: readonly (PlotState | null)[];
+  } | null {
+    const view = mode === "visit" ? visiting : state;
+    if (view === null) return null;
+    return {
+      patches: view.specialPatches ?? 0,
+      unlocked: view.specialUnlocked ?? [],
+      plots: view.specialPlots ?? [],
+    };
+  }
+
+  /** @brief Repaints one premium plot cell. */
+  function syncSpecialCell(button: HTMLButtonElement, slot: number, at: number): void {
+    const view = specialView();
+    const patch = Math.floor(slot / SPECIAL_PLOTS_PER_PATCH);
+    const local = slot % SPECIAL_PLOTS_PER_PATCH;
+    button.classList.remove("is-empty", "is-ready", "is-locked");
+    if (view === null || patch >= view.patches) {
+      button.textContent = t("special.locked");
+      button.classList.add("is-locked");
+      button.dataset.act = "specialNoop";
+      return;
+    }
+    if (local >= (view.unlocked[patch] ?? 0)) {
+      button.textContent = `+ ${formatNumber(SPECIAL_PLOT_PRICE)}c`;
+      button.classList.add("is-locked");
+      button.dataset.act = "buySpecialPlot";
+      button.dataset.patch = String(patch);
+      button.title = t("special.buyPlot", { cost: formatNumber(SPECIAL_PLOT_PRICE) });
+      return;
+    }
+    const plot = view.plots[slot] ?? null;
+    button.dataset.act = "specialPlot";
+    if (plot === null) {
+      button.textContent = "·";
+      button.classList.add("is-empty");
+      button.title = t("special.empty");
+      return;
+    }
+    const ready = at >= plot.readyAt;
+    button.classList.toggle("is-ready", ready);
+    button.textContent = ready
+      ? `✓ ${seedName(plot.seed)}`
+      : `${seedName(plot.seed)} ${formatDuration(Math.max(0, plot.readyAt - at), "short")}`;
+    button.title = ready ? t("special.ready") : t("special.growing");
+  }
+
+  /** @brief Builds the premium patch rows above the normal boards. */
+  function buildSpecialBoard(at: number): HTMLElement {
+    const wrap = div("garden-special");
+    wrap.append(lineBlock(`// ${t("special.title")} · ${t("special.note")}`));
+    const view = specialView();
+    for (let patch = 0; patch < 3; patch += 1) {
+      const row = div("garden-special-row");
+      row.append(span("garden-special-patch", `V${patch + 1}`));
+      if (view === null || patch >= view.patches) {
+        const buy = actionButton(
+          t("special.buyPatch", { cost: formatNumber(SPECIAL_PATCH_PRICE) }),
+          "buySpecialPatch",
+        );
+        buy.dataset.patch = String(patch);
+        buy.classList.add("is-locked");
+        buy.disabled = mode === "visit" || (state?.coins ?? 0) < SPECIAL_PATCH_PRICE;
+        row.append(buy);
+      } else {
+        for (let local = 0; local < SPECIAL_PLOTS_PER_PATCH; local += 1) {
+          const slot = patch * SPECIAL_PLOTS_PER_PATCH + local;
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "garden-special-cell";
+          button.dataset.slot = String(slot);
+          syncSpecialCell(button, slot, at);
+          if (mode === "visit") button.disabled = true;
+          row.append(button);
+        }
+      }
+      wrap.append(row);
+    }
+    if (specialPicker !== null) {
+      const picker = div("garden-tools");
+      picker.append(span("garden-hint", t("special.pickSeed")));
+      const seeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
+      if (seeds.length === 0) picker.append(span("garden-hint", t("garden.noSeedsOwned")));
+      for (const seed of seeds) {
+        const button = actionButton(
+          `${seedName(seed.id)} (${state?.bag.seeds[seed.id] ?? 0})`,
+          "specialSeed",
+        );
+        button.dataset.slot = String(specialPicker);
+        button.dataset.seed = seed.id;
+        picker.append(button);
+      }
+      wrap.append(picker);
+    }
+    return wrap;
+  }
+
   /** @brief Builds the garden tab: pager plus the crop grid and fruit stack. */
   function buildGarden(): HTMLElement {
     const wrap = div("garden-garden");
@@ -2337,6 +2444,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
     }
     wrap.append(buildStaffBar());
+    wrap.append(buildSpecialBoard(now()));
     const layout = div("garden-layout");
     const boards = div("garden-boards");
     const cropPanel = div("garden-board-panel");
@@ -3437,6 +3545,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         })}`;
       }
     }
+    for (const cell of root.querySelectorAll<HTMLElement>(".garden-special-cell[data-slot]")) {
+      const slot = Number(cell.dataset.slot);
+      if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncSpecialCell(cell, slot, at);
+    }
     for (const element of root.querySelectorAll<HTMLElement>(".garden-side-time[data-side-until]")) {
       const until = Number(element.dataset.sideUntil);
       if (Number.isFinite(until)) {
@@ -3592,6 +3704,57 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }
         const rect = target.getBoundingClientRect();
         openMenu(slot, area, rect.left + 6, rect.bottom + 2, rect.top);
+        return;
+      }
+      case "buySpecialPatch": {
+        const patch = Number(target.dataset.patch);
+        if (Number.isInteger(patch)) {
+          void runAction({ kind: "buySpecialPatch", patch }, t("special.patched"));
+        }
+        return;
+      }
+      case "buySpecialPlot": {
+        const patch = Number(target.dataset.patch);
+        if (Number.isInteger(patch)) {
+          void runAction({ kind: "buySpecialPlot", patch }, t("special.plotBought"));
+        }
+        return;
+      }
+      case "specialNoop":
+        return;
+      case "specialPlot": {
+        const slot = Number(target.dataset.slot);
+        if (!Number.isInteger(slot)) return;
+        const view = specialView();
+        const plot = view?.plots[slot] ?? null;
+        if (event.shiftKey && plot !== null) {
+          void runAction({ kind: "uprootSpecial", slot }, t("special.uprooted"));
+          return;
+        }
+        if (plot === null) {
+          specialPicker = specialPicker === slot ? null : slot;
+          render();
+          return;
+        }
+        if (now() >= plot.readyAt) {
+          void runAction({ kind: "harvestSpecial", slot }, t("special.harvested"));
+          return;
+        }
+        if (!plot.watered) {
+          void runAction({ kind: "waterSpecial", slot }, t("garden.watered"));
+          return;
+        }
+        message = { text: t("special.alreadyWatered"), kind: "info" };
+        render();
+        return;
+      }
+      case "specialSeed": {
+        const slot = Number(target.dataset.slot);
+        const seed = target.dataset.seed as SeedId | undefined;
+        if (Number.isInteger(slot) && seed !== undefined) {
+          specialPicker = null;
+          void runAction({ kind: "plantSpecial", slot, seed }, t("garden.planted"));
+        }
         return;
       }
       case "pickTool": {

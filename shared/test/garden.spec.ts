@@ -866,6 +866,21 @@ describe("garden wire parsing", () => {
       tree: true,
     });
     expect(parseGardenAction({ kind: "toggleFavorite", slot: 999, tree: true })).toBeNull();
+    expect(parseGardenAction({ kind: "buySpecialPatch", patch: 0 })).toEqual({
+      kind: "buySpecialPatch",
+      patch: 0,
+    });
+    expect(parseGardenAction({ kind: "buySpecialPatch", patch: 3 })).toBeNull();
+    expect(parseGardenAction({ kind: "plantSpecial", slot: 0, seed: "carrot" })).toEqual({
+      kind: "plantSpecial",
+      slot: 0,
+      seed: "carrot",
+    });
+    expect(parseGardenAction({ kind: "harvestSpecial", slot: 26 })).toEqual({
+      kind: "harvestSpecial",
+      slot: 26,
+    });
+    expect(parseGardenAction({ kind: "waterSpecial", slot: 27 })).toBeNull();
   });
 
   it("validates actions and rejects malformed ones", () => {

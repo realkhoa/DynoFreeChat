@@ -132,6 +132,9 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     animals: { coop: [], barn: [], pond: [] },
     farmSettledAt: CLOCK,
     pondGrowth: 0,
+    specialPatches: 0,
+    specialUnlocked: [0, 0, 0],
+    specialPlots: [],
     warehouse: { level: 0, machines: {} },
     soil: new Array<number>(CROPS_PER_TAB).fill(100),
     extras: EXTRAS,
@@ -158,6 +161,9 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     buildings: { coop: 0, barn: 0, pond: 0 },
     animals: { coop: [], barn: [], pond: [] },
     pondGrowth: 0,
+    specialPatches: 0,
+    specialUnlocked: [0, 0, 0],
+    specialPlots: [],
     warehouse: { level: 0, machines: {} },
     soil: new Array<number>(CROPS_PER_TAB).fill(100),
     extras: EXTRAS,
@@ -440,6 +446,45 @@ describe("garden tab", () => {
     await settle();
     const planted = api.calls.find((call) => call.action?.kind === "plant");
     expect(planted?.action).toMatchObject({ kind: "plant", slot: 1, seed: "carrot" });
+  });
+
+  it("opens the special garden patch and plants in it", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 50_000_000_000,
+        specialPatches: 1,
+        specialUnlocked: [1, 0, 0],
+        specialPlots: [null],
+        bag: { seeds: { carrot: 2 }, crops: [], supplies: {} },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const board = host.querySelector(".garden-special");
+    expect(board?.textContent).toContain("Vườn đặc biệt");
+    // Patch 2 is still for sale.
+    expect(host.querySelector('[data-act="buySpecialPatch"][data-patch="1"]')).not.toBeNull();
+
+    host.querySelector<HTMLButtonElement>('.garden-special-cell[data-slot="0"]')?.click();
+    await settle();
+    const seed = host.querySelector<HTMLButtonElement>('[data-act="specialSeed"]');
+    expect(seed).not.toBeNull();
+    seed?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "plantSpecial")?.action).toMatchObject({
+      kind: "plantSpecial",
+      slot: 0,
+      seed: "carrot",
+    });
+
+    // A locked plot in the owned patch costs a billion.
+    host.querySelector<HTMLButtonElement>('.garden-special-cell[data-slot="1"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "buySpecialPlot")?.action).toMatchObject({
+      kind: "buySpecialPlot",
+      patch: 0,
+    });
   });
 
   it("shows the owner actions for a ripe crop and harvests it", async () => {
