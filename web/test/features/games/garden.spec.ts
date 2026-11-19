@@ -7,6 +7,8 @@
  * the read-only visit mode.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_SKILLS,
@@ -1700,6 +1702,20 @@ describe("chart tab", () => {
     expect(rows[0]?.textContent).toContain("x1.50");
     expect(rows[1]?.classList.contains("is-down")).toBe(true);
     expect(rows[1]?.textContent).toContain("12/8");
+  });
+});
+
+describe("mobile layout", () => {
+  it("ships responsive garden rules for stacking and small cells", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/features/games/garden.css"), "utf8");
+    const mobile = css.slice(css.indexOf("@media (max-width: 760px)"));
+    expect(mobile).toContain(".garden-layout");
+    expect(mobile).toContain("flex-direction: column");
+    expect(mobile).toContain(".garden-cell");
+    expect(mobile).toContain("font: 7px/8.5px");
+    expect(mobile).toContain(".garden-menu");
+    expect(mobile).toContain(".garden-side");
+    expect(css).toContain("@media (max-width: 380px)");
   });
 });
 

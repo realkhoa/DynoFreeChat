@@ -994,6 +994,180 @@
   .garden-market {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  /* Mobile: stack the boards and the rail, shrink the ASCII cells until a
+     nine-plot row fits, and let only the tab strip scroll sideways. */
+  .garden-root {
+    padding: 2px 4px;
+    font-size: 9px;
+    overflow-x: hidden;
+  }
+
+  .garden-market-panel,
+  .garden-event-panel {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .garden-market-row {
+    width: auto;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* Wide tables fit by shrinking their fixed columns, not by panning. */
+  .garden-rank-row {
+    grid-template-columns: 28px minmax(80px, 1fr) 64px 64px 44px 44px;
+    gap: 4px;
+    font-size: 8.5px;
+  }
+
+  .garden-chart-row {
+    grid-template-columns: 1fr 52px 42px 52px 64px;
+    gap: 4px;
+    font-size: 8.5px;
+  }
+
+  .garden-bot-row {
+    width: auto;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .garden-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    font-size: 11px;
+    scrollbar-width: none;
+  }
+
+  .garden-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .garden-tabs-spacer {
+    display: none;
+  }
+
+  .garden-tab {
+    min-height: 26px;
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+
+  .garden-layout {
+    flex-direction: column;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .garden-boards {
+    flex-direction: column;
+    width: 100%;
+    gap: 10px;
+  }
+
+  .garden-board-panel {
+    max-width: 100%;
+  }
+
+  .garden-board {
+    gap: 2px;
+  }
+
+  .garden-plot-row {
+    gap: 2px;
+  }
+
+  .garden-cell {
+    font: 7px/8.5px var(--font-mono);
+  }
+
+  .garden-cell-line {
+    line-height: 8.5px;
+  }
+
+  .garden-side {
+    flex: 1 1 auto;
+    width: 100%;
+    padding: 6px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle);
+    font-size: 9px;
+  }
+
+  .garden-special-cell {
+    padding: 3px 6px;
+    font-size: 9px;
+  }
+
+  .garden-special-patch {
+    width: 18px;
+  }
+
+  .garden-animal-grid {
+    grid-template-columns: repeat(2, max-content);
+    gap: 4px 6px;
+  }
+
+  .garden-bulk,
+  .garden-tools {
+    gap: 4px;
+  }
+
+  .garden-root .stage-btn {
+    min-height: 26px;
+    padding: 0 7px;
+    font-size: 10px;
+  }
+
+  .garden-menu {
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    top: auto;
+    width: auto;
+    max-width: none;
+    max-height: 70vh;
+    font-size: 11px;
+  }
+
+  .garden-menu-open,
+  .garden-menu-act {
+    min-height: 28px;
+    font-size: 11px;
+  }
+
+  .garden-buy-card {
+    min-width: 84px;
+    max-width: 46vw;
+    white-space: normal;
+  }
+
+  .garden-buy-line.is-stock {
+    white-space: normal;
+  }
+
+  .garden-farm {
+    width: 100%;
+  }
+}
+
+@media (max-width: 380px) {
+  .garden-cell {
+    font: 6.5px/8px var(--font-mono);
+  }
+
+  .garden-cell-line {
+    line-height: 8px;
+  }
+
+  .garden-animal-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* Buy section: every purchasable item is one small cell, like a garden plot,
