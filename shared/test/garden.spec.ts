@@ -8,6 +8,10 @@
 import { describe, expect, it } from "vitest";
 import {
   EPOCH_MS,
+  dayPhaseAt,
+  DAY_PHASES,
+  DAY_CYCLE_MS,
+  growTimeForEvents,
   wheelCost,
   EVENTS,
   EVENT_WAVE_MS,
@@ -665,18 +669,19 @@ describe("garden season", () => {
   });
 
   it("exposes the whole active event set on the season", () => {
-    const waveStart = EPOCH_MS + 5 * EVENT_WAVE_MS;
-    const snapshot = seasonAt(waveStart + 12);
-    expect(snapshot.events).toHaveLength(eventsAt(waveStart).length);
+    const phase = dayPhaseAt(EPOCH_MS + 5 * EVENT_WAVE_MS);
+    const snapshot = seasonAt(phase.startsAt + 12);
+    expect(snapshot.events).toHaveLength(eventsAt(phase.startsAt).length);
     expect(snapshot.event.id).toBe(snapshot.events[0]?.id ?? "calm");
-    expect(snapshot.event.startedAt).toBe(waveStart);
+    expect(snapshot.event.startedAt).toBe(phase.startsAt);
+    expect(snapshot.phase.id).toBe(phase.phase.id);
   });
 
-  it("keeps the same wave across one window and changes at the boundary", () => {
-    const start = EPOCH_MS + 3 * EVENT_WAVE_MS;
-    expect(seasonAt(start).wave).toBe(3);
-    expect(seasonAt(start + EVENT_WAVE_MS - 1).wave).toBe(3);
-    expect(seasonAt(start + EVENT_WAVE_MS).wave).toBe(4);
+  it("keeps the same phase window and changes at its boundary", () => {
+    const phase = dayPhaseAt(EPOCH_MS + 3 * EVENT_WAVE_MS);
+    expect(seasonAt(phase.startsAt).wave).toBe(phase.index);
+    expect(seasonAt(phase.endsAt - 1).wave).toBe(phase.index);
+    expect(seasonAt(phase.endsAt).wave).toBe(dayPhaseAt(phase.endsAt).index);
   });
 
   it("rotates the seed shop on the restock cadence", () => {
@@ -710,11 +715,50 @@ describe("garden season", () => {
   it("exposes the next window for the client countdown", () => {
     const season = seasonAt(NOW);
     expect(season.next.startedAt).toBe(season.event.endsAt);
-    expect(season.next.endsAt).toBe(season.event.endsAt + EVENT_WAVE_MS);
+    expect(season.next.endsAt).toBe(dayPhaseAt(season.event.endsAt).endsAt);
   });
 });
 
 describe("garden growth math", () => {
+  it("cycles day, dusk, night and dawn in twenty minutes", () => {
+    expect(DAY_PHASES.map((phase) => [phase.id, phase.durationMs])).toEqual([
+      ["day", 7 * 60_000],
+      ["dusk", 3 * 60_000],
+      ["night", 7 * 60_000],
+      ["dawn", 3 * 60_000],
+    ]);
+    expect(DAY_CYCLE_MS).toBe(20 * 60_000);
+    const base = EPOCH_MS;
+    expect(dayPhaseAt(base).phase.id).toBe("day");
+    expect(dayPhaseAt(base + 7 * 60_000).phase.id).toBe("dusk");
+    expect(dayPhaseAt(base + 10 * 60_000).phase.id).toBe("night");
+    expect(dayPhaseAt(base + 17 * 60_000).phase.id).toBe("dawn");
+    expect(dayPhaseAt(base + DAY_CYCLE_MS).index).toBe(4);
+    // Night grows slower than day when a crop is planted.
+    const seed = seedById("carrot");
+    if (seed === undefined) throw new Error("catalog");
+    const day = growTimeForEvents(seed, [], null, dayPhaseAt(base).phase.growScale);
+    const night = growTimeForEvents(seed, [], null, dayPhaseAt(base + 10 * 60_000).phase.growScale);
+    expect(night).toBeGreaterThan(day);
+  });
+
+  it("draws weather from the current phase pool", () => {
+    const dayPool = new Set([
+      "goldenHour",
+      "heatwave",
+      "marketBoom",
+      "rainbowSky",
+      "rain",
+      "thunderstorm",
+      "metallicDew",
+    ]);
+    for (let step = 0; step < 12; step += 1) {
+      const at = EPOCH_MS + step * 60_000;
+      if (dayPhaseAt(at).phase.id !== "day") continue;
+      for (const event of eventsAt(at)) expect(dayPool.has(event.id)).toBe(true);
+    }
+  });
+
   it("walks seed, sprout, young, ripe", () => {
     const seed = seedById("carrot");
     expect(seed).toBeDefined();

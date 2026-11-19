@@ -69,6 +69,7 @@ import {
   SPRAYS,
   SEEDS,
   dayIndexAt,
+  dayPhaseAt,
   wheelDayAt,
   weekKeyAt,
   seasonAt,
@@ -738,7 +739,11 @@ function plant(
     seed: seed.id,
     plantedAt: now,
     readyAt:
-      now + Math.round(growTimeForEvents(seed, events) * soilGrowthFactor(ledger.soil[slot] ?? SOIL_START)),
+      now +
+      Math.round(
+        growTimeForEvents(seed, events, null, dayPhaseAt(now).phase.growScale) *
+          soilGrowthFactor(ledger.soil[slot] ?? SOIL_START),
+      ),
     effects: rollEffectsFor(events, rng),
     pest: false,
     protectedUntil: 0,
@@ -774,7 +779,7 @@ function plantTree(
     slot,
     tree: tree.id,
     plantedAt: now,
-    readyAt: now + growTimeForEvents(tree, events),
+    readyAt: now + growTimeForEvents(tree, events, null, dayPhaseAt(now).phase.growScale),
     effects: rollEffectsFor(events, rng),
     pest: false,
     protectedUntil: 0,
@@ -837,7 +842,11 @@ function harvest(
       seed: plot.seed,
       plantedAt: now,
       readyAt:
-        now + Math.round(growTimeForEvents(seed, events, plot.fertilizer) * soilGrowthFactor(fertility)),
+        now +
+        Math.round(
+          growTimeForEvents(seed, events, plot.fertilizer, dayPhaseAt(now).phase.growScale) *
+            soilGrowthFactor(fertility),
+        ),
       effects: rollEffectsFor(events, rng, mutationBonus, sprayBoostFor(plot.spray)),
       pest: false,
       protectedUntil: plot.protectedUntil,
@@ -877,7 +886,7 @@ function harvestTree(
     slot,
     tree: tree.tree,
     plantedAt: now,
-    readyAt: now + growTimeForEvents(definition, events, tree.fertilizer),
+    readyAt: now + growTimeForEvents(definition, events, tree.fertilizer, dayPhaseAt(now).phase.growScale),
     effects: rollEffectsFor(events, rng, {}, sprayBoostFor(tree.spray)),
     pest: false,
     protectedUntil: tree.protectedUntil,

@@ -62,8 +62,90 @@ export const STARTING_SEEDS = 3;
 /** Absolute start of the season schedule; every rotation counts from here. */
 export const EPOCH_MS = 1_767_225_600_000;
 
-/** One event wave lasts this long. */
-export const EVENT_WAVE_MS = 6 * 60_000;
+/** One day-phase rotation: 7m day, 3m dusk, 7m night, 3m dawn. */
+export type DayPhaseId = "day" | "dusk" | "night" | "dawn";
+
+/** One phase of the 20-minute day cycle. */
+export interface DayPhaseDefinition {
+  /** Stable id used by labels and weather pools. */
+  readonly id: DayPhaseId;
+  /** Length in milliseconds. */
+  readonly durationMs: number;
+  /** Growth-time multiplier while the phase is current. */
+  readonly growScale: number;
+}
+
+/** Day, dusk, night, dawn: seven, three, seven and three minutes. */
+export const DAY_PHASES: readonly DayPhaseDefinition[] = [
+  { id: "day", durationMs: 7 * 60_000, growScale: 1 },
+  { id: "dusk", durationMs: 3 * 60_000, growScale: 0.9 },
+  { id: "night", durationMs: 7 * 60_000, growScale: 1.15 },
+  { id: "dawn", durationMs: 3 * 60_000, growScale: 0.85 },
+];
+
+/** One full day/night rotation. */
+export const DAY_CYCLE_MS = DAY_PHASES.reduce((sum, phase) => sum + phase.durationMs, 0);
+
+/** One phase window with its absolute bounds. */
+export interface DayPhaseState {
+  /** Phase definition. */
+  readonly phase: DayPhaseDefinition;
+  /** Global window index; unique per phase occurrence. */
+  readonly index: number;
+  /** Server time the window opened. */
+  readonly startsAt: number;
+  /** Server time the window closes. */
+  readonly endsAt: number;
+}
+
+/** @brief The phase containing one server timestamp. */
+export function dayPhaseAt(now: number): DayPhaseState {
+  const elapsed = now - EPOCH_MS;
+  const cycle = Math.floor(elapsed / DAY_CYCLE_MS);
+  let offset = elapsed - cycle * DAY_CYCLE_MS;
+  if (offset < 0) offset += DAY_CYCLE_MS;
+  let phaseIndex = 0;
+  let start = 0;
+  for (let index = 0; index < DAY_PHASES.length; index += 1) {
+    const phase = DAY_PHASES[index];
+    if (phase !== undefined && offset < start + phase.durationMs) {
+      phaseIndex = index;
+      return {
+        phase,
+        index: cycle * DAY_PHASES.length + index,
+        startsAt: EPOCH_MS + cycle * DAY_CYCLE_MS + start,
+        endsAt: EPOCH_MS + cycle * DAY_CYCLE_MS + start + phase.durationMs,
+      };
+    }
+    start += phase?.durationMs ?? 0;
+  }
+  const fallback = DAY_PHASES[DAY_PHASES.length - 1] ?? DAY_PHASES[0]!;
+  return {
+    phase: fallback,
+    index: cycle * DAY_PHASES.length + DAY_PHASES.length - 1,
+    startsAt: EPOCH_MS + cycle * DAY_CYCLE_MS + DAY_CYCLE_MS - fallback.durationMs,
+    endsAt: EPOCH_MS + (cycle + 1) * DAY_CYCLE_MS,
+  };
+}
+
+/** @brief Phase-specific weather pools. */
+const PHASE_WEATHER: Readonly<Record<DayPhaseId, readonly EventId[]>> = {
+  day: ["goldenHour", "heatwave", "marketBoom", "rainbowSky", "rain", "thunderstorm", "metallicDew"],
+  dusk: ["goldenFog", "wildfire", "smoke", "emberRain", "crystalFrost", "bloodMoon"],
+  night: [
+    "moonlight",
+    "auroraNight",
+    "meteorShower",
+    "plasmaStorm",
+    "cosmicRift",
+    "discoNight",
+    "diamondSky",
+  ],
+  dawn: ["frost", "snowfall", "coldSnap", "drought", "toxicRain", "twister", "blightWind", "acidRain"],
+};
+
+/** One event window ends where the phase ends. */
+export const EVENT_WAVE_MS = DAY_PHASES[0]?.durationMs ?? 6 * 60_000;
 
 /** Seed shop stock and prices rotate on this cadence. */
 export const SHOP_RESTOCK_MS = 5 * 60_000;
@@ -1837,17 +1919,17 @@ export function merchantOffers(playerId: string, now: number): MerchantOffer[] {
   return offers;
 }
 
-/** @brief Next event windows for the toolbar forecast. */
+/** @brief Next phase windows for the toolbar forecast. */
 export function forecastEvents(now: number, waves = 3): EventSnapshot[][] {
-  const wave = Math.floor((now - EPOCH_MS) / EVENT_WAVE_MS);
   const out: EventSnapshot[][] = [];
+  let phase = dayPhaseAt(now);
   for (let step = 0; step < waves; step += 1) {
-    const start = EPOCH_MS + (wave + 1 + step) * EVENT_WAVE_MS;
+    phase = dayPhaseAt(phase.endsAt);
     out.push(
-      eventsAt(start).map((event) => ({
+      phaseEvents(phase).map((event) => ({
         id: event.id,
-        startedAt: start,
-        endsAt: start + EVENT_WAVE_MS,
+        startedAt: phase.startsAt,
+        endsAt: phase.endsAt,
       })),
     );
   }
@@ -2255,8 +2337,14 @@ export function applyMarket(
 
 /** Everything that changes with the server clock. */
 export interface SeasonSnapshot {
-  /** Rotation index of the current event wave. */
+  /** Rotation index of the current phase window. */
   readonly wave: number;
+  /** Current day phase: day, dusk, night or dawn. */
+  readonly phase: {
+    readonly id: DayPhaseId;
+    readonly startsAt: number;
+    readonly endsAt: number;
+  };
   /** Current event window (primary event for labels). */
   readonly event: EventSnapshot;
   /** Every weather event running right now; empty on a calm wave. */
@@ -3010,12 +3098,10 @@ export function createRng(seed: number): () => number {
  * "consistent seeds and events" true without a shared mutable database row.
  */
 export function seasonAt(now: number): SeasonSnapshot {
-  const wave = Math.floor((now - EPOCH_MS) / EVENT_WAVE_MS);
-  const nextWave = wave + 1;
-  const waveStart = EPOCH_MS + wave * EVENT_WAVE_MS;
-  const nextStart = EPOCH_MS + nextWave * EVENT_WAVE_MS;
-  const currentEvents = eventsAt(waveStart);
-  const nextEvents = eventsAt(nextStart);
+  const phase = dayPhaseAt(now);
+  const nextPhase = dayPhaseAt(phase.endsAt);
+  const currentEvents = phaseEvents(phase);
+  const nextEvents = phaseEvents(nextPhase);
   const current = currentEvents[0] ?? CALM_EVENT;
   const next = nextEvents[0] ?? CALM_EVENT;
 
@@ -3070,20 +3156,21 @@ export function seasonAt(now: number): SeasonSnapshot {
   }
 
   return {
-    wave,
-    event: { id: current.id, startedAt: waveStart, endsAt: waveStart + EVENT_WAVE_MS },
+    wave: phase.index,
+    phase: { id: phase.phase.id, startsAt: phase.startsAt, endsAt: phase.endsAt },
+    event: { id: current.id, startedAt: phase.startsAt, endsAt: phase.endsAt },
     events: currentEvents.map((event) => ({
       id: event.id,
-      startedAt: waveStart,
-      endsAt: waveStart + EVENT_WAVE_MS,
+      startedAt: phase.startsAt,
+      endsAt: phase.endsAt,
     })),
     nextEvents: nextEvents.map((event) => ({
       id: event.id,
-      startedAt: nextStart,
-      endsAt: nextStart + EVENT_WAVE_MS,
+      startedAt: nextPhase.startsAt,
+      endsAt: nextPhase.endsAt,
     })),
-    forecast: forecastEvents(waveStart, 3),
-    next: { id: next.id, startedAt: nextStart, endsAt: nextStart + EVENT_WAVE_MS },
+    forecast: forecastEvents(now, 3),
+    next: { id: next.id, startedAt: nextPhase.startsAt, endsAt: nextPhase.endsAt },
     shop: { restockAt, offers, tools },
     prices,
     fruitPrices,
@@ -3106,27 +3193,24 @@ const CALM_EVENT: EventDefinition = { id: "calm", growScale: 1, sellBonus: 1, ef
  * different events deterministically, so every client and the server agree.
  * The result is in catalog order and may be empty (a calm wave).
  */
-export function eventsAt(now: number): EventDefinition[] {
-  const wave = Math.floor((now - EPOCH_MS) / EVENT_WAVE_MS);
-  const rng = createRng(hash32(`garden:events:${wave}`));
-  const total = EVENT_COUNT_WEIGHTS.reduce((sum, entry) => sum + entry.weight, 0);
-  let roll = rng() * total;
-  let count = 0;
-  for (const entry of EVENT_COUNT_WEIGHTS) {
-    roll -= entry.weight;
-    if (roll < 0) {
-      count = entry.count;
-      break;
-    }
-  }
+/** @brief Weather events running inside one phase window. */
+export function phaseEvents(phase: DayPhaseState): EventDefinition[] {
+  const rng = createRng(hash32(`garden:phase:${phase.index}`));
+  const roll = rng();
+  const count = roll < 0.3 ? 0 : roll < 0.85 ? 1 : 2;
   if (count === 0) return [];
-  const pool = EVENTS.filter((event) => event.id !== "calm");
+  const pool = PHASE_WEATHER[phase.phase.id];
   const picked = new Set<EventId>();
   while (picked.size < Math.min(count, pool.length)) {
-    const candidate = pool[Math.floor(rng() * pool.length)];
-    if (candidate !== undefined) picked.add(candidate.id);
+    const id = pool[Math.floor(rng() * pool.length)];
+    if (id !== undefined) picked.add(id);
   }
   return EVENTS.filter((event) => picked.has(event.id));
+}
+
+/** @brief Weather events for the phase containing `now`. */
+export function eventsAt(now: number): EventDefinition[] {
+  return phaseEvents(dayPhaseAt(now));
 }
 
 /** @brief Combined growth speed of every active event. */
@@ -3160,9 +3244,10 @@ export function growTimeForEvents(
   plant: { readonly growMs: number },
   events: readonly EventDefinition[],
   fertilizer: ActiveFertilizer | null = null,
+  phaseScale = 1,
 ): number {
   const multiplier = fertilizer === null ? 1 : (fertilizerById(fertilizer.id)?.growMultiplier ?? 1);
-  return Math.max(5_000, Math.round((plant.growMs / combinedGrowScale(events)) * multiplier));
+  return Math.max(5_000, Math.round((plant.growMs / combinedGrowScale(events)) * multiplier * phaseScale));
 }
 
 /** @brief Growth time for one planting under one event. */
@@ -3226,13 +3311,15 @@ export function weatherEffects(
   spray: ActiveSpray | null = null,
 ): EffectId[] {
   const end = Math.max(plantedAt, until);
-  const first = Math.floor((plantedAt - EPOCH_MS) / EVENT_WAVE_MS) + 1;
-  const last = Math.floor((end - EPOCH_MS) / EVENT_WAVE_MS);
   const effects: EffectId[] = [];
-  for (let wave = first; wave <= last && wave - first < 200; wave += 1) {
-    const events = eventsAt(EPOCH_MS + wave * EVENT_WAVE_MS);
-    const rng = createRng(hash32(`${kindId}:${slot}:${wave}`));
+  // Start with the phase after the planting one, then walk whole phases.
+  let window = dayPhaseAt(dayPhaseAt(plantedAt).endsAt);
+  for (let guard = 0; window.startsAt <= end && guard < 200; guard += 1) {
+    const events = phaseEvents(window);
+    const rng = createRng(hash32(`${kindId}:${slot}:${window.index}`));
     effects.push(...rollEffectsFor(events, rng, {}, sprayBoostFor(spray), GROWTH_MUTATION_SCALE));
+    if (window.endsAt > end) break;
+    window = dayPhaseAt(window.endsAt);
   }
   return canonicalEffects(effects);
 }

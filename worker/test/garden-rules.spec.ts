@@ -108,8 +108,8 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.bag.seeds.carrot).toBe(2);
     const plot = planted.ledger.plots[0];
     expect(plot).not.toBeNull();
-    // Stack copies are expected; compare the distinct mutation set.
-    expect([...new Set(plot?.effects ?? [])]).toEqual(["golden", "frozen", "moonlit", "shriveled", "pale"]);
+    // Compare against the same deterministic roll the rule uses.
+    expect(plot?.effects).toEqual(rollEffectsFor(eventsAt(NOW), () => 0.01));
     expect(plot?.readyAt).toBeGreaterThan(NOW);
     expect(planted.ledger.stats.planted).toBe(1);
     expect(planted.ledger.rev).toBe(makeLedger().rev + 1);

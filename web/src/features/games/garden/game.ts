@@ -2150,7 +2150,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     side.append(span("garden-side-title", `// ${t("side.status")}`));
     if (season !== null && season.events.length > 0) {
       const names = season.events.map((event) => t(`events.${event.id}`)).join(", ");
-      side.append(sideRow("🌦", t("side.weather"), names, season.event.endsAt));
+      side.append(
+        sideRow("🕒", t("side.phase"), t(`phase.${season.phase.id}`), season.phase.endsAt),
+        sideRow("🌦", t("side.weather"), names, season.event.endsAt),
+      );
+    } else if (season !== null) {
+      side.append(
+        sideRow("🕒", t("side.phase"), t(`phase.${season.phase.id}`), season.phase.endsAt),
+        sideRow("🌦", t("side.weather"), t("events.calm")),
+      );
     } else {
       side.append(sideRow("🌦", t("side.weather"), t("events.calm")));
     }
@@ -3415,6 +3423,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const seasonPanel = div("garden-event-panel");
     seasonPanel.append(lineBlock(`// ${t("event.now")}`));
     if (season !== null) {
+      seasonPanel.append(
+        lineBlock(
+          `${t("event.phase")}: ${t(`phase.${season.phase.id}`)} · ${formatDuration(Math.max(0, season.phase.endsAt - now()))}`,
+        ),
+      );
       const active = season.events;
       if (active.length === 0) {
         seasonPanel.append(lineBlock(`${t("events.calm")} — ${t("events.calm.desc")}`));
