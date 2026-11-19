@@ -499,6 +499,35 @@ describe("garden tab", () => {
     expect(harvest?.classList.contains("garden-btn-harvest")).toBe(true);
   });
 
+  it("groups garden controls into quick, mode, automated and staff", async () => {
+    const api = new FakeGardenApi(makeState({ bag: { seeds: { carrot: 3 }, crops: [], supplies: {} } }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const text = host.querySelector(".garden-garden")?.textContent ?? "";
+    expect(text).toContain("Thao tác nhanh");
+    expect(text).toContain("Chế độ");
+    expect(text).toContain("Tự động");
+    expect(text).toContain("Nhân sự");
+    expect(host.querySelector('[data-act="waterAll"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="harvestAll"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="sellAll"]')).not.toBeNull();
+
+    host.querySelector<HTMLButtonElement>('[data-act="bulkPlan"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="plantAllSeed"][data-seed="carrot"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "plantAll")?.action).toMatchObject({
+      kind: "plantAll",
+      seed: "carrot",
+    });
+
+    host.querySelector<HTMLButtonElement>('[data-act="bulkUproot"]')?.click();
+    await settle();
+    expect(host.querySelector('[data-act="uprootLoss"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="uprootPrice"]')).not.toBeNull();
+  });
+
   it("shows the owner actions for a ripe crop and harvests it", async () => {
     const api = new FakeGardenApi(
       makeState({ plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)] }),
@@ -1188,7 +1217,7 @@ describe("bulk supplies", () => {
     mounted.push(game);
 
     const quick = host.querySelectorAll<HTMLButtonElement>('[data-act="pickAllSupply"]')[0];
-    expect(quick?.textContent).toContain("Bón phân nhanh");
+    expect(quick?.textContent).toContain("Bulk Fertilize");
     quick?.click();
     await settle();
 

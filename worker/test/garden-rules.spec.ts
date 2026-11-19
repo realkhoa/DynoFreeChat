@@ -115,6 +115,46 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.rev).toBe(makeLedger().rev + 1);
   });
 
+  it("bulk plants one seed into every free plot", () => {
+    const ledger = makeLedger();
+    ledger.bag.seeds.carrot = 5;
+    const planted = run(ledger, { kind: "plantAll", seed: "carrot" });
+    expect(planted.ok).toBe(true);
+    if (!planted.ok) return;
+    expect(planted.ledger.bag.seeds.carrot).toBe(0);
+    expect(planted.ledger.plots.filter((plot) => plot !== null)).toHaveLength(5);
+    expect(planted.ledger.rev).toBe(ledger.rev + 1);
+  });
+
+  it("bulk uproots by crop and by value", () => {
+    const ledger = makeLedger();
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    ledger.plots[1] = { ...ledger.plots[0]!, slot: 1, seed: "tomato" };
+    const bySeed = run(ledger, { kind: "uprootBulk", seed: "carrot" });
+    expect(bySeed.ok).toBe(true);
+    if (!bySeed.ok) return;
+    expect(bySeed.ledger.plots[0]).toBeNull();
+    expect(bySeed.ledger.plots[1]?.seed).toBe("tomato");
+
+    const byValue = run(bySeed.ledger, { kind: "uprootBulk", priceBelow: 999_999_999 });
+    expect(byValue.ok).toBe(true);
+    if (!byValue.ok) return;
+    expect(byValue.ledger.plots[1]).toBeNull();
+  });
+
   it("refuses plots beyond the bought tab, occupied plots and empty bags", () => {
     expect(run(makeLedger(), { kind: "plant", slot: 81, seed: "carrot" })).toMatchObject({
       ok: false,

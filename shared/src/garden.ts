@@ -2397,6 +2397,13 @@ export interface LeaderboardEntry {
 /** Actions the owner can apply to their garden. */
 export type GardenAction =
   | { readonly kind: "plant"; readonly slot: number; readonly seed: SeedId }
+  | { readonly kind: "plantAll"; readonly seed: SeedId }
+  | {
+      readonly kind: "uprootBulk";
+      readonly seed?: SeedId;
+      readonly priceBelow?: number;
+      readonly profit?: "loss" | "win";
+    }
   | { readonly kind: "plantTree"; readonly slot: number; readonly tree: TreeId }
   | { readonly kind: "harvest"; readonly slot: number; readonly tree: boolean; readonly auto?: boolean }
   | { readonly kind: "water"; readonly slot: number; readonly tree: boolean }
@@ -2805,6 +2812,24 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
     if (slot === null || seed === undefined) return null;
     return { kind, slot, seed: seed.id };
+  }
+  if (kind === "plantAll") {
+    const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+    return seed === undefined ? null : { kind, seed: seed.id };
+  }
+  if (kind === "uprootBulk") {
+    const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+    const profitRaw = value.profit;
+    const profit = profitRaw === "loss" || profitRaw === "win" ? profitRaw : undefined;
+    const priceBelow = value.priceBelow;
+    if (seed === undefined && profit === undefined && priceBelow === undefined) return null;
+    if (priceBelow !== undefined && (typeof priceBelow !== "number" || priceBelow < 0)) return null;
+    return {
+      kind,
+      ...(seed === undefined ? {} : { seed: seed.id }),
+      ...(profit === undefined ? {} : { profit }),
+      ...(priceBelow === undefined ? {} : { priceBelow }),
+    };
   }
   if (kind === "plantTree") {
     const slot = readSlot(value.slot, MAX_TREES);

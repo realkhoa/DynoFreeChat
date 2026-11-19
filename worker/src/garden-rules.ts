@@ -526,6 +526,10 @@ export function applyGardenAction(
   switch (action.kind) {
     case "plant":
       return plant(ledger, action.slot, action.seed, now, rng);
+    case "plantAll":
+      return plantAll(ledger, action.seed, now, rng);
+    case "uprootBulk":
+      return uprootBulk(ledger, action, season, now);
     case "plantTree":
       return plantTree(ledger, action.slot, action.tree, now, rng);
     case "harvest":
@@ -722,6 +726,64 @@ function withSpecial<T extends readonly unknown[]>(
       specialPlots: result.ledger.plots,
     },
   };
+}
+
+/** @brief Sows one owned seed into every free, open plot. */
+function plantAll(ledger: GardenLedger, seedId: SeedId, now: number, rng: () => number): RuleResult {
+  const seed = seedById(seedId);
+  if (seed === undefined) return { ok: false, code: "NO_SEED" };
+  let owned = ledger.bag.seeds[seed.id] ?? 0;
+  if (owned < 1) return { ok: false, code: "NO_SEED" };
+
+  let current = ledger;
+  let planted = 0;
+  for (let slot = 0; slot < ledger.plots.length && owned > 0; slot += 1) {
+    if ((ledger.plots[slot] ?? null) !== null) continue;
+    if (!isCropPatchOpen(ledger, slot)) continue;
+    const result = plant(current, slot, seed.id, now, rng);
+    if (!result.ok) continue;
+    current = result.ledger;
+    owned -= 1;
+    planted += 1;
+  }
+  if (planted === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  current.rev = ledger.rev + 1;
+  current.updatedAt = now;
+  current.lastSeen = now;
+  return { ok: true, ledger: current, changed: true };
+}
+
+/** @brief Uproots every crop matching a seed, value or profit filter. */
+function uprootBulk(
+  ledger: GardenLedger,
+  filter: { seed?: SeedId; priceBelow?: number; profit?: "loss" | "win" },
+  season: SeasonSnapshot,
+  now: number,
+): RuleResult {
+  if (filter.seed === undefined && filter.priceBelow === undefined && filter.profit === undefined) {
+    return { ok: false, code: "BAD_REQUEST" };
+  }
+  const next = clone(ledger);
+  let removed = 0;
+  for (let slot = 0; slot < next.plots.length; slot += 1) {
+    const plot = next.plots[slot] ?? null;
+    if (plot === null || plot.favorite === true) continue;
+    if (filter.seed !== undefined && plot.seed !== filter.seed) continue;
+    const value = cropSellPrice(
+      { item: plot.seed, effects: resolvedCropEffects(plot, now), pest: plot.pest, star: 1, qty: 1 },
+      season,
+    );
+    if (filter.priceBelow !== undefined && value >= filter.priceBelow) continue;
+    if (filter.profit !== undefined) {
+      const cost = seedById(plot.seed)?.buy ?? 0;
+      const winning = value > cost;
+      if (filter.profit === "win" ? !winning : winning) continue;
+    }
+    next.plots[slot] = null;
+    removed += 1;
+  }
+  if (removed === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  return changed(next, now);
 }
 
 /** @brief Plants one bagged seed. */

@@ -220,6 +220,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let moveSource: { slot: number; area: "crop" | "tree" } | null = null;
   let machineMenu: { id: MachineId; x: number; y: number; anchorTop: number } | null = null;
   let specialPicker: number | null = null;
+  let bulkPanel: "plan" | "uproot" | null = null;
+  let uprootPriceDraft = "";
   let giftCode = "";
   let giftAmount = "1000";
   let buyQty = 1;
@@ -2320,7 +2322,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const at = now();
       const counts = bulkCounts(at);
       const coins = state?.coins ?? 0;
-      const bulk = div("garden-bulk");
+
+      wrap.append(lineBlock(`// ${t("quick.title")}`));
+      const quick = div("garden-bulk");
       const waterAll = actionButton(
         t("garden.waterAll", { count: counts.water, cost: counts.water * WATER_ALL_COST }),
         "waterAll",
@@ -2336,14 +2340,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         counts.harvest > 0 && coins >= counts.harvest * HARVEST_ALL_COST,
       );
       harvestAll.classList.add("garden-btn-harvest");
-      bulk.append(waterAll, harvestAll);
+      quick.append(
+        waterAll,
+        harvestAll,
+        actionButton(t("garden.sellAll"), "sellAll", (state?.bag.crops.length ?? 0) > 0),
+      );
       const pestTargets =
         (state?.plots ?? []).filter(
           (plot, slot) => plot !== null && !cropSlotLocked(slot) && plot.protectedUntil <= at,
         ).length + (state?.trees ?? []).filter((tree) => tree !== null && tree.protectedUntil <= at).length;
-      // Everything still protected: there is nothing to re-spray.
       if (pestTargets > 0) {
-        bulk.append(
+        quick.append(
           actionButton(
             t("garden.sprayPestAll", {
               count: pestTargets,
@@ -2356,33 +2363,36 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       const soil = state?.soil ?? [];
       const renovateCost = soil.reduce((sum, fertility) => sum + soilRenovateCost(fertility), 0);
-      bulk.append(
+      quick.append(
         actionButton(
           t("garden.renovate", { cost: renovateCost }),
           "renovateSoil",
           renovateCost > 0 && coins >= renovateCost,
         ),
       );
-      wrap.append(bulk);
+      wrap.append(quick);
+
+      wrap.append(lineBlock(`// ${t("mode.title")}`));
+      const modes = div("garden-tools");
+      const bulkFertilize = actionButton(t("mode.bulkFertilize"), "pickAllSupply");
+      bulkFertilize.dataset.kind = "fertilize";
+      const bulkSpray = actionButton(t("mode.bulkSpray"), "pickAllSupply");
+      bulkSpray.dataset.kind = "spray";
+      modes.append(actionButton(t("mode.bulkPlan"), "bulkPlan"), bulkFertilize, bulkSpray);
+      wrap.append(modes);
 
       const tools = div("garden-tools");
       tools.append(span("garden-hint", t("garden.tools")));
+      const fertilizeTool = actionButton(t("garden.useFertilizer"), "pickTool");
+      fertilizeTool.dataset.kind = "fertilize";
+      const sprayTool = actionButton(t("garden.useSpray"), "pickTool");
+      sprayTool.dataset.kind = "spray";
       tools.append(
-        actionButton(t("garden.useFertilizer"), "pickTool", true),
-        actionButton(t("garden.useSpray"), "pickTool", true),
-        actionButton(t("garden.fertilizeAll"), "pickAllSupply", true),
-        actionButton(t("garden.sprayAll"), "pickAllSupply", true),
+        fertilizeTool,
+        sprayTool,
         actionButton(t("garden.plantQuick"), "pickPlantTool"),
         actionButton(t("garden.waterQuick"), "quickWater"),
       );
-      for (const button of tools.querySelectorAll<HTMLButtonElement>('[data-act="pickTool"]')) {
-        button.dataset.kind =
-          button.textContent?.includes(t("garden.useFertilizer")) === true ? "fertilize" : "spray";
-      }
-      for (const button of tools.querySelectorAll<HTMLButtonElement>('[data-act="pickAllSupply"]')) {
-        button.dataset.kind =
-          button.textContent?.includes(t("garden.fertilizeAll")) === true ? "fertilize" : "spray";
-      }
       if (tool !== null) {
         const activeLabel =
           tool.kind === "water"
@@ -2402,59 +2412,111 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         );
       }
       wrap.append(tools);
-      if (toolPicker !== null) {
+
+      if (toolPicker === "plant") {
         const picker = div("garden-tools");
-        if (toolPicker === "plant") {
-          const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
-          if (ownedSeeds.length === 0) picker.append(span("garden-hint", t("garden.plantNoSeeds")));
-          for (const seed of ownedSeeds) {
-            const button = actionButton(
-              `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})`,
-              "pickPlantSeed",
-            );
-            button.dataset.seed = seed.id;
-            picker.append(button);
-          }
-          wrap.append(picker);
-        } else if (toolPicker === "fertilizeAll" || toolPicker === "sprayAll") {
-          const bulkKind = toolPicker === "fertilizeAll" ? "fertilize" : "spray";
-          const catalog = bulkKind === "fertilize" ? FERTILIZERS : SPRAYS;
-          const targets = supplyTargetCount(bulkKind, now());
-          picker.append(
-            span("garden-hint", t("garden.pickAllSupply", { count: targets, plants: t("garden.plants") })),
+        const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
+        if (ownedSeeds.length === 0) picker.append(span("garden-hint", t("garden.plantNoSeeds")));
+        for (const seed of ownedSeeds) {
+          const button = actionButton(
+            `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})`,
+            "pickPlantSeed",
           );
-          const coins = state?.coins ?? 0;
-          for (const supply of catalog) {
-            const unit = buyPriceOf(supply.id, supply.price);
-            const affordable = unit <= 0 ? targets : Math.min(targets, Math.floor(coins / unit));
-            const button = actionButton(
-              `${t(`supplies.${supply.id}`)} · ${formatNumber(unit)}c × ${affordable}`,
-              "quickSupplyAll",
-              targets > 0 && affordable > 0,
-            );
-            button.dataset.kind = bulkKind;
-            button.dataset.supply = supply.id;
-            picker.append(button);
-          }
-          wrap.append(picker);
-        } else {
-          const catalog = toolPicker === "fertilize" ? FERTILIZERS : SPRAYS;
-          for (const supply of catalog) {
-            const owned = state?.bag.supplies[supply.id] ?? 0;
-            const button = actionButton(
-              `${t(`supplies.${supply.id}`)} (${owned})`,
-              "pickToolSupply",
-              owned > 0,
-            );
-            button.dataset.kind = toolPicker;
-            button.dataset.supply = supply.id;
-            picker.append(button);
-          }
-          wrap.append(picker);
+          button.dataset.seed = seed.id;
+          picker.append(button);
         }
+        wrap.append(picker);
       }
+      if (toolPicker === "fertilize" || toolPicker === "spray") {
+        const picker = div("garden-tools");
+        const catalog = toolPicker === "fertilize" ? FERTILIZERS : SPRAYS;
+        for (const supply of catalog) {
+          const owned = state?.bag.supplies[supply.id] ?? 0;
+          const button = actionButton(
+            `${t(`supplies.${supply.id}`)} (${owned})`,
+            "pickToolSupply",
+            owned > 0,
+          );
+          button.dataset.kind = toolPicker;
+          button.dataset.supply = supply.id;
+          picker.append(button);
+        }
+        wrap.append(picker);
+      }
+      if (bulkPanel === "plan") {
+        const picker = div("garden-tools");
+        const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
+        if (ownedSeeds.length === 0) picker.append(span("garden-hint", t("garden.plantNoSeeds")));
+        for (const seed of ownedSeeds) {
+          const button = actionButton(
+            `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})`,
+            "plantAllSeed",
+          );
+          button.dataset.seed = seed.id;
+          picker.append(button);
+        }
+        wrap.append(picker);
+      }
+      if (toolPicker === "fertilizeAll" || toolPicker === "sprayAll") {
+        const picker = div("garden-tools");
+        const bulkKind = toolPicker === "fertilizeAll" ? "fertilize" : "spray";
+        const catalog = bulkKind === "fertilize" ? FERTILIZERS : SPRAYS;
+        const targets = supplyTargetCount(bulkKind, now());
+        picker.append(
+          span("garden-hint", t("garden.pickAllSupply", { count: targets, plants: t("garden.plants") })),
+        );
+        for (const supply of catalog) {
+          const unit = buyPriceOf(supply.id, supply.price);
+          const affordable = unit <= 0 ? targets : Math.min(targets, Math.floor(coins / unit));
+          const button = actionButton(
+            `${t(`supplies.${supply.id}`)} · ${formatNumber(unit)}c × ${affordable}`,
+            "quickSupplyAll",
+            targets > 0 && affordable > 0,
+          );
+          button.dataset.kind = bulkKind;
+          button.dataset.supply = supply.id;
+          picker.append(button);
+        }
+        wrap.append(picker);
+      }
+
+      wrap.append(lineBlock(`// ${t("auto.title")}`));
+      const auto = div("garden-tools");
+      auto.append(actionButton(t("auto.uproot"), "bulkUproot", true));
+      wrap.append(auto);
+
+      if (bulkPanel === "uproot") {
+        const panel = div("garden-tools");
+        const planted = new Map<SeedId, number>();
+        for (const plot of state?.plots ?? []) {
+          if (plot === null) continue;
+          planted.set(plot.seed, (planted.get(plot.seed) ?? 0) + 1);
+        }
+        for (const [seed, count] of planted) {
+          const button = actionButton(
+            `${t("auto.byPlant", { seed: seedName(seed) })} ×${count}`,
+            "uprootSeed",
+          );
+          button.dataset.seed = seed;
+          panel.append(button);
+        }
+        panel.append(actionButton(t("auto.loss"), "uprootLoss"), actionButton(t("auto.win"), "uprootWin"));
+        const priceInput = document.createElement("input");
+        priceInput.type = "number";
+        priceInput.min = "0";
+        priceInput.className = "stage-input garden-uproot-price";
+        priceInput.placeholder = t("auto.price");
+        priceInput.value = uprootPriceDraft;
+        priceInput.dataset.role = "uprootPrice";
+        priceInput.setAttribute("aria-label", t("auto.price"));
+        panel.append(priceInput, actionButton(t("auto.uprootPrice"), "uprootPrice"));
+        panel.append(span("garden-hint", t("auto.hint")));
+        wrap.append(panel);
+      }
+
+      wrap.append(lineBlock(`// ${t("staff.title")}`));
+      wrap.append(buildStaffBar());
     }
-    wrap.append(buildStaffBar());
     wrap.append(buildSpecialBoard(now()));
     const layout = div("garden-layout");
     const boards = div("garden-boards");
@@ -3857,6 +3919,56 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         render();
         return;
       }
+      case "bulkPlan":
+        bulkPanel = bulkPanel === "plan" ? null : "plan";
+        toolPicker = null;
+        render();
+        return;
+      case "bulkFertilize":
+        toolPicker = toolPicker === "fertilizeAll" ? null : "fertilizeAll";
+        bulkPanel = null;
+        render();
+        return;
+      case "bulkSpray":
+        toolPicker = toolPicker === "sprayAll" ? null : "sprayAll";
+        bulkPanel = null;
+        render();
+        return;
+      case "bulkUproot":
+        bulkPanel = bulkPanel === "uproot" ? null : "uproot";
+        toolPicker = null;
+        render();
+        return;
+      case "plantAllSeed": {
+        const seed = target.dataset.seed as SeedId | undefined;
+        if (seed !== undefined) {
+          void runAction({ kind: "plantAll", seed }, t("garden.plantedAll"));
+        }
+        return;
+      }
+      case "uprootSeed": {
+        const seed = target.dataset.seed as SeedId | undefined;
+        if (seed !== undefined) {
+          void runAction({ kind: "uprootBulk", seed }, t("auto.uprooted"));
+        }
+        return;
+      }
+      case "uprootLoss":
+        void runAction({ kind: "uprootBulk", profit: "loss" }, t("auto.uprooted"));
+        return;
+      case "uprootWin":
+        void runAction({ kind: "uprootBulk", profit: "win" }, t("auto.uprooted"));
+        return;
+      case "uprootPrice": {
+        const priceBelow = Number(uprootPriceDraft);
+        if (!Number.isFinite(priceBelow) || priceBelow < 0) {
+          message = { text: t("auto.priceBad"), kind: "err" };
+          render();
+          return;
+        }
+        void runAction({ kind: "uprootBulk", priceBelow }, t("auto.uprooted"));
+        return;
+      }
       case "quickSupplyAll": {
         const kind = target.dataset.kind === "spray" ? "spray" : "fertilize";
         const supply = target.dataset.supply as SupplyId | undefined;
@@ -4593,6 +4705,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
     if (target.dataset.role === "restore") restoreDraft = target.value;
+    if (target.dataset.role === "uprootPrice") uprootPriceDraft = target.value;
     if (target.dataset.role === "giftCode") giftCode = target.value;
     if (target.dataset.role === "giftAmount") giftAmount = target.value;
   }
