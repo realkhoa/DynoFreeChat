@@ -252,6 +252,46 @@
   color: #f48771;
 }
 
+.garden-cell.is-shocked {
+  color: #ffe066;
+}
+
+.garden-cell.is-bloodlit {
+  color: #e06c75;
+}
+
+.garden-cell.is-radioactive {
+  color: #a3e635;
+}
+
+.garden-cell.is-disco {
+  color: #ff79c6;
+}
+
+.garden-cell.is-cosmic {
+  color: #bd93f9;
+}
+
+.garden-cell.is-metallic {
+  color: #b0b7c3;
+}
+
+.garden-cell.is-glimmering {
+  color: #f1fa8c;
+}
+
+.garden-cell.is-twisted {
+  color: #ffb86c;
+}
+
+.garden-cell.is-diamond {
+  color: #8be9fd;
+}
+
+.garden-cell.is-burnt {
+  color: #a0522d;
+}
+
 @keyframes garden-blink {
   50% {
     opacity: 0.35;
@@ -984,7 +1024,17 @@
 .game-stage-host[data-stealth="on"] .garden-cell.is-sunray,
 .game-stage-host[data-stealth="on"] .garden-cell.is-smoked,
 .game-stage-host[data-stealth="on"] .garden-cell.is-cracked,
-.game-stage-host[data-stealth="on"] .garden-cell.is-onfire {
+.game-stage-host[data-stealth="on"] .garden-cell.is-onfire,
+.game-stage-host[data-stealth="on"] .garden-cell.is-shocked,
+.game-stage-host[data-stealth="on"] .garden-cell.is-bloodlit,
+.game-stage-host[data-stealth="on"] .garden-cell.is-radioactive,
+.game-stage-host[data-stealth="on"] .garden-cell.is-disco,
+.game-stage-host[data-stealth="on"] .garden-cell.is-cosmic,
+.game-stage-host[data-stealth="on"] .garden-cell.is-metallic,
+.game-stage-host[data-stealth="on"] .garden-cell.is-glimmering,
+.game-stage-host[data-stealth="on"] .garden-cell.is-twisted,
+.game-stage-host[data-stealth="on"] .garden-cell.is-diamond,
+.game-stage-host[data-stealth="on"] .garden-cell.is-burnt {
   color: #bdbdbd !important;
   text-shadow: none;
 }

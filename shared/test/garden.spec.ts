@@ -28,6 +28,7 @@ import {
   soilGrowthFactor,
   soilRenovateCost,
   effectById,
+  EFFECTS,
   eventAt,
   formatGardenAuth,
   gardenCounts,
@@ -474,6 +475,54 @@ describe("garden season", () => {
     }
     expect(counts.get(1) ?? 0).toBeGreaterThan(counts.get(0) ?? 0);
     expect(counts.get(1) ?? 0).toBeGreaterThan(counts.get(2) ?? 0);
+  });
+
+  it("ships the expanded mutation and weather catalogs", () => {
+    for (const id of [
+      "shocked",
+      "bloodlit",
+      "radioactive",
+      "disco",
+      "cosmic",
+      "metallic",
+      "glimmering",
+      "twisted",
+      "diamond",
+      "burnt",
+    ] as const) {
+      const effect = effectById(id);
+      expect(effect).toBeDefined();
+      expect(effect?.multiplier).toBeGreaterThan(0);
+      expect(effect?.mark).toHaveLength(1);
+    }
+    // Marks stay unique so the log never confuses two mutations.
+    const marks = EFFECTS.map((effect) => effect.mark);
+    expect(new Set(marks).size).toBe(marks.length);
+
+    for (const id of [
+      "thunderstorm",
+      "bloodMoon",
+      "acidRain",
+      "discoNight",
+      "cosmicRift",
+      "metallicDew",
+      "glimmerFog",
+      "twister",
+      "diamondSky",
+      "emberRain",
+    ] as const) {
+      const event = EVENTS.find((entry) => entry.id === id);
+      expect(event).toBeDefined();
+      expect(Object.keys(event?.effectChances ?? {}).length).toBeGreaterThan(0);
+    }
+    // Every weather chance must point at a real mutation.
+    for (const event of EVENTS) {
+      for (const id of Object.keys(event.effectChances)) expect(effectById(id)).toBeDefined();
+    }
+    const storm = EVENTS.find((event) => event.id === "thunderstorm");
+    if (storm !== undefined) {
+      expect(rollEffectsFor([storm], () => 0, storm.effectChances)).toContain("shocked");
+    }
   });
 
   it("exposes the whole active event set on the season", () => {

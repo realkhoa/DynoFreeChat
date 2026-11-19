@@ -152,6 +152,16 @@ export type EffectId =
   | "gilded"
   | "crystal"
   | "rainbow"
+  | "shocked"
+  | "bloodlit"
+  | "radioactive"
+  | "disco"
+  | "cosmic"
+  | "metallic"
+  | "glimmering"
+  | "twisted"
+  | "diamond"
+  | "burnt"
   | "shriveled"
   | "pale";
 
@@ -176,7 +186,17 @@ export type EventId =
   | "goldenFog"
   | "crystalFrost"
   | "rainbowSky"
-  | "blightWind";
+  | "blightWind"
+  | "thunderstorm"
+  | "bloodMoon"
+  | "acidRain"
+  | "discoNight"
+  | "cosmicRift"
+  | "metallicDew"
+  | "glimmerFog"
+  | "twister"
+  | "diamondSky"
+  | "emberRain";
 
 /** One plantable seed and its economy. */
 export interface SeedDefinition {
@@ -400,7 +420,17 @@ export const EFFECTS: readonly EffectDefinition[] = [
   { id: "gilded", mark: "G", multiplier: 4.8, natural: true },
   { id: "crystal", mark: "C", multiplier: 3.6, natural: true },
   { id: "rainbow", mark: "R", multiplier: 6.5, natural: true },
+  { id: "shocked", mark: "z", multiplier: 4.6, natural: true },
+  { id: "bloodlit", mark: "B", multiplier: 5.2, natural: true },
+  { id: "radioactive", mark: "r", multiplier: 6, natural: true },
+  { id: "disco", mark: "d", multiplier: 5.8, natural: true },
+  { id: "cosmic", mark: "c", multiplier: 8, natural: true },
+  { id: "metallic", mark: "M", multiplier: 4, natural: true },
+  { id: "glimmering", mark: "g", multiplier: 5, natural: true },
+  { id: "twisted", mark: "t", multiplier: 4.4, natural: true },
+  { id: "diamond", mark: "D", multiplier: 9, natural: true },
   // Bad mutations: cheap, not dangerous, but they can ruin an otherwise good pick.
+  { id: "burnt", mark: "b", multiplier: 0.7, natural: true },
   { id: "shriveled", mark: "-", multiplier: 0.5, natural: true },
   { id: "pale", mark: ".", multiplier: 0.7, natural: true },
 ];
@@ -410,6 +440,11 @@ export const BASE_EFFECT_CHANCES: Readonly<Partial<Record<EffectId, number>>> = 
   golden: 0.03,
   frozen: 0.02,
   moonlit: 0.015,
+  shocked: 0.008,
+  metallic: 0.006,
+  glimmering: 0.005,
+  disco: 0.003,
+  cosmic: 0.001,
   pale: 0.02,
   shriveled: 0.015,
 };
@@ -456,6 +491,36 @@ export const EVENTS: readonly EventDefinition[] = [
   { id: "crystalFrost", growScale: 0.95, sellBonus: 1.1, effectChances: { crystal: 0.12 } },
   { id: "rainbowSky", growScale: 1.1, sellBonus: 1.15, effectChances: { rainbow: 0.05 } },
   { id: "blightWind", growScale: 0.9, sellBonus: 0.9, effectChances: { shriveled: 0.15, pale: 0.1 } },
+  {
+    id: "thunderstorm",
+    growScale: 1.15,
+    sellBonus: 1.1,
+    effectChances: { shocked: 0.12 },
+  },
+  { id: "bloodMoon", growScale: 1.05, sellBonus: 1.2, effectChances: { bloodlit: 0.1 } },
+  {
+    id: "acidRain",
+    growScale: 0.95,
+    sellBonus: 1.05,
+    effectChances: { radioactive: 0.08, toxic: 0.08 },
+  },
+  { id: "discoNight", growScale: 1.1, sellBonus: 1.15, effectChances: { disco: 0.08 } },
+  { id: "cosmicRift", growScale: 1.2, sellBonus: 1.3, effectChances: { cosmic: 0.03 } },
+  { id: "metallicDew", growScale: 1, sellBonus: 1.1, effectChances: { metallic: 0.12 } },
+  { id: "glimmerFog", growScale: 1, sellBonus: 1.15, effectChances: { glimmering: 0.1 } },
+  { id: "twister", growScale: 0.85, sellBonus: 1, effectChances: { twisted: 0.12 } },
+  {
+    id: "diamondSky",
+    growScale: 1.05,
+    sellBonus: 1.35,
+    effectChances: { diamond: 0.015 },
+  },
+  {
+    id: "emberRain",
+    growScale: 0.95,
+    sellBonus: 1,
+    effectChances: { burnt: 0.1, onfire: 0.03 },
+  },
 ];
 
 /** Length of one animal upkeep/production cycle: six minutes. */

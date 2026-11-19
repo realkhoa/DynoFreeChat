@@ -5,6 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EFFECTS, EVENTS } from "@dyno/shared/garden";
 import {
   detectLocale,
   formatDuration,
@@ -146,5 +147,21 @@ describe("formatting", () => {
     expect(formatNumber(12345)).toBe("12,345");
     setLocale("vi");
     expect(formatNumber(12345)).toBe("12.345");
+  });
+});
+
+describe("garden catalog strings", () => {
+  it("translates every mutation, mark and weather event", () => {
+    for (const locale of ["vi", "en"] as const) {
+      setLocale(locale);
+      for (const effect of EFFECTS) {
+        expect(t(`effects.${effect.id}`)).not.toBe(`effects.${effect.id}`);
+      }
+      for (const event of EVENTS) {
+        expect(t(`events.${event.id}`)).not.toBe(`events.${event.id}`);
+        expect(t(`events.${event.id}.desc`)).not.toBe(`events.${event.id}.desc`);
+      }
+    }
+    setLocale("vi");
   });
 });
