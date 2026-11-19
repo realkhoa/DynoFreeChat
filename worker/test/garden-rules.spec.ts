@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ACTIONS_PER_MINUTE,
+  BREED_CYCLES,
   EPOCH_MS,
   EVENT_WAVE_MS,
   FARM_CYCLE_MS,
@@ -392,6 +393,104 @@ describe("garden ledger rules", () => {
     if (!sold.ok) return;
     expect(sold.ledger.coins).toBeGreaterThan(later.coins);
     expect(sold.ledger.bag.products).toHaveLength(0);
+  });
+
+  it("keeps an egg, hatches a chick and refuses a full coop", () => {
+    const ledger = makeLedger();
+    ledger.coins = 20_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "coop" });
+    if (!built.ok) throw new Error("coop failed");
+    const bought = run(built.ledger, { kind: "buyAnimal", building: "coop", slot: 0, animal: "chicken" });
+    if (!bought.ok) throw new Error("buy failed");
+
+    const stocked: GardenLedger = {
+      ...bought.ledger,
+      bag: { ...bought.ledger.bag, products: [{ product: "egg", star: 1, qty: 2 }] },
+    };
+    const bred = run(stocked, { kind: "breedAnimal", building: "coop", slot: 0 });
+    if (!bred.ok) throw new Error("breed failed");
+    expect(bred.ledger.animals.coop[0]?.incubatingUntil).toBe(NOW + BREED_CYCLES * FARM_CYCLE_MS);
+    expect(bred.ledger.bag.products?.[0]?.qty).toBe(1);
+
+    // One egg at a time per animal.
+    expect(run(bred.ledger, { kind: "breedAnimal", building: "coop", slot: 0 }).ok).toBe(false);
+
+    const hatched = settleFarm(bred.ledger, NOW + BREED_CYCLES * FARM_CYCLE_MS);
+    expect(hatched.animals.coop.filter((entry) => entry !== null)).toHaveLength(2);
+    expect(hatched.animals.coop[0]?.incubatingUntil ?? 0).toBe(0);
+
+    // Only the coop hatches eggs.
+    const onBarn = run(bred.ledger, { kind: "breedAnimal", building: "barn", slot: 0 });
+    expect(onBarn.ok).toBe(false);
+    if (!onBarn.ok) expect(onBarn.code).toBe("NOT_BREEDABLE");
+
+    // A full coop cannot start another hatch, whatever the bag holds.
+    const full: GardenLedger = {
+      ...hatched,
+      animals: {
+        ...hatched.animals,
+        coop: hatched.animals.coop.map(() => ({
+          kind: "chicken" as const,
+          bornAt: NOW,
+          pats: 0,
+          lastProduceAt: NOW,
+        })),
+      },
+    };
+    const denied = run(full, { kind: "breedAnimal", building: "coop", slot: 0 });
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) expect(denied.code).toBe("NO_FREE_SLOT");
+  });
+
+  it("births barn animals into free slots over time", () => {
+    const ledger = makeLedger();
+    ledger.coins = 100_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "barn" });
+    if (!built.ok) throw new Error("barn failed");
+    const bought = run(built.ledger, { kind: "buyAnimal", building: "barn", slot: 0, animal: "cow" });
+    if (!bought.ok) throw new Error("buy failed");
+
+    const later = settleFarm(bought.ledger, NOW + 100 * FARM_CYCLE_MS);
+    const herd = later.animals.barn.filter((entry) => entry !== null);
+    expect(herd.length).toBeGreaterThan(1);
+    expect(herd.every((entry) => entry?.kind === "cow")).toBe(true);
+  });
+
+  it("grows an empty pond every ten cycles", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "pond" });
+    if (!built.ok) throw new Error("pond failed");
+    const later = settleFarm(built.ledger, NOW + 10 * FARM_CYCLE_MS);
+    expect(later.pondGrowth).toBe(10);
+    const capped = settleFarm(later, NOW + 200 * FARM_CYCLE_MS);
+    expect(capped.pondGrowth).toBe(100);
+  });
+
+  it("builds a pond, grows it and sells its stock for meat", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "pond" });
+    if (!built.ok) throw new Error("pond failed");
+    expect(built.ledger.buildings.pond).toBe(1);
+    expect(built.ledger.coins).toBe(44_000_000);
+
+    const fish = run(built.ledger, { kind: "buyAnimal", building: "pond", slot: 0, animal: "fish" });
+    if (!fish.ok) throw new Error("fish failed");
+    const snail = run(fish.ledger, { kind: "buyAnimal", building: "pond", slot: 1, animal: "snail" });
+    if (!snail.ok) throw new Error("snail failed");
+
+    const later = settleFarm(snail.ledger, NOW + 20 * FARM_CYCLE_MS);
+    expect(later.pondGrowth).toBe(20);
+    const products = later.bag.products ?? [];
+    expect(products.some((stack) => stack.product === "roe")).toBe(true);
+    expect(products.some((stack) => stack.product === "snailMeat")).toBe(true);
+
+    const before = later.coins;
+    const meat = run(later, { kind: "sellAnimal", building: "pond", slot: 0 }, NOW + 20 * FARM_CYCLE_MS);
+    if (!meat.ok) throw new Error("sell failed");
+    expect(meat.ledger.animals.pond[0]).toBeNull();
+    expect(meat.ledger.coins).toBeGreaterThan(before);
   });
 
   it("buys a rare watering machine and it waters ten percent per cycle", () => {

@@ -259,6 +259,15 @@
   }
 }
 
+/* A kept egg turns the cell cold blue until it hatches. */
+.garden-animal-cell.is-breeding {
+  color: #9cdcfe;
+}
+
+.garden-animal-menu {
+  width: min(340px, calc(100vw - 16px));
+}
+
 .garden-detail {
   flex: 0 1 300px;
   min-width: 220px;

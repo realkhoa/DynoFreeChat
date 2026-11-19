@@ -58,8 +58,11 @@ import {
   combinedGrowScale,
   ANIMALS,
   BUILDINGS,
+  type BuildingId,
   FARM_CYCLE_MS,
+  animalMeatPrice,
   animalQuality,
+  pondGrowthFactor,
   buildingSlots,
   EGG_PITY,
   PETS,
@@ -236,10 +239,31 @@ describe("farm buildings", () => {
     expect(three).toBeGreaterThan(one);
     expect(ANIMALS.some((entry) => entry.product === "wool" && entry.intervalCycles === 7)).toBe(true);
   });
+
+  it("adds a fish pond with fish and snails", () => {
+    const pond = BUILDINGS.find((building) => building.id === "pond");
+    expect(pond?.animals).toEqual(["fish", "snail"]);
+    expect(pond?.slots).toEqual([4, 6, 9, 12]);
+    expect(ANIMALS.find((animal) => animal.id === "fish")?.product).toBe("roe");
+    expect(ANIMALS.find((animal) => animal.id === "snail")?.product).toBe("snailMeat");
+  });
+
+  it("prices meat below the purchase price, lifted by pond growth", () => {
+    expect(animalMeatPrice("cow", 1)).toBeLessThan(animalByIdForTest("cow"));
+    expect(animalMeatPrice("fish", 1, 20)).toBeGreaterThan(animalMeatPrice("fish", 1, 0));
+    // Land animals ignore pond growth entirely.
+    expect(animalMeatPrice("cow", 3, 100)).toBe(animalMeatPrice("cow", 3, 0));
+    expect(pondGrowthFactor(150)).toBe(2);
+  });
 });
 
 // Small local helper so the test does not import another symbol by mistake.
-function buildingUpgradeCostForTest(id: "coop" | "barn"): number {
+function animalByIdForTest(id: "cow"): number {
+  return ANIMALS.find((animal) => animal.id === id)?.buy ?? 0;
+}
+
+// Small local helper so the test does not import another symbol by mistake.
+function buildingUpgradeCostForTest(id: BuildingId): number {
   return BUILDINGS.find((building) => building.id === id)?.upgrade ?? 0;
 }
 
@@ -679,6 +703,21 @@ describe("garden wire parsing", () => {
     expect(RECOVERY_RE.test("ABCD-EFGH-JKMN")).toBe(true);
     expect(isRecoveryKey("ABCD-EFGH-JKMN")).toBe(true);
     expect(isRecoveryKey("ABCD-EFGH-IJKL")).toBe(false);
+  });
+
+  it("parses breeding and slaughter actions", () => {
+    expect(parseGardenAction({ kind: "breedAnimal", building: "coop", slot: 1 })).toEqual({
+      kind: "breedAnimal",
+      building: "coop",
+      slot: 1,
+    });
+    expect(parseGardenAction({ kind: "sellAnimal", building: "pond", slot: 3 })).toEqual({
+      kind: "sellAnimal",
+      building: "pond",
+      slot: 3,
+    });
+    expect(parseGardenAction({ kind: "sellAnimal", building: "nope", slot: 0 })).toBeNull();
+    expect(parseGardenAction({ kind: "breedAnimal", building: "coop", slot: 12 })).toBeNull();
   });
 
   it("validates actions and rejects malformed ones", () => {

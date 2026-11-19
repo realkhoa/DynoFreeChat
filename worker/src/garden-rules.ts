@@ -70,9 +70,19 @@ import {
   PEST_PROTECTION_MS,
   PEST_SPRAY_COST,
   ANIMALS,
+  BARN_BIRTH_CHANCE,
+  BREED_CYCLES,
+  BUILDING_IDS,
+  POND_GROWTH_CYCLES,
+  POND_GROWTH_MAX,
+  POND_GROWTH_STEP,
   animalById,
   animalIntervalMs,
+  animalIsIncubating,
+  animalMeatPrice,
   animalQuality,
+  breedEggProduct,
+  pondGrowthFactor,
   buildingById,
   buildingSlots,
   buildingUpgradeCost,
@@ -196,6 +206,8 @@ export interface GardenLedger {
   animals: Record<BuildingId, (AnimalState | null)[]>;
   /** Last farm upkeep/production settlement. */
   farmSettledAt: number;
+  /** Fish pond growth in percent. */
+  pondGrowth: number;
   /** Last automatic-tool settlement. */
   toolsSettledAt: number;
   /** Last pest strike roll. */
@@ -312,9 +324,10 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     trees: emptyTrees(STARTING_TABS),
     bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {}, products: [], tools: {} },
     stats: { planted: 0, harvested: 0, earned: 0, spent: 0, tax: 0 },
-    buildings: { coop: 0, barn: 0 },
-    animals: { coop: [], barn: [] },
+    buildings: { coop: 0, barn: 0, pond: 0 },
+    animals: { coop: [], barn: [], pond: [] },
     farmSettledAt: input.now,
+    pondGrowth: 0,
     toolsSettledAt: input.now,
     pestSettledAt: input.now,
     soil: new Array<number>(totalCrops(STARTING_TABS)).fill(SOIL_START),
@@ -430,8 +443,10 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     animals: {
       coop: ledger.animals.coop.map((animal) => (animal === null ? null : { ...animal })),
       barn: ledger.animals.barn.map((animal) => (animal === null ? null : { ...animal })),
+      pond: (ledger.animals.pond ?? []).map((animal) => (animal === null ? null : { ...animal })),
     },
     farmSettledAt: ledger.farmSettledAt,
+    pondGrowth: ledger.pondGrowth ?? 0,
     soil: [...ledger.soil],
     extras: extrasSnapshot(ledger),
     skills: {
@@ -507,6 +522,10 @@ export function applyGardenAction(
       return buyAnimal(ledger, action.building, action.slot, action.animal, now);
     case "patAnimal":
       return patAnimal(ledger, action.building, action.slot, now);
+    case "breedAnimal":
+      return breedAnimal(ledger, action.building, action.slot, now);
+    case "sellAnimal":
+      return sellAnimal(ledger, action.building, action.slot, now);
     case "sellProduct":
       return sellProduct(ledger, action.product, action.star, action.qty, season, now);
     case "sellAllProducts":
@@ -1139,12 +1158,8 @@ function buyAnimal(
   next.coins -= definition.buy;
   next.stats.spent += definition.buy;
   next.animals[building][slot] = { kind: animalId, bornAt: now, pats: 0, lastProduceAt: now };
-  if (
-    next.animals.coop.every((entry) => entry === null) &&
-    next.animals.barn.every((entry) => entry === null)
-  ) {
-    next.farmSettledAt = now;
-  }
+  const anyAnimal = BUILDING_IDS.some((id) => next.animals[id].some((entry) => entry !== null));
+  if (!anyAnimal) next.farmSettledAt = now;
   return changed(next, now);
 }
 
@@ -1155,6 +1170,56 @@ function patAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now
   const next = clone(ledger);
   next.animals[building][slot] = { ...animal, pats: animal.pats + 1 };
   grantXp(next, "ranching", 15);
+  return changed(next, now);
+}
+
+/** @brief Keeps one egg warm so it hatches into a free coop slot. */
+function breedAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now: number): RuleResult {
+  if (building !== "coop") return { ok: false, code: "NOT_BREEDABLE" };
+  const animal = ledger.animals.coop?.[slot] ?? null;
+  if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
+  if (animalIsIncubating(animal, now)) return { ok: false, code: "ALREADY_BREEDING" };
+  const egg = breedEggProduct(animal.kind);
+  if (egg === null) return { ok: false, code: "NOT_BREEDABLE" };
+  const slots = buildingSlots("coop", ledger.buildings.coop);
+  if (!ledger.animals.coop.slice(0, slots).some((entry) => entry === null)) {
+    return { ok: false, code: "NO_FREE_SLOT" };
+  }
+  const stack = (ledger.bag.products ?? [])
+    .filter((entry) => entry.product === egg && entry.qty > 0)
+    .sort((left, right) => left.star - right.star)[0];
+  if (stack === undefined) return { ok: false, code: "NO_EGG" };
+
+  const next = clone(ledger);
+  const products = next.bag.products ?? [];
+  const index = products.findIndex((entry) => entry.product === egg && entry.star === stack.star);
+  const current = products[index];
+  if (current === undefined) return { ok: false, code: "NO_EGG" };
+  if (current.qty <= 1) products.splice(index, 1);
+  else products[index] = { ...current, qty: current.qty - 1 };
+
+  next.animals.coop[slot] = {
+    ...animal,
+    incubatingUntil: now + BREED_CYCLES * FARM_CYCLE_MS,
+  };
+  grantXp(next, "ranching", 25);
+  return changed(next, now);
+}
+
+/** @brief Sells one animal for meat; never a profit on land, a pond payoff. */
+function sellAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now: number): RuleResult {
+  const animal = ledger.animals[building]?.[slot] ?? null;
+  if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
+  if (animalIsIncubating(animal, now)) return { ok: false, code: "ALREADY_BREEDING" };
+  const gross = animalMeatPrice(animal.kind, animalQuality(animal, now), ledger.pondGrowth ?? 0);
+  const tax = Math.round(gross * SELL_TAX_RATE);
+
+  const next = clone(ledger);
+  next.coins += gross - tax;
+  next.stats.earned += gross;
+  next.stats.tax += tax;
+  next.animals[building][slot] = null;
+  grantXp(next, "ranching", 30 + Math.round(gross / 100));
   return changed(next, now);
 }
 
@@ -1174,7 +1239,10 @@ function sellProduct(
   const bonus = crafted
     ? artisaningOutputBonus(ledger.skills.artisaning.level)
     : ranchingSellBonus(ledger.skills.ranching.level);
-  const gross = Math.round(productPrice(stack, season) * qty * (1 + petEffect(ledger, "sell")) * (1 + bonus));
+  const pond = product === "roe" || product === "snailMeat" ? pondGrowthFactor(ledger.pondGrowth ?? 0) : 1;
+  const gross = Math.round(
+    productPrice(stack, season) * qty * (1 + petEffect(ledger, "sell")) * (1 + bonus) * pond,
+  );
   const tax = Math.round(gross * SELL_TAX_RATE);
 
   const next = clone(ledger);
@@ -1200,8 +1268,10 @@ function sellAllProducts(ledger: GardenLedger, season: SeasonSnapshot, now: numb
     const bonus = crafted
       ? artisaningOutputBonus(ledger.skills.artisaning.level)
       : ranchingSellBonus(ledger.skills.ranching.level);
+    const pond =
+      stack.product === "roe" || stack.product === "snailMeat" ? pondGrowthFactor(ledger.pondGrowth ?? 0) : 1;
     total += Math.round(
-      productPrice(stack, season) * stack.qty * (1 + petEffect(ledger, "sell")) * (1 + bonus),
+      productPrice(stack, season) * stack.qty * (1 + petEffect(ledger, "sell")) * (1 + bonus) * pond,
     );
   }
   if (total <= 0) return { ok: false, code: "NO_PRODUCT" };
@@ -1225,17 +1295,25 @@ function sellAllProducts(ledger: GardenLedger, season: SeasonSnapshot, now: numb
  * nothing for those cycles.
  */
 export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
-  const animals = [...ledger.animals.coop, ...ledger.animals.barn].filter(
+  const animals = BUILDING_IDS.flatMap((building) => ledger.animals[building] ?? []).filter(
     (animal): animal is AnimalState => animal !== null,
   );
-  if (animals.length === 0) return ledger;
   const elapsed = now - ledger.farmSettledAt;
   if (elapsed < FARM_CYCLE_MS) return ledger;
 
   const cycles = Math.min(100, Math.floor(elapsed / FARM_CYCLE_MS));
   if (cycles <= 0) return ledger;
+  const pondSteps = ledger.buildings.pond > 0 ? Math.floor(cycles / POND_GROWTH_CYCLES) : 0;
+  // An idle farm with no pond has nothing to settle.
+  if (animals.length === 0 && pondSteps <= 0) return ledger;
   const next = clone(ledger);
-  next.farmSettledAt = ledger.farmSettledAt + cycles * FARM_CYCLE_MS;
+  const startedAt = ledger.farmSettledAt;
+  next.farmSettledAt = startedAt + cycles * FARM_CYCLE_MS;
+
+  // The pond grows one step per ten settled cycles, capped at one hundred.
+  if (pondSteps > 0) {
+    next.pondGrowth = Math.min(POND_GROWTH_MAX, (next.pondGrowth ?? 0) + pondSteps * POND_GROWTH_STEP);
+  }
 
   let upkeep = 0;
   for (const animal of animals) upkeep += (animalById(animal.kind)?.upkeep ?? 0) * cycles;
@@ -1246,8 +1324,8 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
   if (paid < upkeep) return next;
 
   const collections: Array<{ building: BuildingId; slot: number; animal: AnimalState }> = [];
-  for (const building of ["coop", "barn"] as const) {
-    next.animals[building].forEach((animal, slot) => {
+  for (const building of BUILDING_IDS) {
+    (next.animals[building] ?? []).forEach((animal, slot) => {
       if (animal !== null) collections.push({ building, slot, animal });
     });
   }
@@ -1266,6 +1344,43 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
       lastProduceAt: entry.animal.lastProduceAt + produced * interval,
     };
   }
+
+  // Barn: while a slot is free, every cycle rolls a small chance of one more
+  // head; the newborn already matches a species living in the barn.
+  if (next.buildings.barn > 0) {
+    const herd = next.animals.barn.filter((animal) => animal !== null);
+    if (herd.length > 0) {
+      const kinds = [...new Set(herd.map((animal) => animal.kind))];
+      const cycleStart = Math.floor(startedAt / FARM_CYCLE_MS);
+      for (let step = 0; step < cycles; step += 1) {
+        const free = next.animals.barn.findIndex((animal) => animal === null);
+        if (free < 0) break;
+        const rng = createRng(hash32(`birth:${ledger.playerId}:${cycleStart + step}:${free}`));
+        if (rng() >= BARN_BIRTH_CHANCE) continue;
+        const bornAt = startedAt + (step + 1) * FARM_CYCLE_MS;
+        const kind = kinds[Math.floor(rng() * kinds.length)] ?? "cow";
+        next.animals.barn[free] = { kind, bornAt, pats: 0, lastProduceAt: bornAt };
+      }
+    }
+  }
+
+  // Coop: a kept egg hatches into a free slot; with the coop full it keeps
+  // waiting and hatches as soon as a slot opens.
+  for (const building of BUILDING_IDS) {
+    const list = next.animals[building] ?? [];
+    for (let slot = 0; slot < list.length; slot += 1) {
+      const animal = list[slot] ?? null;
+      if (animal === null) continue;
+      const until = animal.incubatingUntil ?? 0;
+      if (until === 0 || now < until) continue;
+      const free = list.findIndex((entry) => entry === null);
+      if (free < 0) continue;
+      list[free] = { kind: animal.kind, bornAt: now, pats: 0, lastProduceAt: now };
+      list[slot] = { ...animal, incubatingUntil: 0 };
+      grantXp(next, "ranching", 40);
+    }
+  }
+
   return next;
 }
 
@@ -2124,8 +2239,10 @@ function clone(ledger: GardenLedger): GardenLedger {
     animals: {
       coop: ledger.animals.coop.map((animal) => (animal === null ? null : { ...animal })),
       barn: ledger.animals.barn.map((animal) => (animal === null ? null : { ...animal })),
+      pond: (ledger.animals.pond ?? []).map((animal) => (animal === null ? null : { ...animal })),
     },
     farmSettledAt: ledger.farmSettledAt,
+    pondGrowth: ledger.pondGrowth ?? 0,
     soil: [...ledger.soil],
     skills: {
       farming: { ...ledger.skills.farming },

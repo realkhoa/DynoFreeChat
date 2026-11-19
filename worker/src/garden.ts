@@ -404,9 +404,18 @@ export class Garden extends DurableObject<Env> {
       ...raw,
       tabs,
       unlockedPatches: deriveUnlockedPatches(raw.unlockedPatches, plots, tabs),
-      buildings: raw.buildings ?? { coop: 0, barn: 0 },
-      animals: raw.animals ?? { coop: [], barn: [] },
+      buildings: {
+        coop: raw.buildings?.coop ?? 0,
+        barn: raw.buildings?.barn ?? 0,
+        pond: raw.buildings?.pond ?? 0,
+      },
+      animals: {
+        coop: raw.animals?.coop ?? [],
+        barn: raw.animals?.barn ?? [],
+        pond: raw.animals?.pond ?? [],
+      },
       farmSettledAt: raw.farmSettledAt ?? raw.updatedAt ?? 0,
+      pondGrowth: raw.pondGrowth ?? 0,
       toolsSettledAt: raw.toolsSettledAt ?? raw.updatedAt ?? 0,
       pestSettledAt: raw.pestSettledAt ?? raw.updatedAt ?? 0,
       soil: this.readSoil(tabs, raw.soil),
@@ -1018,7 +1027,9 @@ export class Garden extends DurableObject<Env> {
       animals: {
         coop: ledger.animals.coop.map((animal) => (animal === null ? null : { ...animal })),
         barn: ledger.animals.barn.map((animal) => (animal === null ? null : { ...animal })),
+        pond: (ledger.animals.pond ?? []).map((animal) => (animal === null ? null : { ...animal })),
       },
+      pondGrowth: ledger.pondGrowth ?? 0,
       warehouse: {
         level: ledger.warehouse,
         machines: { ...ledger.machines },

@@ -8,6 +8,7 @@
 
 import {
   animalIntervalMs,
+  animalIsIncubating,
   animalQuality,
   plotView,
   resolvedTreeEffects,
@@ -224,6 +225,8 @@ const ANIMAL_GLYPH: Readonly<Record<AnimalId, string>> = {
   cow: "C",
   goat: "G",
   sheep: "S",
+  fish: "f",
+  snail: "s",
 };
 
 /** One rendered animal cell. */
@@ -238,6 +241,8 @@ export interface AnimalCellRender {
   readonly stars: number;
   /** Milliseconds until the next product, `0` when it is due. */
   readonly remainingMs: number;
+  /** The animal is sitting on a kept egg. */
+  readonly breeding: boolean;
 }
 
 /**
@@ -259,12 +264,18 @@ export function animalCellRender(animal: AnimalState | null, now: number, slot =
       empty: true,
       stars: 0,
       remainingMs: 0,
+      breeding: false,
     };
   }
   const stars = animalQuality(animal, now);
+  const breeding = animalIsIncubating(animal, now);
   const remainingMs = Math.max(0, animal.lastProduceAt + animalIntervalMs(animal.kind) - now);
-  const ready = remainingMs <= 0;
-  const tail = ready ? t("farm.due") : formatDuration(remainingMs, "short");
+  const ready = !breeding && remainingMs <= 0;
+  const tail = breeding
+    ? `${t("farm.incubatingShort")} ${formatDuration((animal.incubatingUntil ?? 0) - now, "short")}`
+    : ready
+      ? t("farm.due")
+      : formatDuration(remainingMs, "short");
   return {
     lines: [
       top,
@@ -278,6 +289,7 @@ export function animalCellRender(animal: AnimalState | null, now: number, slot =
     empty: false,
     stars,
     remainingMs,
+    breeding,
   };
 }
 

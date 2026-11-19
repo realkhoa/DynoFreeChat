@@ -128,9 +128,10 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     trees: new Array<TreeState | null>(TREES_PER_TAB).fill(null),
     bag: { seeds: { carrot: 3 }, crops: [], supplies: {} },
     stats: { planted: 0, harvested: 0, earned: 0, spent: 0, tax: 0 },
-    buildings: { coop: 0, barn: 0 },
-    animals: { coop: [], barn: [] },
+    buildings: { coop: 0, barn: 0, pond: 0 },
+    animals: { coop: [], barn: [], pond: [] },
     farmSettledAt: CLOCK,
+    pondGrowth: 0,
     warehouse: { level: 0, machines: {} },
     soil: new Array<number>(CROPS_PER_TAB).fill(100),
     extras: EXTRAS,
@@ -154,8 +155,9 @@ function makeVisit(overrides: Partial<VisitSnapshot> = {}): VisitSnapshot {
     trees: new Array<TreeState | null>(TREES_PER_TAB).fill(null),
     bag: { seeds: {}, crops: [], supplies: {} },
     stats: { planted: 1, harvested: 0, earned: 0, spent: 0, tax: 0 },
-    buildings: { coop: 0, barn: 0 },
-    animals: { coop: [], barn: [] },
+    buildings: { coop: 0, barn: 0, pond: 0 },
+    animals: { coop: [], barn: [], pond: [] },
+    pondGrowth: 0,
     warehouse: { level: 0, machines: {} },
     soil: new Array<number>(CROPS_PER_TAB).fill(100),
     extras: EXTRAS,
@@ -791,8 +793,8 @@ describe("farm tab", () => {
     const api = new FakeGardenApi(
       makeState({
         coins: 4_000_000,
-        buildings: { coop: 1, barn: 0 },
-        animals: { coop: [hen, null, null, null], barn: [] },
+        buildings: { coop: 1, barn: 0, pond: 0 },
+        animals: { coop: [hen, null, null, null], barn: [], pond: [] },
       }),
     );
     const { host, game } = await mountGame(api);
@@ -801,8 +803,8 @@ describe("farm tab", () => {
     host.querySelector<HTMLButtonElement>('[data-act="tab:farm"]')?.click();
     await settle();
 
-    // Two buildings sit side by side like the crop/fruit boards.
-    expect(host.querySelectorAll(".garden-farm-panel")).toHaveLength(2);
+    // Coop, barn and pond sit side by side like the crop/fruit boards.
+    expect(host.querySelectorAll(".garden-farm-panel")).toHaveLength(3);
     const cells = host.querySelectorAll<HTMLButtonElement>(".garden-animal-cell");
     expect(cells).toHaveLength(4);
     const lines = Array.from(cells[0]?.querySelectorAll(".garden-cell-line") ?? []).map(
@@ -815,19 +817,19 @@ describe("farm tab", () => {
     expect(lines[2]).toBe("|Gà      |");
     expect(lines[3]).toBe("|*       |");
     expect(lines[5]).toMatch(/^\+-+\+$/);
-    expect(cells[0]?.dataset.act).toBe("patAnimal");
+    expect(cells[0]?.dataset.act).toBe("animalSlot");
     // Empty slots are cells too, not stray buttons below the board.
     expect(cells[1]?.dataset.act).toBe("pickAnimal");
     expect(cells[1]?.classList.contains("is-empty")).toBe(true);
     expect(cells[1]?.textContent).toContain("Trống");
   });
 
-  it("shows buildings, animals and sells animal products", async () => {
+  it("opens the stats menu from an animal cell and sells animal products", async () => {
     const api = new FakeGardenApi(
       makeState({
         coins: 4_000_000,
-        buildings: { coop: 1, barn: 0 },
-        animals: { coop: [hen, null, null, null], barn: [] },
+        buildings: { coop: 1, barn: 0, pond: 0 },
+        animals: { coop: [hen, null, null, null], barn: [], pond: [] },
         bag: { seeds: {}, crops: [], supplies: {}, products: [{ product: "egg", star: 2, qty: 3 }] },
       }),
     );
@@ -838,9 +840,16 @@ describe("farm tab", () => {
     await settle();
     expect(host.querySelector('[data-act="buildBuilding"]')).not.toBeNull();
     expect(host.querySelector('[data-act="upgradeBuilding"]')).not.toBeNull();
-    const pat = host.querySelector<HTMLButtonElement>('[data-act="patAnimal"]');
-    expect(pat?.textContent).toContain("Gà");
-    pat?.click();
+
+    // Clicking an animal opens the same kind of popover as a plot.
+    host.querySelector<HTMLButtonElement>('[data-act="animalSlot"]')?.click();
+    await settle();
+    const menu = host.querySelector(".garden-animal-menu");
+    expect(menu?.textContent).toContain("Gà");
+    expect(menu?.textContent).toContain("Chất lượng");
+    expect(menu?.textContent).toContain("Giá thịt");
+    expect(menu?.querySelector('[data-act="animalMenuBreed"]')).not.toBeNull();
+    menu?.querySelector<HTMLButtonElement>('[data-act="animalMenuPat"]')?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "patAnimal")).toBe(true);
 
@@ -853,12 +862,95 @@ describe("farm tab", () => {
     expect(api.calls.some((call) => call.action?.kind === "sellProduct")).toBe(true);
   });
 
+  it("flags an incubating animal on its cell", async () => {
+    const sitting = { ...hen, incubatingUntil: CLOCK + 5 * 60_000 };
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 4_000_000,
+        buildings: { coop: 1, barn: 0, pond: 0 },
+        animals: { coop: [sitting, null, null, null], barn: [], pond: [] },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:farm"]')?.click();
+    await settle();
+    const cell = host.querySelector<HTMLButtonElement>(".garden-animal-cell");
+    expect(cell?.classList.contains("is-breeding")).toBe(true);
+    expect(cell?.textContent).toContain("ấp");
+  });
+
+  it("keeps an egg from the stats menu to hatch a chick", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 4_000_000,
+        buildings: { coop: 1, barn: 0, pond: 0 },
+        animals: { coop: [hen, null, null, null], barn: [], pond: [] },
+        bag: { seeds: {}, crops: [], supplies: {}, products: [{ product: "egg", star: 1, qty: 2 }] },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:farm"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="animalSlot"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="animalMenuBreed"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "breedAnimal")?.action).toMatchObject({
+      building: "coop",
+      slot: 0,
+    });
+  });
+
+  it("shows the pond growth and sells pond stock for meat", async () => {
+    const fish = {
+      kind: "fish" as const,
+      bornAt: CLOCK - 2 * 60 * 60_000,
+      pats: 0,
+      lastProduceAt: CLOCK - 60_000,
+    };
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 4_000_000,
+        buildings: { coop: 0, barn: 0, pond: 1 },
+        animals: { coop: [], barn: [], pond: [fish, null, null, null] },
+        pondGrowth: 20,
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="tab:farm"]')?.click();
+    await settle();
+    const titles = Array.from(host.querySelectorAll(".garden-board-title")).map(
+      (title) => title.textContent ?? "",
+    );
+    expect(titles.some((title) => title.includes("Hồ cá"))).toBe(true);
+    expect(titles.some((title) => title.includes("Tăng trưởng 20%"))).toBe(true);
+    const cell = host.querySelector<HTMLButtonElement>(".garden-animal-cell");
+    expect(cell?.textContent).toContain("Cá");
+    cell?.click();
+    await settle();
+    const menu = host.querySelector(".garden-animal-menu");
+    expect(menu?.textContent).toContain("20%");
+    expect(menu?.textContent).toContain("Trứng cá");
+    menu?.querySelector<HTMLButtonElement>('[data-act="animalMenuSell"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "sellAnimal")?.action).toMatchObject({
+      building: "pond",
+      slot: 0,
+    });
+  });
+
   it("buys an animal from an empty slot cell", async () => {
     const api = new FakeGardenApi(
       makeState({
         coins: 4_000_000,
-        buildings: { coop: 1, barn: 0 },
-        animals: { coop: [hen, null, null, null], barn: [] },
+        buildings: { coop: 1, barn: 0, pond: 0 },
+        animals: { coop: [hen, null, null, null], barn: [], pond: [] },
       }),
     );
     const { host, game } = await mountGame(api);

@@ -48,9 +48,16 @@ import {
   resolvedCropEffects,
   resolvedTreeEffects,
   ANIMALS,
+  BUILDING_IDS,
   BUILDINGS,
+  BREED_CYCLES,
+  FARM_CYCLE_MS,
   animalById,
   animalIntervalMs,
+  animalIsIncubating,
+  animalMeatPrice,
+  animalQuality,
+  breedEggProduct,
   buildingSlots,
   buildingUpgradeCost,
   buildingById,
@@ -180,6 +187,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   // Work-safe look by default: no bright game colours unless the player opts in.
   let stealth = localStorage.getItem("dyno.garden.stealth") !== "0";
   let farmPicker: { building: BuildingId; slot: number } | null = null;
+  let animalMenu: { building: BuildingId; slot: number; x: number; y: number; anchorTop: number } | null =
+    null;
   let buyQty = 1;
   type GardenTool =
     { kind: "fertilize" | "spray"; supply: SupplyId } | { kind: "plant"; seed: SeedId } | { kind: "water" };
@@ -890,6 +899,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     menu = null;
     uprootArmed = false;
     farmPicker = null;
+    animalMenu = null;
     if (next === "event") void loadLeaderboard();
     if (next === "chart") void loadChart();
     if (next === "bots") void loadBots();
@@ -1035,6 +1045,143 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       wrap.append(menuRow(t("common.close"), "staffMenuClose"));
     }
     return wrap;
+  }
+
+  /** @brief Opens the animal stats popover for one building slot. */
+  function openAnimalMenu(building: BuildingId, slot: number, x: number, y: number, anchorTop = y): void {
+    closeMenu();
+    farmPicker = null;
+    animalMenu = { building, slot, x, y, anchorTop };
+    render();
+  }
+
+  /** @brief Closes the animal popover. */
+  function closeAnimalMenu(): void {
+    if (animalMenu === null) return;
+    animalMenu = null;
+    render();
+  }
+
+  /**
+   * @brief Builds the animal popover: stats, then the actions that apply.
+   * @param at Server-clock time used for the age, stars and countdown.
+   * @details Mirrors the crop context menu: a `pre` block with the numbers and
+   * a row of actions below it, anchored to the clicked cell.
+   */
+  function buildAnimalMenu(at: number): HTMLElement | null {
+    if (animalMenu === null || state === null) return null;
+    const animals = state.animals[animalMenu.building] ?? [];
+    const animal = animals[animalMenu.slot] ?? null;
+    if (animal === null) return null;
+
+    const wrap = div("garden-menu garden-animal-menu");
+    const head = div("garden-menu-head");
+    head.append(
+      span(
+        "garden-menu-title",
+        `${t(`animals.${animal.kind}`)} · ${t(`farm.${animalMenu.building}`)} · ${t("farm.slots")} ${animalMenu.slot + 1}`,
+      ),
+    );
+    const coins = state.coins;
+    head.append(span("garden-menu-balance", `$ ${formatNumber(coins)}c`));
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "garden-menu-close";
+    close.dataset.act = "animalMenuClose";
+    close.textContent = "×";
+    close.setAttribute("aria-label", t("common.close"));
+    head.append(close);
+    wrap.append(head);
+
+    const stars = animalQuality(animal, at);
+    const definition = animalById(animal.kind);
+    const readyAt = animal.lastProduceAt + animalIntervalMs(animal.kind);
+    const incubation = animal.incubatingUntil ?? 0;
+    const meat = animalMeatPrice(animal.kind, stars, state.pondGrowth ?? 0);
+    const lines = [
+      `// ${t("farm.stats")}`,
+      labelValue(t("farm.quality"), `${"*".repeat(stars)} ${stars}/5`),
+      labelValue(
+        t("farm.pats"),
+        `${animal.pats} · ${t("farm.age")} ${formatDuration(Math.max(0, at - animal.bornAt))}`,
+      ),
+    ];
+    if (definition !== undefined) {
+      lines.push(labelValue(t("farm.product"), t(`products.${definition.product}`)));
+      lines.push(
+        labelValue(
+          t("farm.next"),
+          incubation > 0 ? t("farm.breeding") : formatDuration(Math.max(0, readyAt - at), "short"),
+        ),
+      );
+      lines.push(labelValue(t("farm.upkeep"), `${formatNumber(definition.upkeep)}c/${t("farm.cycle")}`));
+    }
+    if (animalMenu.building === "pond") {
+      lines.push(labelValue(t("farm.growth"), `${state.pondGrowth ?? 0}%`));
+    }
+    if (incubation > 0) {
+      lines.push(
+        labelValue(
+          t("farm.breeding"),
+          at >= incubation ? t("farm.hatchReady") : formatDuration(incubation - at),
+        ),
+      );
+    }
+    lines.push("", labelValue(t("farm.meat"), `${formatNumber(meat)}c`));
+    const info = document.createElement("pre");
+    info.className = "garden-menu-info";
+    info.textContent = lines.join("\n");
+    wrap.append(info);
+
+    const rows = div("garden-menu-rows");
+    rows.append(menuRow(t("farm.pat"), "animalMenuPat"));
+    if (animalMenu.building === "coop" && definition !== undefined) {
+      const egg = breedEggProduct(animal.kind);
+      const eggs =
+        egg === null
+          ? 0
+          : (state.bag.products ?? [])
+              .filter((stack) => stack.product === egg)
+              .reduce((sum, stack) => sum + stack.qty, 0);
+      const free = animals.some((entry) => entry === null);
+      rows.append(
+        menuRow(
+          t("farm.breed", { cost: formatDuration(BREED_CYCLES * FARM_CYCLE_MS, "short") }),
+          "animalMenuBreed",
+          {
+            disabled: incubation > 0 || eggs < 1 || !free,
+          },
+        ),
+      );
+    }
+    rows.append(
+      menuRow(t("farm.sellAnimal", { price: `${formatNumber(meat)}c` }), "animalMenuSell", {
+        disabled: incubation > 0,
+      }),
+    );
+    rows.append(menuRow(t("common.close"), "animalMenuClose"));
+    wrap.append(rows);
+    return wrap;
+  }
+
+  /** @brief Keeps the animal popover inside the viewport. */
+  function fitAnimalMenu(): void {
+    if (root === null || animalMenu === null) return;
+    const element = root.querySelector<HTMLElement>(".garden-animal-menu");
+    if (element === null) return;
+    const rect = element.getBoundingClientRect();
+    const margin = 8;
+    const left = Math.min(
+      Math.max(margin, animalMenu.x),
+      Math.max(margin, window.innerWidth - rect.width - margin),
+    );
+    let top = animalMenu.y;
+    if (top + rect.height > window.innerHeight - margin) {
+      top = animalMenu.anchorTop - rect.height - 4;
+    }
+    top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - rect.height - margin));
+    element.style.left = `${left}px`;
+    element.style.top = `${top}px`;
   }
 
   /** @brief Keeps the open menu inside the viewport, flipping it above the cell. */
@@ -1900,7 +2047,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     cell.classList.toggle("is-empty", render.empty);
     cell.classList.toggle("is-ready", render.ready);
-    cell.dataset.act = render.empty ? "pickAnimal" : "patAnimal";
+    cell.classList.toggle("is-breeding", render.breeding);
+    cell.dataset.act = render.empty ? "pickAnimal" : "animalSlot";
     const picker = farmPicker !== null && farmPicker.building === building && farmPicker.slot === slot;
     cell.classList.toggle("is-selected", picker);
     if (animal === null) {
@@ -1910,10 +2058,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     const product = animalById(animal.kind)?.product;
     const productName = product === undefined ? "" : t(`products.${product}`);
+    const tail = render.breeding
+      ? `${t("farm.breeding")} · ${formatDuration(Math.max(0, (animal.incubatingUntil ?? 0) - at), "short")}`
+      : `${productName} · ${render.ready ? t("farm.due") : formatDuration(render.remainingMs, "short")}`;
     cell.title = [
       `${t(`animals.${animal.kind}`)} · ${t("farm.quality")} ${render.stars}/5`,
       `${t("farm.pats")} ${animal.pats}`,
-      `${productName} · ${render.ready ? t("farm.due") : formatDuration(render.remainingMs, "short")}`,
+      tail,
     ].join(" · ");
     cell.setAttribute(
       "aria-label",
@@ -1941,22 +2092,24 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
-  /** @brief Builds the construction tab: coop, barn and their animals. */
+  /** @brief Builds the construction tab: coop, barn, pond and their animals. */
   function buildFarm(): HTMLElement {
     const wrap = div("garden-farm");
     if (state === null) return lineBlock(t("common.loading"));
     wrap.append(lineBlock(`// ${t("farm.title")}`));
     const boards = div("garden-boards");
-    for (const building of ["coop", "barn"] as const) {
+    for (const building of BUILDING_IDS) {
       const definition = buildingById(building);
       if (definition === undefined) continue;
       const level = state.buildings[building];
-      const animals = state.animals[building];
+      const animals = state.animals[building] ?? [];
       const panel = div("garden-board-panel garden-farm-panel");
+      const growth =
+        building === "pond" && level > 0 ? ` · ${t("farm.growth")} ${state.pondGrowth ?? 0}%` : "";
       panel.append(
         span(
           "garden-board-title",
-          `${t(`farm.${building}`)} · ${level > 0 ? `${t("farm.level")} ${level}/${maxBuildingLevel(building)} · ${animals.length} ${t("farm.slots")}` : t("farm.notBuilt")}`,
+          `${t(`farm.${building}`)} · ${level > 0 ? `${t("farm.level")} ${level}/${maxBuildingLevel(building)} · ${animals.length} ${t("farm.slots")}${growth}` : t("farm.notBuilt")}`,
         ),
       );
       if (level === 0) {
@@ -2749,9 +2902,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const staffEl = buildStaffMenu();
       if (staffEl !== null) parts.push(staffEl);
     }
+    if (animalMenu !== null) {
+      const animalEl = buildAnimalMenu(now());
+      if (animalEl !== null) parts.push(animalEl);
+    }
     root.replaceChildren(...parts);
     fitMenu();
     fitStaffMenu();
+    fitAnimalMenu();
     refreshTimers();
   }
 
@@ -2822,6 +2980,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (staffMenu !== null) {
           const inStaff = clicked?.closest(".garden-staff-menu") !== null;
           if (!inStaff) closeStaffMenu();
+        }
+        if (animalMenu !== null) {
+          const inAnimal = clicked?.closest(".garden-animal-menu") !== null;
+          if (!inAnimal) closeAnimalMenu();
         }
       }
       return;
@@ -3119,6 +3281,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const building = target.dataset.building as BuildingId | undefined;
         const slot = Number(target.dataset.slot);
         if (building !== undefined && Number.isInteger(slot)) {
+          animalMenu = null;
           farmPicker = { building, slot };
           render();
         }
@@ -3143,6 +3306,46 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (building !== undefined && Number.isInteger(slot)) {
           void runAction({ kind: "patAnimal", building, slot }, t("farm.patted"));
         }
+        return;
+      }
+      case "animalSlot": {
+        const building = target.dataset.building as BuildingId | undefined;
+        const slot = Number(target.dataset.slot);
+        if (building !== undefined && Number.isInteger(slot)) {
+          const rect = target.getBoundingClientRect();
+          openAnimalMenu(building, slot, rect.left + 6, rect.bottom + 2, rect.top);
+        }
+        return;
+      }
+      case "animalMenuClose":
+        closeAnimalMenu();
+        return;
+      case "animalMenuPat": {
+        const current = animalMenu;
+        if (current === null) return;
+        void runAction(
+          { kind: "patAnimal", building: current.building, slot: current.slot },
+          t("farm.patted"),
+        );
+        return;
+      }
+      case "animalMenuBreed": {
+        const current = animalMenu;
+        if (current === null) return;
+        void runAction(
+          { kind: "breedAnimal", building: current.building, slot: current.slot },
+          t("farm.bred"),
+        );
+        return;
+      }
+      case "animalMenuSell": {
+        const current = animalMenu;
+        if (current === null) return;
+        animalMenu = null;
+        void runAction(
+          { kind: "sellAnimal", building: current.building, slot: current.slot },
+          t("farm.soldAnimal"),
+        );
         return;
       }
       case "buyTool": {

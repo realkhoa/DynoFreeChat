@@ -441,15 +441,44 @@ export const EVENTS: readonly EventDefinition[] = [
 /** Length of one animal upkeep/production cycle: six minutes. */
 export const FARM_CYCLE_MS = 6 * 60_000;
 
-/** The two animal buildings. */
-export type BuildingId = "coop" | "barn";
+/** Cycles an egg spends incubating before it hatches. */
+export const BREED_CYCLES = 2;
+
+/** Chance per cycle that a barn with a free slot births one animal. */
+export const BARN_BIRTH_CHANCE = 0.05;
+
+/** Cycles the fish pond needs to grow one step. */
+export const POND_GROWTH_CYCLES = 10;
+
+/** Growth a pond step adds, in percent. */
+export const POND_GROWTH_STEP = 10;
+
+/** Pond growth ceiling, in percent. */
+export const POND_GROWTH_MAX = 100;
+
+/** The three animal buildings: coop, barn and fish pond. */
+export type BuildingId = "coop" | "barn" | "pond";
+
+/** Buildings iterated by the rules, in display order. */
+export const BUILDING_IDS: readonly BuildingId[] = ["coop", "barn", "pond"];
 
 /** Animals a building can host. */
-export type AnimalId = "chicken" | "duck" | "cow" | "goat" | "sheep";
+export type AnimalId = "chicken" | "duck" | "cow" | "goat" | "sheep" | "fish" | "snail";
 
 /** Products animals produce. */
 export type ProductId =
-  "egg" | "duckEgg" | "milk" | "goatMilk" | "wool" | "mayo" | "cheese" | "pickles" | "oil" | "fabric";
+  | "egg"
+  | "duckEgg"
+  | "milk"
+  | "goatMilk"
+  | "wool"
+  | "roe"
+  | "snailMeat"
+  | "mayo"
+  | "cheese"
+  | "pickles"
+  | "oil"
+  | "fabric";
 
 /** One animal definition. */
 export interface AnimalDefinition {
@@ -499,6 +528,13 @@ export const BUILDINGS: readonly BuildingDefinition[] = [
     slots: [4, 6, 9, 12],
     animals: ["cow", "goat", "sheep"],
   },
+  {
+    id: "pond",
+    price: 6_000_000,
+    upgrade: 3_000_000,
+    slots: [4, 6, 9, 12],
+    animals: ["fish", "snail"],
+  },
 ];
 
 /** Animal catalog with upkeep, production cadence and shop prices. */
@@ -508,6 +544,9 @@ export const ANIMALS: readonly AnimalDefinition[] = [
   { id: "cow", building: "barn", upkeep: 100, intervalCycles: 1, product: "milk", buy: 20_000 },
   { id: "goat", building: "barn", upkeep: 100, intervalCycles: 3, product: "goatMilk", buy: 25_000 },
   { id: "sheep", building: "barn", upkeep: 100, intervalCycles: 7, product: "wool", buy: 40_000 },
+  // Pond stock: fish drop roe, snails are slow meat; both can be sold for meat.
+  { id: "fish", building: "pond", upkeep: 60, intervalCycles: 2, product: "roe", buy: 30_000 },
+  { id: "snail", building: "pond", upkeep: 30, intervalCycles: 6, product: "snailMeat", buy: 12_000 },
 ];
 
 /** Product base prices; every quality star doubles the value. */
@@ -517,6 +556,8 @@ export const PRODUCTS: readonly ProductDefinition[] = [
   { id: "milk", base: 120 },
   { id: "goatMilk", base: 400 },
   { id: "wool", base: 1_000 },
+  { id: "roe", base: 900 },
+  { id: "snailMeat", base: 600 },
   // Warehouse outputs: value already includes the recipe multiplier.
   { id: "mayo", base: 1_600 },
   { id: "cheese", base: 12_000 },
@@ -701,6 +742,8 @@ export interface AnimalState {
   readonly pats: number;
   /** Server time of the last produced item. */
   readonly lastProduceAt: number;
+  /** Server time the kept egg hatches; `0` or absent when nothing is incubating. */
+  readonly incubatingUntil?: number;
 }
 
 /** One stack of animal products in the bag. */
@@ -730,6 +773,47 @@ export function animalQuality(animal: AnimalState, now: number): number {
   const ageCycles = Math.max(0, Math.floor((now - animal.bornAt) / FARM_CYCLE_MS));
   const stars = 1 + Math.floor(ageCycles / 24) + Math.floor(animal.pats / 6);
   return Math.min(5, Math.max(1, stars));
+}
+
+/** @brief Whether this animal is sitting on a kept egg right now. */
+export function animalIsIncubating(animal: AnimalState, now: number): boolean {
+  return (animal.incubatingUntil ?? 0) > now;
+}
+
+/** @brief Egg product one species keeps for hatching, or `null` when it cannot breed. */
+export function breedEggProduct(kind: AnimalId): ProductId | null {
+  if (animalById(kind)?.building !== "coop") return null;
+  if (kind === "chicken") return "egg";
+  if (kind === "duck") return "duckEgg";
+  return null;
+}
+
+/**
+ * @brief Multiplier the pond growth applies to its produce and meat.
+ * @param growth Pond growth in percent, `0..100`.
+ */
+export function pondGrowthFactor(growth: number): number {
+  return 1 + Math.max(0, Math.min(POND_GROWTH_MAX, growth)) / 100;
+}
+
+/** Share of the purchase price a slaughtered animal returns. */
+export const ANIMAL_MEAT_RATIO = 0.5;
+
+/**
+ * @brief Coins one animal returns when sold for meat.
+ * @param kind Species.
+ * @param stars Quality stars, `1..5`.
+ * @param growth Pond growth in percent, ignored by land animals.
+ * @details Slaughtering is a way out of a full building, never a profit: even a
+ * five-star animal returns less than it cost, unless pond growth lifted it.
+ */
+export function animalMeatPrice(kind: AnimalId, stars: number, growth = 0): number {
+  const definition = animalById(kind);
+  if (definition === undefined) return 0;
+  const clamped = Math.max(1, Math.min(5, stars));
+  const quality = 1 + 0.2 * (clamped - 1);
+  const pond = definition.building === "pond" ? pondGrowthFactor(growth) : 1;
+  return Math.round(definition.buy * ANIMAL_MEAT_RATIO * quality * pond);
 }
 
 /** @brief Sell value of one product stack, after quality and event bonus. */
@@ -1445,6 +1529,8 @@ export interface GardenSnapshot {
   readonly animals: Readonly<Record<BuildingId, readonly (AnimalState | null)[]>>;
   /** Last time farm upkeep and production were settled. */
   readonly farmSettledAt: number;
+  /** Fish pond growth in percent, `0..100`; every ten cycles adds ten. */
+  readonly pondGrowth: number;
   /** Warehouse and built machines. */
   readonly warehouse: WarehouseState;
   /** Fertility percent per crop cell, index = absolute slot. */
@@ -1485,6 +1571,8 @@ export interface VisitSnapshot {
   readonly buildings: Readonly<Record<BuildingId, number>>;
   /** Animals per building slot. */
   readonly animals: Readonly<Record<BuildingId, readonly (AnimalState | null)[]>>;
+  /** Fish pond growth in percent, `0..100`. */
+  readonly pondGrowth: number;
   /** Warehouse and its machines. */
   readonly warehouse: WarehouseState;
   /** Fertility percent per crop cell. */
@@ -1873,6 +1961,8 @@ export type GardenAction =
       readonly animal: AnimalId;
     }
   | { readonly kind: "patAnimal"; readonly building: BuildingId; readonly slot: number }
+  | { readonly kind: "breedAnimal"; readonly building: BuildingId; readonly slot: number }
+  | { readonly kind: "sellAnimal"; readonly building: BuildingId; readonly slot: number }
   | { readonly kind: "sellProduct"; readonly product: ProductId; readonly star: number; readonly qty: number }
   | { readonly kind: "sellAllProducts" }
   | { readonly kind: "buyTool"; readonly tool: ToolId; readonly qty: number }
@@ -1942,6 +2032,10 @@ export type GardenErrorCode =
   | "SLOT_OUT_OF_RANGE"
   | "SLOT_OCCUPIED"
   | "SLOT_EMPTY"
+  | "NOT_BREEDABLE"
+  | "ALREADY_BREEDING"
+  | "NO_EGG"
+  | "NO_FREE_SLOT"
   | "NO_PRODUCT"
   | "TOOL_SOLD_OUT"
   | "WAREHOUSE_LOCKED"
@@ -2334,7 +2428,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= 12) return null;
     return { kind, building: building.id, slot, animal: animal.id };
   }
-  if (kind === "patAnimal") {
+  if (kind === "patAnimal" || kind === "breedAnimal" || kind === "sellAnimal") {
     const building = typeof value.building === "string" ? buildingById(value.building) : undefined;
     const slot = value.slot;
     if (building === undefined) return null;
