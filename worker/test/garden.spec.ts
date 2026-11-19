@@ -366,6 +366,43 @@ describe("garden play", () => {
     expect(collectedState.bag.products?.some((stack) => stack.product === "wine")).toBe(true);
   });
 
+  it("keeps buying after planting the seed and survives a reload", async () => {
+    const registered = await register("repeat-buyer");
+    const offer = registered.season.shop.offers[0];
+    if (offer === undefined) throw new Error("no offer");
+    const bought = await act(registered, registered.state.rev, {
+      kind: "buySeed",
+      seed: offer.seed,
+      qty: 1,
+    });
+    if (bought.status !== 200) throw new Error("buy failed");
+    const boughtState = (bought.payload as GardenActResponse).state;
+    expect(boughtState.shopStock[offer.seed]).toBe(offer.stock - 1);
+
+    // Plant the seed just bought; the shop stock must not change.
+    const planted = await act(registered, boughtState.rev, {
+      kind: "plant",
+      slot: 0,
+      seed: offer.seed,
+    });
+    if (planted.status !== 200) throw new Error("plant failed");
+    const plantedState = (planted.payload as GardenActResponse).state;
+    expect(plantedState.shopStock[offer.seed]).toBe(offer.stock - 1);
+    expect(plantedState.bag.seeds[offer.seed] ?? 0).toBe(registered.state.bag.seeds[offer.seed] ?? 0);
+
+    const reloaded = await readState(registered);
+    expect(reloaded.state.shopStock[offer.seed]).toBe(offer.stock - 1);
+
+    const again = await act(registered, reloaded.state.rev, {
+      kind: "buySeed",
+      seed: offer.seed,
+      qty: 1,
+    });
+    expect(again.status).toBe(200);
+    const againState = (again.payload as GardenActResponse).state;
+    expect(againState.shopStock[offer.seed]).toBe(offer.stock - 2);
+  });
+
   it("reports the remaining shop stock in the snapshot", async () => {
     const registered = await register("shopper");
     const offer = registered.season.shop.offers[0];
