@@ -2836,9 +2836,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       owned: number;
       data: Record<string, string>;
     }): HTMLButtonElement => {
+      const soldOut = item.stock !== null && item.stock <= 0;
       const card = document.createElement("button");
       card.type = "button";
       card.className = "garden-buy-card";
+      if (soldOut) {
+        card.classList.add("is-sold-out");
+        card.disabled = true;
+      }
       card.dataset.act = item.act;
       for (const [key, value] of Object.entries(item.data)) card.dataset[key] = value;
       card.title = `${item.name} · ${formatNumber(item.price)}c × ${buyQty} = ${formatNumber(item.price * buyQty)}c`;
@@ -2849,10 +2854,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         span("garden-buy-line", `x${buyQty}=${formatNumber(item.price * buyQty)}c`),
         span(
           "garden-buy-line is-stock",
-          `${t("market.stock")} ${item.stock === null ? "\u221e" : item.stock} · ${item.owned}`,
+          soldOut
+            ? `${t("market.soldOut")} · ${item.owned}`
+            : `${t("market.stock")} ${item.stock === null ? "\u221e" : item.stock} · ${item.owned}`,
         ),
       );
       return card;
+    };
+
+    // Remaining stock for this restock: the server reports only the live one.
+    const stockOf = (id: string, fallback: number | null): number | null => {
+      if (fallback === null) return null;
+      const tracked = state?.shopStock ?? {};
+      return Object.prototype.hasOwnProperty.call(tracked, id) ? (tracked[id] ?? 0) : fallback;
     };
 
     const seedItems: Parameters<typeof makeBuyCard>[0][] = [];
@@ -2867,7 +2881,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         glyph: definition?.art[3] ?? "?",
         // Rare seeds keep their fixed price; only normal seeds feel the market.
         price: rare ? offer.price : buyPriceOf(offer.seed, offer.price),
-        stock: offer.stock,
+        stock: stockOf(offer.seed, offer.stock),
         owned: state.bag.seeds[offer.seed] ?? 0,
         data: { seed: offer.seed },
       });
@@ -2894,7 +2908,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         name: t(`tools.${offer.tool}`),
         glyph: "w",
         price: offer.price,
-        stock: offer.stock,
+        stock: stockOf(offer.tool, offer.stock),
         owned: state.bag.tools?.[offer.tool] ?? 0,
         data: { tool: offer.tool },
       });

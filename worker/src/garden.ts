@@ -439,6 +439,7 @@ export class Garden extends DurableObject<Env> {
         pond: raw.animals?.pond ?? [],
       },
       farmSettledAt: raw.farmSettledAt ?? raw.updatedAt ?? 0,
+      shopStock: raw.shopStock ?? {},
       pondGrowth: raw.pondGrowth ?? 0,
       toolsSettledAt: raw.toolsSettledAt ?? raw.updatedAt ?? 0,
       pestSettledAt: raw.pestSettledAt ?? raw.updatedAt ?? 0,
@@ -930,6 +931,15 @@ export class Garden extends DurableObject<Env> {
     }
   }
 
+  /** @brief Snapshot with the shop stock of the live restock only. */
+  private snapshotWithStock(ledger: GardenLedger, season: SeasonSnapshot): GardenSnapshot {
+    const snapshot = ledgerSnapshot(ledger);
+    return {
+      ...snapshot,
+      shopStock: ledger.shopRestockAt === season.shop.restockAt ? { ...ledger.shopStock } : {},
+    };
+  }
+
   /** @brief Returns the owner snapshot and refreshes the presence stamp. */
   private async state(request: Request): Promise<Response> {
     const ledger = await this.authorize(request);
@@ -951,9 +961,10 @@ export class Garden extends DurableObject<Env> {
         // Out of write quota: a read must still succeed.
       }
     }
+    const season = this.seasonFor(request, now);
     return json({
-      state: ledgerSnapshot(ledgerNow),
-      season: this.seasonFor(request, now),
+      state: this.snapshotWithStock(ledgerNow, season),
+      season,
       serverNow: now,
     });
   }
@@ -994,7 +1005,7 @@ export class Garden extends DurableObject<Env> {
       await this.publish(finalLedger);
     }
     return json({
-      state: ledgerSnapshot(finalLedger),
+      state: this.snapshotWithStock(finalLedger, season),
       season,
       serverNow: now,
       sold: soldDiff(ledger.bag.crops, finalLedger.bag.crops),

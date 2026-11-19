@@ -1858,6 +1858,8 @@ export interface GardenSnapshot {
   readonly farmSettledAt: number;
   /** Fish pond growth in percent, `0..100`; every ten cycles adds ten. */
   readonly pondGrowth: number;
+  /** Remaining shop stock for the current restock, keyed by seed or tool id. */
+  readonly shopStock: Readonly<Partial<Record<string, number>>>;
   /** Owned special patches, `0..SPECIAL_PATCHES`. */
   readonly specialPatches: number;
   /** Unlocked plots per owned special patch, `0..SPECIAL_PLOTS_PER_PATCH`. */

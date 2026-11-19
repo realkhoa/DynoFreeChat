@@ -366,6 +366,23 @@ describe("garden play", () => {
     expect(collectedState.bag.products?.some((stack) => stack.product === "wine")).toBe(true);
   });
 
+  it("reports the remaining shop stock in the snapshot", async () => {
+    const registered = await register("shopper");
+    const offer = registered.season.shop.offers[0];
+    if (offer === undefined) throw new Error("no offer");
+    const bought = await act(registered, registered.state.rev, {
+      kind: "buySeed",
+      seed: offer.seed,
+      qty: 1,
+    });
+    expect(bought.status).toBe(200);
+    const boughtState = (bought.payload as GardenActResponse).state;
+    expect(boughtState.shopStock[offer.seed]).toBe(offer.stock - 1);
+
+    const reloaded = await readState(registered);
+    expect(reloaded.state.shopStock[offer.seed]).toBe(offer.stock - 1);
+  });
+
   it("refuses a tab it cannot afford and an unripe harvest", async () => {
     const registered = await register();
     const patch = await act(registered, registered.state.rev, { kind: "buyTab" });

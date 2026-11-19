@@ -132,6 +132,7 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     animals: { coop: [], barn: [], pond: [] },
     farmSettledAt: CLOCK,
     pondGrowth: 0,
+    shopStock: {},
     specialPatches: 0,
     specialUnlocked: [0, 0, 0],
     specialPlots: [],
@@ -1660,6 +1661,22 @@ describe("market tab", () => {
     seedCard?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "buySeed")).toBe(true);
+  });
+
+  it("grays out sold-out shop cards", async () => {
+    const seed = SEASON.shop.offers[0]?.seed;
+    if (seed === undefined) throw new Error("no offer");
+    const api = new FakeGardenApi(makeState({ coins: 1_000, shopStock: { [seed]: 0 } }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
+    await settle();
+
+    const card = host.querySelector<HTMLButtonElement>(`[data-act="buy"][data-seed="${seed}"]`);
+    expect(card).not.toBeNull();
+    expect(card?.disabled).toBe(true);
+    expect(card?.classList.contains("is-sold-out")).toBe(true);
+    expect(card?.textContent).toContain("Hết hàng");
   });
 
   it("lists rare seeds in their own market category", async () => {

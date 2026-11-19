@@ -293,8 +293,8 @@ export interface GardenLedger {
   lastSeen: number;
   /** Restock timestamp the current stock snapshot belongs to. */
   shopRestockAt: number;
-  /** Remaining shop stock by seed for the current restock. */
-  shopStock: Partial<Record<SeedId, number>>;
+  /** Remaining shop stock by seed or tool id for the current restock. */
+  shopStock: Partial<Record<string, number>>;
   /** Start of the current action-rate window. */
   actionWindow: number;
   /** Actions applied in the current window. */
@@ -469,6 +469,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     },
     farmSettledAt: ledger.farmSettledAt,
     pondGrowth: ledger.pondGrowth ?? 0,
+    shopStock: { ...ledger.shopStock },
     soil: [...ledger.soil],
     specialPatches: ledger.specialPatches ?? 0,
     specialUnlocked: [...(ledger.specialUnlocked ?? [])],
@@ -1325,13 +1326,21 @@ function buyTool(
   const definition = toolById(tool);
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
   const offer = season.shop.tools.find((entry) => entry.tool === tool);
-  if (offer === undefined || offer.stock < qty) return { ok: false, code: "TOOL_SOLD_OUT" };
-  const total = offer.price * qty;
-  if (ledger.coins < total) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  if (offer === undefined) return { ok: false, code: "TOOL_SOLD_OUT" };
 
   const next = clone(ledger);
+  if (next.shopRestockAt !== season.shop.restockAt) {
+    next.shopRestockAt = season.shop.restockAt;
+    next.shopStock = {};
+  }
+  const stock = next.shopStock[tool] ?? offer.stock;
+  if (stock < qty) return { ok: false, code: "TOOL_SOLD_OUT" };
+  const total = offer.price * qty;
+  if (next.coins < total) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
   next.coins -= total;
   next.stats.spent += total;
+  next.shopStock[tool] = stock - qty;
   next.bag.tools[tool] = (next.bag.tools[tool] ?? 0) + qty;
   collect(next, `tool:${tool}`);
   return changed(next, now);

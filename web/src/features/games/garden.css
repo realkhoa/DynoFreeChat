@@ -1031,6 +1031,20 @@
   color: #ffffff;
 }
 
+.garden-buy-card:disabled,
+.garden-buy-card.is-sold-out {
+  cursor: not-allowed;
+  opacity: 0.45;
+  color: #6a9955;
+  border-color: var(--border-subtle);
+}
+
+.garden-buy-card:disabled:hover {
+  background: transparent;
+  border-color: var(--border-subtle);
+  color: #6a9955;
+}
+
 .garden-buy-card:focus-visible {
   outline: 1px solid var(--accent);
 }

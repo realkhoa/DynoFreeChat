@@ -677,6 +677,62 @@ describe("garden ledger rules", () => {
     expect(result.ledger.trees[0]?.effects).toEqual([]);
   });
 
+  it("tracks shop stock per restock and refuses sold-out buys", () => {
+    const ledger = makeLedger();
+    ledger.coins = 1_000_000;
+    const base = seasonFor(NOW);
+    const carrot = base.shop.offers.find((offer) => offer.seed === "carrot");
+    if (carrot === undefined) throw new Error("no carrot offer");
+    const season = {
+      ...base,
+      shop: {
+        ...base.shop,
+        offers: [{ ...carrot, stock: 2 }, ...base.shop.offers.filter((offer) => offer.seed !== "carrot")],
+      },
+    };
+
+    const first = applyGardenAction(
+      ledger,
+      { kind: "buySeed", seed: "carrot", qty: 1 },
+      season,
+      NOW,
+      () => 0.5,
+    );
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.ledger.shopStock.carrot).toBe(1);
+    const second = applyGardenAction(
+      first.ledger,
+      { kind: "buySeed", seed: "carrot", qty: 1 },
+      season,
+      NOW,
+      () => 0.5,
+    );
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.ledger.shopStock.carrot).toBe(0);
+    const third = applyGardenAction(
+      second.ledger,
+      { kind: "buySeed", seed: "carrot", qty: 1 },
+      season,
+      NOW,
+      () => 0.5,
+    );
+    expect(third.ok).toBe(false);
+    if (!third.ok) expect(third.code).toBe("SHOP_SOLD_OUT");
+
+    // The next restock replenishes the shelf.
+    const nextSeason = { ...season, shop: { ...season.shop, restockAt: season.shop.restockAt + 1 } };
+    const restocked = applyGardenAction(
+      second.ledger,
+      { kind: "buySeed", seed: "carrot", qty: 1 },
+      nextSeason,
+      NOW,
+      () => 0.5,
+    );
+    expect(restocked.ok).toBe(true);
+  });
+
   it("reclaims a seed with a reclaimer", () => {
     const ledger = makeLedger();
     ledger.plots[0] = {
