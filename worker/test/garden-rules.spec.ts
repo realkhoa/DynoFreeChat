@@ -872,6 +872,46 @@ describe("garden ledger rules", () => {
     expect(again.ledger.coins).toBe(9_900);
     expect(again.ledger.plots[0]?.pest).toBe(false);
     expect(again.ledger.plots[0]?.protectedUntil).toBe(NOW + 24 * 60 * 60_000);
+
+    // Still covered: a second spray is refused and costs nothing.
+    const covered = run(again.ledger, { kind: "sprayPest", slot: 0, tree: false });
+    expect(covered.ok).toBe(false);
+    if (!covered.ok) expect(covered.code).toBe("ALREADY_PROTECTED");
+  });
+
+  it("re-sprays only the plants whose pesticide cover lapsed", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000;
+    const crop = (slot: number, protectedUntil: number) => ({
+      slot,
+      seed: "carrot" as const,
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil,
+    });
+    ledger.plots[0] = crop(0, NOW + 60_000);
+    ledger.plots[1] = crop(1, 0);
+    ledger.plots[2] = crop(2, 0);
+
+    const sprayed = run(ledger, { kind: "sprayPestAll" });
+    expect(sprayed.ok).toBe(true);
+    if (!sprayed.ok) return;
+    // Only the two unprotected plants are charged.
+    expect(sprayed.ledger.coins).toBe(10_000 - 2 * 100);
+    expect(sprayed.ledger.plots[0]?.protectedUntil).toBe(NOW + 60_000);
+    expect(sprayed.ledger.plots[1]?.protectedUntil).toBe(NOW + 24 * 60 * 60_000);
+
+    // With full cover there is nothing left to spray.
+    const again = run(sprayed.ledger, { kind: "sprayPestAll" });
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.code).toBe("NOTHING_TO_DO");
   });
 
   it("slows growth on poor soil, drains it per harvest and renovates all cells", () => {

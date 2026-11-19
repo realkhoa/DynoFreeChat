@@ -2068,6 +2068,8 @@ export function settleExtras(ledger: GardenLedger, now: number): GardenLedger {
 function sprayPest(ledger: GardenLedger, slot: number, tree: boolean, now: number): RuleResult {
   const plant = tree ? (ledger.trees[slot] ?? null) : (ledger.plots[slot] ?? null);
   if (plant === null) return { ok: false, code: "PLOT_EMPTY" };
+  // A still-protected plant never needs another charge.
+  if (plant.protectedUntil > now) return { ok: false, code: "ALREADY_PROTECTED" };
   if (ledger.coins < PEST_SPRAY_COST) return { ok: false, code: "NOT_ENOUGH_COINS" };
 
   const next = clone(ledger);
@@ -2081,19 +2083,22 @@ function sprayPest(ledger: GardenLedger, slot: number, tree: boolean, now: numbe
 
 /** @brief Sprays every planted crop and tree at once, 100 coins each. */
 function sprayPestAll(ledger: GardenLedger, now: number): RuleResult {
+  // Only plants whose protection lapsed are charged again.
   const crops: number[] = [];
   for (let tab = 0; tab < ledger.tabs; tab += 1) {
     const open = ledger.unlockedPatches[tab] ?? 1;
     for (let patch = 0; patch < open; patch += 1) {
       for (let plot = 0; plot < PLOTS_PER_PATCH; plot += 1) {
         const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
-        if ((ledger.plots[slot] ?? null) !== null) crops.push(slot);
+        const entry = ledger.plots[slot] ?? null;
+        if (entry !== null && entry.protectedUntil <= now) crops.push(slot);
       }
     }
   }
   const trees: number[] = [];
   for (let slot = 0; slot < ledger.trees.length; slot += 1) {
-    if ((ledger.trees[slot] ?? null) !== null) trees.push(slot);
+    const entry = ledger.trees[slot] ?? null;
+    if (entry !== null && entry.protectedUntil <= now) trees.push(slot);
   }
   const count = crops.length + trees.length;
   if (count === 0) return { ok: false, code: "NOTHING_TO_DO" };

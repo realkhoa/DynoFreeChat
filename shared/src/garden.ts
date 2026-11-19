@@ -2078,6 +2078,7 @@ export type GardenErrorCode =
   | "NO_PRODUCT"
   | "NO_TOOL"
   | "FAVORITE_LOCKED"
+  | "ALREADY_PROTECTED"
   | "TOOL_SOLD_OUT"
   | "WAREHOUSE_LOCKED"
   | "MACHINE_LOCKED"

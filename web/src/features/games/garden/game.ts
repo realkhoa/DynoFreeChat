@@ -1961,7 +1961,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const reclaimer = tools.reclaimer ?? 0;
       const shovel = tools.shovel ?? 0;
       const favoriteLock = tools.favoriteLock ?? 0;
-      rows.append(menuRow(t("garden.sprayPest", { cost: PEST_SPRAY_COST }), "sprayPest"));
+      // Still under pesticide cover: no re-spray row until it lapses.
+      if (plant.protectedUntil <= at) {
+        rows.append(menuRow(t("garden.sprayPest", { cost: PEST_SPRAY_COST }), "sprayPest"));
+      }
       rows.append(menuRow(t("garden.harvest"), "harvest", { disabled: !ready || favorite }));
       rows.append(menuRow(t("garden.water"), "water", { disabled: ready || plant.watered }));
       rows.append(menuRow(t("garden.menuFertilize"), "menuViewFertilize", { disabled: ready }));
@@ -2176,18 +2179,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         ),
       );
       const pestTargets =
-        (state?.plots ?? []).filter((plot, slot) => plot !== null && !cropSlotLocked(slot)).length +
-        (state?.trees ?? []).filter((tree) => tree !== null).length;
-      bulk.append(
-        actionButton(
-          t("garden.sprayPestAll", {
-            count: pestTargets,
-            cost: pestTargets * PEST_SPRAY_COST,
-          }),
-          "sprayPestAll",
-          pestTargets > 0 && coins >= pestTargets * PEST_SPRAY_COST,
-        ),
-      );
+        (state?.plots ?? []).filter(
+          (plot, slot) => plot !== null && !cropSlotLocked(slot) && plot.protectedUntil <= at,
+        ).length + (state?.trees ?? []).filter((tree) => tree !== null && tree.protectedUntil <= at).length;
+      // Everything still protected: there is nothing to re-spray.
+      if (pestTargets > 0) {
+        bulk.append(
+          actionButton(
+            t("garden.sprayPestAll", {
+              count: pestTargets,
+              cost: pestTargets * PEST_SPRAY_COST,
+            }),
+            "sprayPestAll",
+            coins >= pestTargets * PEST_SPRAY_COST,
+          ),
+        );
+      }
       const soil = state?.soil ?? [];
       const renovateCost = soil.reduce((sum, fertility) => sum + soilRenovateCost(fertility), 0);
       bulk.append(

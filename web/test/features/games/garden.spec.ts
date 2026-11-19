@@ -501,6 +501,36 @@ describe("garden tab", () => {
     expect(api.calls.some((call) => call.action?.kind === "sprayPestAll")).toBe(true);
   });
 
+  it("hides re-spray actions while the field is still protected", async () => {
+    const covered = { ...RIPE_PLOT, protectedUntil: CLOCK + 60_000 };
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 5_000,
+        plots: [covered, { ...covered, slot: 1 }],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    // Whole field covered: neither the per-plant row nor the bulk button shows.
+    expect(host.querySelector('[data-act="sprayPestAll"]')).toBeNull();
+    host.querySelectorAll<HTMLButtonElement>(".garden-cell")[0]?.click();
+    await settle();
+    expect(host.querySelector('[data-act="sprayPest"]')).toBeNull();
+  });
+
+  it("offers the bulk spray once some cover lapses", async () => {
+    const covered = { ...RIPE_PLOT, protectedUntil: CLOCK + 60_000 };
+    const lapsed = { ...RIPE_PLOT, slot: 1, protectedUntil: 0 };
+    const api = new FakeGardenApi(makeState({ coins: 5_000, plots: [covered, lapsed] }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const bulk = host.querySelector<HTMLButtonElement>('[data-act="sprayPestAll"]');
+    expect(bulk).not.toBeNull();
+    expect(bulk?.textContent).toContain("1");
+  });
+
   it("shows soil fertility and renovates the whole field", async () => {
     const soil = new Array<number>(CROPS_PER_TAB).fill(100);
     soil[0] = 50;
