@@ -32,6 +32,7 @@ import {
   soilRenovateCost,
   effectById,
   EFFECTS,
+  GROWTH_MUTATION_SCALE,
   MAX_EFFECT_STACK,
   eventAt,
   formatGardenAuth,
@@ -340,6 +341,15 @@ describe("farm buildings", () => {
       const stacked = rollEffectsFor([goldenHour, goldenHour], () => 0);
       expect(stacked.filter((id) => id === "golden").length).toBeGreaterThanOrEqual(2);
     }
+  });
+
+  it("scales mutation odds down while a plant just grows", () => {
+    expect(GROWTH_MUTATION_SCALE).toBeLessThan(1);
+    const goldenHour = EVENTS.find((event) => event.id === "goldenHour");
+    if (goldenHour === undefined) throw new Error("catalog");
+    expect(rollEffectsFor([goldenHour], () => 0, {}, {}, 1)).toContain("golden");
+    // A zero scale disables the growth contribution entirely.
+    expect(rollEffectsFor([goldenHour], () => 0, {}, {}, 0)).toEqual([]);
   });
 
   it("dries any produce into price-graded goods", () => {

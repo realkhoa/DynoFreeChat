@@ -560,6 +560,15 @@ export const EFFECTS: readonly EffectDefinition[] = [
   { id: "pale", mark: ".", multiplier: 0.7, natural: true },
 ];
 
+/**
+ * Scale applied to mutation chances while a plant is merely growing.
+ * @details Weather used to roll full odds on every six-minute wave, which made
+ * long crops nearly guaranteed to carry several mutations and inflated sale
+ * prices. The one-off planting roll keeps full odds; every wave after it only
+ * gets this fraction.
+ */
+export const GROWTH_MUTATION_SCALE = 0.15;
+
 /** Effects every planting can roll even under a calm sky. */
 export const BASE_EFFECT_CHANCES: Readonly<Partial<Record<EffectId, number>>> = {
   golden: 0.03,
@@ -3119,10 +3128,11 @@ export function rollEffectsFor(
   rng: () => number,
   bonus: Readonly<Partial<Record<EffectId, number>>> = {},
   boost: Readonly<Partial<Record<EffectId, number>>> = {},
+  scale = 1,
 ): EffectId[] {
   // Each event rolls independently, so two events can stack the same mutation.
   const rolled: EffectId[] = [];
-  for (const event of events) rolled.push(...rollEffects(event, rng, bonus, boost));
+  for (const event of events) rolled.push(...rollEffects(event, rng, bonus, boost, scale));
   return canonicalEffects(rolled);
 }
 
@@ -3156,6 +3166,7 @@ export function rollEffects(
   rng: () => number,
   bonus: Readonly<Partial<Record<EffectId, number>>> = {},
   boost: Readonly<Partial<Record<EffectId, number>>> = {},
+  scale = 1,
 ): EffectId[] {
   const rolled: EffectId[] = [];
   // One independent roll per weather mutation, in catalog order, so a fruit can
@@ -3164,7 +3175,7 @@ export function rollEffects(
     if (!effect.natural) continue;
     const base =
       (BASE_EFFECT_CHANCES[effect.id] ?? 0) + (event.effectChances[effect.id] ?? 0) + (bonus[effect.id] ?? 0);
-    const chance = base * (boost[effect.id] ?? 1);
+    const chance = base * (boost[effect.id] ?? 1) * scale;
     if (chance <= 0) continue;
     if (rng() >= chance) continue;
     // A hit can stack more copies of the same mutation, each rarer than the last.
@@ -3202,7 +3213,7 @@ export function weatherEffects(
   for (let wave = first; wave <= last && wave - first < 200; wave += 1) {
     const events = eventsAt(EPOCH_MS + wave * EVENT_WAVE_MS);
     const rng = createRng(hash32(`${kindId}:${slot}:${wave}`));
-    effects.push(...rollEffectsFor(events, rng, {}, sprayBoostFor(spray)));
+    effects.push(...rollEffectsFor(events, rng, {}, sprayBoostFor(spray), GROWTH_MUTATION_SCALE));
   }
   return canonicalEffects(effects);
 }
