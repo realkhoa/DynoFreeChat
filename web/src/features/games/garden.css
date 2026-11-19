@@ -81,6 +81,35 @@
   align-items: flex-start;
 }
 
+/* Bulk actions: water reads light blue, harvest light green. */
+.garden-bulk .stage-btn.garden-btn-water {
+  color: #9cdcfe;
+  border-color: #2f5d7a;
+  background: #1b3a4d66;
+}
+
+.garden-bulk .stage-btn.garden-btn-water:hover {
+  background: #234b6380;
+  border-color: #3f7a9e;
+  color: #d3ecff;
+}
+
+.garden-bulk .stage-btn.garden-btn-harvest {
+  color: #a9e08f;
+  border-color: #3f6b3a;
+  background: #1f3a1f66;
+}
+
+.garden-bulk .stage-btn.garden-btn-harvest:hover {
+  background: #2a4a2a80;
+  border-color: #5a9152;
+  color: #d8f7c8;
+}
+
+.garden-bulk .stage-btn:disabled {
+  opacity: 0.55;
+}
+
 /* Premium plots above the boards; nothing here is auto-sold. */
 .garden-special {
   display: flex;

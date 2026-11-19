@@ -487,6 +487,17 @@ describe("garden tab", () => {
     });
   });
 
+  it("tints the bulk water and harvest buttons", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const water = host.querySelector<HTMLButtonElement>('[data-act="waterAll"]');
+    const harvest = host.querySelector<HTMLButtonElement>('[data-act="harvestAll"]');
+    expect(water?.classList.contains("garden-btn-water")).toBe(true);
+    expect(harvest?.classList.contains("garden-btn-harvest")).toBe(true);
+  });
+
   it("shows the owner actions for a ripe crop and harvests it", async () => {
     const api = new FakeGardenApi(
       makeState({ plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)] }),

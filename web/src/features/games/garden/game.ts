@@ -2305,21 +2305,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const counts = bulkCounts(at);
       const coins = state?.coins ?? 0;
       const bulk = div("garden-bulk");
-      bulk.append(
-        actionButton(
-          t("garden.waterAll", { count: counts.water, cost: counts.water * WATER_ALL_COST }),
-          "waterAll",
-          counts.water > 0 && coins >= counts.water * WATER_ALL_COST,
-        ),
-        actionButton(
-          t("garden.harvestAll", {
-            count: counts.harvest,
-            cost: counts.harvest * HARVEST_ALL_COST,
-          }),
-          "harvestAll",
-          counts.harvest > 0 && coins >= counts.harvest * HARVEST_ALL_COST,
-        ),
+      const waterAll = actionButton(
+        t("garden.waterAll", { count: counts.water, cost: counts.water * WATER_ALL_COST }),
+        "waterAll",
+        counts.water > 0 && coins >= counts.water * WATER_ALL_COST,
       );
+      waterAll.classList.add("garden-btn-water");
+      const harvestAll = actionButton(
+        t("garden.harvestAll", {
+          count: counts.harvest,
+          cost: counts.harvest * HARVEST_ALL_COST,
+        }),
+        "harvestAll",
+        counts.harvest > 0 && coins >= counts.harvest * HARVEST_ALL_COST,
+      );
+      harvestAll.classList.add("garden-btn-harvest");
+      bulk.append(waterAll, harvestAll);
       const pestTargets =
         (state?.plots ?? []).filter(
           (plot, slot) => plot !== null && !cropSlotLocked(slot) && plot.protectedUntil <= at,
