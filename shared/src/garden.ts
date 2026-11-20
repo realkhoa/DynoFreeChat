@@ -1184,6 +1184,14 @@ export interface MachineState {
 }
 
 /** @brief Seeds a seed maker returns for one crop at a level. */
+/** Base chance a seed-maker batch actually yields seeds. */
+export const SEED_MAKER_BASE_CHANCE = 0.5;
+
+/** @brief Seed-maker success chance: 50% at P0, +10% per prestige, 100% at P5. */
+export function seedMakerChance(prestige: number): number {
+  return Math.min(1, SEED_MAKER_BASE_CHANCE + Math.max(0, prestige) * 0.1);
+}
+
 export function seedMakerOutput(level: number): number {
   return 3 + Math.max(1, Math.min(MACHINE_MAX_LEVEL, level)) * 2;
 }

@@ -56,6 +56,7 @@ import {
   prestigeMutationBonus,
   prestigeSellBonus,
   prestigeGrowScale,
+  seedMakerChance,
   sprayBoostFor,
   SPRAY_MUTATION_BOOST,
   EFFECT_STACK_CHANCES,
@@ -384,6 +385,13 @@ describe("farm buildings", () => {
     expect(staffWorkInterval(veteran)).toBeLessThan(staffWorkInterval(cheap));
     expect(staffGainXp(1, 150)).toEqual({ level: 2, xp: 50 });
     expect(staffGainXp(9, 100_000).level).toBe(10);
+  });
+
+  it("scales the seed-maker success rate with prestige", () => {
+    expect(seedMakerChance(0)).toBe(0.5);
+    expect(seedMakerChance(2)).toBeCloseTo(0.7);
+    expect(seedMakerChance(5)).toBe(1);
+    expect(seedMakerChance(9)).toBe(1);
   });
 
   it("ships the prestige-only cocomelon seed", () => {

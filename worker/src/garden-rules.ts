@@ -116,6 +116,7 @@ import {
   driedStarForSell,
   machineById,
   seedMakerOutput,
+  seedMakerChance,
   seedById,
   maxBuildingLevel,
   productById,
@@ -3246,6 +3247,7 @@ function produceMachineOutput(
   definition: MachineDefinition,
   hold: MachineHold,
   level: number,
+  roll: () => number,
 ): number {
   const bonus = artisaningOutputBonus(next.skills.artisaning.level);
   if (definition.output.kind === "product") {
@@ -3261,6 +3263,7 @@ function produceMachineOutput(
   }
   const seed = seedById(hold.key);
   if (seed === undefined) return 0;
+  if (roll() >= seedMakerChance(next.prestige)) return 0;
   const qty = Math.max(1, Math.round(seedMakerOutput(level) * (1 + bonus)));
   next.bag.seeds[seed.id] = (next.bag.seeds[seed.id] ?? 0) + qty;
   return qty;
@@ -3292,7 +3295,13 @@ function startMachineCraft(
     };
     grantXp(next, "artisaning", 100);
   } else {
-    const produced = produceMachineOutput(next, definition, hold, machine.level);
+    const produced = produceMachineOutput(
+      next,
+      definition,
+      hold,
+      machine.level,
+      createRng(hash32(`machine:${next.playerId}:${id}:${now}:${hold.key}`)),
+    );
     next.machines[id] = {
       ...machine,
       lastCraftAt: now,
@@ -3324,6 +3333,7 @@ function finishMachineJob(ledger: GardenLedger, id: MachineId, now: number): Gar
       ...(job.effects === undefined ? {} : { effects: job.effects }),
     },
     machine.level,
+    createRng(hash32(`machine:${next.playerId}:${id}:${now}:${job.item}`)),
   );
   next.machines[id] = { ...machine, job: undefined, made: (machine.made ?? 0) + produced };
   grantXp(next, "artisaning", 120);

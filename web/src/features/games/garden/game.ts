@@ -96,6 +96,7 @@ import {
   machineById,
   seedById,
   seedMakerOutput,
+  seedMakerChance,
   productById,
   productPrice,
   type AnimalId,
@@ -3001,6 +3002,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     if (definition.output.kind === "product") {
       lines.push(labelValue(t("warehouse.output"), t(`products.${definition.output.product}`)));
+    }
+    if (definition.output.kind === "seeds") {
+      const chance = Math.round(seedMakerChance(state.extras.prestige ?? 0) * 100);
+      lines.push(labelValue(t("warehouse.seedChance"), `${chance}%`));
     }
     const queue = built.queue ?? [];
     lines.push(labelValue(t("warehouse.queue"), String(queue.length)));

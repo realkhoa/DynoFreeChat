@@ -1266,8 +1266,9 @@ describe("garden ledger rules", () => {
     expect(machine.ok).toBe(true);
     if (!machine.ok) return;
     expect(machine.ledger.machines.seedMaker?.level).toBe(1);
+    machine.ledger.prestige = 5;
 
-    // One tomato crop becomes five seeds at level 1.
+    // One tomato crop becomes five seeds at level 1 (P5 = 100% chance).
     machine.ledger.bag.crops = [{ item: "tomato", effects: [], qty: 2 }];
     const seeds = run(machine.ledger, { kind: "craftMachine", machine: "seedMaker", item: "tomato" });
     expect(seeds.ok).toBe(true);
@@ -1351,6 +1352,7 @@ describe("garden ledger rules", () => {
     if (!built.ok) throw new Error("warehouse failed");
     const machine = run(built.ledger, { kind: "buildMachine", machine: "seedMaker" });
     if (!machine.ok) throw new Error("machine failed");
+    machine.ledger.prestige = 5;
 
     const queued = run(machine.ledger, {
       kind: "queueMachine",
@@ -1403,6 +1405,7 @@ describe("garden ledger rules", () => {
     const machine = run(built.ledger, { kind: "buildMachine", machine: "seedMaker" });
     if (!machine.ok) throw new Error("machine failed");
     machine.ledger.machines.seedMaker = { level: 3, lastCraftAt: 0 };
+    machine.ledger.prestige = 5;
     const crafted = run(machine.ledger, { kind: "craftMachine", machine: "seedMaker", item: "tomato" });
     expect(crafted.ok).toBe(true);
     if (!crafted.ok) return;
