@@ -122,6 +122,7 @@ import {
   HARVEST_ALL_COST,
   createRng,
   cropSellPrice,
+  effectById,
   dailyQuestsFor,
   prestigeSellBonus,
   prestigeGrowScale,
@@ -614,7 +615,7 @@ export function applyGardenAction(
       return { ok: true, ledger: specializePlot(result.ledger, action.slot, now, true), changed: true };
     }
     case "harvestSpecial": {
-      const result = withSpecial(ledger, harvest, action.slot, now, rng);
+      const result = withSpecial(ledger, harvest, action.slot, now, rng, false, true);
       if (!result.ok) return result;
       let next = specializePlot(result.ledger, action.slot, now, true);
       next = clone(next);
@@ -1017,6 +1018,7 @@ function harvest(
   now: number,
   rng: () => number,
   auto = false,
+  goodOnly = false,
 ): RuleResult {
   const plot = ledger.plots[slot] ?? null;
   if (plot === null) return { ok: false, code: "PLOT_EMPTY" };
@@ -1024,7 +1026,7 @@ function harvest(
   if (now < plot.readyAt) return { ok: false, code: "NOT_READY" };
 
   const next = clone(ledger);
-  const harvestedEffects = resolvedCropEffects(plot, now);
+  const harvestedEffects = resolvedCropEffects(plot, now, goodOnly);
   const star = rollCropQuality(
     ledger,
     `crop:${slot}`,
@@ -1073,7 +1075,9 @@ function harvest(
             dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
           ) * soilGrowthFactor(fertility),
         ),
-      effects: rollEffectsFor(events, rng, mutationBonus, sprayBoostFor(plot.spray)),
+      effects: rollEffectsFor(events, rng, mutationBonus, sprayBoostFor(plot.spray)).filter(
+        (id) => !goodOnly || (effectById(id)?.multiplier ?? 1) > 1,
+      ),
       pest: false,
       protectedUntil: plot.protectedUntil,
       favorite: plot.favorite,

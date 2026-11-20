@@ -3471,6 +3471,7 @@ export function weatherEffects(
   plantedAt: number,
   until: number,
   spray: ActiveSpray | null = null,
+  goodOnly = false,
 ): EffectId[] {
   const end = Math.max(plantedAt, until);
   const effects: EffectId[] = [];
@@ -3479,7 +3480,11 @@ export function weatherEffects(
   for (let guard = 0; window.startsAt <= end && guard < 200; guard += 1) {
     const events = phaseEvents(window);
     const rng = createRng(hash32(`${kindId}:${slot}:${window.index}`));
-    effects.push(...rollEffectsFor(events, rng, {}, sprayBoostFor(spray), GROWTH_MUTATION_SCALE));
+    effects.push(
+      ...rollEffectsFor(events, rng, {}, sprayBoostFor(spray), GROWTH_MUTATION_SCALE).filter(
+        (id) => !goodOnly || (effectById(id)?.multiplier ?? 1) > 1,
+      ),
+    );
     if (window.endsAt > end) break;
     window = dayPhaseAt(window.endsAt);
   }
@@ -3487,11 +3492,24 @@ export function weatherEffects(
 }
 
 /** @brief All mutations on a crop: manual ones plus accumulated weather. */
-export function resolvedCropEffects(plot: PlotState, until: number): EffectId[] {
-  return canonicalEffects([
-    ...plot.effects,
-    ...weatherEffects(plot.seed, plot.slot, plot.plantedAt, Math.min(until, plot.readyAt), plot.spray),
-  ]);
+export function resolvedCropEffects(plot: PlotState, until: number, goodOnly = false): EffectId[] {
+  const weather = weatherEffects(
+    plot.seed,
+    plot.slot,
+    plot.plantedAt,
+    Math.min(until, plot.readyAt),
+    plot.spray,
+    goodOnly,
+  );
+  // Premium soil always feeds at least one good weather mutation.
+  if (goodOnly && weather.length === 0) {
+    const good = EFFECTS.filter((effect) => effect.natural && effect.multiplier > 1);
+    if (good.length > 0) {
+      const picked = good[hash32(`premium:${plot.seed}:${plot.slot}:${plot.plantedAt}`) % good.length];
+      if (picked !== undefined) weather.push(picked.id);
+    }
+  }
+  return canonicalEffects([...plot.effects, ...weather]);
 }
 
 /** @brief All mutations on a fruit tree: manual ones plus accumulated weather. */

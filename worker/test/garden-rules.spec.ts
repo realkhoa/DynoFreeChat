@@ -10,6 +10,7 @@ import {
   ACTIONS_PER_MINUTE,
   BREED_CYCLES,
   EPOCH_MS,
+  EFFECTS,
   EVENT_WAVE_MS,
   FARM_CYCLE_MS,
   SPECIAL_PATCH_PRICE,
@@ -586,6 +587,36 @@ describe("garden ledger rules", () => {
     if (!second.ok) return;
     expect(second.ledger.specialOwned).toBe(2);
     expect(second.ledger.coins).toBe(harvested.ledger.coins - 2_000_000_000);
+  });
+
+  it("only keeps positive weather mutations on premium crops", () => {
+    const ledger = makeLedger();
+    ledger.specialOwned = 1;
+    ledger.specialPlots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW - 6 * 60 * 60_000,
+      readyAt: NOW - 1_000,
+      effects: ["brainrot"],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const harvested = run(ledger, { kind: "harvestSpecial", slot: 0 }, NOW);
+    expect(harvested.ok).toBe(true);
+    if (!harvested.ok) return;
+    const stack = harvested.ledger.bag.crops[0];
+    expect(stack?.effects).toContain("brainrot");
+    const weather = (stack?.effects ?? []).filter((id) => id !== "brainrot");
+    expect(weather.length).toBeGreaterThan(0);
+    for (const id of weather) {
+      const effect = EFFECTS.find((entry) => entry.id === id);
+      expect(effect?.multiplier ?? 0).toBeGreaterThan(1);
+    }
   });
 
   it("migrates premium crops to normal soil once and wipes ownership", () => {
