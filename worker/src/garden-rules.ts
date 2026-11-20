@@ -82,6 +82,10 @@ import {
   soilGrowthFactor,
   soilRenovateCost,
   PEST_CHANCE_PER_CYCLE,
+  DISEASE_CHANCE_PER_CYCLE,
+  DISEASE_SPREAD_CHANCE,
+  DISEASE_DEATH_CYCLES,
+  TREE_DISEASE_DEATH_CYCLES,
   PEST_GROWTH_PENALTY,
   PEST_PROTECTION_MS,
   PEST_SPRAY_COST,
@@ -256,6 +260,7 @@ export interface GardenLedger {
   toolsSettledAt: number;
   /** Last pest strike roll. */
   pestSettledAt: number;
+  diseaseSettledAt: number;
   /** Fertility percent per crop cell. */
   soil: number[];
   /** Sequentially bought premium plots. */
@@ -406,6 +411,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     attachmentSettledAt: input.now,
     toolsSettledAt: input.now,
     pestSettledAt: input.now,
+    diseaseSettledAt: input.now,
     soil: new Array<number>(totalCrops(STARTING_TABS)).fill(SOIL_START),
     specialOwned: 0,
     specialVersion: SPECIAL_RESET_VERSION,
@@ -2984,6 +2990,84 @@ function sprayPestAll(ledger: GardenLedger, now: number): RuleResult {
  * @details Unprotected plants have a small seeded chance each cycle to catch
  * pests: value halves and the remaining growth time is stretched 50%.
  */
+export function settleDisease(ledger: GardenLedger, now: number): GardenLedger {
+  const elapsed = now - ledger.diseaseSettledAt;
+  if (elapsed < FARM_CYCLE_MS) return ledger;
+  const cycles = Math.min(20, Math.floor(elapsed / FARM_CYCLE_MS));
+  if (cycles <= 0) return ledger;
+  const next = clone(ledger);
+  next.diseaseSettledAt = ledger.diseaseSettledAt + cycles * FARM_CYCLE_MS;
+
+  const isCropNeighbour = (left: number, right: number): boolean => {
+    if (Math.floor(left / PLOTS_PER_PATCH) !== Math.floor(right / PLOTS_PER_PATCH)) return false;
+    const l = left % PLOTS_PER_PATCH;
+    const r = right % PLOTS_PER_PATCH;
+    const lr = Math.floor(l / 3);
+    const lc = l % 3;
+    const rr = Math.floor(r / 3);
+    const rc = r % 3;
+    return Math.abs(lr - rr) <= 1 && Math.abs(lc - rc) <= 1 && l !== r;
+  };
+
+  for (let step = 0; step < cycles; step += 1) {
+    const cycle = Math.floor(ledger.diseaseSettledAt / FARM_CYCLE_MS) + step;
+    const time = ledger.diseaseSettledAt + step * FARM_CYCLE_MS;
+
+    // Sick plants that were left alone die and free their slot.
+    for (let slot = 0; slot < next.plots.length; slot += 1) {
+      const plot = next.plots[slot] ?? null;
+      if (plot === null || plot.diseasedAt === undefined) continue;
+      if (time - plot.diseasedAt < DISEASE_DEATH_CYCLES * FARM_CYCLE_MS) continue;
+      next.plots[slot] = null;
+    }
+    for (let slot = 0; slot < next.trees.length; slot += 1) {
+      const tree = next.trees[slot] ?? null;
+      if (tree === null || tree.diseasedAt === undefined) continue;
+      if (time - tree.diseasedAt < TREE_DISEASE_DEATH_CYCLES * FARM_CYCLE_MS) continue;
+      next.trees[slot] = null;
+    }
+
+    // A small chance for a fresh infection, then spread to same-type neighbours.
+    for (let slot = 0; slot < next.plots.length; slot += 1) {
+      const plot = next.plots[slot] ?? null;
+      if (plot === null) continue;
+      if (plot.diseasedAt !== undefined) {
+        for (let other = 0; other < next.plots.length; other += 1) {
+          if (other === slot) continue;
+          const neighbour = next.plots[other] ?? null;
+          if (neighbour === null || neighbour.diseasedAt !== undefined) continue;
+          if (neighbour.seed !== plot.seed || !isCropNeighbour(slot, other)) continue;
+          const rng = createRng(hash32(`spread:${ledger.playerId}:c${slot}:${other}:${cycle}`));
+          if (rng() < DISEASE_SPREAD_CHANCE) next.plots[other] = { ...neighbour, diseasedAt: time };
+        }
+        continue;
+      }
+      const rng = createRng(hash32(`disease:${ledger.playerId}:c${slot}:${cycle}`));
+      if (rng() < DISEASE_CHANCE_PER_CYCLE) next.plots[slot] = { ...plot, diseasedAt: time };
+    }
+
+    for (let slot = 0; slot < next.trees.length; slot += 1) {
+      const tree = next.trees[slot] ?? null;
+      if (tree === null) continue;
+      if (tree.diseasedAt !== undefined) {
+        for (let other = 0; other < next.trees.length; other += 1) {
+          if (other === slot) continue;
+          const neighbour = next.trees[other] ?? null;
+          if (neighbour === null || neighbour.diseasedAt !== undefined) continue;
+          if (neighbour.tree !== tree.tree) continue;
+          if (!isCropNeighbour(slot, other)) continue;
+          const rng = createRng(hash32(`spread:${ledger.playerId}:t${slot}:${other}:${cycle}`));
+          if (rng() < DISEASE_SPREAD_CHANCE) next.trees[other] = { ...neighbour, diseasedAt: time };
+        }
+        continue;
+      }
+      const rng = createRng(hash32(`disease:${ledger.playerId}:t${slot}:${cycle}`));
+      if (rng() < DISEASE_CHANCE_PER_CYCLE) next.trees[slot] = { ...tree, diseasedAt: time };
+    }
+  }
+  return next;
+}
+
 export function settlePest(ledger: GardenLedger, now: number): GardenLedger {
   const elapsed = now - ledger.pestSettledAt;
   if (elapsed < FARM_CYCLE_MS) return ledger;

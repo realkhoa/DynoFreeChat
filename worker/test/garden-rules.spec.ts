@@ -36,6 +36,7 @@ import {
   type GardenLedger,
   settleSpecialReset,
   settleAttachments,
+  settleDisease,
 } from "../src/garden-rules";
 
 /** Server time inside the golden-hour wave, so growth is unmodified by rain. */
@@ -272,6 +273,33 @@ describe("garden ledger rules", () => {
     expect(harvested.ledger.bag.crops[0]).toMatchObject({ item: "carrot", effects: [], qty: 1 });
     expect((harvested.ledger.bag.crops[0]?.star ?? 1) >= 1).toBe(true);
     expect(harvested.ledger.stats.harvested).toBe(1);
+  });
+
+  it("kills a diseased crop that is left alone", () => {
+    const ledger = makeLedger();
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW - 10 * FARM_CYCLE_MS,
+      readyAt: NOW + 10 * FARM_CYCLE_MS,
+      effects: [],
+      watered: true,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+      diseasedAt: NOW - 3 * FARM_CYCLE_MS,
+    };
+    ledger.plots[1] = {
+      ...ledger.plots[0]!,
+      slot: 1,
+      diseasedAt: undefined,
+    };
+    const settled = settleDisease(ledger, NOW + 4 * FARM_CYCLE_MS);
+    expect(settled.plots[0]).toBeNull();
+    expect(settled.plots[1]).not.toBeNull();
   });
 
   it("carries animal mutations into produce and through machines", () => {

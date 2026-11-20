@@ -15,6 +15,8 @@ import {
   FRUIT_PATCHES_PER_TAB,
   HARVEST_ALL_COST,
   PEST_SPRAY_COST,
+  DISEASE_DEATH_CYCLES,
+  TREE_DISEASE_DEATH_CYCLES,
   SKILL_MAX_LEVEL,
   SOIL_START,
   SPECIAL_PATCH_PRICE,
@@ -1609,6 +1611,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       moveSource !== null && moveSource.slot === slot && moveSource.area === area,
     );
     cell.classList.toggle("is-pest", area === "crop" ? plot?.pest === true : tree?.pest === true);
+    cell.classList.toggle(
+      "is-diseased",
+      (area === "crop" ? plot?.diseasedAt : tree?.diseasedAt) !== undefined,
+    );
     const effects =
       area === "tree"
         ? tree === null
@@ -1758,6 +1764,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             ready ? t("garden.ready") : formatDuration(Math.max(0, tree.readyAt - at)),
           ),
         );
+        if (tree.diseasedAt !== undefined) {
+          lines.push(
+            labelValue(
+              t("garden.disease"),
+              t("garden.diseaseHint", {
+                time: formatDuration(
+                  Math.max(0, tree.diseasedAt + TREE_DISEASE_DEATH_CYCLES * FARM_CYCLE_MS - at),
+                  "short",
+                ),
+              }),
+            ),
+          );
+        }
         if (season !== null) {
           lines.push(
             labelValue(
@@ -1802,6 +1821,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
               : t("garden.pestNone"),
         ),
       );
+      if (plot.diseasedAt !== undefined) {
+        lines.push(
+          labelValue(
+            t("garden.disease"),
+            t("garden.diseaseHint", {
+              time: formatDuration(
+                Math.max(0, plot.diseasedAt + DISEASE_DEATH_CYCLES * FARM_CYCLE_MS - at),
+                "short",
+              ),
+            }),
+          ),
+        );
+      }
       const fertility = state?.soil?.[slot] ?? SOIL_START;
       lines.push(
         labelValue(
@@ -2345,6 +2377,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     button.classList.toggle("is-ready", render.ready);
     button.classList.toggle("is-empty", render.empty);
     button.classList.toggle("is-pest", plot?.pest === true);
+    button.classList.toggle("is-diseased", plot?.diseasedAt !== undefined);
     button.dataset.act = "specialPlot";
     button.title =
       plot === null ? t("special.empty") : at >= plot.readyAt ? t("special.ready") : t("special.growing");

@@ -1371,6 +1371,8 @@ export interface PlotState {
   readonly effects: readonly EffectId[];
   /** Whether pests are damaging this crop right now. */
   readonly pest: boolean;
+  /** Server time the disease started; it dies after a few cycles. */
+  readonly diseasedAt?: number;
   /** Pesticide protection expiry; pests cannot strike before it. */
   readonly protectedUntil: number;
   /** Whether the owner already watered this planting. */
@@ -1401,6 +1403,8 @@ export interface TreeState {
   readonly effects: readonly EffectId[];
   /** Whether pests are damaging this tree right now. */
   readonly pest: boolean;
+  /** Server time the disease started; it dies after a few cycles. */
+  readonly diseasedAt?: number;
   /** Pesticide protection expiry; pests cannot strike before it. */
   readonly protectedUntil: number;
   /** Whether the owner already watered this cycle. */
@@ -2399,6 +2403,15 @@ export const PEST_GROWTH_PENALTY = 1.5;
 
 /** Chance per cycle that an unprotected plant catches pests. */
 export const PEST_CHANCE_PER_CYCLE = 0.04;
+
+/** Per-cycle chance a healthy crop catches a disease. */
+export const DISEASE_CHANCE_PER_CYCLE = 0.0015;
+/** Per-cycle chance a disease spreads to a same-type neighbour. */
+export const DISEASE_SPREAD_CHANCE = 0.03;
+/** Cycles a crop survives after catching the disease. */
+export const DISEASE_DEATH_CYCLES = 3;
+/** Cycles a fruit tree survives after catching the disease. */
+export const TREE_DISEASE_DEATH_CYCLES = 4;
 
 /** Flat tax rate on every sale income. */
 export const SELL_TAX_RATE = 0.1;

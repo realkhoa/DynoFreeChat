@@ -1567,3 +1567,15 @@
   color: #dcdcaa;
   text-align: right;
 }
+
+/* Diseased crops read red and blink until removed. */
+.garden-cell.is-diseased {
+  color: #e06c75;
+  animation: garden-blink 1.4s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .garden-cell.is-diseased {
+    animation: none;
+  }
+}

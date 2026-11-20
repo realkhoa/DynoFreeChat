@@ -2052,6 +2052,24 @@ describe("prestige shop", () => {
   });
 });
 
+describe("crop disease", () => {
+  it("marks a diseased crop and warns in the menu", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        plots: [{ ...GROWING_PLOT, diseasedAt: CLOCK - 60_000 }, ...new Array(CROPS_PER_TAB - 1).fill(null)],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const cell = host.querySelector<HTMLButtonElement>('.garden-cell[data-area="crop"]');
+    expect(cell?.classList.contains("is-diseased")).toBe(true);
+    cell?.click();
+    await settle();
+    expect(host.querySelector(".garden-menu-info")?.textContent).toContain("Dịch bệnh");
+  });
+});
+
 describe("global sale log", () => {
   it("lists sales from every player", async () => {
     const api = new FakeGardenApi(makeState());
