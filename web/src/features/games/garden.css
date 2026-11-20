@@ -120,9 +120,20 @@
 
 .garden-special-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+/* Premium cells reuse the normal ASCII cell; only the buy cell is framed. */
+.garden-special-row .garden-cell.garden-special-cell {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.garden-special-row .garden-cell.garden-special-cell.is-locked[data-act="buySpecialPlot"] {
+  color: #d7ba7d;
 }
 
 .garden-special-patch {
@@ -132,14 +143,23 @@
 }
 
 .garden-special-cell {
-  padding: 1px 5px;
+  display: inline-flex;
+  flex-direction: column;
+  padding: 0;
   background: transparent;
-  border: 1px solid var(--border-subtle);
+  border: 0;
   border-radius: 2px;
   color: #d4d4d4;
-  font: 9.5px/14px var(--font-mono);
-  white-space: nowrap;
+  font: 9.5px/12px var(--font-mono);
+  text-align: left;
+  white-space: pre;
   cursor: pointer;
+  user-select: none;
+}
+
+.garden-special-cell .garden-cell-line {
+  display: block;
+  white-space: pre;
 }
 
 .garden-special-cell:hover {
@@ -1100,7 +1120,7 @@
   }
 
   .garden-special-cell {
-    padding: 3px 6px;
+    padding: 0;
     font-size: 9px;
   }
 

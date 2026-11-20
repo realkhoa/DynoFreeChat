@@ -19,6 +19,7 @@ import {
   SOIL_START,
   SPECIAL_PATCH_PRICE,
   SPECIAL_PLOT_PRICE,
+  specialPlotCost,
   SPECIAL_PLOTS_PER_PATCH,
   SPECIAL_SLOTS,
   skillThreshold,
@@ -2219,83 +2220,79 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
   /** @brief Special plots for the active mode. */
   function specialView(): {
-    patches: number;
-    unlocked: readonly number[];
+    owned: number;
     plots: readonly (PlotState | null)[];
   } | null {
     const view = mode === "visit" ? visiting : state;
     if (view === null) return null;
     return {
-      patches: view.specialPatches ?? 0,
-      unlocked: view.specialUnlocked ?? [],
+      owned: Math.min(SPECIAL_SLOTS, view.specialOwned ?? 0),
       plots: view.specialPlots ?? [],
     };
   }
 
-  /** @brief Repaints one premium plot cell. */
+  /** @brief Repaints one premium plot cell as a full ASCII crop cell. */
   function syncSpecialCell(button: HTMLButtonElement, slot: number, at: number): void {
     const view = specialView();
-    const patch = Math.floor(slot / SPECIAL_PLOTS_PER_PATCH);
-    const local = slot % SPECIAL_PLOTS_PER_PATCH;
-    button.classList.remove("is-empty", "is-ready", "is-locked");
-    if (view === null || patch >= view.patches) {
-      button.textContent = t("special.locked");
-      button.classList.add("is-locked");
-      button.dataset.act = "specialNoop";
-      return;
+    for (let index = 0; index < 6; index += 1) {
+      const line = button.children.item(index);
+      if (line instanceof HTMLElement) line.textContent = "";
     }
-    if (local >= (view.unlocked[patch] ?? 0)) {
-      button.textContent = `+ ${formatCompact(SPECIAL_PLOT_PRICE)}c`;
+    button.classList.remove("is-empty", "is-ready", "is-locked", "is-pest");
+    if (view === null) return;
+    if (slot >= view.owned) {
       button.classList.add("is-locked");
-      button.dataset.act = "buySpecialPlot";
-      button.dataset.patch = String(patch);
-      button.title = t("special.buyPlot", { cost: formatCompact(SPECIAL_PLOT_PRICE) });
+      if (slot === view.owned && mode === "owner") {
+        const cost = formatCompact(specialPlotCost(slot));
+        const lines = [`+ ${cost}c`, "", "", "", "", ""];
+        for (let index = 0; index < 6; index += 1) {
+          const line = button.children.item(index);
+          if (line instanceof HTMLElement) line.textContent = lines[index] ?? "";
+        }
+        button.dataset.act = "buySpecialPlot";
+        button.title = t("special.buyPlot", { cost });
+      } else {
+        button.dataset.act = "specialNoop";
+        button.disabled = true;
+      }
       return;
     }
     const plot = view.plots[slot] ?? null;
-    button.dataset.act = "specialPlot";
-    if (plot === null) {
-      button.textContent = "·";
-      button.classList.add("is-empty");
-      button.title = t("special.empty");
-      return;
+    const render = cellRender(plot, at, null, slot % SPECIAL_PLOTS_PER_PATCH);
+    for (let index = 0; index < 6; index += 1) {
+      const line = button.children.item(index);
+      if (line instanceof HTMLElement) line.textContent = render.lines[index] ?? "";
     }
-    const ready = at >= plot.readyAt;
-    button.classList.toggle("is-ready", ready);
-    button.textContent = ready
-      ? `✓ ${seedName(plot.seed)}`
-      : `${seedName(plot.seed)} ${formatDuration(Math.max(0, plot.readyAt - at), "short")}`;
-    button.title = ready ? t("special.ready") : t("special.growing");
+    button.classList.toggle("is-ready", render.ready);
+    button.classList.toggle("is-empty", render.empty);
+    button.classList.toggle("is-pest", plot?.pest === true);
+    button.dataset.act = "specialPlot";
+    button.title =
+      plot === null ? t("special.empty") : at >= plot.readyAt ? t("special.ready") : t("special.growing");
   }
 
-  /** @brief Builds the premium patch rows above the normal boards. */
+  /** @brief Builds the premium 27-plot board with the same ASCII cells. */
   function buildSpecialBoard(at: number): HTMLElement {
     const wrap = div("garden-special");
     wrap.append(lineBlock(`// ${t("special.title")} · ${t("special.note")}`));
     const view = specialView();
     for (let patch = 0; patch < 3; patch += 1) {
-      const row = div("garden-special-row");
+      const row = div("garden-special-row garden-plot-row");
       row.append(span("garden-special-patch", `V${patch + 1}`));
-      if (view === null || patch >= view.patches) {
-        const buy = actionButton(
-          t("special.buyPatch", { cost: formatCompact(SPECIAL_PATCH_PRICE) }),
-          "buySpecialPatch",
-        );
-        buy.dataset.patch = String(patch);
-        buy.classList.add("is-locked");
-        buy.disabled = mode === "visit" || (state?.coins ?? 0) < SPECIAL_PATCH_PRICE;
-        row.append(buy);
-      } else {
-        for (let local = 0; local < SPECIAL_PLOTS_PER_PATCH; local += 1) {
-          const slot = patch * SPECIAL_PLOTS_PER_PATCH + local;
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "garden-special-cell";
-          button.dataset.slot = String(slot);
-          syncSpecialCell(button, slot, at);
-          if (mode === "visit") button.disabled = true;
-          row.append(button);
+      for (let local = 0; local < SPECIAL_PLOTS_PER_PATCH; local += 1) {
+        const slot = patch * SPECIAL_PLOTS_PER_PATCH + local;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "garden-special-cell";
+        button.dataset.slot = String(slot);
+        for (let index = 0; index < 6; index += 1) {
+          const line = document.createElement("span");
+          line.className = "garden-cell-line";
+          button.append(line);
         }
+        syncSpecialCell(button, slot, at);
+        if (mode === "visit" && (view === null || slot >= view.owned)) button.disabled = true;
+        row.append(button);
       }
       wrap.append(row);
     }
@@ -3922,10 +3919,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         return;
       }
       case "buySpecialPlot": {
-        const patch = Number(target.dataset.patch);
-        if (Number.isInteger(patch)) {
-          void runAction({ kind: "buySpecialPlot", patch }, t("special.plotBought"));
-        }
+        void runAction({ kind: "buySpecialPlot" }, t("special.plotBought"));
         return;
       }
       case "specialNoop":

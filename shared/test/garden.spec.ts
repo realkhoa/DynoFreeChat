@@ -51,6 +51,7 @@ import {
   parseGardenAuth,
   plotView,
   rollEffects,
+  specialPlotCost,
   sprayBoostFor,
   SPRAY_MUTATION_BOOST,
   EFFECT_STACK_CHANCES,
@@ -378,6 +379,15 @@ describe("farm buildings", () => {
     expect(staffWorkInterval(veteran)).toBeLessThan(staffWorkInterval(cheap));
     expect(staffGainXp(1, 150)).toEqual({ level: 2, xp: 50 });
     expect(staffGainXp(9, 100_000).level).toBe(10);
+  });
+
+  it("prices premium plots at one billion times two per bought plot", () => {
+    expect(specialPlotCost(0)).toBe(1_000_000_000);
+    expect(specialPlotCost(1)).toBe(2_000_000_000);
+    expect(specialPlotCost(2)).toBe(4_000_000_000);
+    const brainrot = effectById("brainrot");
+    expect(brainrot?.multiplier).toBe(20);
+    expect(brainrot?.natural).toBe(false);
   });
 
   it("doubles crop value with every quality star", () => {

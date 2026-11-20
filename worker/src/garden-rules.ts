@@ -21,6 +21,11 @@ import {
   SPECIAL_PATCH_PRICE,
   SPECIAL_PLOTS_PER_PATCH,
   SPECIAL_PLOT_PRICE,
+  SPECIAL_GROW_SCALE,
+  SPECIAL_MUTATION,
+  SPECIAL_QUALITY_STARS,
+  SPECIAL_RESET_VERSION,
+  specialPlotCost,
   SPECIAL_SLOTS,
   WATER_ALL_COST,
   SELL_TAX_RATE,
@@ -234,7 +239,11 @@ export interface GardenLedger {
   pestSettledAt: number;
   /** Fertility percent per crop cell. */
   soil: number[];
-  /** Owned special patches (premium plots that never auto-sell). */
+  /** Sequentially bought premium plots. */
+  specialOwned: number;
+  /** Premium-garden reset migration version. */
+  specialVersion: number;
+  /** Owned special patches (legacy). */
   specialPatches: number;
   /** Unlocked plots per special patch. */
   specialUnlocked: number[];
@@ -371,6 +380,8 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     toolsSettledAt: input.now,
     pestSettledAt: input.now,
     soil: new Array<number>(totalCrops(STARTING_TABS)).fill(SOIL_START),
+    specialOwned: 0,
+    specialVersion: SPECIAL_RESET_VERSION,
     specialPatches: 0,
     specialUnlocked: new Array<number>(SPECIAL_PATCHES).fill(0),
     specialPlots: new Array<PlotState | null>(SPECIAL_SLOTS).fill(null),
@@ -509,6 +520,8 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     pondGrowth: ledger.pondGrowth ?? 0,
     shopStock: { ...ledger.shopStock },
     soil: [...ledger.soil],
+    specialOwned: ledger.specialOwned ?? 0,
+    specialVersion: ledger.specialVersion ?? 0,
     specialPatches: ledger.specialPatches ?? 0,
     specialUnlocked: [...(ledger.specialUnlocked ?? [])],
     specialPlots: (ledger.specialPlots ?? []).map((plot) => (plot === null ? null : { ...plot })),
@@ -591,13 +604,24 @@ export function applyGardenAction(
     case "buyPatch":
       return buyPatch(ledger, action.tab, now);
     case "buySpecialPatch":
-      return buySpecialPatch(ledger, action.patch, now);
+      return buySpecialPlot(ledger, now);
     case "buySpecialPlot":
-      return buySpecialPlot(ledger, action.patch, now);
-    case "plantSpecial":
-      return withSpecial(ledger, plant, action.slot, action.seed, now, rng);
-    case "harvestSpecial":
-      return withSpecial(ledger, harvest, action.slot, now, rng);
+      return buySpecialPlot(ledger, now);
+    case "plantSpecial": {
+      const result = withSpecial(ledger, plant, action.slot, action.seed, now, rng);
+      if (!result.ok) return result;
+      return { ok: true, ledger: specializePlot(result.ledger, action.slot, now, true), changed: true };
+    }
+    case "harvestSpecial": {
+      const result = withSpecial(ledger, harvest, action.slot, now, rng);
+      if (!result.ok) return result;
+      let next = specializePlot(result.ledger, action.slot, now, true);
+      next = clone(next);
+      next.bag.crops = next.bag.crops.map((stack) =>
+        stack.effects.includes(SPECIAL_MUTATION) ? { ...stack, star: SPECIAL_QUALITY_STARS } : stack,
+      );
+      return { ok: true, ledger: next, changed: true };
+    }
     case "waterSpecial":
       return withSpecial(ledger, water, action.slot, now);
     case "uprootSpecial":
@@ -695,37 +719,24 @@ export function applyGardenAction(
 /** @brief Whether one special plot is owned and unlocked. */
 function specialSlotOpen(ledger: GardenLedger, slot: number): boolean {
   if (slot < 0 || slot >= SPECIAL_SLOTS) return false;
-  const patch = Math.floor(slot / SPECIAL_PLOTS_PER_PATCH);
-  const local = slot % SPECIAL_PLOTS_PER_PATCH;
-  if (patch >= (ledger.specialPatches ?? 0)) return false;
-  return local < (ledger.specialUnlocked?.[patch] ?? 0);
+  return slot < Math.min(SPECIAL_SLOTS, ledger.specialOwned ?? 0);
 }
 
-/** @brief Opens the next special patch (ten billion coins, in order). */
-function buySpecialPatch(ledger: GardenLedger, patch: number, now: number): RuleResult {
-  if (patch !== (ledger.specialPatches ?? 0)) return { ok: false, code: "PLOT_LOCKED" };
-  if (patch >= SPECIAL_PATCHES) return { ok: false, code: "MAX_PATCHES" };
-  if (ledger.coins < SPECIAL_PATCH_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
-
-  const next = clone(ledger);
-  next.coins -= SPECIAL_PATCH_PRICE;
-  next.stats.spent += SPECIAL_PATCH_PRICE;
-  next.specialPatches = patch + 1;
-  if (next.specialUnlocked[patch] === undefined) next.specialUnlocked[patch] = 0;
-  return changed(next, now);
+/** @brief Legacy patch purchase now buys the next sequential premium plot. */
+function buySpecialPatch(ledger: GardenLedger, _patch: number, now: number): RuleResult {
+  return buySpecialPlot(ledger, now);
 }
 
-/** @brief Opens one plot inside an owned special patch (a billion coins). */
-function buySpecialPlot(ledger: GardenLedger, patch: number, now: number): RuleResult {
-  if (patch < 0 || patch >= (ledger.specialPatches ?? 0)) return { ok: false, code: "PLOT_LOCKED" };
-  const unlocked = ledger.specialUnlocked?.[patch] ?? 0;
-  if (unlocked >= SPECIAL_PLOTS_PER_PATCH) return { ok: false, code: "MAX_PATCHES" };
-  if (ledger.coins < SPECIAL_PLOT_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
-
+/** @brief Buys the next premium plot; each one doubles the previous price. */
+function buySpecialPlot(ledger: GardenLedger, now: number): RuleResult {
+  const owned = Math.min(SPECIAL_SLOTS, ledger.specialOwned ?? 0);
+  if (owned >= SPECIAL_SLOTS) return { ok: false, code: "MAX_PATCHES" };
+  const cost = specialPlotCost(owned);
+  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
   const next = clone(ledger);
-  next.coins -= SPECIAL_PLOT_PRICE;
-  next.stats.spent += SPECIAL_PLOT_PRICE;
-  next.specialUnlocked[patch] = unlocked + 1;
+  next.coins -= cost;
+  next.stats.spent += cost;
+  next.specialOwned = owned + 1;
   return changed(next, now);
 }
 
@@ -762,6 +773,46 @@ function withSpecial<T extends readonly unknown[]>(
       specialPlots: result.ledger.plots,
     },
   };
+}
+
+/**
+ * @brief One-time wipe of every premium garden.
+ * @details Crops growing on premium soil are moved to the first free normal
+ * plots and players must buy premium plots again from scratch.
+ */
+export function settleSpecialReset(ledger: GardenLedger, now: number): GardenLedger {
+  if ((ledger.specialVersion ?? 0) >= SPECIAL_RESET_VERSION) return ledger;
+  const next = clone(ledger);
+  next.plots = [...next.plots];
+  for (const plot of next.specialPlots ?? []) {
+    if (plot === null) continue;
+    const free = next.plots.findIndex((entry) => entry === null);
+    if (free >= 0) next.plots[free] = { ...plot, slot: free };
+  }
+  next.specialPlots = new Array<PlotState | null>(SPECIAL_SLOTS).fill(null);
+  next.specialOwned = 0;
+  next.specialPatches = 0;
+  next.specialUnlocked = new Array<number>(SPECIAL_PATCHES).fill(0);
+  next.specialVersion = SPECIAL_RESET_VERSION;
+  next.rev += 1;
+  next.updatedAt = now;
+  next.lastSeen = now;
+  return next;
+}
+
+/** @brief Adds the premium mutation to one plot and halves its remaining time. */
+function specializePlot(ledger: GardenLedger, slot: number, now: number, halve: boolean): GardenLedger {
+  const next = clone(ledger);
+  const plot = next.specialPlots?.[slot] ?? null;
+  if (plot === null) return next;
+  next.specialPlots[slot] = {
+    ...plot,
+    effects: canonicalEffects([...plot.effects, SPECIAL_MUTATION]),
+    readyAt: halve
+      ? now + Math.max(5_000, Math.round((plot.readyAt - now) * SPECIAL_GROW_SCALE))
+      : plot.readyAt,
+  };
+  return next;
 }
 
 /** @brief Sows one owned seed into every free, open plot. */
@@ -3071,6 +3122,7 @@ function clone(ledger: GardenLedger): GardenLedger {
     farmSettledAt: ledger.farmSettledAt,
     pondGrowth: ledger.pondGrowth ?? 0,
     soil: [...ledger.soil],
+    specialOwned: Math.min(SPECIAL_SLOTS, ledger.specialOwned ?? 0),
     specialPatches: ledger.specialPatches ?? 0,
     specialUnlocked: [...(ledger.specialUnlocked ?? [])],
     specialPlots: (ledger.specialPlots ?? []).map((plot) => (plot === null ? null : { ...plot })),

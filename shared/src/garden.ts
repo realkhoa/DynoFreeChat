@@ -36,10 +36,27 @@ export const MAX_TABS = 4;
 export const SPECIAL_PATCHES = 3;
 export const SPECIAL_PLOTS_PER_PATCH = 9;
 export const SPECIAL_SLOTS = SPECIAL_PATCHES * SPECIAL_PLOTS_PER_PATCH;
-/** Coins charged to open one special patch. */
+/** Legacy patch price; the premium garden now sells plots one by one. */
 export const SPECIAL_PATCH_PRICE = 10_000_000_000;
-/** Coins charged to open one special plot inside an owned patch. */
+/** Price of the first premium plot. */
 export const SPECIAL_PLOT_PRICE = 1_000_000_000;
+/** Premium plots grow at twice the normal speed. */
+export const SPECIAL_GROW_SCALE = 0.5;
+/** Premium crops always carry this mutation, worth twenty times. */
+export const SPECIAL_MUTATION: EffectId = "brainrot";
+/** Premium harvests always come out at the top quality. */
+export const SPECIAL_QUALITY_STARS = 5;
+/** Bump to force a one-time wipe of every premium garden. */
+export const SPECIAL_RESET_VERSION = 2;
+
+/**
+ * @brief Price of the next premium plot.
+ * @param owned Plots already bought; every next plot doubles the last price.
+ * @details Capped at 2^22 so the result stays in the safe integer range.
+ */
+export function specialPlotCost(owned: number): number {
+  return SPECIAL_PLOT_PRICE * 2 ** Math.min(22, Math.max(0, Math.floor(owned)));
+}
 
 /** Price of the first bought crop patch inside a tab, in coins. */
 export const PATCH_BASE_PRICE = 5_000;
@@ -263,7 +280,8 @@ export type EffectId =
   | "diamond"
   | "burnt"
   | "shriveled"
-  | "pale";
+  | "pale"
+  | "brainrot";
 
 /** Global events that rotate over time. */
 export type EventId =
@@ -640,6 +658,8 @@ export const EFFECTS: readonly EffectDefinition[] = [
   { id: "burnt", mark: "b", multiplier: 0.7, natural: true },
   { id: "shriveled", mark: "-", multiplier: 0.5, natural: true },
   { id: "pale", mark: ".", multiplier: 0.7, natural: true },
+  // Premium-garden-only mutation, never rolled by weather.
+  { id: "brainrot", mark: "?", multiplier: 20, natural: false },
 ];
 
 /**
@@ -2040,7 +2060,11 @@ export interface GardenSnapshot {
   readonly pondGrowth: number;
   /** Remaining shop stock for the current restock, keyed by seed or tool id. */
   readonly shopStock: Readonly<Partial<Record<string, number>>>;
-  /** Owned special patches, `0..SPECIAL_PATCHES`. */
+  /** Bought premium plots, `0..SPECIAL_SLOTS`. */
+  readonly specialOwned?: number;
+  /** Premium-garden reset migration version. */
+  readonly specialVersion?: number;
+  /** Owned special patches, `0..SPECIAL_PATCHES` (legacy). */
   readonly specialPatches: number;
   /** Unlocked plots per owned special patch, `0..SPECIAL_PLOTS_PER_PATCH`. */
   readonly specialUnlocked: readonly number[];
@@ -2088,7 +2112,9 @@ export interface VisitSnapshot {
   readonly animals: Readonly<Record<BuildingId, readonly (AnimalState | null)[]>>;
   /** Fish pond growth in percent, `0..100`. */
   readonly pondGrowth: number;
-  /** Owned special patches. */
+  /** Bought premium plots, `0..SPECIAL_SLOTS`. */
+  readonly specialOwned?: number;
+  /** Owned special patches (legacy). */
   readonly specialPatches: number;
   /** Unlocked plots per owned special patch. */
   readonly specialUnlocked: readonly number[];
@@ -2489,7 +2515,7 @@ export type GardenAction =
   | { readonly kind: "buyTab" }
   | { readonly kind: "buyPatch"; readonly tab: number }
   | { readonly kind: "buySpecialPatch"; readonly patch: number }
-  | { readonly kind: "buySpecialPlot"; readonly patch: number }
+  | { readonly kind: "buySpecialPlot"; readonly patch?: number }
   | { readonly kind: "plantSpecial"; readonly slot: number; readonly seed: SeedId }
   | { readonly kind: "harvestSpecial"; readonly slot: number }
   | { readonly kind: "waterSpecial"; readonly slot: number }
@@ -3005,10 +3031,10 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   }
   if (kind === "buySpecialPlot") {
     const patch = value.patch;
-    if (typeof patch !== "number" || !Number.isInteger(patch) || patch < 0 || patch >= SPECIAL_PATCHES) {
+    if (patch !== undefined && (typeof patch !== "number" || !Number.isInteger(patch) || patch < 0)) {
       return null;
     }
-    return { kind, patch };
+    return { kind, ...(patch === undefined ? {} : { patch }) };
   }
   if (kind === "plantSpecial") {
     const slot = value.slot;

@@ -33,6 +33,7 @@ import {
   settleMachines,
   settleTools,
   type GardenLedger,
+  settleSpecialReset,
 } from "../src/garden-rules";
 
 /** Server time inside the golden-hour wave, so growth is unmodified by rain. */
@@ -549,45 +550,66 @@ describe("garden ledger rules", () => {
     expect(meat.ledger.coins).toBeGreaterThan(before);
   });
 
-  it("opens special patches and keeps their crops out of bulk work", () => {
+  it("sells premium plots sequentially and grows brainrot crops at x2", () => {
     const ledger = makeLedger();
     ledger.coins = 100_000_000_000;
-    const patch = run(ledger, { kind: "buySpecialPatch", patch: 0 });
-    expect(patch.ok).toBe(true);
-    if (!patch.ok) return;
-    expect(patch.ledger.specialPatches).toBe(1);
-    expect(patch.ledger.coins).toBe(100_000_000_000 - SPECIAL_PATCH_PRICE);
 
-    // Patches open in order and plots one by one.
-    expect(run(patch.ledger, { kind: "buySpecialPatch", patch: 2 }).ok).toBe(false);
-    expect(run(patch.ledger, { kind: "plantSpecial", slot: 0, seed: "carrot" }).ok).toBe(false);
+    expect(run(ledger, { kind: "plantSpecial", slot: 0, seed: "carrot" }).ok).toBe(false);
+    const first = run(ledger, { kind: "buySpecialPlot" });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.ledger.specialOwned).toBe(1);
+    expect(first.ledger.coins).toBe(ledger.coins - 1_000_000_000);
 
-    const plot = run(patch.ledger, { kind: "buySpecialPlot", patch: 0 });
-    expect(plot.ok).toBe(true);
-    if (!plot.ok) return;
-    expect(plot.ledger.specialUnlocked[0]).toBe(1);
-    expect(plot.ledger.coins).toBe(patch.ledger.coins - SPECIAL_PLOT_PRICE);
-
-    const planted = run(plot.ledger, { kind: "plantSpecial", slot: 0, seed: "carrot" });
+    const planted = run(first.ledger, { kind: "plantSpecial", slot: 0, seed: "carrot" });
     expect(planted.ok).toBe(true);
     if (!planted.ok) return;
-    expect(planted.ledger.specialPlots[0]?.seed).toBe("carrot");
-    expect(planted.ledger.plots[0]).toBeNull();
+    const plot = planted.ledger.specialPlots[0];
+    if (plot === null || plot === undefined) throw new Error("special crop missing");
+    expect(plot.effects).toContain("brainrot");
+    // Twice as fast as a normal carrot.
+    const normal = run(makeLedger(), { kind: "plant", slot: 0, seed: "carrot" });
+    if (!normal.ok) throw new Error("normal plant failed");
+    expect(plot.readyAt - NOW).toBeLessThan((normal.ledger.plots[0]?.readyAt ?? 0) - NOW);
 
-    const crop = planted.ledger.specialPlots[0];
-    if (crop === null || crop === undefined) throw new Error("special crop missing");
-    const harvested = run(planted.ledger, { kind: "harvestSpecial", slot: 0 }, crop.readyAt);
+    const harvested = run(planted.ledger, { kind: "harvestSpecial", slot: 0 }, plot.readyAt);
     expect(harvested.ok).toBe(true);
     if (!harvested.ok) return;
-    expect(harvested.ledger.bag.crops.some((stack) => stack.item === "carrot")).toBe(true);
+    const stack = harvested.ledger.bag.crops.find((entry) => entry.item === "carrot");
+    expect(stack?.effects).toContain("brainrot");
+    expect(stack?.star).toBe(5);
     expect(harvested.ledger.specialPlots[0]).toBeNull();
 
-    // Bulk harvest ignores the premium board entirely.
-    const ripe = { ...crop, readyAt: NOW - 1_000 };
-    const withRipe = { ...harvested.ledger, specialPlots: [ripe, ...harvested.ledger.specialPlots.slice(1)] };
-    const bulk = run(withRipe, { kind: "harvestAll" });
-    expect(bulk.ok).toBe(false);
-    if (!bulk.ok) expect(bulk.code).toBe("NOTHING_TO_DO");
+    // The next plot costs twice the first one.
+    const second = run(harvested.ledger, { kind: "buySpecialPlot" });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.ledger.specialOwned).toBe(2);
+    expect(second.ledger.coins).toBe(harvested.ledger.coins - 2_000_000_000);
+  });
+
+  it("migrates premium crops to normal soil once and wipes ownership", () => {
+    const ledger = makeLedger();
+    ledger.specialVersion = 0;
+    ledger.specialOwned = 1;
+    ledger.specialPlots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: ["brainrot"],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const reset = settleSpecialReset(ledger, NOW);
+    expect(reset.specialOwned).toBe(0);
+    expect(reset.specialPlots.every((plot) => plot === null)).toBe(true);
+    expect(reset.plots[0]?.seed).toBe("carrot");
   });
 
   it("fertilizes the whole garden and bills per plant without bag stock", () => {

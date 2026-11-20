@@ -71,6 +71,7 @@ import {
   settlePest,
   settleExtras,
   settleStaff,
+  settleSpecialReset,
   extrasSnapshot,
   ledgerSnapshot,
   type GardenLedger,
@@ -454,6 +455,8 @@ export class Garden extends DurableObject<Env> {
       toolsSettledAt: raw.toolsSettledAt ?? raw.updatedAt ?? 0,
       pestSettledAt: raw.pestSettledAt ?? raw.updatedAt ?? 0,
       soil: this.readSoil(tabs, raw.soil),
+      specialOwned: Math.max(0, Math.min(SPECIAL_SLOTS, raw.specialOwned ?? 0)),
+      specialVersion: typeof raw.specialVersion === "number" ? raw.specialVersion : 0,
       specialPatches:
         typeof raw.specialPatches === "number"
           ? Math.max(0, Math.min(SPECIAL_PATCHES, raw.specialPatches))
@@ -965,7 +968,13 @@ export class Garden extends DurableObject<Env> {
 
     const now = Date.now();
     const settled = settleStaff(
-      settleExtras(settlePest(settleTools(settleFarm(settleMachines(ledger, now), now), now), now), now),
+      settleExtras(
+        settleSpecialReset(
+          settlePest(settleTools(settleFarm(settleMachines(ledger, now), now), now), now),
+          now,
+        ),
+        now,
+      ),
       now,
     );
     if (settled !== ledger) this.write(settled);
@@ -1013,7 +1022,7 @@ export class Garden extends DurableObject<Env> {
     // Machines settle after the action, so an explicit collect still finds its
     // finished job; state reads settle them anyway.
     const settled = settleStaff(
-      settleExtras(settlePest(settleTools(settleFarm(ledger, now), now), now), now),
+      settleExtras(settleSpecialReset(settlePest(settleTools(settleFarm(ledger, now), now), now), now), now),
       now,
     );
     const result = applyGardenAction(settled, action as GardenAction, season, now);
@@ -1257,6 +1266,7 @@ export class Garden extends DurableObject<Env> {
         pond: (ledger.animals.pond ?? []).map((animal) => (animal === null ? null : { ...animal })),
       },
       pondGrowth: ledger.pondGrowth ?? 0,
+      specialOwned: Math.min(SPECIAL_SLOTS, ledger.specialOwned ?? 0),
       specialPatches: ledger.specialPatches ?? 0,
       specialUnlocked: [...(ledger.specialUnlocked ?? [])],
       specialPlots: (ledger.specialPlots ?? []).map((plot) => (plot === null ? null : { ...plot })),

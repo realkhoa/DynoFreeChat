@@ -451,12 +451,11 @@ describe("garden tab", () => {
     expect(planted?.action).toMatchObject({ kind: "plant", slot: 1, seed: "carrot" });
   });
 
-  it("opens the special garden patch and plants in it", async () => {
+  it("opens the premium board as ASCII cells and buys the next plot", async () => {
     const api = new FakeGardenApi(
       makeState({
         coins: 50_000_000_000,
-        specialPatches: 1,
-        specialUnlocked: [1, 0, 0],
+        specialOwned: 1,
         specialPlots: [null],
         bag: { seeds: { carrot: 2 }, crops: [], supplies: {} },
       }),
@@ -466,8 +465,7 @@ describe("garden tab", () => {
 
     const board = host.querySelector(".garden-special");
     expect(board?.textContent).toContain("Vườn đặc biệt");
-    // Patch 2 is still for sale.
-    expect(host.querySelector('[data-act="buySpecialPatch"][data-patch="1"]')).not.toBeNull();
+    expect(host.querySelectorAll(".garden-special-cell[data-slot]")).toHaveLength(27);
 
     host.querySelector<HTMLButtonElement>('.garden-special-cell[data-slot="0"]')?.click();
     await settle();
@@ -481,12 +479,11 @@ describe("garden tab", () => {
       seed: "carrot",
     });
 
-    // A locked plot in the owned patch costs a billion.
+    // The next plot doubles the price and buys without a patch index.
     host.querySelector<HTMLButtonElement>('.garden-special-cell[data-slot="1"]')?.click();
     await settle();
     expect(api.calls.find((call) => call.action?.kind === "buySpecialPlot")?.action).toMatchObject({
       kind: "buySpecialPlot",
-      patch: 0,
     });
   });
 
