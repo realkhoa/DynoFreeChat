@@ -1328,6 +1328,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         ),
       );
     }
+    if (animal.genes !== undefined) {
+      lines.push(
+        labelValue(
+          t("farm.genes"),
+          `Y${animal.genes.yield} · S${animal.genes.speed} · M${animal.genes.mutation}`,
+        ),
+      );
+    }
     lines.push("", labelValue(t("farm.meat"), `${formatCompact(meat)}c`));
     const info = document.createElement("pre");
     info.className = "garden-menu-info";

@@ -1457,10 +1457,37 @@ export interface AnimalState {
   readonly pats: number;
   /** Server time of the last pet; petting is limited to once per cycle. */
   readonly lastPatAt?: number;
+  /** Inherited husbandry genes, 0..100 per stat. */
+  readonly genes?: AnimalGenes;
   /** Server time of the last produced item. */
   readonly lastProduceAt: number;
   /** Server time the kept egg hatches; `0` or absent when nothing is incubating. */
   readonly incubatingUntil?: number;
+}
+
+/** Heritable animal stat block. */
+export interface AnimalGenes {
+  /** Extra product quantity (50 = +1, 100 = +2). */
+  readonly yield: number;
+  /** Faster production interval (100 = 20% faster). */
+  readonly speed: number;
+  /** Extra petting mutation chance (100 = +10%). */
+  readonly mutation: number;
+}
+
+/** @brief Product quantity multiplier from genes. */
+export function animalGeneYield(animal: AnimalState): number {
+  return 1 + Math.floor((animal.genes?.yield ?? 0) / 50);
+}
+
+/** @brief Production-interval multiplier from genes. */
+export function animalGeneSpeed(animal: AnimalState): number {
+  return Math.max(0.5, 1 - (animal.genes?.speed ?? 0) / 500);
+}
+
+/** @brief Extra mutation chance from genes. */
+export function animalGeneMutation(animal: AnimalState): number {
+  return (animal.genes?.mutation ?? 0) / 1000;
 }
 
 /** One stack of animal products in the bag. */

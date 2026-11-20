@@ -105,6 +105,10 @@ import {
   animalIsIncubating,
   animalMeatPrice,
   animalQuality,
+  animalGeneYield,
+  animalGeneSpeed,
+  animalGeneMutation,
+  type AnimalGenes,
   breedEggProduct,
   needsFertilizer,
   needsSpray,
@@ -1977,7 +1981,7 @@ function patAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now
   // Petting is the mutation path for livestock. Each type can stack up to
   // MAX_EFFECT_STACK copies, so one animal can carry several mutations.
   const rng = createRng(hash32(`animalmut:${ledger.playerId}:${building}:${slot}:${pats}`));
-  if (rng() < 0.08) {
+  if (rng() < 0.08 + animalGeneMutation(animal)) {
     const pool = EFFECTS.filter((effect) => effect.natural);
     const picked = pool[Math.floor(rng() * pool.length)];
     if (picked !== undefined) effects.push(picked.id);
@@ -2252,11 +2256,19 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
     const definition = animalById(entry.animal.kind);
     if (definition === undefined) continue;
     const heated = entry.building !== "pond" && ledger.attachments?.[entry.building] === "heater";
-    const interval = Math.round(animalIntervalMs(entry.animal.kind) * (heated ? 0.8 : 1));
+    const interval = Math.round(
+      animalIntervalMs(entry.animal.kind) * (heated ? 0.8 : 1) * animalGeneSpeed(entry.animal),
+    );
     const produced = Math.min(50, Math.floor((now - entry.animal.lastProduceAt) / interval));
     if (produced <= 0) continue;
     const star = animalQuality(entry.animal, now);
-    addProduct((next.bag.products ??= []), definition.product, star, produced, entry.animal.effects ?? []);
+    addProduct(
+      (next.bag.products ??= []),
+      definition.product,
+      star,
+      produced * animalGeneYield(entry.animal),
+      entry.animal.effects ?? [],
+    );
     collect(next, `product:${definition.product}`);
     if (star >= 5) collect(next, "star:5");
     next.animals[entry.building][entry.slot] = {
@@ -2295,7 +2307,15 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
       if (until === 0 || now < until) continue;
       const free = list.findIndex((entry) => entry === null);
       if (free < 0) continue;
-      list[free] = { kind: animal.kind, bornAt: now, pats: 0, lastProduceAt: now };
+      const rng = createRng(hash32(`genes:${ledger.playerId}:${building}:${slot}:${now}`));
+      const gene = (value: number | undefined): number =>
+        Math.max(0, Math.min(100, (value ?? 0) + Math.floor(rng() * 12) - 2));
+      const genes: AnimalGenes = {
+        yield: gene(animal.genes?.yield),
+        speed: gene(animal.genes?.speed),
+        mutation: gene(animal.genes?.mutation),
+      };
+      list[free] = { kind: animal.kind, bornAt: now, pats: 0, lastProduceAt: now, genes };
       list[slot] = { ...animal, incubatingUntil: 0 };
       grantXp(next, "ranching", 40);
     }

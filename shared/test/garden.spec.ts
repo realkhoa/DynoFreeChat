@@ -92,6 +92,9 @@ import {
   FARM_CYCLE_MS,
   animalMeatPrice,
   animalQuality,
+  animalGeneYield,
+  animalGeneSpeed,
+  animalGeneMutation,
   pondGrowthFactor,
   buildingSlots,
   EGG_PITY,
@@ -444,6 +447,19 @@ describe("farm buildings", () => {
     expect(seedMakerChance(2)).toBeCloseTo(0.7);
     expect(seedMakerChance(5)).toBe(1);
     expect(seedMakerChance(9)).toBe(1);
+  });
+
+  it("derives animal stat effects from genes", () => {
+    const animal = {
+      kind: "chicken",
+      bornAt: NOW,
+      pats: 0,
+      lastProduceAt: NOW,
+      genes: { yield: 100, speed: 100, mutation: 100 },
+    } as Parameters<typeof animalGeneYield>[0];
+    expect(animalGeneYield(animal)).toBe(3);
+    expect(animalGeneSpeed(animal)).toBe(0.8);
+    expect(animalGeneMutation(animal)).toBe(0.1);
   });
 
   it("rotates a deterministic weekly modifier", () => {
