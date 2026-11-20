@@ -4208,7 +4208,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
   }
 
-  /** @brief Builds the dedicated leaderboard tab: podium plus a stat table. */
+  /** @brief Builds the dedicated leaderboard tab: one compact row per player. */
   function buildRank(): HTMLElement {
     const wrap = div("garden-rank");
     const header = div("garden-rank-header");
@@ -4223,43 +4223,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return wrap;
     }
 
-    const visit = (entry: LeaderboardEntry): void => {
-      if (entry.code !== state?.code) openVisit(entry.code);
-    };
-    const card = (entry: LeaderboardEntry, index: number): HTMLButtonElement => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `garden-podium-card is-rank-${index + 1}`;
-      button.dataset.act = "rankVisit";
-      button.dataset.code = entry.code;
-      if (entry.code === currentCode()) button.classList.add("is-self");
-      button.title = `${t("rank.visitHint", { nick: entry.nick })} · ${formatNumber(entry.coins ?? 0)}c`;
-      const medal = span("garden-podium-medal", index === 0 ? "♛" : String(index + 1));
-      const avatar = span("garden-rank-avatar", entry.nick.slice(0, 1).toUpperCase());
-      avatar.style.background = entry.color;
-      const name = span("garden-podium-name", `${entry.nick}`);
-      if (entry.code === currentCode()) name.classList.add("is-self");
-      const tag = span("garden-podium-code", `#${entry.code}`);
-      const prestige = span("garden-prestige-chip", `P${entry.prestige ?? 0}`);
-      const earned = span("garden-podium-earned", `${formatCompact(entry.earned)}c`);
-      const meta = span(
-        "garden-podium-meta",
-        `${formatCompact(entry.coins ?? 0)}c · ${entry.harvested} ${t("rank.harvested")}`,
-      );
-      button.append(medal, avatar, name, tag, prestige, earned, meta);
-      button.addEventListener("click", () => visit(entry));
-      return button;
-    };
-
-    if (leaderboard.length >= 3) {
-      const podium = div("garden-podium");
-      for (const index of [1, 0, 2]) {
-        const entry = leaderboard[index];
-        if (entry !== undefined) podium.append(card(entry, index));
-      }
-      wrap.append(podium);
-    }
-
     const table = div("garden-rank-table");
     const head = div("garden-rank-row is-head");
     head.append(
@@ -4271,32 +4234,32 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       span("garden-rank-cell", t("rank.harvested")),
     );
     table.append(head);
-    const rows = leaderboard.length >= 3 ? leaderboard.slice(3) : leaderboard;
-    rows.forEach((entry, offset) => {
-      const index = leaderboard.length >= 3 ? offset + 3 : offset;
+    leaderboard.forEach((entry, index) => {
       const spent = entry.spent ?? 0;
       const roi = spent > 0 ? Math.round(((entry.earned - spent) / spent) * 100) : entry.earned > 0 ? 100 : 0;
       const row = document.createElement("button");
       row.type = "button";
       row.className = "garden-rank-row";
+      if (index < 3) row.classList.add(`is-top-${index + 1}`);
       if (entry.code === currentCode()) row.classList.add("is-self");
       row.dataset.act = "rankVisit";
       row.dataset.code = entry.code;
       row.title = `${t("rank.visitHint", { nick: entry.nick })} · ${formatNumber(entry.coins ?? 0)}c / ${formatNumber(entry.earned)}c`;
+      const rank = span("garden-rank-cell is-rank", `#${index + 1}`);
       const avatar = span("garden-rank-avatar", entry.nick.slice(0, 1).toUpperCase());
       avatar.style.background = entry.color;
       const name = span("garden-rank-cell is-name", "");
       name.append(
         avatar,
-        span("garden-rank-name-text", `${entry.nick}`),
+        span("garden-rank-name-text", entry.nick),
         span("garden-prestige-chip", `P${entry.prestige ?? 0}`),
         span("garden-rank-code", `#${entry.code}`),
       );
       row.append(
-        span("garden-rank-cell is-rank", `#${index + 1}`),
+        rank,
         name,
         span("garden-rank-cell", `${formatCompact(entry.coins ?? 0)}c`),
-        span("garden-rank-cell", `${formatCompact(entry.earned)}c`),
+        span("garden-rank-cell is-earned", `${formatCompact(entry.earned)}c`),
         span("garden-rank-cell", `${roi >= 0 ? "+" : ""}${roi}%`),
         span("garden-rank-cell", String(entry.harvested)),
       );

@@ -1774,3 +1774,123 @@ button.garden-rank-row:hover {
     display: none;
   }
 }
+
+/* Compact leaderboard: one line per player, ranked like a scoreboard. */
+.garden-rank-row {
+  display: grid;
+  grid-template-columns: 44px minmax(190px, 1fr) 96px 100px 64px 64px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 3px;
+  color: #d4d4d4;
+  white-space: nowrap;
+}
+
+.garden-rank-row.is-head {
+  padding-top: 2px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: #6a9955;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+button.garden-rank-row {
+  width: 100%;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.garden-rank-row:hover {
+  background: var(--hover-row);
+}
+
+.garden-rank-row.is-top-1 .garden-rank-cell.is-rank {
+  color: #d9b45b;
+}
+
+.garden-rank-row.is-top-2 .garden-rank-cell.is-rank {
+  color: #b9c0c8;
+}
+
+.garden-rank-row.is-top-3 .garden-rank-cell.is-rank {
+  color: #b9855b;
+}
+
+.garden-rank-row.is-self {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-left: 2px solid var(--accent);
+}
+
+.garden-rank-cell.is-rank {
+  font-weight: 700;
+  color: var(--fg-dim);
+}
+
+.garden-rank-cell.is-earned {
+  color: var(--accent);
+}
+
+.garden-rank-cell.is-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: #9cdcfe;
+}
+
+.garden-rank-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  color: #111;
+  font: 800 8px/17px var(--font-mono);
+  text-align: center;
+}
+
+.garden-rank-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.garden-rank-code {
+  color: var(--fg-faint);
+  font-size: 8px;
+}
+
+.garden-prestige-chip {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border: 1px solid #d9b45b66;
+  border-radius: 999px;
+  color: #d9b45b;
+  font-size: 8px;
+  line-height: 12px;
+}
+
+@media (max-width: 640px) {
+  .garden-rank-row {
+    grid-template-columns: 32px minmax(0, 1fr) 66px 70px;
+    gap: 4px;
+    font-size: 8.5px;
+  }
+
+  .garden-rank-row .garden-rank-cell:nth-child(5),
+  .garden-rank-row .garden-rank-cell:nth-child(6) {
+    display: none;
+  }
+
+  .garden-rank-code {
+    display: none;
+  }
+}
