@@ -279,7 +279,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let giftAmount = "1000";
   let buyQty = 1;
   type GardenTool =
-    { kind: "fertilize" | "spray"; supply: SupplyId } | { kind: "plant"; seed: SeedId } | { kind: "water" };
+    | { kind: "fertilize" | "spray"; supply: SupplyId }
+    | { kind: "plant"; seed: SeedId }
+    | { kind: "water" }
+    | { kind: "harvest" };
   let tool: GardenTool | null = null;
   let toolPicker: "fertilize" | "spray" | "plant" | "fertilizeAll" | "sprayAll" | null = null;
   let pendingSelection: { area: "crop" | "tree"; slot: number } | null = null;
@@ -2606,20 +2609,23 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         sprayTool,
         actionButton(t("garden.plantQuick"), "pickPlantTool"),
         actionButton(t("garden.waterQuick"), "quickWater"),
+        actionButton(t("garden.harvestQuick"), "quickHarvest"),
       );
       if (tool !== null) {
         const activeLabel =
           tool.kind === "water"
             ? t("garden.waterToolActive")
-            : tool.kind === "plant"
-              ? t("garden.plantToolActive", {
-                  seed: seedName(tool.seed),
-                  left: state?.bag.seeds[tool.seed] ?? 0,
-                })
-              : t("garden.toolActive", {
-                  supply: t(`supplies.${tool.supply}`),
-                  left: state?.bag.supplies[tool.supply] ?? 0,
-                });
+            : tool.kind === "harvest"
+              ? t("garden.harvestToolActive")
+              : tool.kind === "plant"
+                ? t("garden.plantToolActive", {
+                    seed: seedName(tool.seed),
+                    left: state?.bag.seeds[tool.seed] ?? 0,
+                  })
+                : t("garden.toolActive", {
+                    supply: t(`supplies.${tool.supply}`),
+                    left: state?.bag.supplies[tool.supply] ?? 0,
+                  });
         tools.append(
           span("garden-tool-active", activeLabel),
           actionButton(t("garden.toolCancel"), "cancelTool"),
@@ -4533,20 +4539,25 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     line.className = "stage-status";
     if (message !== null) {
       line.textContent = message.text;
+      if (tool?.kind === "harvest") {
+        line.textContent += ` · ${t("garden.harvestToolActive")}`;
+      }
       line.classList.add(`is-${message.kind}`);
     } else if (tool !== null) {
       line.textContent =
         tool.kind === "water"
           ? t("garden.waterToolActive")
-          : tool.kind === "plant"
-            ? t("garden.plantToolActive", {
-                seed: seedName(tool.seed),
-                left: state?.bag.seeds[tool.seed] ?? 0,
-              })
-            : t("garden.toolActive", {
-                supply: t(`supplies.${tool.supply}`),
-                left: state?.bag.supplies[tool.supply] ?? 0,
-              });
+          : tool.kind === "harvest"
+            ? t("garden.harvestToolActive")
+            : tool.kind === "plant"
+              ? t("garden.plantToolActive", {
+                  seed: seedName(tool.seed),
+                  left: state?.bag.seeds[tool.seed] ?? 0,
+                })
+              : t("garden.toolActive", {
+                  supply: t(`supplies.${tool.supply}`),
+                  left: state?.bag.supplies[tool.supply] ?? 0,
+                });
     } else {
       line.textContent = mode === "visit" ? t("garden.readonly") : t("garden.noSelectionHint");
     }
@@ -4740,6 +4751,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           return;
         }
         if (tool !== null && mode === "owner") {
+          if (tool.kind === "harvest") {
+            const plant = area === "tree" ? treeAt(slot) : plotAt(slot);
+            if (plant === null || isPreviewPage()) {
+              message = { text: t("garden.toolEmpty"), kind: "info" };
+              render();
+              return;
+            }
+            if (now() < plant.readyAt) {
+              message = { text: translateError("NOT_READY"), kind: "info" };
+              render();
+              return;
+            }
+            harvest(slot, area);
+            return;
+          }
           if (tool.kind === "water") {
             const plant = area === "tree" ? treeAt(slot) : plotAt(slot);
             if (plant === null || isPreviewPage()) {
@@ -5035,6 +5061,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         tool = tool?.kind === "water" ? null : { kind: "water" };
         toolPicker = null;
         message = tool === null ? null : { text: t("garden.waterToolActive"), kind: "info" };
+        render();
+        return;
+      case "quickHarvest":
+        tool = tool?.kind === "harvest" ? null : { kind: "harvest" };
+        toolPicker = null;
+        message = tool === null ? null : { text: t("garden.harvestToolActive"), kind: "info" };
         render();
         return;
       case "pickPlantTool":

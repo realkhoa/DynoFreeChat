@@ -553,6 +553,29 @@ describe("garden tab", () => {
     expect(harvest?.classList.contains("garden-btn-harvest")).toBe(true);
   });
 
+  it("harvests continuously in quick-harvest mode", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="quickHarvest"]')?.click();
+    await settle();
+    expect(host.querySelector(".stage-status")?.textContent).toContain("Chế độ thu hoạch");
+
+    host.querySelector<HTMLButtonElement>('.garden-cell[data-area="crop"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "harvest")?.action).toMatchObject({
+      kind: "harvest",
+      slot: 0,
+      tree: false,
+    });
+    expect(host.querySelector(".stage-status")?.textContent).toContain("Chế độ thu hoạch");
+  });
+
   it("groups garden controls into quick, mode, automated and staff", async () => {
     const api = new FakeGardenApi(makeState({ bag: { seeds: { carrot: 3 }, crops: [], supplies: {} } }));
     const { host, game } = await mountGame(api);
