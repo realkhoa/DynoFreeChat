@@ -2335,7 +2335,7 @@ describe("market tab", () => {
     await settle();
     expect(host.querySelector("[data-restock-timer]")?.textContent).toContain("Đổi hàng");
     const cards = host.querySelectorAll<HTMLButtonElement>(".garden-buy-card");
-    expect(cards.length).toBe(SEASON.shop.offers.length + 12 + SEASON.shop.tools.length);
+    expect(cards.length).toBe(SEASON.shop.offers.length + 12 + SEASON.shop.tools.length + TREES.length);
     // Supplies and rare tools keep their own labelled sections.
     const supplies = host.querySelectorAll('.garden-buy-card[data-act="buySupply"]');
     expect(supplies).toHaveLength(12);

@@ -3386,7 +3386,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(restock);
 
     const makeBuyCard = (item: {
-      act: "buy" | "buySupply" | "buyTool";
+      act: "buy" | "buySupply" | "buyTool" | "buyTree";
       key: string;
       name: string;
       glyph: string;
@@ -3430,10 +3430,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     const seedItems: Parameters<typeof makeBuyCard>[0][] = [];
     const rareSeedItems: Parameters<typeof makeBuyCard>[0][] = [];
+    const fruitSeedItems: Parameters<typeof makeBuyCard>[0][] = [];
     for (const offer of season.shop.offers) {
       const definition = seedById(offer.seed);
       const rare = definition?.rare === true;
-      (rare ? rareSeedItems : seedItems).push({
+      const bucket = definition?.category === "fruit" ? fruitSeedItems : rare ? rareSeedItems : seedItems;
+      bucket.push({
         act: "buy",
         key: `seed:${offer.seed}`,
         name: seedName(offer.seed),
@@ -3473,6 +3475,20 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       });
     }
 
+    const treeItems: Parameters<typeof makeBuyCard>[0][] = [];
+    for (const tree of TREES) {
+      treeItems.push({
+        act: "buyTree",
+        key: `tree:${tree.id}`,
+        name: treeName(tree.id),
+        glyph: tree.art[3] ?? "?",
+        price: tree.buy,
+        stock: null,
+        owned: 0,
+        data: { tree: tree.id },
+      });
+    }
+
     const addBuySection = (items: Parameters<typeof makeBuyCard>[0][]): void => {
       items.sort((left, right) => left.price - right.price);
       const grid = div("garden-buy-grid");
@@ -3485,6 +3501,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(lineBlock(`// ${t("market.rareSeeds")}`));
     if (rareSeedItems.length === 0) wrap.append(lineBlock(t("market.rareEmpty")));
     else addBuySection(rareSeedItems);
+    wrap.append(lineBlock(`// ${t("market.fruitTrees")}`));
+    const fruitItems = [...fruitSeedItems, ...treeItems];
+    if (fruitItems.length === 0) wrap.append(lineBlock(t("market.rareEmpty")));
+    else addBuySection(fruitItems);
     wrap.append(lineBlock(`// ${t("market.supplies")} · ${t("market.sortAsc")}`));
     addBuySection(supplyItems);
     wrap.append(lineBlock(`// ${t("market.tools")}`));
@@ -3625,31 +3645,43 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     const shop = div("garden-market-panel");
     shop.append(lineBlock(`// ${t("prestige.shop")}`));
-    const grid = div("garden-buy-grid");
-    for (const offer of PRESTIGE_SHOP) {
-      const locked = prestigeLevel < offer.tier;
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "garden-buy-card";
-      if (locked) card.classList.add("is-prestige-locked");
-      card.dataset.act = "buyPrestigeSeed";
-      card.dataset.seed = offer.seed;
-      card.disabled = locked || (state.coins ?? 0) < offer.price;
-      card.title = `${seedName(offer.seed)} · ${formatCompact(offer.price)}c · P${offer.tier}`;
-      card.append(
-        span("garden-buy-line is-name", seedName(offer.seed)),
-        span("garden-buy-line", `P${offer.tier}`),
-        span("garden-buy-line is-price", `${formatCompact(offer.price)}c`),
-        span(
-          "garden-buy-line is-stock",
-          locked
-            ? t("prestige.tierLocked", { tier: offer.tier })
-            : `${t("garden.bag")} ${state.bag.seeds[offer.seed] ?? 0}`,
-        ),
-      );
-      grid.append(card);
-    }
-    shop.append(grid);
+    const addOffers = (label: string, offers: typeof PRESTIGE_SHOP): void => {
+      if (offers.length === 0) return;
+      shop.append(lineBlock(`// ${label}`));
+      const grid = div("garden-buy-grid");
+      for (const offer of offers) {
+        const locked = prestigeLevel < offer.tier;
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "garden-buy-card";
+        if (locked) card.classList.add("is-prestige-locked");
+        card.dataset.act = "buyPrestigeSeed";
+        card.dataset.seed = offer.seed;
+        card.disabled = locked || (state?.coins ?? 0) < offer.price;
+        card.title = `${seedName(offer.seed)} · ${formatCompact(offer.price)}c · P${offer.tier}`;
+        card.append(
+          span("garden-buy-line is-name", seedName(offer.seed)),
+          span("garden-buy-line", `P${offer.tier}`),
+          span("garden-buy-line is-price", `${formatCompact(offer.price)}c`),
+          span(
+            "garden-buy-line is-stock",
+            locked
+              ? t("prestige.tierLocked", { tier: offer.tier })
+              : `${t("garden.bag")} ${state?.bag.seeds[offer.seed] ?? 0}`,
+          ),
+        );
+        grid.append(card);
+      }
+      shop.append(grid);
+    };
+    addOffers(
+      t("prestige.shopSeeds"),
+      PRESTIGE_SHOP.filter((offer) => seedById(offer.seed)?.category !== "fruit"),
+    );
+    addOffers(
+      t("prestige.shopFruit"),
+      PRESTIGE_SHOP.filter((offer) => seedById(offer.seed)?.category === "fruit"),
+    );
     wrap.append(shop);
 
     const final = div("garden-market-panel");
@@ -5727,6 +5759,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         void cheerHost();
         closeMenu();
         return;
+      case "buyTree": {
+        const tree = target.dataset.tree as TreeId | undefined;
+        if (tree !== undefined) void runAction({ kind: "buyTree", tree }, t("market.treeBought"));
+        return;
+      }
       case "buy": {
         const seedId = target.dataset.seed as SeedId | undefined;
         if (seedId !== undefined) buySeed(seedId);

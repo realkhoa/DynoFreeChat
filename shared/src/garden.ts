@@ -378,6 +378,8 @@ export interface SeedDefinition {
   readonly rare?: boolean;
   /** Only sold by the prestige shop, never by the normal market. */
   readonly prestigeOnly?: boolean;
+  /** Shop grouping: fruit-bearing plants sit in their own category. */
+  readonly category?: "crop" | "fruit";
   /** Per-restock chance for a rare seed; defaults to EVENT_SEED_CHANCE. */
   readonly rareChance?: number;
   /** Extra sell multiplier while one of these events runs. */
@@ -426,6 +428,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "M"],
     regrow: true,
     rare: true,
+    category: "fruit",
     eventBonus: { events: ["goldenHour"], multiplier: 3 },
   },
   {
@@ -470,6 +473,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "S"],
     regrow: true,
     rare: true,
+    category: "fruit",
     prestigeOnly: true,
     rareChance: 0.01,
   },
@@ -481,6 +485,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "D"],
     regrow: true,
     rare: true,
+    category: "fruit",
     prestigeOnly: true,
     rareChance: 0.01,
   },
@@ -514,6 +519,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "*"],
     regrow: true,
     rare: true,
+    category: "fruit",
     prestigeOnly: true,
     rareChance: 0.005,
   },
@@ -576,6 +582,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "!"],
     regrow: true,
     rare: true,
+    category: "fruit",
     prestigeOnly: true,
     rareChance: 0.01,
   },
@@ -588,6 +595,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     regrow: true,
     prestigeOnly: true,
     art: [".", "v", "Y", "C"],
+    category: "fruit",
   },
 ];
 
@@ -3001,6 +3009,7 @@ export type GardenAction =
   | { readonly kind: "buyPrestigeSeed"; readonly seed: SeedId }
   | { readonly kind: "buyFinalSeed"; readonly seed: SeedId }
   | { readonly kind: "repairPlot"; readonly slot: number }
+  | { readonly kind: "buyTree"; readonly tree: TreeId }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
   | {
@@ -3581,6 +3590,11 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return typeof value.id === "string" && value.id.length > 0 ? { kind, id: value.id } : null;
   }
   if (kind === "prestige") return { kind };
+  if (kind === "buyTree") {
+    const tree = typeof value.tree === "string" ? treeById(value.tree) : undefined;
+    if (tree === undefined) return null;
+    return { kind, tree: tree.id };
+  }
   if (kind === "repairPlot") {
     const slot = Number(value.slot);
     if (!Number.isInteger(slot) || slot < 0 || slot >= totalCrops(MAX_TABS)) return null;

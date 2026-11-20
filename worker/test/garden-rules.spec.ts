@@ -230,6 +230,16 @@ describe("garden ledger rules", () => {
     expect(run(repaired.ledger, { kind: "plant", slot: 0, seed: "carrot" }).ok).toBe(true);
   });
 
+  it("buys a fruit tree into the first free slot", () => {
+    const ledger = makeLedger();
+    ledger.coins = 1_000;
+    const bought = run(ledger, { kind: "buyTree", tree: "apple" });
+    expect(bought.ok).toBe(true);
+    if (!bought.ok) return;
+    expect(bought.ledger.trees[0]?.tree).toBe("apple");
+    expect(bought.ledger.coins).toBe(850);
+  });
+
   it("blocks planting prestige seeds above the account tier", () => {
     const ledger = makeLedger();
     ledger.bag.seeds.cocomelon = 1;

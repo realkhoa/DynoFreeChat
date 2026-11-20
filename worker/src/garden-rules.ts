@@ -637,6 +637,8 @@ export function applyGardenAction(
       return buyFinalSeed(ledger, action.seed, now);
     case "repairPlot":
       return repairPlot(ledger, action.slot, now);
+    case "buyTree":
+      return buyTree(ledger, action.tree, now);
     case "plantTree":
       return plantTree(ledger, action.slot, action.tree, now, rng);
     case "harvest":
@@ -2587,6 +2589,13 @@ function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): Ru
   next.prestige = ledger.prestige + 1;
   next.questDay = wheelDayAt(now);
   return changed(next, now);
+}
+
+/** @brief Buys one sapling into the first free fruit-tree slot. */
+function buyTree(ledger: GardenLedger, treeId: TreeId, now: number): RuleResult {
+  const slot = ledger.trees.findIndex((tree) => tree === null);
+  if (slot < 0) return { ok: false, code: "PLOT_LOCKED" };
+  return plantTree(ledger, slot, treeId, now, createRng(hash32(`tree:${ledger.playerId}:${treeId}:${now}`)));
 }
 
 /** @brief Repurchases a crop cell burnt by fire. */
