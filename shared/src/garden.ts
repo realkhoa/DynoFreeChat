@@ -242,7 +242,8 @@ export type SeedId =
   | "venusFlyTrap"
   | "starfruit"
   | "hazelnut"
-  | "olive";
+  | "olive"
+  | "cocomelon";
 
 /** Fruit tree ids shipped in this build. */
 export type TreeId = "apple" | "grape" | "orange" | "plum" | "apricot" | "coconut" | "elderberry";
@@ -330,6 +331,8 @@ export interface SeedDefinition {
   readonly regrow: boolean;
   /** Rare event seed: only sold when a restock roll hits. */
   readonly rare?: boolean;
+  /** Only sold by the prestige shop, never by the normal market. */
+  readonly prestigeOnly?: boolean;
   /** Per-restock chance for a rare seed; defaults to EVENT_SEED_CHANCE. */
   readonly rareChance?: number;
   /** Extra sell multiplier while one of these events runs. */
@@ -481,6 +484,16 @@ export const SEEDS: readonly SeedDefinition[] = [
     regrow: true,
     rare: true,
     rareChance: 0.0025,
+  },
+  // Prestige tier 1: expensive, multi-harvest, never in the normal market.
+  {
+    id: "cocomelon",
+    growMs: 30 * 60_000,
+    buy: 1_000_000_000,
+    sell: 50_000_000,
+    regrow: true,
+    prestigeOnly: true,
+    art: [".", "v", "Y", "C"],
   },
 ];
 
@@ -1077,6 +1090,30 @@ export const ATTACHMENTS: readonly AttachmentDefinition[] = [
   { id: "heater", slot: "coop", price: 5_000_000 },
   { id: "aerator", slot: "pond", price: 6_000_000 },
 ];
+
+/** One prestige shop offer. */
+export interface PrestigeShopOffer {
+  readonly seed: SeedId;
+  readonly tier: number;
+  readonly price: number;
+}
+
+/** Seeds unlocked by prestige tiers. */
+export const PRESTIGE_SHOP: readonly PrestigeShopOffer[] = [
+  { seed: "cocomelon", tier: 1, price: 1_000_000_000 },
+  { seed: "starfruit", tier: 2, price: 50_000_000 },
+  { seed: "lotus", tier: 3, price: 150_000_000 },
+];
+
+/** @brief Minimum prestige tier needed to plant a seed; `0` for normal seeds. */
+export function prestigeTierForSeed(seed: SeedId): number {
+  return PRESTIGE_SHOP.find((offer) => offer.seed === seed)?.tier ?? 0;
+}
+
+/** @brief Mutation-rate bonus per prestige level (absolute chance). */
+export function prestigeMutationBonus(level: number): number {
+  return Math.max(0, level) * 0.01;
+}
 
 /** @brief Attachment definition by id. */
 export function attachmentById(id: string): AttachmentDefinition | undefined {
@@ -2095,7 +2132,7 @@ export function contractOffers(playerId: string, now: number): ContractOffer[] {
 export function merchantOffers(playerId: string, now: number): MerchantOffer[] {
   const window = merchantWindowAt(now);
   const rng = createRng(hash32(`merchant:${playerId}:${window}`));
-  const pool = SEEDS.filter((seed) => seed.rare === true);
+  const pool = SEEDS.filter((seed) => seed.rare === true && seed.prestigeOnly !== true);
   const offers: MerchantOffer[] = [];
   const seed = pool[Math.floor(rng() * Math.max(1, pool.length))];
   if (seed !== undefined) {
@@ -2488,7 +2525,7 @@ export function marketBuyBaseItems(
 ): Array<{ item: SeedId | SupplyId; kind: "seed" | "supply"; base: number }> {
   const rows: Array<{ item: SeedId | SupplyId; kind: "seed" | "supply"; base: number }> = [];
   for (const seed of SEEDS) {
-    if (seed.rare === true) continue;
+    if (seed.rare === true || seed.prestigeOnly === true) continue;
     // The rotation discount is part of the base; market pressure stacks on it.
     const offer = season?.shop.offers.find((entry) => entry.seed === seed.id);
     rows.push({ item: seed.id, kind: "seed", base: offer?.price ?? seed.buy });
@@ -2720,6 +2757,7 @@ export type GardenAction =
   | { readonly kind: "sellAll" }
   | { readonly kind: "claimQuest"; readonly id: string }
   | { readonly kind: "prestige" }
+  | { readonly kind: "buyPrestigeSeed"; readonly seed: SeedId }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
   | {
@@ -2783,7 +2821,8 @@ export type GardenErrorCode =
   | "STAFF_FULL"
   | "NO_CANDIDATE"
   | "CANNOT_VISIT_SELF"
-  | "GIFT_SELF";
+  | "GIFT_SELF"
+  | "PRESTIGE_LOCKED";
 
 /** Successful response to a garden action. */
 export interface GardenActResponse {
@@ -3296,6 +3335,12 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return typeof value.id === "string" && value.id.length > 0 ? { kind, id: value.id } : null;
   }
   if (kind === "prestige") return { kind };
+  if (kind === "buyPrestigeSeed") {
+    const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+    if (seed === undefined) return null;
+    if (!PRESTIGE_SHOP.some((offer) => offer.seed === seed.id)) return null;
+    return { kind, seed: seed.id };
+  }
   if (kind === "giftCoins") {
     const code = typeof value.code === "string" ? value.code.toUpperCase() : "";
     const amount = value.amount;
@@ -3463,15 +3508,17 @@ export function seasonAt(now: number): SeasonSnapshot {
   }
 
   const eventSeedRng = createRng(hash32(`garden:eventSeeds:${restockWave}`));
-  const offers: ShopOffer[] = SEEDS.filter((seed) => seed.rare !== true).map((seed) => {
-    const price = Math.max(1, Math.round(seed.buy * (0.85 + shopRng() * 0.3)));
-    const stock = 2 + Math.floor(shopRng() * 9);
-    return { seed: seed.id, price, stock };
-  });
+  const offers: ShopOffer[] = SEEDS.filter((seed) => seed.rare !== true && seed.prestigeOnly !== true).map(
+    (seed) => {
+      const price = Math.max(1, Math.round(seed.buy * (0.85 + shopRng() * 0.3)));
+      const stock = 2 + Math.floor(shopRng() * 9);
+      return { seed: seed.id, price, stock };
+    },
+  );
   // Rare seeds: at most two per restock, one unit each, often none at all.
   const rarePool: SeedId[] = [];
   for (const seed of SEEDS) {
-    if (seed.rare !== true) continue;
+    if (seed.rare !== true || seed.prestigeOnly === true) continue;
     if (eventSeedRng() < (seed.rareChance ?? EVENT_SEED_CHANCE)) rarePool.push(seed.id);
   }
   const rarePicked: SeedId[] = [];

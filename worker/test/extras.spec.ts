@@ -239,6 +239,24 @@ describe("extras", () => {
     expect(prestiged.ledger.plots.every((plot) => plot === null)).toBe(true);
   });
 
+  it("sells tiered prestige seeds including cocomelon", () => {
+    const ledger = makeLedger();
+    ledger.prestige = 1;
+    ledger.coins = 2_000_000_000;
+
+    const locked = run({ ...ledger, prestige: 0 }, { kind: "buyPrestigeSeed", seed: "cocomelon" });
+    expect(locked.ok).toBe(false);
+
+    const bought = run(ledger, { kind: "buyPrestigeSeed", seed: "cocomelon" });
+    expect(bought.ok).toBe(true);
+    if (!bought.ok) return;
+    expect(bought.ledger.bag.seeds.cocomelon).toBe(1);
+    expect(bought.ledger.coins).toBe(1_000_000_000);
+
+    const tiered = run({ ...bought.ledger, coins: 200_000_000 }, { kind: "buyPrestigeSeed", seed: "lotus" });
+    expect(tiered.ok).toBe(false);
+  });
+
   it("settles daily streak, weekly bucket and achievements", () => {
     const ledger = makeLedger();
     ledger.stats.earned = 1_000_000;

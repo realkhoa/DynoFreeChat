@@ -125,6 +125,9 @@ import {
   effectById,
   dailyQuestsFor,
   prestigeSellBonus,
+  prestigeMutationBonus,
+  prestigeTierForSeed,
+  PRESTIGE_SHOP,
   prestigeGrowScale,
   prestigeRequirement,
   eventsAt,
@@ -595,6 +598,8 @@ export function applyGardenAction(
       return claimQuest(ledger, action.id, now);
     case "prestige":
       return prestige(ledger, now);
+    case "buyPrestigeSeed":
+      return buyPrestigeSeed(ledger, action.seed, now);
     case "plantTree":
       return plantTree(ledger, action.slot, action.tree, now, rng);
     case "harvest":
@@ -862,6 +867,9 @@ function specializePlot(ledger: GardenLedger, slot: number, now: number, halve: 
 function plantAll(ledger: GardenLedger, seedId: SeedId, now: number, rng: () => number): RuleResult {
   const seed = seedById(seedId);
   if (seed === undefined) return { ok: false, code: "NO_SEED" };
+  if (prestigeTierForSeed(seed.id) > ledger.prestige) {
+    return { ok: false, code: "PRESTIGE_LOCKED" };
+  }
   let owned = ledger.bag.seeds[seed.id] ?? 0;
   if (owned < 1) return { ok: false, code: "NO_SEED" };
 
@@ -943,6 +951,17 @@ function uprootBulk(
   return changed(next, now);
 }
 
+/** @brief Adds the prestige mutation-rate bonus to every natural mutation roll. */
+function prestigeMutationChances(level: number): Partial<Record<EffectId, number>> {
+  const bonus = prestigeMutationBonus(level);
+  if (bonus <= 0) return {};
+  const out: Partial<Record<EffectId, number>> = {};
+  for (const effect of EFFECTS) {
+    if (effect.natural) out[effect.id] = bonus;
+  }
+  return out;
+}
+
 /** @brief Plants one bagged seed. */
 function plant(
   ledger: GardenLedger,
@@ -956,6 +975,9 @@ function plant(
   if (ledger.plots[slot] !== null) return { ok: false, code: "PLOT_OCCUPIED" };
   const seed = seedById(seedId);
   if (seed === undefined) return { ok: false, code: "NO_SEED" };
+  if (prestigeTierForSeed(seed.id) > ledger.prestige) {
+    return { ok: false, code: "PRESTIGE_LOCKED" };
+  }
   const owned = ledger.bag.seeds[seed.id] ?? 0;
   if (owned < 1) return { ok: false, code: "NO_SEED" };
 
@@ -976,7 +998,7 @@ function plant(
           dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
         ) * soilGrowthFactor(ledger.soil[slot] ?? SOIL_START),
       ),
-    effects: rollEffectsFor(events, rng),
+    effects: rollEffectsFor(events, rng, prestigeMutationChances(ledger.prestige)),
     pest: false,
     protectedUntil: 0,
     watered: false,
@@ -1019,7 +1041,7 @@ function plantTree(
         null,
         dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
       ),
-    effects: rollEffectsFor(events, rng),
+    effects: rollEffectsFor(events, rng, prestigeMutationChances(ledger.prestige)),
     pest: false,
     protectedUntil: 0,
     watered: false,
@@ -1114,6 +1136,9 @@ function harvest(
       for (const effect of EFFECTS)
         if (effect.natural) mutationBonus[effect.id] = (mutationBonus[effect.id] ?? 0) + petMutation;
     }
+    for (const [id, bonus] of Object.entries(prestigeMutationChances(ledger.prestige))) {
+      if (bonus !== undefined) mutationBonus[id as EffectId] = (mutationBonus[id as EffectId] ?? 0) + bonus;
+    }
     next.plots[slot] = {
       slot,
       seed: plot.seed,
@@ -1186,7 +1211,7 @@ function harvestTree(
         tree.fertilizer,
         dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
       ),
-    effects: rollEffectsFor(events, rng, {}, sprayBoostFor(tree.spray)),
+    effects: rollEffectsFor(events, rng, prestigeMutationChances(ledger.prestige), sprayBoostFor(tree.spray)),
     pest: false,
     protectedUntil: tree.protectedUntil,
     favorite: tree.favorite,
@@ -2407,6 +2432,20 @@ function prestige(ledger: GardenLedger, now: number): RuleResult {
   fresh.updatedAt = now;
   fresh.lastSeen = now;
   return { ok: true, ledger: fresh, changed: true };
+}
+
+/** @brief Buys one seed from the prestige shop. */
+function buyPrestigeSeed(ledger: GardenLedger, seed: SeedId, now: number): RuleResult {
+  const offer = PRESTIGE_SHOP.find((entry) => entry.seed === seed);
+  if (offer === undefined) return { ok: false, code: "BAD_REQUEST" };
+  if (ledger.prestige < offer.tier) return { ok: false, code: "BAD_REQUEST" };
+  if (ledger.coins < offer.price) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= offer.price;
+  next.stats.spent += offer.price;
+  next.bag.seeds[seed] = (next.bag.seeds[seed] ?? 0) + 1;
+  collect(next, `seed:${seed}`);
+  return changed(next, now);
 }
 
 /** @brief Spins the lucky wheel; one rare seed every twenty spins guaranteed. */

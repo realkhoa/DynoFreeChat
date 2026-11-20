@@ -44,6 +44,7 @@ import {
   PLOTS_PER_PATCH,
   TREES_PER_TAB,
   SEEDS,
+  PRESTIGE_SHOP,
   prestigeGrowScale,
   prestigeRequirement,
   prestigeSellBonus,
@@ -375,6 +376,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Localized full name of any bag item. */
   function itemName(id: ItemId): string {
     return seedById(id) === undefined ? t(`trees.${id}`) : t(`seeds.${id}`);
+  }
+
+  /** @brief Minimum prestige tier needed to plant a seed. */
+  function seedPrestigeTier(id: SeedId): number {
+    return PRESTIGE_SHOP.find((offer) => offer.seed === id)?.tier ?? 0;
+  }
+
+  /** @brief Whether the current account is below a seed's prestige tier. */
+  function seedLocked(id: SeedId): boolean {
+    const level = state?.extras.prestige ?? 0;
+    return seedPrestigeTier(id) > level;
   }
 
   /** @brief Display name for a crop, fruit or product id. */
@@ -1824,6 +1836,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       row.className = "garden-row";
       row.dataset.act = "seed";
       row.dataset.seed = seed.id;
+      row.disabled = seedLocked(seed.id);
       row.textContent = `${fitText(seedName(seed.id), 9)}${fitText(`${t("garden.bag")} ${owned}`, 8)}${formatDuration(seed.growMs, "short")}`;
       wrap.append(row);
     }
@@ -1989,10 +2002,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         rows.append(menuRow(t("garden.noSeedsOwned"), "menuNoop", { disabled: true }));
       for (const seed of ownedSeeds) {
         const owned = state?.bag.seeds[seed.id] ?? 0;
+        const locked = seedLocked(seed.id);
         rows.append(
-          menuRow(`${fitText(seedName(seed.id), 9)} ${t("garden.bag")} ${owned}`, "menuSeed", {
-            data: { seed: seed.id },
-          }),
+          menuRow(
+            `${fitText(seedName(seed.id), 9)} ${t("garden.bag")} ${owned}${locked ? ` · P${seedPrestigeTier(seed.id)}` : ""}`,
+            "menuSeed",
+            { data: { seed: seed.id }, disabled: locked },
+          ),
         );
       }
     } else if (menuState.view === "tree") {
@@ -2335,9 +2351,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const seeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
       if (seeds.length === 0) picker.append(span("garden-hint", t("garden.noSeedsOwned")));
       for (const seed of seeds) {
+        const locked = seedLocked(seed.id);
         const button = actionButton(
-          `${seedName(seed.id)} (${state?.bag.seeds[seed.id] ?? 0})`,
+          `${seedName(seed.id)} (${state?.bag.seeds[seed.id] ?? 0})${locked ? ` · P${seedPrestigeTier(seed.id)}` : ""}`,
           "specialSeed",
+          !locked,
         );
         button.dataset.slot = String(specialPicker);
         button.dataset.seed = seed.id;
@@ -2523,9 +2541,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
         if (ownedSeeds.length === 0) picker.append(span("garden-hint", t("garden.plantNoSeeds")));
         for (const seed of ownedSeeds) {
+          const locked = seedLocked(seed.id);
           const button = actionButton(
-            `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})`,
+            `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})${locked ? ` · P${seedPrestigeTier(seed.id)}` : ""}`,
             "pickPlantSeed",
+            !locked,
           );
           button.dataset.seed = seed.id;
           picker.append(button);
@@ -2553,9 +2573,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
         if (ownedSeeds.length === 0) picker.append(span("garden-hint", t("garden.plantNoSeeds")));
         for (const seed of ownedSeeds) {
+          const locked = seedLocked(seed.id);
           const button = actionButton(
-            `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})`,
+            `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})${locked ? ` · P${seedPrestigeTier(seed.id)}` : ""}`,
             "plantAllSeed",
+            !locked,
           );
           button.dataset.seed = seed.id;
           picker.append(button);
@@ -3581,6 +3603,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         ),
       );
     }
+    wrap.append(lineBlock(`// ${t("prestige.shop")}`));
+    for (const offer of PRESTIGE_SHOP) {
+      const locked = prestigeLevel < offer.tier;
+      const button = actionButton(
+        locked
+          ? t("prestige.shopLocked", { name: seedName(offer.seed), tier: offer.tier })
+          : t("prestige.shopBuy", {
+              name: seedName(offer.seed),
+              cost: formatCompact(offer.price),
+            }),
+        "buyPrestigeSeed",
+        !locked && (state.coins ?? 0) >= offer.price,
+      );
+      button.dataset.seed = offer.seed;
+      wrap.append(button);
+    }
     if ((extras.taxLast ?? 0) > 0) {
       wrap.append(lineBlock(`// ${t("tax.last", { coins: formatCompact(extras.taxLast ?? 0) })}`));
     }
@@ -4418,6 +4456,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "claimQuest": {
         const id = target.dataset.id;
         if (id !== undefined) void runAction({ kind: "claimQuest", id }, t("quests.claimedMsg"));
+        return;
+      }
+      case "buyPrestigeSeed": {
+        const seed = target.dataset.seed as SeedId | undefined;
+        if (seed !== undefined) {
+          void runAction({ kind: "buyPrestigeSeed", seed }, t("prestige.seedBought"));
+        }
         return;
       }
       case "prestige": {

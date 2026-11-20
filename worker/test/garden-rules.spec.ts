@@ -180,6 +180,18 @@ describe("garden ledger rules", () => {
     expect(removed.ledger.trees[0]).toBeNull();
   });
 
+  it("blocks planting prestige seeds above the account tier", () => {
+    const ledger = makeLedger();
+    ledger.bag.seeds.cocomelon = 1;
+    const locked = run(ledger, { kind: "plant", slot: 0, seed: "cocomelon" });
+    expect(locked.ok).toBe(false);
+    if (!locked.ok) expect(locked.code).toBe("PRESTIGE_LOCKED");
+
+    ledger.prestige = 1;
+    const allowed = run(ledger, { kind: "plant", slot: 0, seed: "cocomelon" });
+    expect(allowed.ok).toBe(true);
+  });
+
   it("refuses plots beyond the bought tab, occupied plots and empty bags", () => {
     expect(run(makeLedger(), { kind: "plant", slot: 81, seed: "carrot" })).toMatchObject({
       ok: false,

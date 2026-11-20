@@ -52,6 +52,8 @@ import {
   plotView,
   rollEffects,
   specialPlotCost,
+  PRESTIGE_SHOP,
+  prestigeMutationBonus,
   sprayBoostFor,
   SPRAY_MUTATION_BOOST,
   EFFECT_STACK_CHANCES,
@@ -157,12 +159,13 @@ describe("garden catalog", () => {
       "starfruit",
       "hazelnut",
       "olive",
+      "cocomelon",
     ]);
     for (const seed of SEEDS) {
       expect(seed.art).toHaveLength(4);
       expect(seed.growMs).toBeGreaterThan(0);
       // Premium multi-harvest seeds deliberately sell far under their price.
-      if (seed.rare !== true) expect(seed.sell).toBeGreaterThan(seed.buy);
+      if (seed.rare !== true && seed.prestigeOnly !== true) expect(seed.sell).toBeGreaterThan(seed.buy);
     }
   });
 
@@ -379,6 +382,16 @@ describe("farm buildings", () => {
     expect(staffWorkInterval(veteran)).toBeLessThan(staffWorkInterval(cheap));
     expect(staffGainXp(1, 150)).toEqual({ level: 2, xp: 50 });
     expect(staffGainXp(9, 100_000).level).toBe(10);
+  });
+
+  it("ships the prestige-only cocomelon seed", () => {
+    const seed = seedById("cocomelon");
+    expect(seed?.prestigeOnly).toBe(true);
+    expect(seed?.regrow).toBe(true);
+    expect(seed?.buy).toBe(1_000_000_000);
+    expect(seed?.sell).toBe(50_000_000);
+    expect(PRESTIGE_SHOP.some((offer) => offer.seed === "cocomelon" && offer.tier === 1)).toBe(true);
+    expect(prestigeMutationBonus(1)).toBe(0.01);
   });
 
   it("prices premium plots at one billion times two per bought plot", () => {
@@ -607,7 +620,9 @@ describe("market pressure", () => {
   it("lists every sellable and buyable item with a base price", () => {
     expect(marketBaseItems(seasonAt(EPOCH_MS))).toHaveLength(SEEDS.length + TREES.length);
     expect(marketBuyBaseItems(seasonAt(EPOCH_MS))).toHaveLength(
-      SEEDS.filter((seed) => seed.rare !== true).length + FERTILIZERS.length + SPRAYS.length,
+      SEEDS.filter((seed) => seed.rare !== true && seed.prestigeOnly !== true).length +
+        FERTILIZERS.length +
+        SPRAYS.length,
     );
   });
 
@@ -707,7 +722,7 @@ describe("garden season", () => {
   it("rotates the seed shop on the restock cadence", () => {
     const a = seasonAt(NOW).shop;
     const b = seasonAt(NOW + SHOP_RESTOCK_MS).shop;
-    const normalSeeds = SEEDS.filter((seed) => seed.rare !== true).length;
+    const normalSeeds = SEEDS.filter((seed) => seed.rare !== true && seed.prestigeOnly !== true).length;
     expect(
       a.offers.filter((offer) => SEEDS.find((seed) => seed.id === offer.seed)?.rare !== true),
     ).toHaveLength(normalSeeds);

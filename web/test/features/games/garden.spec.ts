@@ -1994,6 +1994,33 @@ describe("mounted machines", () => {
   });
 });
 
+describe("prestige shop", () => {
+  it("buys a cocomelon seed at prestige tier 1", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 2_000_000_000,
+        extras: { ...EXTRAS, prestige: 1 },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:extras"]')?.click();
+    await settle();
+
+    const button = host.querySelector<HTMLButtonElement>(
+      '[data-act="buyPrestigeSeed"][data-seed="cocomelon"]',
+    );
+    expect(button).not.toBeNull();
+    expect(button?.disabled).toBe(false);
+    button?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "buyPrestigeSeed")?.action).toMatchObject({
+      kind: "buyPrestigeSeed",
+      seed: "cocomelon",
+    });
+  });
+});
+
 describe("sale history", () => {
   it("lists recent sales with amounts", async () => {
     const api = new FakeGardenApi(
