@@ -351,7 +351,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    expect(host.querySelectorAll(".garden-tab")).toHaveLength(11);
+    expect(host.querySelectorAll(".garden-tab")).toHaveLength(12);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
@@ -2020,6 +2020,30 @@ describe("prestige shop", () => {
       kind: "buyPrestigeSeed",
       seed: "cocomelon",
     });
+  });
+});
+
+describe("dynopedia", () => {
+  it("lists catalogs and filters rows by search", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:dynopedia"]')?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-dynopedia")?.textContent).toContain("Kim cương");
+    host.querySelector<HTMLButtonElement>('[data-act="dynopediaCategory"][data-category="seeds"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-dynopedia")?.textContent).toContain("Cà rốt");
+
+    const search = host.querySelector<HTMLInputElement>(".garden-dynopedia-search");
+    if (search !== null) {
+      search.value = "cà rốt";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    const rows = [...host.querySelectorAll<HTMLElement>(".garden-dynopedia-row")];
+    expect(rows.some((row) => !row.hidden && (row.textContent ?? "").includes("Cà rốt"))).toBe(true);
+    expect(rows.some((row) => row.hidden)).toBe(true);
   });
 });
 

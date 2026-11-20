@@ -82,6 +82,9 @@ import {
   buildingUpgradeCost,
   buildingById,
   maxBuildingLevel,
+  EVENTS,
+  PRODUCTS,
+  TOOLS,
   MACHINES,
   MACHINE_MAX_LEVEL,
   machineCycles,
@@ -150,6 +153,7 @@ type Tab =
   | "warehouse"
   | "extras"
   | "prestige"
+  | "dynopedia"
   | "levels";
 
 /** Whether the document is showing the owner's garden or a friend's. */
@@ -243,6 +247,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let specialPicker: number | null = null;
   let specialMenu: { slot: number; x: number; y: number } | null = null;
   let machineQty = 1;
+  let dynopediaCategory = "effects";
+  let dynopediaQuery = "";
   let machineLimitDraft = "";
   let specialSupplyPicker: { kind: "fertilize" | "spray"; slot: number } | null = null;
   let bulkPanel: "plan" | "uproot" | null = null;
@@ -1077,6 +1083,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       savedTab === "warehouse" ||
       savedTab === "extras" ||
       savedTab === "prestige" ||
+      savedTab === "dynopedia" ||
       savedTab === "levels"
     ) {
       tab = savedTab;
@@ -1456,6 +1463,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       "warehouse",
       "extras",
       "prestige",
+      "dynopedia",
       "levels",
     ] as const) {
       const button = document.createElement("button");
@@ -3581,6 +3589,183 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Builds the Dynopedia wiki tab: catalogs and search. */
+  function buildDynopedia(): HTMLElement {
+    const wrap = div("garden-dynopedia garden-market");
+    wrap.append(lineBlock(`// ${t("dynopedia.title")}`));
+    const search = document.createElement("input");
+    search.type = "search";
+    search.className = "stage-input garden-dynopedia-search";
+    search.placeholder = t("dynopedia.search");
+    search.value = dynopediaQuery;
+    search.dataset.role = "dynopediaSearch";
+    search.setAttribute("aria-label", t("dynopedia.search"));
+    wrap.append(search);
+
+    const categories = [
+      "effects",
+      "seeds",
+      "trees",
+      "animals",
+      "products",
+      "machines",
+      "supplies",
+      "tools",
+      "buildings",
+      "attachments",
+      "events",
+      "pets",
+    ] as const;
+    const bar = div("garden-tools");
+    for (const category of categories) {
+      const button = actionButton(t(`dynopedia.cat.${category}`), "dynopediaCategory");
+      button.dataset.category = category;
+      if (dynopediaCategory === category) button.classList.add("is-active");
+      bar.append(button);
+    }
+    wrap.append(bar);
+
+    const rows: Array<{ id: string; title: string; detail: string }> = [];
+    if (dynopediaCategory === "effects") {
+      for (const effect of EFFECTS) {
+        rows.push({
+          id: effect.id,
+          title: t(`effects.${effect.id}`),
+          detail: `x${effect.multiplier} · ${effect.natural ? t("dynopedia.weather") : t("dynopedia.special")}`,
+        });
+      }
+    } else if (dynopediaCategory === "seeds") {
+      for (const seed of SEEDS) {
+        const tags = [
+          seed.regrow ? t("dynopedia.regrow") : t("dynopedia.single"),
+          seed.rare === true ? t("dynopedia.rare") : "",
+          seed.prestigeOnly === true ? `P${PRESTIGE_SHOP.find((o) => o.seed === seed.id)?.tier ?? 0}` : "",
+        ].filter((tag) => tag.length > 0);
+        rows.push({
+          id: seed.id,
+          title: t(`seeds.${seed.id}`),
+          detail: `${formatDuration(seed.growMs)} · ${formatCompact(seed.buy)}c → ${formatCompact(seed.sell)}c · ${tags.join(" · ")}`,
+        });
+      }
+    } else if (dynopediaCategory === "trees") {
+      for (const tree of TREES) {
+        rows.push({
+          id: tree.id,
+          title: t(`trees.${tree.id}`),
+          detail: `${formatDuration(tree.growMs)} · ${formatCompact(tree.buy)}c → ${formatCompact(tree.sell)}c`,
+        });
+      }
+    } else if (dynopediaCategory === "animals") {
+      for (const animal of ANIMALS) {
+        rows.push({
+          id: animal.id,
+          title: t(`animals.${animal.id}`),
+          detail: `${t(`farm.${animal.building}`)} · ${formatCompact(animal.buy)}c · ${formatDuration(animalIntervalMs(animal.id))} · ${t(`products.${animal.product}`)}`,
+        });
+      }
+    } else if (dynopediaCategory === "products") {
+      for (const product of PRODUCTS) {
+        rows.push({
+          id: product.id,
+          title: t(`products.${product.id}`),
+          detail: `${formatCompact(product.base)}c`,
+        });
+      }
+    } else if (dynopediaCategory === "machines") {
+      for (const machine of MACHINES) {
+        const input =
+          machine.input.kind === "product"
+            ? t(`products.${machine.input.product}`)
+            : machine.allProduce === true
+              ? t("dynopedia.anyProduce")
+              : t("dynopedia.crops");
+        const output =
+          machine.output.kind === "seeds" ? t("dynopedia.seedsOut") : t(`products.${machine.output.product}`);
+        rows.push({
+          id: machine.id,
+          title: t(`machines.${machine.id}`),
+          detail: `${input} → ${output} · ${machine.cooldownCycles} ${t("dynopedia.cycles")}${machine.queued === true ? ` · ${t("dynopedia.timed")}` : ""}`,
+        });
+      }
+    } else if (dynopediaCategory === "supplies") {
+      for (const fertilizer of FERTILIZERS) {
+        rows.push({
+          id: fertilizer.id,
+          title: t(`supplies.${fertilizer.id}`),
+          detail: `x${fertilizer.growMultiplier} · ${fertilizer.harvests} ${t("dynopedia.harvests")} · ${formatCompact(fertilizer.price)}c`,
+        });
+      }
+      for (const spray of SPRAYS) {
+        rows.push({
+          id: spray.id,
+          title: t(`supplies.${spray.id}`),
+          detail: `${spray.effects.map((id) => t(`effects.${id}`)).join(", ")} · x${SPRAY_MUTATION_BOOST} · ${formatCompact(spray.price)}c`,
+        });
+      }
+    } else if (dynopediaCategory === "tools") {
+      for (const tool of TOOLS) {
+        rows.push({
+          id: tool.id,
+          title: t(`tools.${tool.id}`),
+          detail: `${formatCompact(tool.price)}c`,
+        });
+      }
+    } else if (dynopediaCategory === "buildings") {
+      for (const building of BUILDINGS) {
+        rows.push({
+          id: building.id,
+          title: t(`farm.${building.id}`),
+          detail: `${formatCompact(building.price)}c · ${building.slots.join("/")} ${t("dynopedia.slots")} · ${formatCompact(building.upgrade)}c/${t("farm.level")}`,
+        });
+      }
+    } else if (dynopediaCategory === "attachments") {
+      for (const attachment of ATTACHMENTS) {
+        rows.push({
+          id: attachment.id,
+          title: t(`attachments.${attachment.id}`),
+          detail: `${t(`farm.${attachment.slot}`)} · ${formatCompact(attachment.price)}c · ${t(`dynopedia.attach.${attachment.id}`)}`,
+        });
+      }
+    } else if (dynopediaCategory === "events") {
+      for (const event of EVENTS) {
+        rows.push({
+          id: event.id,
+          title: t(`events.${event.id}`),
+          detail: `${t(`events.${event.id}.desc`)} · grow x${event.growScale} · sell x${event.sellBonus}`,
+        });
+      }
+    } else {
+      for (const pet of PETS) {
+        const bonuses: string[] = [];
+        if (pet.pestShield !== undefined) bonuses.push(`pest -${Math.round(pet.pestShield * 100)}%`);
+        if (pet.extraHarvest !== undefined) bonuses.push(`extra +${Math.round(pet.extraHarvest * 100)}%`);
+        if (pet.grow !== undefined) bonuses.push(`grow +${Math.round(pet.grow * 100)}%`);
+        if (pet.mutation !== undefined) bonuses.push(`mutation +${Math.round(pet.mutation * 100)}%`);
+        if (pet.sell !== undefined) bonuses.push(`sell +${Math.round(pet.sell * 100)}%`);
+        rows.push({
+          id: pet.id,
+          title: t(`pets.${pet.id}`),
+          detail: `${t(`petRarity.${pet.rarity}`)} · ${bonuses.join(" · ")}`,
+        });
+      }
+    }
+
+    const query = dynopediaQuery.trim().toLowerCase();
+    const list = div("garden-dynopedia-list");
+    let shown = 0;
+    for (const row of rows) {
+      const line = lineBlock(`// ${row.title} — ${row.detail}`);
+      line.classList.add("garden-dynopedia-row");
+      const haystack = `${row.id} ${row.title} ${row.detail}`.toLowerCase();
+      if (query.length > 0 && !haystack.includes(query)) line.hidden = true;
+      else shown += 1;
+      list.append(line);
+    }
+    if (shown === 0) list.append(lineBlock(t("dynopedia.empty")));
+    wrap.append(list);
+    return wrap;
+  }
+
   /** @brief Builds the skill level tab with XP bars and perks. */
   function buildLevels(): HTMLElement {
     const wrap = div("garden-levels");
@@ -4145,6 +4330,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (tab === "warehouse") return buildWarehouse();
     if (tab === "extras") return buildExtras();
     if (tab === "prestige") return buildPrestige();
+    if (tab === "dynopedia") return buildDynopedia();
     if (tab === "levels") return buildLevels();
     return buildEvent();
   }
@@ -4876,6 +5062,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (slot !== undefined) void runAction({ kind: "detachMachine", slot }, t("attachments.detached"));
         return;
       }
+      case "dynopediaCategory": {
+        const category = target.dataset.category;
+        if (category !== undefined) {
+          dynopediaCategory = category;
+          render();
+        }
+        return;
+      }
       case "machineQty": {
         const qty = Number(target.dataset.qty);
         if (Number.isInteger(qty) && qty > 0) {
@@ -5441,6 +5635,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (target.dataset.role === "restore") restoreDraft = target.value;
     if (target.dataset.role === "uprootPrice") uprootPriceDraft = target.value;
     if (target.dataset.role === "machineLimit") machineLimitDraft = target.value;
+    if (target.dataset.role === "dynopediaSearch") {
+      dynopediaQuery = target.value;
+      const query = dynopediaQuery.trim().toLowerCase();
+      for (const row of root?.querySelectorAll<HTMLElement>(".garden-dynopedia-row") ?? []) {
+        row.hidden = query.length > 0 && !(row.textContent ?? "").toLowerCase().includes(query);
+      }
+    }
     if (target.dataset.role === "giftCode") giftCode = target.value;
     if (target.dataset.role === "giftAmount") giftAmount = target.value;
   }
