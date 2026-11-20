@@ -10,6 +10,7 @@ import type {
   GardenAction,
   GardenActResponse,
   GardenSnapshot,
+  GlobalSaleEntry,
   GardenStateResponse,
   LeaderboardEntry,
   MarketSnapshot,
@@ -193,6 +194,13 @@ export class GardenApi {
   /** @brief Lists the server-side bot gardens. */
   async bots(): Promise<{ bots: GardenBot[] }> {
     return this.request<{ bots: GardenBot[] }>("/api/garden/bots", { method: "GET" });
+  }
+
+  /** @brief Reads the public global sale log for the log tab. */
+  async sales(): Promise<{ entries: GlobalSaleEntry[] }> {
+    return this.request<{ entries: GlobalSaleEntry[] }>("/api/garden/sales?limit=100", {
+      method: "GET",
+    });
   }
 
   /** @brief Reads the global market board for the chart tab. */

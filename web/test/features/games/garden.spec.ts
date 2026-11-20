@@ -238,6 +238,27 @@ class FakeGardenApi {
     };
   }
 
+  async sales() {
+    this.calls.push({ method: "sales" });
+    return {
+      entries: [
+        {
+          code: "3N0K8P",
+          nick: "Khoa",
+          prestige: 1,
+          ts: CLOCK,
+          kind: "crop",
+          item: "carrot",
+          qty: 2,
+          star: 3,
+          effects: ["golden"],
+          gross: 1_000,
+          net: 900,
+        },
+      ],
+    };
+  }
+
   async act(rev: number, action: GardenAction) {
     this.calls.push({ method: "act", action });
     this.stateValue = { ...this.stateValue, rev: rev + 1 };
@@ -351,7 +372,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    expect(host.querySelectorAll(".garden-tab")).toHaveLength(12);
+    expect(host.querySelectorAll(".garden-tab")).toHaveLength(13);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
@@ -2020,6 +2041,22 @@ describe("prestige shop", () => {
       kind: "buyPrestigeSeed",
       seed: "cocomelon",
     });
+  });
+});
+
+describe("global sale log", () => {
+  it("lists sales from every player", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:log"]')?.click();
+    await settle();
+
+    const text = host.querySelector(".garden-log")?.textContent ?? "";
+    expect(text).toContain("Log bán toàn server");
+    expect(text).toContain("Khoa");
+    expect(text).toContain("Cà rốt");
+    expect(text).toContain("900c");
   });
 });
 

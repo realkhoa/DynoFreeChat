@@ -1479,6 +1479,16 @@ export interface SaleRecord {
   readonly net: number;
 }
 
+/** One public row in the global sale log. */
+export interface GlobalSaleEntry extends SaleRecord {
+  /** Seller share code. */
+  readonly code: string;
+  /** Seller display name. */
+  readonly nick: string;
+  /** Seller prestige level at sale time. */
+  readonly prestige: number;
+}
+
 /** Warehouse and its machines. */
 export interface WarehouseState {
   /** 0 when not built, 1 when built. */

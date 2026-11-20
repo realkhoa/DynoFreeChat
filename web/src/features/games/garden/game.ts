@@ -107,6 +107,7 @@ import {
   type EffectId,
   type GardenAction,
   type GardenSnapshot,
+  type GlobalSaleEntry,
   type LeaderboardEntry,
   type PlotState,
   type SeasonSnapshot,
@@ -154,6 +155,7 @@ type Tab =
   | "extras"
   | "prestige"
   | "dynopedia"
+  | "log"
   | "levels";
 
 /** Whether the document is showing the owner's garden or a friend's. */
@@ -247,6 +249,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let specialPicker: number | null = null;
   let specialMenu: { slot: number; x: number; y: number } | null = null;
   let machineQty = 1;
+  let globalSales: GlobalSaleEntry[] = [];
+  let globalSalesStatus: "idle" | "loading" | "error" = "idle";
   let dynopediaCategory = "effects";
   let dynopediaQuery = "";
   let machineLimitDraft = "";
@@ -1055,6 +1059,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (next === "bots") void loadBots();
     if (next === "rank") void loadLeaderboard();
     if (next === "extras") void loadExtras();
+    if (next === "log") void loadGlobalSales();
     syncGardenQuery();
     render();
   }
@@ -1084,6 +1089,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       savedTab === "extras" ||
       savedTab === "prestige" ||
       savedTab === "dynopedia" ||
+      savedTab === "log" ||
       savedTab === "levels"
     ) {
       tab = savedTab;
@@ -1464,6 +1470,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       "extras",
       "prestige",
       "dynopedia",
+      "log",
       "levels",
     ] as const) {
       const button = document.createElement("button");
@@ -3589,6 +3596,59 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Loads the public global sale log. */
+  async function loadGlobalSales(): Promise<void> {
+    globalSalesStatus = "loading";
+    render();
+    try {
+      const result = await api.sales();
+      globalSales = result.entries;
+      globalSalesStatus = "idle";
+    } catch {
+      globalSalesStatus = "error";
+    }
+    render();
+  }
+
+  /** @brief Builds the global sale log tab. */
+  function buildLog(): HTMLElement {
+    const wrap = div("garden-log garden-market");
+    wrap.append(lineBlock(`// ${t("log.title")}`));
+    const actions = div("garden-tools");
+    actions.append(actionButton(t("log.refresh"), "logRefresh", globalSalesStatus !== "loading"));
+    wrap.append(actions);
+    if (globalSalesStatus === "loading") {
+      wrap.append(lineBlock(t("common.loading")));
+      return wrap;
+    }
+    if (globalSalesStatus === "error") {
+      wrap.append(lineBlock(t("log.error")));
+      return wrap;
+    }
+    if (globalSales.length === 0) {
+      wrap.append(lineBlock(t("log.empty")));
+      return wrap;
+    }
+    for (const sale of globalSales) {
+      const name =
+        sale.kind === "crop"
+          ? itemName(sale.item as ItemId)
+          : sale.kind === "animal"
+            ? t(`animals.${sale.item}`)
+            : t(`products.${sale.item}`);
+      const time = new Date(sale.ts).toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      wrap.append(
+        lineBlock(
+          `${time} [${sale.prestige}] ${sale.nick} #${sale.code} — ${name}${sale.star === undefined ? "" : ` ${sale.star}★`} ${effectBadge(sale.effects ?? [])} ×${sale.qty} → ${formatCompact(sale.net)}c`,
+        ),
+      );
+    }
+    return wrap;
+  }
+
   /** @brief Builds the Dynopedia wiki tab: catalogs and search. */
   function buildDynopedia(): HTMLElement {
     const wrap = div("garden-dynopedia garden-market");
@@ -4331,6 +4391,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (tab === "extras") return buildExtras();
     if (tab === "prestige") return buildPrestige();
     if (tab === "dynopedia") return buildDynopedia();
+    if (tab === "log") return buildLog();
     if (tab === "levels") return buildLevels();
     return buildEvent();
   }
@@ -5062,6 +5123,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (slot !== undefined) void runAction({ kind: "detachMachine", slot }, t("attachments.detached"));
         return;
       }
+      case "logRefresh":
+        void loadGlobalSales();
+        return;
       case "dynopediaCategory": {
         const category = target.dataset.category;
         if (category !== undefined) {

@@ -1069,6 +1069,7 @@ export class Garden extends DurableObject<Env> {
     const beforeCount = settled.sales?.length ?? 0;
     const freshSales = (finalLedger.sales ?? []).slice(beforeCount);
     for (const sale of freshSales.filter((entry) => entry.gross > 0)) {
+      await this.recordGlobalSale(finalLedger, sale);
       await this.announceWorldSale(finalLedger, sale);
     }
     // Leaderboard writes cost a row each: water/fertilize/spray never change the
@@ -1088,6 +1089,29 @@ export class Garden extends DurableObject<Env> {
       sold: soldDiff(ledger.bag.crops, finalLedger.bag.crops),
       bought: boughtDiff(action),
     });
+  }
+
+  /** @brief Appends one sale to the hub's public global log. */
+  private async recordGlobalSale(ledger: GardenLedger, entry: SaleRecord): Promise<void> {
+    try {
+      const hub = this.env.GARDEN_HUB.get(this.env.GARDEN_HUB.idFromName(HUB_NAME));
+      await hub.fetch("https://hub/sale", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-dyno-sale": this.env.BOT_SECRET ?? "",
+        },
+        body: JSON.stringify({
+          playerId: ledger.playerId,
+          code: ledger.code,
+          nick: ledger.nick,
+          prestige: ledger.prestige,
+          ...entry,
+        }),
+      });
+    } catch {
+      // The public log must never fail a sale.
+    }
   }
 
   /** @brief Announces a big sale in the public world chat. */
@@ -1596,6 +1620,21 @@ export class GardenHub extends DurableObject<Env> {
         window_start INTEGER NOT NULL,
         count INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS sales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        player_id TEXT NOT NULL,
+        code TEXT NOT NULL,
+        nick TEXT NOT NULL,
+        prestige INTEGER NOT NULL DEFAULT 0,
+        ts INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        item TEXT NOT NULL,
+        qty INTEGER NOT NULL,
+        star INTEGER,
+        effects TEXT,
+        gross INTEGER NOT NULL,
+        net INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS tournament (
         player_id TEXT PRIMARY KEY,
         week_key INTEGER NOT NULL,
@@ -1629,6 +1668,8 @@ export class GardenHub extends DurableObject<Env> {
     if (request.method === "GET" && url.pathname === "/by-code") return this.byCode(url);
     if (request.method === "GET" && url.pathname === "/by-recovery") return this.byRecovery(url);
     if (request.method === "GET" && url.pathname === "/leaderboard") return this.leaderboard(url);
+    if (request.method === "POST" && url.pathname === "/sale") return this.recordSale(request);
+    if (request.method === "GET" && url.pathname === "/sales") return this.sales(url);
     if (request.method === "GET" && url.pathname === "/bots") return this.botList();
     if (request.method === "GET" && url.pathname === "/tournament") return this.tournament(url);
     if (request.method === "POST" && url.pathname === "/remove") return this.remove(request);
@@ -1768,6 +1809,77 @@ export class GardenHub extends DurableObject<Env> {
         earned: row.earned,
         harvested: row.harvested,
         updatedAt: row.updated_at,
+      })),
+    });
+  }
+
+  /** @brief Appends one sale to the global public log. */
+  private async recordSale(request: Request): Promise<Response> {
+    const secret = this.env.BOT_SECRET;
+    if (secret !== undefined && secret.length > 0 && request.headers.get("x-dyno-sale") !== secret) {
+      return json({ code: "UNAUTHORIZED" }, 401);
+    }
+    const body = await readJson(request);
+    const code = typeof body.code === "string" ? body.code : "";
+    const nick = sanitizeNick(typeof body.nick === "string" ? body.nick : "");
+    const item = typeof body.item === "string" ? body.item : "";
+    if (code.length === 0 || !nick.ok || item.length === 0) return json({ code: "BAD_REQUEST" }, 400);
+    this.sql.exec(
+      "INSERT INTO sales (player_id, code, nick, prestige, ts, kind, item, qty, star, effects, gross, net) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      typeof body.playerId === "string" ? body.playerId : "",
+      code,
+      nick.nick,
+      typeof body.prestige === "number" ? Math.max(0, Math.floor(body.prestige)) : 0,
+      typeof body.ts === "number" ? body.ts : Date.now(),
+      typeof body.kind === "string" ? body.kind : "crop",
+      item,
+      typeof body.qty === "number" ? Math.max(1, Math.floor(body.qty)) : 1,
+      typeof body.star === "number" ? Math.floor(body.star) : null,
+      Array.isArray(body.effects) ? JSON.stringify(body.effects) : null,
+      typeof body.gross === "number" ? Math.max(0, Math.floor(body.gross)) : 0,
+      typeof body.net === "number" ? Math.max(0, Math.floor(body.net)) : 0,
+    );
+    this.sql.exec("DELETE FROM sales WHERE id NOT IN (SELECT id FROM sales ORDER BY id DESC LIMIT 1000)");
+    return json({ ok: true });
+  }
+
+  /** @brief Latest public sales for the log tab. */
+  private sales(url: URL): Response {
+    const raw = Number(url.searchParams.get("limit") ?? "100");
+    const limit = Number.isInteger(raw) ? Math.min(200, Math.max(1, raw)) : 100;
+    const rows = this.sql
+      .exec<
+        SqlRow<{
+          code: string;
+          nick: string;
+          prestige: number;
+          ts: number;
+          kind: string;
+          item: string;
+          qty: number;
+          star: number | null;
+          effects: string | null;
+          gross: number;
+          net: number;
+        }>
+      >(
+        "SELECT code, nick, prestige, ts, kind, item, qty, star, effects, gross, net FROM sales ORDER BY id DESC LIMIT ?",
+        limit,
+      )
+      .toArray();
+    return json({
+      entries: rows.map((row) => ({
+        code: row.code,
+        nick: row.nick,
+        prestige: row.prestige,
+        ts: row.ts,
+        kind: row.kind,
+        item: row.item,
+        qty: row.qty,
+        ...(row.star === null ? {} : { star: row.star }),
+        ...(row.effects === null ? {} : { effects: JSON.parse(row.effects) }),
+        gross: row.gross,
+        net: row.net,
       })),
     });
   }
