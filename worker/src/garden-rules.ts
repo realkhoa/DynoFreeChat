@@ -167,6 +167,7 @@ import {
   type PetId,
   type MachineDefinition,
   type MachineId,
+  type MachineJob,
   type MachineState,
   type ProductStack,
   type SeasonSnapshot,
@@ -710,7 +711,9 @@ export function applyGardenAction(
     case "craftMachine":
       return craftMachine(ledger, action.machine, action.item, now);
     case "queueMachine":
-      return queueMachine(ledger, action.machine, action.item, now);
+      return queueMachine(ledger, action.machine, action.item, action.qty ?? 1, now);
+    case "setMachineLimit":
+      return setMachineLimit(ledger, action.machine, action.limit, now);
     case "clearMachineQueue":
       return clearMachineQueue(ledger, action.machine, now);
     case "attachMachine":
@@ -3037,7 +3040,7 @@ function produceMachineOutput(
   definition: MachineDefinition,
   hold: MachineHold,
   level: number,
-): void {
+): number {
   const bonus = artisaningOutputBonus(next.skills.artisaning.level);
   if (definition.output.kind === "product") {
     const star =
@@ -3046,19 +3049,15 @@ function produceMachineOutput(
         : definition.gradeByPrice === true
           ? driedStarForSell(hold.sell ?? 0)
           : 1;
-    addProduct(
-      next.bag.products,
-      definition.output.product,
-      star,
-      Math.max(1, Math.round(converterOutput(level) * (1 + bonus))),
-      hold.effects ?? [],
-    );
-    return;
+    const qty = Math.max(1, Math.round(converterOutput(level) * (1 + bonus)));
+    addProduct(next.bag.products, definition.output.product, star, qty, hold.effects ?? []);
+    return qty;
   }
   const seed = seedById(hold.key);
-  if (seed === undefined) return;
-  next.bag.seeds[seed.id] =
-    (next.bag.seeds[seed.id] ?? 0) + Math.max(1, Math.round(seedMakerOutput(level) * (1 + bonus)));
+  if (seed === undefined) return 0;
+  const qty = Math.max(1, Math.round(seedMakerOutput(level) * (1 + bonus)));
+  next.bag.seeds[seed.id] = (next.bag.seeds[seed.id] ?? 0) + qty;
+  return qty;
 }
 
 /** @brief Starts a timed job or produces instantly from a held input. */
@@ -3087,8 +3086,12 @@ function startMachineCraft(
     };
     grantXp(next, "artisaning", 100);
   } else {
-    produceMachineOutput(next, definition, hold, machine.level);
-    next.machines[id] = { ...machine, lastCraftAt: now };
+    const produced = produceMachineOutput(next, definition, hold, machine.level);
+    next.machines[id] = {
+      ...machine,
+      lastCraftAt: now,
+      made: (machine.made ?? 0) + produced,
+    };
     grantXp(next, "artisaning", 200);
   }
   return next;
@@ -3105,7 +3108,7 @@ function finishMachineJob(ledger: GardenLedger, id: MachineId, now: number): Gar
   if (definition === undefined || machine === undefined || job === undefined) return null;
   if (now < job.readyAt) return null;
   const next = clone(ledger);
-  produceMachineOutput(
+  const produced = produceMachineOutput(
     next,
     definition,
     {
@@ -3116,7 +3119,7 @@ function finishMachineJob(ledger: GardenLedger, id: MachineId, now: number): Gar
     },
     machine.level,
   );
-  next.machines[id] = { ...machine, job: undefined };
+  next.machines[id] = { ...machine, job: undefined, made: (machine.made ?? 0) + produced };
   grantXp(next, "artisaning", 120);
   return next;
 }
@@ -3139,6 +3142,7 @@ export function settleMachines(ledger: GardenLedger, now: number): GardenLedger 
       if (machine.job !== undefined) break;
       const queue = machine.queue ?? [];
       if (queue.length === 0) break;
+      if (machine.limit !== undefined && (machine.made ?? 0) >= machine.limit) break;
       const cycles = machineCycles(machine.level, definition.cooldownCycles) * FARM_CYCLE_MS;
       if (definition.queued !== true && now - machine.lastCraftAt < cycles) break;
       const [hold, ...rest] = queue;
@@ -3228,29 +3232,51 @@ function queueMachine(
   ledger: GardenLedger,
   id: MachineId,
   item: ItemId | undefined,
+  qty: number,
   now: number,
 ): RuleResult {
   const definition = machineById(id);
   const machine = ledger.machines[id];
   if (definition === undefined || machine === undefined) return { ok: false, code: "MACHINE_LOCKED" };
+  const wanted = Math.max(1, Math.min(999, Math.floor(qty)));
   const next = clone(ledger);
-  const hold = takeMachineInput(next, definition, item);
-  if (hold === null) return { ok: false, code: "NO_INPUT" };
-  const queued = machine.queue ?? [];
+  const jobs: MachineJob[] = [];
+  for (let index = 0; index < wanted; index += 1) {
+    const hold = takeMachineInput(next, definition, item);
+    if (hold === null) break;
+    jobs.push({
+      item: hold.key,
+      ...(hold.star === undefined ? {} : { star: hold.star }),
+      ...(hold.sell === undefined ? {} : { sell: hold.sell }),
+      ...(hold.effects === undefined ? {} : { effects: hold.effects }),
+      startedAt: 0,
+      readyAt: 0,
+    });
+  }
+  if (jobs.length === 0) return { ok: false, code: "NO_INPUT" };
   next.machines[id] = {
     ...machine,
-    queue: [
-      ...queued,
-      {
-        item: hold.key,
-        ...(hold.star === undefined ? {} : { star: hold.star }),
-        ...(hold.sell === undefined ? {} : { sell: hold.sell }),
-        ...(hold.effects === undefined ? {} : { effects: hold.effects }),
-        startedAt: 0,
-        readyAt: 0,
-      },
-    ],
+    queue: [...(machine.queue ?? []), ...jobs],
   };
+  return changed(next, now);
+}
+
+/** @brief Sets or clears the produced-units limit for one machine. */
+function setMachineLimit(
+  ledger: GardenLedger,
+  id: MachineId,
+  limit: number | undefined,
+  now: number,
+): RuleResult {
+  const machine = ledger.machines[id];
+  if (machine === undefined) return { ok: false, code: "MACHINE_LOCKED" };
+  const next = clone(ledger);
+  if (limit === undefined) {
+    const { limit: _limit, made: _made, ...rest } = machine;
+    next.machines[id] = { ...rest };
+  } else {
+    next.machines[id] = { ...machine, limit, made: 0 };
+  }
   return changed(next, now);
 }
 

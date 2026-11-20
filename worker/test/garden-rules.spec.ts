@@ -1258,6 +1258,38 @@ describe("garden ledger rules", () => {
     expect(afterSecond.bag.products?.find((stack) => stack.product === "wine")?.qty).toBe(4);
   });
 
+  it("queues a quantity and stops at the produced limit", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000;
+    ledger.bag.crops = [{ item: "tomato", effects: [], qty: 3 }];
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const machine = run(built.ledger, { kind: "buildMachine", machine: "seedMaker" });
+    if (!machine.ok) throw new Error("machine failed");
+
+    const queued = run(machine.ledger, {
+      kind: "queueMachine",
+      machine: "seedMaker",
+      item: "tomato",
+      qty: 3,
+    });
+    expect(queued.ok).toBe(true);
+    if (!queued.ok) return;
+    expect(queued.ledger.machines.seedMaker?.queue).toHaveLength(3);
+    expect(queued.ledger.bag.crops).toHaveLength(0);
+
+    const limited = run(queued.ledger, {
+      kind: "setMachineLimit",
+      machine: "seedMaker",
+      limit: 5,
+    });
+    if (!limited.ok) throw new Error("limit failed");
+    const settled = settleMachines(limited.ledger, NOW + FARM_CYCLE_MS);
+    expect(settled.bag.seeds.tomato).toBe(5);
+    expect(settled.machines.seedMaker?.made).toBe(5);
+    expect(settled.machines.seedMaker?.queue).toHaveLength(2);
+  });
+
   it("refunds queued machine batches when the queue is cleared", () => {
     const ledger = makeLedger();
     ledger.coins = 10_000_000;

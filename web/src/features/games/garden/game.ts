@@ -229,6 +229,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let machineMenu: { id: MachineId; x: number; y: number; anchorTop: number } | null = null;
   let specialPicker: number | null = null;
   let specialMenu: { slot: number; x: number; y: number } | null = null;
+  let machineQty = 1;
+  let machineLimitDraft = "";
   let specialSupplyPicker: { kind: "fertilize" | "spray"; slot: number } | null = null;
   let bulkPanel: "plan" | "uproot" | null = null;
   let confirmPrestige = false;
@@ -2917,6 +2919,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     const queue = built.queue ?? [];
     lines.push(labelValue(t("warehouse.queue"), String(queue.length)));
+    if (built.limit !== undefined) {
+      lines.push(
+        labelValue(t("warehouse.limitProgress"), `${Math.min(built.made ?? 0, built.limit)}/${built.limit}`),
+      );
+    }
     for (let index = 0; index < Math.min(5, queue.length); index += 1) {
       const job = queue[index];
       if (job === undefined) continue;
@@ -2945,6 +2952,31 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     );
     rows.append(upgrade);
 
+    const qtyRow = div("garden-tools");
+    qtyRow.append(span("garden-hint", t("warehouse.qty")));
+    for (const qty of [1, 5, 10, 50]) {
+      const button = actionButton(`x${qty}`, "machineQty");
+      button.dataset.qty = String(qty);
+      if (machineQty === qty) button.classList.add("is-active");
+      qtyRow.append(button);
+    }
+    rows.append(qtyRow);
+
+    const limitRow = div("garden-tools");
+    const limitInput = document.createElement("input");
+    limitInput.type = "number";
+    limitInput.min = "1";
+    limitInput.className = "stage-input garden-machine-limit";
+    limitInput.placeholder = t("warehouse.limit");
+    limitInput.value = machineLimitDraft;
+    limitInput.dataset.role = "machineLimit";
+    limitInput.setAttribute("aria-label", t("warehouse.limit"));
+    limitRow.append(limitInput, actionButton(t("warehouse.limitSet"), "machineLimitSet"));
+    if (built.limit !== undefined) {
+      limitRow.append(actionButton(t("warehouse.limitClear"), "machineLimitClear"));
+    }
+    rows.append(limitRow);
+
     if (job !== undefined && job.readyAt <= at) {
       rows.append(menuRow(t("warehouse.collect"), "machineCollect", { data: { machine: definition.id } }));
     }
@@ -2962,7 +2994,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           data: { machine: definition.id },
           disabled: count < 1 || busy,
         }),
-        menuRow("+Q", "machineQueue", {
+        menuRow(`+Q×${machineQty}`, "machineQueue", {
           data: { machine: definition.id },
           disabled: count < 1,
         }),
@@ -2984,7 +3016,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             data: { machine: definition.id, item },
             disabled: busy,
           }),
-          menuRow("+Q", "machineQueue", {
+          menuRow(`+Q×${machineQty}`, "machineQueue", {
             data: { machine: definition.id, item },
           }),
         );
@@ -3181,6 +3213,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         row.append(name, level, stateText);
         if (queueCount > 0) {
           row.append(span("garden-warehouse-queue", `+${queueCount}Q`));
+        }
+        if (built.limit !== undefined) {
+          row.append(
+            span("garden-warehouse-queue", `${Math.min(built.made ?? 0, built.limit)}/${built.limit}`),
+          );
         }
         panel.append(row);
       }
@@ -4701,12 +4738,39 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (slot !== undefined) void runAction({ kind: "detachMachine", slot }, t("attachments.detached"));
         return;
       }
+      case "machineQty": {
+        const qty = Number(target.dataset.qty);
+        if (Number.isInteger(qty) && qty > 0) {
+          machineQty = qty;
+          render();
+        }
+        return;
+      }
+      case "machineLimitSet": {
+        if (machineMenu === null) return;
+        const limit = Number(machineLimitDraft);
+        if (!Number.isInteger(limit) || limit < 1) {
+          message = { text: t("warehouse.badLimit"), kind: "err" };
+          render();
+          return;
+        }
+        void runAction(
+          { kind: "setMachineLimit", machine: machineMenu.id, limit },
+          t("warehouse.limitSaved"),
+        );
+        return;
+      }
+      case "machineLimitClear": {
+        if (machineMenu === null) return;
+        void runAction({ kind: "setMachineLimit", machine: machineMenu.id }, t("warehouse.limitCleared"));
+        return;
+      }
       case "machineQueue": {
         const machine = target.dataset.machine as MachineId | undefined;
         if (machine === undefined) return;
         const item = target.dataset.item as ItemId | undefined;
         void runAction(
-          { kind: "queueMachine", machine, ...(item === undefined ? {} : { item }) },
+          { kind: "queueMachine", machine, qty: machineQty, ...(item === undefined ? {} : { item }) },
           t("warehouse.queued"),
         );
         return;
@@ -5238,6 +5302,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (!(target instanceof HTMLInputElement)) return;
     if (target.dataset.role === "restore") restoreDraft = target.value;
     if (target.dataset.role === "uprootPrice") uprootPriceDraft = target.value;
+    if (target.dataset.role === "machineLimit") machineLimitDraft = target.value;
     if (target.dataset.role === "giftCode") giftCode = target.value;
     if (target.dataset.role === "giftAmount") giftAmount = target.value;
   }

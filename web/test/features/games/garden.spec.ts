@@ -1906,9 +1906,29 @@ describe("machine queue while busy", () => {
     const queueButtons = host.querySelectorAll<HTMLButtonElement>('[data-act="machineQueue"]');
     expect(queueButtons.length).toBeGreaterThanOrEqual(2);
     expect(queueButtons[0]?.disabled).toBe(false);
-    queueButtons[0]?.click();
+
+    host.querySelector<HTMLButtonElement>('[data-act="machineQty"][data-qty="10"]')?.click();
     await settle();
-    expect(api.calls.find((call) => call.action?.kind === "queueMachine")).toBeTruthy();
+    const limit = host.querySelector<HTMLInputElement>(".garden-machine-limit");
+    if (limit !== null) {
+      limit.value = "25";
+      limit.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="machineLimitSet"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "setMachineLimit")?.action).toMatchObject({
+      kind: "setMachineLimit",
+      machine: "seedMaker",
+      limit: 25,
+    });
+
+    host.querySelector<HTMLButtonElement>('[data-act="machineQueue"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "queueMachine")?.action).toMatchObject({
+      kind: "queueMachine",
+      qty: 10,
+    });
   });
 });
 

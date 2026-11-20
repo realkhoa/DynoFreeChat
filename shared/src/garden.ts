@@ -1097,6 +1097,10 @@ export interface MachineState {
   readonly job?: MachineJob;
   /** Pending jobs, in order; inputs are already held by the machine. */
   readonly queue?: readonly MachineJob[];
+  /** Stop the queue after this many units are produced; absent means no limit. */
+  readonly limit?: number;
+  /** Units produced since the current limit was set. */
+  readonly made?: number;
 }
 
 /** @brief Seeds a seed maker returns for one crop at a level. */
@@ -2700,9 +2704,15 @@ export type GardenAction =
       readonly kind: "queueMachine";
       readonly machine: MachineId;
       readonly item?: ItemId;
+      readonly qty?: number;
     }
   | { readonly kind: "collectMachine"; readonly machine: MachineId }
   | { readonly kind: "clearMachineQueue"; readonly machine: MachineId }
+  | {
+      readonly kind: "setMachineLimit";
+      readonly machine: MachineId;
+      readonly limit?: number;
+    }
   | { readonly kind: "attachMachine"; readonly slot: AttachmentSlot; readonly id: AttachmentId }
   | { readonly kind: "detachMachine"; readonly slot: AttachmentSlot }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
@@ -3273,10 +3283,13 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
         ...(item === undefined ? {} : { item: item.id as ItemId }),
       };
     }
+    const qty = value.qty === undefined ? 1 : value.qty;
+    if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 999) return null;
     return {
       kind: "queueMachine",
       machine: machine.id,
       ...(item === undefined ? {} : { item: item.id as ItemId }),
+      qty,
     };
   }
   if (kind === "claimQuest") {
@@ -3319,6 +3332,14 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const slot = value.slot;
     if (slot !== "garden" && slot !== "coop" && slot !== "barn" && slot !== "pond") return null;
     return { kind, slot };
+  }
+  if (kind === "setMachineLimit") {
+    const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
+    if (machine === undefined) return null;
+    if (value.limit === undefined) return { kind, machine: machine.id };
+    const limit = value.limit;
+    if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 9_999) return null;
+    return { kind, machine: machine.id, limit };
   }
   if (kind === "clearMachineQueue") {
     const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
