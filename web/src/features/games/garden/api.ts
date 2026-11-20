@@ -10,6 +10,7 @@ import type {
   GardenAction,
   GardenActResponse,
   GardenSnapshot,
+  GuildSnapshot,
   RaidSnapshot,
   GlobalSaleEntry,
   GardenStateResponse,
@@ -195,6 +196,47 @@ export class GardenApi {
   /** @brief Lists the server-side bot gardens. */
   async bots(): Promise<{ bots: GardenBot[] }> {
     return this.request<{ bots: GardenBot[] }>("/api/garden/bots", { method: "GET" });
+  }
+
+  /** @brief Reads the caller's guild. */
+  async guildMine(): Promise<{ guild: GuildSnapshot | null }> {
+    return this.request<{ guild: GuildSnapshot | null }>("/api/garden/guild/mine", { method: "GET" });
+  }
+
+  /** @brief Reads the public guild board. */
+  async guildList(): Promise<{
+    guilds: Array<{ id: string; name: string; ownerId: string; members: number; createdAt: number }>;
+  }> {
+    return this.request<{
+      guilds: Array<{ id: string; name: string; ownerId: string; members: number; createdAt: number }>;
+    }>("/api/garden/guild/list", { method: "GET" });
+  }
+
+  /** @brief Creates a guild. */
+  async guildCreate(name: string, nick: string, code: string): Promise<{ guild: GuildSnapshot }> {
+    return this.request<{ guild: GuildSnapshot }>("/api/garden/guild/create", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, nick, code }),
+    });
+  }
+
+  /** @brief Joins a guild. */
+  async guildJoin(guildId: string, nick: string, code: string): Promise<{ guild: GuildSnapshot }> {
+    return this.request<{ guild: GuildSnapshot }>("/api/garden/guild/join", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ guildId, nick, code }),
+    });
+  }
+
+  /** @brief Leaves the current guild. */
+  async guildLeave(): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>("/api/garden/guild/leave", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
   }
 
   /** @brief Reads the shared locust raid. */

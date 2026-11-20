@@ -13,6 +13,7 @@ import {
   ACTIONS_PER_MINUTE,
   GARDEN_PROTOCOL_VERSION,
   RAID_MAX_HP,
+  type GuildSnapshot,
   raidWindowAt,
   raidEndsAt,
   GUEST_WATER_CUT_RATIO,
@@ -1751,6 +1752,19 @@ export class GardenHub extends DurableObject<Env> {
         window_start INTEGER NOT NULL,
         count INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS guilds (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS guild_members (
+        player_id TEXT PRIMARY KEY,
+        guild_id TEXT NOT NULL,
+        nick TEXT NOT NULL,
+        code TEXT NOT NULL,
+        joined_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS raids (
         window INTEGER PRIMARY KEY,
         hp INTEGER NOT NULL,
@@ -1805,6 +1819,11 @@ export class GardenHub extends DurableObject<Env> {
     if (request.method === "GET" && url.pathname === "/by-recovery") return this.byRecovery(url);
     if (request.method === "GET" && url.pathname === "/leaderboard") return this.leaderboard(url);
     if (request.method === "GET" && url.pathname === "/raid") return this.raid();
+    if (request.method === "POST" && url.pathname === "/guild/create") return this.guildCreate(request);
+    if (request.method === "POST" && url.pathname === "/guild/join") return this.guildJoin(request);
+    if (request.method === "POST" && url.pathname === "/guild/leave") return this.guildLeave(request);
+    if (request.method === "GET" && url.pathname === "/guild/mine") return this.guildMine(url);
+    if (request.method === "GET" && url.pathname === "/guild/list") return this.guildList();
     if (request.method === "POST" && url.pathname === "/raid/hit") return this.raidHit(request);
     if (request.method === "POST" && url.pathname === "/sale") return this.recordSale(request);
     if (request.method === "GET" && url.pathname === "/sales") return this.sales(url);
@@ -1949,6 +1968,139 @@ export class GardenHub extends DurableObject<Env> {
         updatedAt: row.updated_at,
       })),
     });
+  }
+
+  /** @brief Creates a guild and joins its owner. */
+  private async guildCreate(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const playerId = typeof body.playerId === "string" ? body.playerId : "";
+    const name = typeof body.name === "string" ? body.name.trim().slice(0, 24) : "";
+    const nick = sanitizeNick(typeof body.nick === "string" ? body.nick : "");
+    const code = typeof body.code === "string" ? body.code : "";
+    if (playerId.length === 0 || name.length < 2 || !nick.ok || code.length === 0) {
+      return json({ code: "BAD_REQUEST" }, 400);
+    }
+    if (this.guildOf(playerId) !== undefined) return json({ code: "ALREADY_CLAIMED" }, 409);
+    const id = `g${hash32(`${playerId}:${name}`).toString(36)}`;
+    const now = Date.now();
+    this.sql.exec(
+      "INSERT INTO guilds (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)",
+      id,
+      name,
+      playerId,
+      now,
+    );
+    this.sql.exec(
+      "INSERT INTO guild_members (player_id, guild_id, nick, code, joined_at) VALUES (?, ?, ?, ?, ?)",
+      playerId,
+      id,
+      nick.nick,
+      code,
+      now,
+    );
+    return json({ ok: true, guild: this.guildById(id) });
+  }
+
+  /** @brief Joins an existing guild. */
+  private async guildJoin(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const playerId = typeof body.playerId === "string" ? body.playerId : "";
+    const guildId = typeof body.guildId === "string" ? body.guildId : "";
+    const nick = sanitizeNick(typeof body.nick === "string" ? body.nick : "");
+    const code = typeof body.code === "string" ? body.code : "";
+    if (playerId.length === 0 || guildId.length === 0 || !nick.ok || code.length === 0) {
+      return json({ code: "BAD_REQUEST" }, 400);
+    }
+    if (this.guildOf(playerId) !== undefined) return json({ code: "ALREADY_CLAIMED" }, 409);
+    const guild = this.guildById(guildId);
+    if (guild === null) return json({ code: "BAD_REQUEST" }, 404);
+    this.sql.exec(
+      "INSERT INTO guild_members (player_id, guild_id, nick, code, joined_at) VALUES (?, ?, ?, ?, ?)",
+      playerId,
+      guildId,
+      nick.nick,
+      code,
+      Date.now(),
+    );
+    return json({ ok: true, guild: this.guildById(guildId) });
+  }
+
+  /** @brief Leaves the current guild. */
+  private async guildLeave(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const playerId = typeof body.playerId === "string" ? body.playerId : "";
+    const guild = this.guildOf(playerId);
+    if (guild === undefined) return json({ code: "NOTHING_TO_DO" }, 400);
+    this.sql.exec("DELETE FROM guild_members WHERE player_id = ?", playerId);
+    const left = this.sql
+      .exec<SqlRow<{ count: number }>>(
+        "SELECT COUNT(*) AS count FROM guild_members WHERE guild_id = ?",
+        guild,
+      )
+      .toArray()[0];
+    if ((left?.count ?? 0) === 0) this.sql.exec("DELETE FROM guilds WHERE id = ?", guild);
+    return json({ ok: true });
+  }
+
+  /** @brief Guild of one player. */
+  private guildMine(url: URL): Response {
+    const playerId = url.searchParams.get("playerId") ?? "";
+    const guild = this.guildOf(playerId);
+    return json({ guild: guild === undefined ? null : this.guildById(guild) });
+  }
+
+  /** @brief Public guild list by member count. */
+  private guildList(): Response {
+    const rows = this.sql
+      .exec<SqlRow<{ id: string; name: string; owner_id: string; created_at: number; members: number }>>(
+        "SELECT g.id, g.name, g.owner_id, g.created_at, COUNT(m.player_id) AS members FROM guilds g LEFT JOIN guild_members m ON m.guild_id = g.id GROUP BY g.id ORDER BY members DESC, g.created_at ASC LIMIT 30",
+      )
+      .toArray();
+    return json({
+      guilds: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        ownerId: row.owner_id,
+        members: row.members,
+        createdAt: row.created_at,
+      })),
+    });
+  }
+
+  /** @brief Guild id for a player, if any. */
+  private guildOf(playerId: string): string | undefined {
+    return this.sql
+      .exec<SqlRow<{ guild_id: string }>>("SELECT guild_id FROM guild_members WHERE player_id = ?", playerId)
+      .toArray()[0]?.guild_id;
+  }
+
+  /** @brief Full guild snapshot with members. */
+  private guildById(id: string): GuildSnapshot | null {
+    const guild = this.sql
+      .exec<SqlRow<{ id: string; name: string; owner_id: string; created_at: number }>>(
+        "SELECT id, name, owner_id, created_at FROM guilds WHERE id = ?",
+        id,
+      )
+      .toArray()[0];
+    if (guild === undefined) return null;
+    const members = this.sql
+      .exec<SqlRow<{ player_id: string; nick: string; code: string; joined_at: number }>>(
+        "SELECT player_id, nick, code, joined_at FROM guild_members WHERE guild_id = ? ORDER BY joined_at ASC",
+        id,
+      )
+      .toArray();
+    return {
+      id: guild.id,
+      name: guild.name,
+      ownerId: guild.owner_id,
+      createdAt: guild.created_at,
+      members: members.map((member) => ({
+        playerId: member.player_id,
+        nick: member.nick,
+        code: member.code,
+        joinedAt: member.joined_at,
+      })),
+    };
   }
 
   /** @brief Current shared locust raid. */

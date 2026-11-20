@@ -117,6 +117,7 @@ import {
   type EffectId,
   type GardenAction,
   type GardenSnapshot,
+  type GuildSnapshot,
   type RaidSnapshot,
   type GlobalSaleEntry,
   type LeaderboardEntry,
@@ -270,6 +271,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let machineQty = 1;
   let chartSort: "roi" | "income" | "pressure" = "roi";
   let raidSnapshot: RaidSnapshot | null = null;
+  let guildSnapshot: GuildSnapshot | null = null;
+  let guildBoard: Array<{ id: string; name: string; ownerId: string; members: number }> = [];
+  let guildNameDraft = "";
   let globalSales: GlobalSaleEntry[] = [];
   let globalSalesStatus: "idle" | "loading" | "error" = "idle";
   let dynopediaCategory = "effects";
@@ -1085,7 +1089,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (next === "chart") void loadChart();
     if (next === "bots") void loadBots();
     if (next === "rank") void loadLeaderboard();
-    if (next === "extras") void loadExtras();
+    if (next === "extras") {
+      void loadExtras();
+      void loadGuilds();
+    }
     if (next === "log") void loadGlobalSales();
     if (next === "event") void loadRaid();
     syncGardenQuery();
@@ -4127,6 +4134,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (!disposed && tab === "extras") render();
   }
 
+  /** @brief Loads guild membership and the public guild board. */
+  async function loadGuilds(): Promise<void> {
+    try {
+      const [mine, board] = await Promise.all([api.guildMine(), api.guildList()]);
+      guildSnapshot = mine.guild;
+      guildBoard = board.guilds;
+      render();
+    } catch {
+      // Guild panel stays empty while offline.
+    }
+  }
+
   /** @brief Builds the extras tab: streak, contracts, merchant, upgrades. */
   function buildExtras(): HTMLElement {
     const wrap = div("garden-extras");
@@ -4212,6 +4231,30 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     if ((extras.taxLast ?? 0) > 0) {
       wrap.append(lineBlock(`// ${t("tax.last", { coins: formatCompact(extras.taxLast ?? 0) })}`));
+    }
+
+    wrap.append(lineBlock(`// ${t("guild.title")}`));
+    if (guildSnapshot !== null) {
+      wrap.append(
+        lineBlock(t("guild.current", { name: guildSnapshot.name, count: guildSnapshot.members.length })),
+      );
+      for (const member of guildSnapshot.members) {
+        wrap.append(lineBlock(`// [${member.code}] ${member.nick}`));
+      }
+      wrap.append(actionButton(t("guild.leave"), "guildLeave"));
+    } else {
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.className = "stage-input";
+      nameInput.value = guildNameDraft;
+      nameInput.placeholder = t("guild.name");
+      nameInput.dataset.role = "guildName";
+      wrap.append(nameInput, actionButton(t("guild.create"), "guildCreate"));
+      for (const guild of guildBoard) {
+        const join = actionButton(t("guild.join", { name: guild.name, count: guild.members }), "guildJoin");
+        join.dataset.id = guild.id;
+        wrap.append(join);
+      }
     }
 
     wrap.append(lineBlock(`// ${t("gift.title")}`));
@@ -5870,6 +5913,37 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       case "staffMenuGardener":
       case "staffMenuWaterer":
+      case "guildCreate": {
+        if (state === null) return;
+        const name = guildNameDraft.trim();
+        if (name.length < 2) return;
+        void api
+          .guildCreate(name, state.nick, state.code)
+          .then((result) => {
+            guildSnapshot = result.guild;
+            guildNameDraft = "";
+          })
+          .finally(() => void loadGuilds());
+        return;
+      }
+      case "guildJoin": {
+        const id = target.dataset.id;
+        if (id !== undefined && state !== null) {
+          void api
+            .guildJoin(id, state.nick, state.code)
+            .then((result) => {
+              guildSnapshot = result.guild;
+            })
+            .finally(() => void loadGuilds());
+        }
+        return;
+      }
+      case "guildLeave":
+        void api.guildLeave().then(() => {
+          guildSnapshot = null;
+          void loadGuilds();
+        });
+        return;
       case "giftCoins": {
         const code = giftCode.trim().toUpperCase();
         const amount = Number(giftAmount);
@@ -6211,6 +6285,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (target.dataset.role === "restore") restoreDraft = target.value;
     if (target.dataset.role === "uprootPrice") uprootPriceDraft = target.value;
     if (target.dataset.role === "machineLimit") machineLimitDraft = target.value;
+    if (target.dataset.role === "guildName") {
+      guildNameDraft = target.value;
+      return;
+    }
     if (target.dataset.role === "recipeInput") {
       if (target.dataset.index === "1") recipeInputA = target.value;
       else if (target.dataset.index === "2") recipeInputB = target.value;

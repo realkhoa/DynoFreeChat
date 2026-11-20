@@ -1802,6 +1802,23 @@ export function raidEndsAt(now: number): number {
   return EPOCH_MS + (raidWindowAt(now) + 1) * DAY_MS;
 }
 
+/** One guild member summary. */
+export interface GuildMember {
+  readonly playerId: string;
+  readonly nick: string;
+  readonly code: string;
+  readonly joinedAt: number;
+}
+
+/** Guild summary returned by the hub. */
+export interface GuildSnapshot {
+  readonly id: string;
+  readonly name: string;
+  readonly ownerId: string;
+  readonly members: readonly GuildMember[];
+  readonly createdAt: number;
+}
+
 /** One public row in the global sale log. */
 export interface GlobalSaleEntry extends SaleRecord {
   /** Seller share code. */

@@ -56,6 +56,9 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   if (name === "market" && request.method === "GET") return marketRoute(env);
   if (name === "leaderboard" && request.method === "GET") return leaderboard(env, url);
   if (name === "raid" && request.method === "GET") return hubStub(env).fetch("https://hub/raid");
+  if (name === "guild" && request.method === "GET" && parts[3] === "list") {
+    return hubStub(env).fetch("https://hub/guild/list");
+  }
   if (name === "sales" && request.method === "GET") {
     const limit = encodeURIComponent(url.searchParams.get("limit") ?? "100");
     return hubStub(env).fetch(`https://hub/sales?limit=${limit}`);
@@ -86,6 +89,28 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
 
   if (name === "recipe" && request.method === "POST") return recipeRoute(env, auth, request);
   if (name === "raid" && request.method === "POST") return forwardOwner(env, auth, "/raid", "POST", request);
+  if (name === "guild") {
+    const action = parts[3];
+    if (request.method === "GET" && action === "mine") {
+      return hubStub(env).fetch(`https://hub/guild/mine?playerId=${encodeURIComponent(auth.playerId)}`);
+    }
+    if (request.method === "POST" && (action === "create" || action === "join" || action === "leave")) {
+      const body = (await readJson(request)) as Record<string, unknown>;
+      const hubBody = JSON.stringify({
+        playerId: auth.playerId,
+        name: body.name,
+        guildId: body.guildId,
+        nick: body.nick,
+        code: body.code,
+      });
+      return hubStub(env).fetch(`https://hub/guild/${action}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: hubBody,
+      });
+    }
+    return json({ code: "NOT_FOUND" }, 404);
+  }
   if (name === "state" && request.method === "GET") return ownerResponse(env, auth, "/state", "GET", now);
   if (name === "act" && request.method === "POST")
     return ownerResponse(env, auth, "/act", "POST", now, request);

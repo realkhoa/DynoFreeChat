@@ -231,6 +231,19 @@ describe("garden play", () => {
     expect(response.status).toBe(401);
   });
 
+  it("creates and reads a guild", async () => {
+    const registered = await register();
+    const created = await SELF.fetch(`${BASE}/api/garden/guild/create`, {
+      method: "POST",
+      headers: { ...auth(registered), "content-type": "application/json" },
+      body: JSON.stringify({ name: "Test Guild", nick: "Tester", code: registered.state.code }),
+    });
+    expect(created.status).toBe(200);
+    const mine = await SELF.fetch(`${BASE}/api/garden/guild/mine`, { headers: auth(registered) });
+    const payload = (await mine.json()) as { guild?: { name?: string } };
+    expect(payload.guild?.name).toBe("Test Guild");
+  });
+
   it("stores an AI-approved custom recipe", async () => {
     const registered = await register();
     const bindings = env as unknown as Env;
