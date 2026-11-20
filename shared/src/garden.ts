@@ -1153,6 +1153,17 @@ export function prestigeTierForSeed(seed: SeedId): number {
   return PRESTIGE_SHOP.find((offer) => offer.seed === seed)?.tier ?? 0;
 }
 
+/**
+ * @brief Extra chance for bad mutations as the wallet grows.
+ * @details Below one billion coins the player is safe; after that every
+ * tenfold increase adds 2 percentage points, capped at +20%. Wealth should
+ * make the bad rolls more likely.
+ */
+export function wealthBadLuck(coins: number): number {
+  if (!Number.isFinite(coins) || coins < 1_000_000_000) return 0;
+  return Math.min(0.2, 0.02 + Math.log10(coins / 1_000_000_000) * 0.02);
+}
+
 /** @brief Mutation-rate bonus per prestige level (absolute chance). */
 export function prestigeMutationBonus(level: number): number {
   return Math.max(0, level) * 0.05;

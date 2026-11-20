@@ -181,6 +181,18 @@ describe("garden ledger rules", () => {
     expect(removed.ledger.trees[0]).toBeNull();
   });
 
+  it("gives rich players more bad mutation rolls", () => {
+    const poor = makeLedger();
+    const rich = makeLedger();
+    rich.coins = 1_000_000_000_000;
+    const plantedPoor = run(poor, { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.03);
+    const plantedRich = run(rich, { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.03);
+    if (!plantedPoor.ok || !plantedRich.ok) throw new Error("plant failed");
+    const bad = new Set(["burnt", "shriveled", "pale"]);
+    expect(plantedPoor.ledger.plots[0]?.effects.some((id) => bad.has(id))).toBe(false);
+    expect(plantedRich.ledger.plots[0]?.effects.some((id) => bad.has(id))).toBe(true);
+  });
+
   it("blocks planting prestige seeds above the account tier", () => {
     const ledger = makeLedger();
     ledger.bag.seeds.cocomelon = 1;

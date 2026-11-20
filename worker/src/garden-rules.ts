@@ -131,6 +131,7 @@ import {
   dailyQuestsFor,
   prestigeSellBonus,
   prestigeMutationBonus,
+  wealthBadLuck,
   prestigeTierForSeed,
   PRESTIGE_SHOP,
   PRESTIGE_COIN_VALUE,
@@ -985,6 +986,18 @@ function prestigeMutationChances(level: number): Partial<Record<EffectId, number
   return out;
 }
 
+/** @brief Full mutation chance bonus: prestige plus the wealth bad-luck tax. */
+function mutationChances(ledger: GardenLedger): Partial<Record<EffectId, number>> {
+  const out = prestigeMutationChances(ledger.prestige);
+  const bad = wealthBadLuck(ledger.coins);
+  if (bad > 0) {
+    for (const effect of EFFECTS) {
+      if (effect.multiplier < 1) out[effect.id] = (out[effect.id] ?? 0) + bad;
+    }
+  }
+  return out;
+}
+
 /** @brief Plants one bagged seed. */
 function plant(
   ledger: GardenLedger,
@@ -1021,7 +1034,7 @@ function plant(
           dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
         ) * soilGrowthFactor(ledger.soil[slot] ?? SOIL_START),
       ),
-    effects: rollEffectsFor(events, rng, prestigeMutationChances(ledger.prestige)),
+    effects: rollEffectsFor(events, rng, mutationChances(ledger)),
     pest: false,
     protectedUntil: 0,
     watered: false,
@@ -1064,7 +1077,7 @@ function plantTree(
         null,
         dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
       ),
-    effects: rollEffectsFor(events, rng, prestigeMutationChances(ledger.prestige)),
+    effects: rollEffectsFor(events, rng, mutationChances(ledger)),
     pest: false,
     protectedUntil: 0,
     watered: false,
@@ -1159,7 +1172,7 @@ function harvest(
       for (const effect of EFFECTS)
         if (effect.natural) mutationBonus[effect.id] = (mutationBonus[effect.id] ?? 0) + petMutation;
     }
-    for (const [id, bonus] of Object.entries(prestigeMutationChances(ledger.prestige))) {
+    for (const [id, bonus] of Object.entries(mutationChances(ledger))) {
       if (bonus !== undefined) mutationBonus[id as EffectId] = (mutationBonus[id as EffectId] ?? 0) + bonus;
     }
     next.plots[slot] = {

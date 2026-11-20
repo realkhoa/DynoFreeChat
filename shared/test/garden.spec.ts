@@ -57,6 +57,7 @@ import {
   prestigeSellBonus,
   prestigeGrowScale,
   seedMakerChance,
+  wealthBadLuck,
   sprayBoostFor,
   SPRAY_MUTATION_BOOST,
   EFFECT_STACK_CHANCES,
@@ -385,6 +386,14 @@ describe("farm buildings", () => {
     expect(staffWorkInterval(veteran)).toBeLessThan(staffWorkInterval(cheap));
     expect(staffGainXp(1, 150)).toEqual({ level: 2, xp: 50 });
     expect(staffGainXp(9, 100_000).level).toBe(10);
+  });
+
+  it("makes bad mutations more likely for rich wallets", () => {
+    expect(wealthBadLuck(0)).toBe(0);
+    expect(wealthBadLuck(999_999_999)).toBe(0);
+    expect(wealthBadLuck(1_000_000_000)).toBeCloseTo(0.02);
+    expect(wealthBadLuck(1_000_000_000_000)).toBeCloseTo(0.08);
+    expect(wealthBadLuck(1e30)).toBe(0.2);
   });
 
   it("scales the seed-maker success rate with prestige", () => {
