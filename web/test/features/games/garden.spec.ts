@@ -2056,6 +2056,26 @@ describe("prestige shop", () => {
   });
 });
 
+describe("burnt plots", () => {
+  it("marks a damaged plot and offers repurchase", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        damagedPlots: [true, ...new Array(CROPS_PER_TAB - 1).fill(false)],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const cell = host.querySelector<HTMLButtonElement>('.garden-cell[data-area="crop"]');
+    expect(cell?.classList.contains("is-damaged")).toBe(true);
+    cell?.click();
+    await settle();
+    expect(host.querySelector(".garden-menu-info")?.textContent).toContain("Ô đất bị cháy");
+    expect(host.querySelector('[data-act="repairPlot"]')).not.toBeNull();
+  });
+});
+
 describe("crop disease", () => {
   it("marks a diseased crop and warns in the menu", async () => {
     const api = new FakeGardenApi(

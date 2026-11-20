@@ -16,6 +16,7 @@ import {
   HARVEST_ALL_COST,
   PEST_SPRAY_COST,
   DISEASE_DEATH_CYCLES,
+  PLOT_REPAIR_COST,
   TREE_DISEASE_DEATH_CYCLES,
   SKILL_MAX_LEVEL,
   SOIL_START,
@@ -1626,6 +1627,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       "is-diseased",
       (area === "crop" ? plot?.diseasedAt : tree?.diseasedAt) !== undefined,
     );
+    cell.classList.toggle("is-damaged", area === "crop" && !preview && state?.damagedPlots?.[slot] === true);
     const effects =
       area === "tree"
         ? tree === null
@@ -1812,7 +1814,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     const plot = plotAt(slot);
     if (plot === null) {
-      lines.push("", t("garden.empty"), t("garden.emptyHint"));
+      if (state?.damagedPlots?.[slot] === true) {
+        lines.push("", t("garden.damaged"), t("garden.damagedHint"));
+      } else {
+        lines.push("", t("garden.empty"), t("garden.emptyHint"));
+      }
     } else {
       const view = plotView(plot, at);
       const definition = seedById(plot.seed);
@@ -2127,6 +2133,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           }),
           "menuBuyPatch",
         ),
+      );
+    } else if (menuState.area === "crop" && state?.damagedPlots?.[menuState.slot] === true) {
+      rows.append(
+        menuRow(t("garden.repairPlot", { cost: `${formatCompact(PLOT_REPAIR_COST)}c` }), "repairPlot", {
+          data: { slot: String(menuState.slot) },
+        }),
       );
     } else if (plant === null) {
       rows.append(
@@ -2751,7 +2763,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
       wrap.append(lineBlock(`// ${t("attachments.title")}`));
       const attachRow = div("garden-tools");
-      for (const slot of ["garden", "coop", "barn", "pond"] as const) {
+      for (const slot of ["garden", "fire", "coop", "barn", "pond"] as const) {
         const current = state?.attachments?.[slot];
         if (current !== undefined) {
           const detach = actionButton(
@@ -5081,6 +5093,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           t("garden.patchBought", { patch: plotLabel(menu?.slot ?? cropOffset(), "crop").patch }),
         );
         closeMenu();
+        return;
+      }
+      case "repairPlot": {
+        const slot = Number(target.dataset.slot);
+        if (Number.isInteger(slot)) void runAction({ kind: "repairPlot", slot }, t("garden.repaired"));
         return;
       }
       case "menuSeed": {

@@ -1894,3 +1894,10 @@ button.garden-rank-row:hover {
     display: none;
   }
 }
+
+/* Burnt plots are unusable until repurchased. */
+.garden-cell.is-damaged {
+  color: #c05050;
+  background: #3a1616;
+  text-shadow: 0 0 3px #ff000044;
+}

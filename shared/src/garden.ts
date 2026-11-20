@@ -1101,10 +1101,10 @@ export const MACHINES: readonly MachineDefinition[] = [
 
 /** @brief Machine definition by id. */
 /** Passive machines mounted on the garden or farm buildings. */
-export type AttachmentId = "sprinkler" | "scarecrow" | "heater" | "aerator";
+export type AttachmentId = "sprinkler" | "scarecrow" | "fireSystem" | "heater" | "aerator";
 
 /** Where an attachment can be mounted. */
-export type AttachmentSlot = "garden" | "coop" | "barn" | "pond";
+export type AttachmentSlot = "garden" | "fire" | "coop" | "barn" | "pond";
 
 /** One mountable passive machine. */
 export interface AttachmentDefinition {
@@ -1117,6 +1117,7 @@ export interface AttachmentDefinition {
 export const ATTACHMENTS: readonly AttachmentDefinition[] = [
   { id: "sprinkler", slot: "garden", price: 3_000_000 },
   { id: "scarecrow", slot: "garden", price: 4_000_000 },
+  { id: "fireSystem", slot: "fire", price: 25_000_000 },
   { id: "heater", slot: "coop", price: 5_000_000 },
   { id: "aerator", slot: "pond", price: 6_000_000 },
 ];
@@ -1422,6 +1423,8 @@ export interface PlotState {
   readonly pest: boolean;
   /** Server time the disease started; it dies after a few cycles. */
   readonly diseasedAt?: number;
+  /** Burnt by a fire and unusable until repaired. */
+  readonly damaged?: boolean;
   /** Pesticide protection expiry; pests cannot strike before it. */
   readonly protectedUntil: number;
   /** Whether the owner already watered this planting. */
@@ -2278,6 +2281,8 @@ export interface GardenSnapshot {
   readonly unlockedPatches: readonly number[];
   /** Crop slots for the owned tabs, `tabs * CROPS_PER_TAB` entries. */
   readonly plots: readonly (PlotState | null)[];
+  /** Crop cells burnt by fire and awaiting repurchase. */
+  readonly damagedPlots?: readonly boolean[];
   /** Fruit tree slots for the owned tabs, `tabs * TREES_PER_TAB` entries. */
   readonly trees: readonly (TreeState | null)[];
   /** Seeds and harvested crops. */
@@ -2338,6 +2343,8 @@ export interface VisitSnapshot {
   readonly unlockedPatches: readonly number[];
   /** Crop slots. */
   readonly plots: readonly (PlotState | null)[];
+  /** Crop cells burnt by fire and awaiting repurchase. */
+  readonly damagedPlots?: readonly boolean[];
   /** Fruit tree slots. */
   readonly trees: readonly (TreeState | null)[];
   /** Seeds and harvested crops. */
@@ -2461,6 +2468,12 @@ export const DISEASE_SPREAD_CHANCE = 0.03;
 export const DISEASE_DEATH_CYCLES = 3;
 /** Cycles a fruit tree survives after catching the disease. */
 export const TREE_DISEASE_DEATH_CYCLES = 4;
+/** Per-cycle fire chance without the fire-protection attachment. */
+export const FIRE_CHANCE_PER_CYCLE = 0.1;
+/** Per-cycle crow chance without a scarecrow. */
+export const CROW_CHANCE_PER_CYCLE = 0.3;
+/** Cost to repurchase a plot burnt by fire. */
+export const PLOT_REPAIR_COST = 2_000_000;
 
 /** Flat tax rate on every sale income. */
 export const SELL_TAX_RATE = 0.1;
@@ -2852,6 +2865,7 @@ export type GardenAction =
   | { readonly kind: "prestige" }
   | { readonly kind: "buyPrestigeSeed"; readonly seed: SeedId }
   | { readonly kind: "buyFinalSeed"; readonly seed: SeedId }
+  | { readonly kind: "repairPlot"; readonly slot: number }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
   | {
@@ -2916,7 +2930,8 @@ export type GardenErrorCode =
   | "NO_CANDIDATE"
   | "CANNOT_VISIT_SELF"
   | "GIFT_SELF"
-  | "PRESTIGE_LOCKED";
+  | "PRESTIGE_LOCKED"
+  | "PLOT_DAMAGED";
 
 /** Successful response to a garden action. */
 export interface GardenActResponse {
@@ -3431,6 +3446,11 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return typeof value.id === "string" && value.id.length > 0 ? { kind, id: value.id } : null;
   }
   if (kind === "prestige") return { kind };
+  if (kind === "repairPlot") {
+    const slot = Number(value.slot);
+    if (!Number.isInteger(slot) || slot < 0 || slot >= totalCrops(MAX_TABS)) return null;
+    return { kind, slot };
+  }
   if (kind === "buyFinalSeed") {
     const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
     if (seed === undefined) return null;

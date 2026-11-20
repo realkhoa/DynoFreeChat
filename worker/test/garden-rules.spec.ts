@@ -37,6 +37,7 @@ import {
   settleSpecialReset,
   settleAttachments,
   settleDisease,
+  settleHazards,
 } from "../src/garden-rules";
 
 /** Server time inside the golden-hour wave, so growth is unmodified by rain. */
@@ -191,6 +192,48 @@ describe("garden ledger rules", () => {
     const bad = new Set(["burnt", "shriveled", "pale"]);
     expect(plantedPoor.ledger.plots[0]?.effects.some((id) => bad.has(id))).toBe(false);
     expect(plantedRich.ledger.plots[0]?.effects.some((id) => bad.has(id))).toBe(true);
+  });
+
+  it("protects crops with a fire system and scarecrow", () => {
+    const ledger = makeLedger();
+    ledger.bag.seeds.carrot = 1;
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW,
+      readyAt: NOW + 60 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    ledger.attachments = { fire: "fireSystem", garden: "scarecrow" };
+    const settled = settleHazards(ledger, NOW + 20 * FARM_CYCLE_MS);
+    expect(settled.plots[0]).not.toBeNull();
+    expect(settled.damagedPlots[0]).toBe(false);
+  });
+
+  it("requires repurchasing a burnt plot before planting", () => {
+    const ledger = makeLedger();
+    ledger.damagedPlots[0] = true;
+    ledger.soil[0] = 0;
+    ledger.bag.seeds.carrot = 1;
+    ledger.coins = 3_000_000;
+    const blocked = run(ledger, { kind: "plant", slot: 0, seed: "carrot" });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.code).toBe("PLOT_DAMAGED");
+
+    const repaired = run(ledger, { kind: "repairPlot", slot: 0 });
+    expect(repaired.ok).toBe(true);
+    if (!repaired.ok) return;
+    expect(repaired.ledger.damagedPlots[0]).toBe(false);
+    expect(repaired.ledger.soil[0]).toBe(100);
+    expect(repaired.ledger.coins).toBe(1_000_000);
+    expect(run(repaired.ledger, { kind: "plant", slot: 0, seed: "carrot" }).ok).toBe(true);
   });
 
   it("blocks planting prestige seeds above the account tier", () => {

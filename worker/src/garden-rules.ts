@@ -85,6 +85,9 @@ import {
   DISEASE_CHANCE_PER_CYCLE,
   DISEASE_SPREAD_CHANCE,
   DISEASE_DEATH_CYCLES,
+  FIRE_CHANCE_PER_CYCLE,
+  CROW_CHANCE_PER_CYCLE,
+  PLOT_REPAIR_COST,
   TREE_DISEASE_DEATH_CYCLES,
   PEST_GROWTH_PENALTY,
   PEST_PROTECTION_MS,
@@ -263,6 +266,10 @@ export interface GardenLedger {
   /** Last pest strike roll. */
   pestSettledAt: number;
   diseaseSettledAt: number;
+  /** Last fire/crow settlement. */
+  hazardSettledAt: number;
+  /** Burnt crop cells that must be repurchased. */
+  damagedPlots: boolean[];
   /** Fertility percent per crop cell. */
   soil: number[];
   /** Sequentially bought premium plots. */
@@ -414,6 +421,8 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     toolsSettledAt: input.now,
     pestSettledAt: input.now,
     diseaseSettledAt: input.now,
+    hazardSettledAt: input.now,
+    damagedPlots: new Array<boolean>(totalCrops(STARTING_TABS)).fill(false),
     soil: new Array<number>(totalCrops(STARTING_TABS)).fill(SOIL_START),
     specialOwned: 0,
     specialVersion: SPECIAL_RESET_VERSION,
@@ -540,6 +549,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     coins: ledger.coins,
     tabs: ledger.tabs,
     unlockedPatches: [...ledger.unlockedPatches],
+    damagedPlots: [...(ledger.damagedPlots ?? [])],
     plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
     trees: ledger.trees.map((tree) => (tree === null ? null : { ...tree })),
     bag: {
@@ -624,6 +634,8 @@ export function applyGardenAction(
       return buyPrestigeSeed(ledger, action.seed, now);
     case "buyFinalSeed":
       return buyFinalSeed(ledger, action.seed, now);
+    case "repairPlot":
+      return repairPlot(ledger, action.slot, now);
     case "plantTree":
       return plantTree(ledger, action.slot, action.tree, now, rng);
     case "harvest":
@@ -894,6 +906,9 @@ function plantAll(ledger: GardenLedger, seedId: SeedId, now: number, rng: () => 
   if (prestigeTierForSeed(seed.id) > ledger.prestige) {
     return { ok: false, code: "PRESTIGE_LOCKED" };
   }
+  if (ledger.damagedPlots?.every((damaged) => damaged === true) === true) {
+    return { ok: false, code: "PLOT_DAMAGED" };
+  }
   let owned = ledger.bag.seeds[seed.id] ?? 0;
   if (owned < 1) return { ok: false, code: "NO_SEED" };
 
@@ -1009,6 +1024,7 @@ function plant(
   if (slot >= ledger.plots.length) return { ok: false, code: "PLOT_LOCKED" };
   if (!isCropPatchOpen(ledger, slot)) return { ok: false, code: "PLOT_LOCKED" };
   if (ledger.plots[slot] !== null) return { ok: false, code: "PLOT_OCCUPIED" };
+  if (ledger.damagedPlots?.[slot] === true) return { ok: false, code: "PLOT_DAMAGED" };
   const seed = seedById(seedId);
   if (seed === undefined) return { ok: false, code: "NO_SEED" };
   if (prestigeTierForSeed(seed.id) > ledger.prestige) {
@@ -2524,6 +2540,19 @@ function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): Ru
   return changed(next, now);
 }
 
+/** @brief Repurchases a crop cell burnt by fire. */
+function repairPlot(ledger: GardenLedger, slot: number, now: number): RuleResult {
+  if (ledger.damagedPlots?.[slot] !== true) return { ok: false, code: "BAD_REQUEST" };
+  if (ledger.coins < PLOT_REPAIR_COST) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= PLOT_REPAIR_COST;
+  next.stats.spent += PLOT_REPAIR_COST;
+  next.damagedPlots[slot] = false;
+  next.soil[slot] = SOIL_START;
+  collect(next, `repair:${slot}`);
+  return changed(next, now);
+}
+
 /** @brief Buys one final-shop plant with prestige coins. */
 function buyFinalSeed(ledger: GardenLedger, seed: SeedId, now: number): RuleResult {
   const offer = FINAL_SHOP.find((entry) => entry.seed === seed);
@@ -3015,6 +3044,66 @@ function sprayPestAll(ledger: GardenLedger, now: number): RuleResult {
  * @details Unprotected plants have a small seeded chance each cycle to catch
  * pests: value halves and the remaining growth time is stretched 50%.
  */
+/** @brief Rolls fires and crows per farm cycle unless protected. */
+export function settleHazards(ledger: GardenLedger, now: number): GardenLedger {
+  const elapsed = now - (ledger.hazardSettledAt ?? now);
+  if (elapsed < FARM_CYCLE_MS) return ledger;
+  const cycles = Math.min(20, Math.floor(elapsed / FARM_CYCLE_MS));
+  if (cycles <= 0) return ledger;
+  const next = clone(ledger);
+  next.hazardSettledAt = (ledger.hazardSettledAt ?? now) + cycles * FARM_CYCLE_MS;
+  if (!Array.isArray(next.damagedPlots)) next.damagedPlots = [];
+  while (next.damagedPlots.length < next.plots.length) next.damagedPlots.push(false);
+
+  for (let step = 0; step < cycles; step += 1) {
+    const cycle = Math.floor((ledger.hazardSettledAt ?? now) / FARM_CYCLE_MS) + step;
+
+    if (ledger.attachments?.fire !== "fireSystem") {
+      const rng = createRng(hash32(`fire:${ledger.playerId}:${cycle}`));
+      if (rng() < FIRE_CHANCE_PER_CYCLE) {
+        const candidates: number[] = [];
+        next.plots.forEach((plot, slot) => {
+          if (plot !== null && next.damagedPlots?.[slot] !== true) candidates.push(slot);
+        });
+        if (candidates.length > 0) {
+          const pick = candidates[Math.min(candidates.length - 1, Math.floor(rng() * candidates.length))];
+          if (pick !== undefined) {
+            next.plots[pick] = null;
+            next.damagedPlots[pick] = true;
+            next.soil[pick] = 0;
+          }
+        }
+      }
+    }
+
+    if (ledger.attachments?.garden !== "scarecrow") {
+      const rng = createRng(hash32(`crow:${ledger.playerId}:${cycle}`));
+      if (rng() < CROW_CHANCE_PER_CYCLE) {
+        const crops: number[] = [];
+        next.plots.forEach((plot, slot) => {
+          if (plot !== null && next.damagedPlots?.[slot] !== true) crops.push(slot);
+        });
+        const trees: number[] = [];
+        next.trees.forEach((tree, slot) => {
+          if (tree !== null) trees.push(slot);
+        });
+        const total = crops.length + trees.length;
+        if (total > 0) {
+          const pick = Math.min(total - 1, Math.floor(rng() * total));
+          if (pick < crops.length) {
+            const slot = crops[pick];
+            if (slot !== undefined) next.plots[slot] = null;
+          } else {
+            const slot = trees[pick - crops.length];
+            if (slot !== undefined) next.trees[slot] = null;
+          }
+        }
+      }
+    }
+  }
+  return next;
+}
+
 export function settleDisease(ledger: GardenLedger, now: number): GardenLedger {
   const elapsed = now - ledger.diseaseSettledAt;
   if (elapsed < FARM_CYCLE_MS) return ledger;
