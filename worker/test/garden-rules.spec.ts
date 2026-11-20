@@ -324,6 +324,29 @@ describe("garden ledger rules", () => {
     expect(mayo.ledger.bag.products?.some((s) => s.product === "duckMayo")).toBe(true);
   });
 
+  it("ferments roe into caviar", () => {
+    const ledger = makeLedger();
+    ledger.coins = 20_000_000;
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const machine = run(built.ledger, { kind: "buildMachine", machine: "caviarFermenter" });
+    if (!machine.ok) throw new Error("fermenter failed");
+    machine.ledger.bag.products = [{ product: "roe", star: 3, qty: 1 }];
+    const started = run(machine.ledger, { kind: "craftMachine", machine: "caviarFermenter" });
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+    expect(started.ledger.bag.products).toHaveLength(0);
+    const collected = run(
+      started.ledger,
+      { kind: "collectMachine", machine: "caviarFermenter" },
+      NOW + 6 * FARM_CYCLE_MS,
+    );
+    expect(collected.ok).toBe(true);
+    if (!collected.ok) return;
+    const caviar = collected.ledger.bag.products?.find((s) => s.product === "caviar");
+    expect(caviar?.star).toBe(3);
+  });
+
   it("carries animal mutations into produce and through machines", () => {
     const ledger = makeLedger();
     ledger.buildings.coop = 1;
