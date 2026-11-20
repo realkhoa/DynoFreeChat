@@ -639,7 +639,7 @@ export function applyGardenAction(
     case "repairPlot":
       return repairPlot(ledger, action.slot, now);
     case "buyTree":
-      return buyTree(ledger, action.tree, now);
+      return buyTree(ledger, action.tree, action.slot, now);
     case "plantFruitSeed":
       return plantFruitSeed(ledger, action.slot, action.seed, now);
     case "plantTree":
@@ -2633,8 +2633,13 @@ function plantFruitSeed(ledger: GardenLedger, slot: number, seedId: SeedId, now:
 }
 
 /** @brief Buys one sapling into the first free fruit-tree slot. */
-function buyTree(ledger: GardenLedger, treeId: TreeId, now: number): RuleResult {
-  const slot = ledger.trees.findIndex((tree) => tree === null);
+function buyTree(
+  ledger: GardenLedger,
+  treeId: TreeId,
+  wantedSlot: number | undefined,
+  now: number,
+): RuleResult {
+  const slot = wantedSlot ?? ledger.trees.findIndex((tree) => tree === null);
   if (slot < 0) return { ok: false, code: "PLOT_LOCKED" };
   return plantTree(ledger, slot, treeId, now, createRng(hash32(`tree:${ledger.playerId}:${treeId}:${now}`)));
 }

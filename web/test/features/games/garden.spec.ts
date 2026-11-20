@@ -2327,7 +2327,7 @@ describe("mobile layout", () => {
 
 describe("market tab", () => {
   it("lists the shop offers and buys one seed", async () => {
-    const api = new FakeGardenApi(makeState());
+    const api = new FakeGardenApi(makeState({ coins: 10_000 }));
     const { host, game } = await mountGame(api);
     mounted.push(game);
 

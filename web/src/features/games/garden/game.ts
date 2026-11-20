@@ -3406,24 +3406,30 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       price: number;
       stock: number | null;
       owned: number;
+      oneOnly?: boolean;
       data: Record<string, string>;
     }): HTMLButtonElement => {
       const soldOut = item.stock !== null && item.stock <= 0;
+      const qty = item.oneOnly === true ? 1 : buyQty;
+      const total = item.price * qty;
       const card = document.createElement("button");
       card.type = "button";
       card.className = "garden-buy-card";
       if (soldOut) {
         card.classList.add("is-sold-out");
         card.disabled = true;
+      } else if ((state?.coins ?? 0) < total) {
+        card.disabled = true;
+        card.classList.add("is-unaffordable");
       }
       card.dataset.act = item.act;
       for (const [key, value] of Object.entries(item.data)) card.dataset[key] = value;
-      card.title = `${item.name} · ${formatNumber(item.price)}c × ${buyQty} = ${formatNumber(item.price * buyQty)}c`;
+      card.title = `${item.name} · ${formatNumber(item.price)}c × ${qty} = ${formatNumber(total)}c`;
       card.append(
         span("garden-buy-line is-glyph", item.glyph),
         span("garden-buy-line is-name", item.name),
         span("garden-buy-line is-price", `${formatCompact(item.price)}c`),
-        span("garden-buy-line", `x${buyQty}=${formatCompact(item.price * buyQty)}c`),
+        span("garden-buy-line", `x${qty}=${formatCompact(total)}c`),
         span(
           "garden-buy-line is-stock",
           soldOut
@@ -3498,6 +3504,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         price: tree.buy,
         stock: null,
         owned: 0,
+        oneOnly: true,
         data: { tree: tree.id },
       });
     }
@@ -5814,7 +5821,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         return;
       case "buyTree": {
         const tree = target.dataset.tree as TreeId | undefined;
-        if (tree !== undefined) void runAction({ kind: "buyTree", tree }, t("market.treeBought"));
+        if (tree === undefined) return;
+        const start = treeOffset();
+        let slot: number | null = null;
+        for (let index = 0; index < TREES_PER_TAB; index += 1) {
+          if (treeAt(start + index) === null) {
+            slot = start + index;
+            break;
+          }
+        }
+        if (slot === null) {
+          message = { text: t("garden.noTreeSlot"), kind: "err" };
+          render();
+          return;
+        }
+        void runAction({ kind: "buyTree", tree, slot }, t("market.treeBought"));
         return;
       }
       case "buy": {

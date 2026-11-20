@@ -3009,7 +3009,7 @@ export type GardenAction =
   | { readonly kind: "buyPrestigeSeed"; readonly seed: SeedId }
   | { readonly kind: "buyFinalSeed"; readonly seed: SeedId }
   | { readonly kind: "repairPlot"; readonly slot: number }
-  | { readonly kind: "buyTree"; readonly tree: TreeId }
+  | { readonly kind: "buyTree"; readonly tree: TreeId; readonly slot?: number }
   | { readonly kind: "plantFruitSeed"; readonly slot: number; readonly seed: SeedId }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
@@ -3617,7 +3617,11 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   if (kind === "buyTree") {
     const tree = typeof value.tree === "string" ? treeById(value.tree) : undefined;
     if (tree === undefined) return null;
-    return { kind, tree: tree.id };
+    const slot = value.slot === undefined ? undefined : Number(value.slot);
+    if (slot !== undefined && (!Number.isInteger(slot) || slot < 0 || slot >= totalTrees(MAX_TABS))) {
+      return null;
+    }
+    return { kind, tree: tree.id, ...(slot === undefined ? {} : { slot }) };
   }
   if (kind === "repairPlot") {
     const slot = Number(value.slot);

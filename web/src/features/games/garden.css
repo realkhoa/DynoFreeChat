@@ -1901,3 +1901,9 @@ button.garden-rank-row:hover {
   background: #3a1616;
   text-shadow: 0 0 3px #ff000044;
 }
+
+/* Shop cards the wallet cannot cover yet. */
+.garden-buy-card.is-unaffordable {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

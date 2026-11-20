@@ -18,6 +18,7 @@ import type {
 } from "@dyno/shared/garden";
 import { SEEDS } from "@dyno/shared/garden";
 import { deriveTabs } from "../src/garden";
+import type { Env } from "../src/env";
 import { BASE, ORIGIN, uniqueIp } from "./helpers";
 
 /** One freshly registered garden. */
@@ -228,6 +229,25 @@ describe("garden play", () => {
   it("requires the owner credentials for play", async () => {
     const response = await SELF.fetch(`${BASE}/api/garden/state`, { headers: { origin: ORIGIN } });
     expect(response.status).toBe(401);
+  });
+
+  it("buys a fruit tree through the API", async () => {
+    const registered = await register();
+    const bindings = env as unknown as Env;
+    const garden = bindings.GARDEN.get(bindings.GARDEN.idFromName(registered.playerId));
+    await runInDurableObject(garden, (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'ledger'")
+        .toArray()[0];
+      if (row === undefined) throw new Error("ledger missing");
+      const meta = JSON.parse(row.value) as { coins: number };
+      meta.coins = 10_000;
+      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'ledger'", JSON.stringify(meta));
+    });
+    const bought = await act(registered, registered.state.rev, { kind: "buyTree", tree: "apple" });
+    expect(bought.status).toBe(200);
+    const payload = bought.payload as GardenActResponse;
+    expect(payload.state.trees[0]?.tree).toBe("apple");
   });
 
   it("plants a bagged seed and rejects a stale revision", async () => {
