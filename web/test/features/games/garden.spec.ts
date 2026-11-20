@@ -1830,6 +1830,45 @@ describe("compact amounts", () => {
   });
 });
 
+describe("bulk uproot preview", () => {
+  it("lists the crops before confirming the uproot", async () => {
+    const carrot = {
+      slot: 0,
+      seed: "carrot" as const,
+      plantedAt: CLOCK,
+      readyAt: CLOCK + 600_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const api = new FakeGardenApi(makeState({ plots: [carrot] }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="bulkUproot"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="uprootSeed"][data-seed="carrot"]')?.click();
+    await settle();
+
+    expect(api.calls.some((call) => call.action?.kind === "uprootBulk")).toBe(false);
+    const preview = host.querySelector(".garden-garden")?.textContent ?? "";
+    expect(preview).toContain("Sắp nhổ");
+    expect(preview).toContain("Cà rốt ×1");
+
+    host.querySelector<HTMLButtonElement>('[data-act="uprootConfirm"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "uprootBulk")?.action).toMatchObject({
+      kind: "uprootBulk",
+      seed: "carrot",
+    });
+  });
+});
+
 describe("mobile layout", () => {
   it("ships responsive garden rules for stacking and small cells", () => {
     const css = readFileSync(resolve(process.cwd(), "src/features/games/garden.css"), "utf8");

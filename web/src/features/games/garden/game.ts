@@ -229,6 +229,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let specialMenu: { slot: number; x: number; y: number } | null = null;
   let bulkPanel: "plan" | "uproot" | null = null;
   let confirmPrestige = false;
+  let uprootPending: { seed?: SeedId; priceBelow?: number; profit?: "loss" | "win" } | null = null;
   let uprootPriceDraft = "";
   let giftCode = "";
   let giftAmount = "1000";
@@ -2320,6 +2321,41 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Crops the pending bulk-uproot filter would remove, grouped. */
+  function uprootTargets(filter: { seed?: SeedId; priceBelow?: number; profit?: "loss" | "win" }): {
+    summary: string;
+    count: number;
+  } {
+    if (state === null || season === null) return { summary: "", count: 0 };
+    const at = now();
+    const counts = new Map<SeedId, number>();
+    let total = 0;
+    for (const plot of state.plots) {
+      if (plot === null || plot.favorite === true) continue;
+      if (filter.seed !== undefined && plot.seed !== filter.seed) continue;
+      const value = cropSellPrice(
+        {
+          item: plot.seed,
+          effects: resolvedCropEffects(plot, at),
+          pest: plot.pest,
+          star: 1,
+          qty: 1,
+        },
+        season,
+      );
+      if (filter.priceBelow !== undefined && value >= filter.priceBelow) continue;
+      if (filter.profit !== undefined) {
+        const cost = seedById(plot.seed)?.buy ?? 0;
+        const winning = value > cost;
+        if (filter.profit === "win" ? !winning : winning) continue;
+      }
+      counts.set(plot.seed, (counts.get(plot.seed) ?? 0) + 1);
+      total += 1;
+    }
+    const summary = [...counts].map(([seed, count]) => `${seedName(seed)} ×${count}`).join(", ");
+    return { summary, count: total };
+  }
+
   /** @brief Builds the garden tab: pager plus the crop grid and fruit stack. */
   function buildGarden(): HTMLElement {
     const wrap = div("garden-garden");
@@ -2493,31 +2529,45 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
       if (bulkPanel === "uproot") {
         const panel = div("garden-tools");
-        const planted = new Map<SeedId, number>();
-        for (const plot of state?.plots ?? []) {
-          if (plot === null) continue;
-          planted.set(plot.seed, (planted.get(plot.seed) ?? 0) + 1);
-        }
-        for (const [seed, count] of planted) {
-          const button = actionButton(
-            `${t("auto.byPlant", { seed: seedName(seed) })} ×${count}`,
-            "uprootSeed",
+        if (uprootPending !== null) {
+          const targets = uprootTargets(uprootPending);
+          panel.append(
+            lineBlock(
+              targets.count > 0 ? t("auto.preview", { crops: targets.summary }) : t("auto.previewEmpty"),
+            ),
           );
-          button.dataset.seed = seed;
-          panel.append(button);
+          panel.append(
+            actionButton(t("auto.confirmUproot"), "uprootConfirm", targets.count > 0),
+            actionButton(t("auto.cancelUproot"), "uprootCancel"),
+          );
+          wrap.append(panel);
+        } else {
+          const planted = new Map<SeedId, number>();
+          for (const plot of state?.plots ?? []) {
+            if (plot === null) continue;
+            planted.set(plot.seed, (planted.get(plot.seed) ?? 0) + 1);
+          }
+          for (const [seed, count] of planted) {
+            const button = actionButton(
+              `${t("auto.byPlant", { seed: seedName(seed) })} ×${count}`,
+              "uprootSeed",
+            );
+            button.dataset.seed = seed;
+            panel.append(button);
+          }
+          panel.append(actionButton(t("auto.loss"), "uprootLoss"), actionButton(t("auto.win"), "uprootWin"));
+          const priceInput = document.createElement("input");
+          priceInput.type = "number";
+          priceInput.min = "0";
+          priceInput.className = "stage-input garden-uproot-price";
+          priceInput.placeholder = t("auto.price");
+          priceInput.value = uprootPriceDraft;
+          priceInput.dataset.role = "uprootPrice";
+          priceInput.setAttribute("aria-label", t("auto.price"));
+          panel.append(priceInput, actionButton(t("auto.uprootPrice"), "uprootPrice"));
+          panel.append(span("garden-hint", t("auto.hint")));
+          wrap.append(panel);
         }
-        panel.append(actionButton(t("auto.loss"), "uprootLoss"), actionButton(t("auto.win"), "uprootWin"));
-        const priceInput = document.createElement("input");
-        priceInput.type = "number";
-        priceInput.min = "0";
-        priceInput.className = "stage-input garden-uproot-price";
-        priceInput.placeholder = t("auto.price");
-        priceInput.value = uprootPriceDraft;
-        priceInput.dataset.role = "uprootPrice";
-        priceInput.setAttribute("aria-label", t("auto.price"));
-        panel.append(priceInput, actionButton(t("auto.uprootPrice"), "uprootPrice"));
-        panel.append(span("garden-hint", t("auto.hint")));
-        wrap.append(panel);
       }
 
       wrap.append(lineBlock(`// ${t("staff.title")}`));
@@ -4131,15 +4181,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "uprootSeed": {
         const seed = target.dataset.seed as SeedId | undefined;
         if (seed !== undefined) {
-          void runAction({ kind: "uprootBulk", seed }, t("auto.uprooted"));
+          uprootPending = { seed };
+          render();
         }
         return;
       }
       case "uprootLoss":
-        void runAction({ kind: "uprootBulk", profit: "loss" }, t("auto.uprooted"));
+        uprootPending = { profit: "loss" };
+        render();
         return;
       case "uprootWin":
-        void runAction({ kind: "uprootBulk", profit: "win" }, t("auto.uprooted"));
+        uprootPending = { profit: "win" };
+        render();
         return;
       case "uprootPrice": {
         const priceBelow = Number(uprootPriceDraft);
@@ -4148,9 +4201,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           render();
           return;
         }
-        void runAction({ kind: "uprootBulk", priceBelow }, t("auto.uprooted"));
+        uprootPending = { priceBelow };
+        render();
         return;
       }
+      case "uprootConfirm": {
+        if (uprootPending === null) return;
+        const filter = uprootPending;
+        uprootPending = null;
+        void runAction({ kind: "uprootBulk", ...filter }, t("auto.uprooted"));
+        return;
+      }
+      case "uprootCancel":
+        uprootPending = null;
+        render();
+        return;
       case "quickSupplyAll": {
         const kind = target.dataset.kind === "spray" ? "spray" : "fertilize";
         const supply = target.dataset.supply as SupplyId | undefined;
