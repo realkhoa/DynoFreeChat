@@ -2514,6 +2514,31 @@ function liquidationValue(ledger: GardenLedger, season: SeasonSnapshot, now: num
   return total;
 }
 
+/** @brief Returns every held/queued machine input to the bag. */
+function recoverMachineInputs(ledger: GardenLedger): void {
+  for (const [id, machine] of Object.entries(ledger.machines) as Array<[MachineId, MachineState]>) {
+    const jobs: MachineJob[] = [];
+    if (machine.job !== undefined) jobs.push(machine.job);
+    for (const job of machine.queue ?? []) jobs.push(job);
+    if (jobs.length === 0) continue;
+    for (const job of jobs) {
+      const effects = job.effects ?? [];
+      if (productById(job.item) !== undefined) {
+        ledger.bag.products = ledger.bag.products ?? [];
+        addProduct(ledger.bag.products, job.item as ProductId, job.star ?? 1, 1, effects);
+      } else {
+        addCrop(ledger.bag.crops, job.item as ItemId, effects, 1, false, job.star ?? 1);
+      }
+    }
+    ledger.machines[id] = {
+      ...machine,
+      job: undefined,
+      queue: [],
+      lastCraftAt: 0,
+    };
+  }
+}
+
 /** @brief Resets crops and animals for permanent prestige bonuses. */
 function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): RuleResult {
   if (ledger.stats.earned < prestigeRequirement(ledger.prestige)) {
@@ -2534,7 +2559,12 @@ function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): Ru
     barn: next.animals.barn.map(() => null),
     pond: (next.animals.pond ?? []).map(() => null),
   };
-  next.bag = { ...next.bag, seeds: { ...prestigeStarterSeeds(next.prestige) }, crops: [] };
+  next.bag = {
+    ...next.bag,
+    seeds: { ...prestigeStarterSeeds(next.prestige) },
+    crops: [],
+  };
+  recoverMachineInputs(next);
   next.stats = { ...next.stats, planted: 0, harvested: 0, earned: 0 };
   next.prestige = ledger.prestige + 1;
   next.questDay = wheelDayAt(now);

@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EPOCH_MS,
+  FARM_CYCLE_MS,
   EVENT_WAVE_MS,
   WHEEL_PITY,
   wheelCost,
@@ -230,7 +231,19 @@ describe("extras", () => {
 
     ledger.coins = 250_000_000_000;
     ledger.warehouse = 1;
-    ledger.machines = { seedMaker: { level: 2, lastCraftAt: 0 } };
+    ledger.machines = {
+      seedMaker: {
+        level: 2,
+        lastCraftAt: 0,
+        job: { item: "tomato", startedAt: NOW, readyAt: NOW + FARM_CYCLE_MS, star: 3 },
+        queue: [{ item: "tomato", startedAt: NOW, readyAt: NOW + FARM_CYCLE_MS, star: 2 }],
+      },
+      cheesePress: {
+        level: 1,
+        lastCraftAt: 0,
+        job: { item: "milk", startedAt: NOW, readyAt: NOW + FARM_CYCLE_MS, star: 4 },
+      },
+    };
     ledger.plots[0] = {
       slot: 0,
       seed: "carrot",
@@ -257,6 +270,15 @@ describe("extras", () => {
     expect(prestiged.ledger.prestigeCoins).toBe(2);
     expect(prestiged.ledger.warehouse).toBe(1);
     expect(prestiged.ledger.machines.seedMaker?.level).toBe(2);
+    // Held machine inputs come back to the bag instead of vanishing.
+    expect(prestiged.ledger.machines.seedMaker?.job).toBeUndefined();
+    expect(prestiged.ledger.machines.seedMaker?.queue).toEqual([]);
+    expect(
+      prestiged.ledger.bag.crops
+        .filter((stack) => stack.item === "tomato")
+        .reduce((sum, stack) => sum + stack.qty, 0),
+    ).toBe(2);
+    expect(prestiged.ledger.bag.products?.find((stack) => stack.product === "milk")?.star).toBe(4);
     expect(prestiged.ledger.plots.every((plot) => plot === null)).toBe(true);
     expect(prestiged.ledger.animals.coop.every((animal) => animal === null)).toBe(true);
     // The reset still hands back a starter seed pack.
