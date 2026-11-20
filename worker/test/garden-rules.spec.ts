@@ -1108,6 +1108,25 @@ describe("garden ledger rules", () => {
     expect(afterSecond.bag.products?.find((stack) => stack.product === "wine")?.qty).toBe(4);
   });
 
+  it("refunds queued machine batches when the queue is cleared", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000;
+    ledger.bag.crops = [{ item: "apple", effects: [], qty: 2 }];
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const keg = run(built.ledger, { kind: "buildMachine", machine: "keg" });
+    if (!keg.ok) throw new Error("keg failed");
+    const first = run(keg.ledger, { kind: "queueMachine", machine: "keg", item: "apple" });
+    if (!first.ok) throw new Error("queue failed");
+    const second = run(first.ledger, { kind: "queueMachine", machine: "keg", item: "apple" });
+    if (!second.ok) throw new Error("queue failed");
+    const cleared = run(second.ledger, { kind: "clearMachineQueue", machine: "keg" });
+    expect(cleared.ok).toBe(true);
+    if (!cleared.ok) return;
+    expect(cleared.ledger.machines.keg?.queue).toHaveLength(0);
+    expect(cleared.ledger.bag.crops[0]?.qty).toBe(2);
+  });
+
   it("boosts machine output and speed with levels", () => {
     const ledger = makeLedger();
     ledger.coins = 10_000_000;

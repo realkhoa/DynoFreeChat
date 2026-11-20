@@ -2587,6 +2587,7 @@ export type GardenAction =
       readonly item?: ItemId;
     }
   | { readonly kind: "collectMachine"; readonly machine: MachineId }
+  | { readonly kind: "clearMachineQueue"; readonly machine: MachineId }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
   | { readonly kind: "sellAll" }
@@ -3167,6 +3168,10 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     }
     const tool = typeof value.tool === "string" ? toolById(value.tool) : undefined;
     return tool === undefined ? null : { kind, code, tool: tool.id, qty };
+  }
+  if (kind === "clearMachineQueue") {
+    const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
+    return machine === undefined ? null : { kind, machine: machine.id };
   }
   if (kind === "collectMachine") {
     const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;

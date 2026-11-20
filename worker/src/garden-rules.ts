@@ -694,6 +694,8 @@ export function applyGardenAction(
       return craftMachine(ledger, action.machine, action.item, now);
     case "queueMachine":
       return queueMachine(ledger, action.machine, action.item, now);
+    case "clearMachineQueue":
+      return clearMachineQueue(ledger, action.machine, now);
     case "collectMachine":
       return collectMachine(ledger, action.machine, now);
     case "harvestAll":
@@ -2985,6 +2987,26 @@ function collectMachine(ledger: GardenLedger, id: MachineId, now: number): RuleR
   const settled = finishMachineJob(ledger, id, now);
   if (settled === null) return { ok: false, code: "NOT_READY" };
   return changed(settleMachines(settled, now), now);
+}
+
+/** @brief Refunds every queued batch back into the bag. */
+function clearMachineQueue(ledger: GardenLedger, id: MachineId, now: number): RuleResult {
+  const definition = machineById(id);
+  const machine = ledger.machines[id];
+  if (definition === undefined || machine === undefined) return { ok: false, code: "MACHINE_LOCKED" };
+  const queue = machine.queue ?? [];
+  if (queue.length === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  const next = clone(ledger);
+  next.bag.products ??= [];
+  for (const hold of queue) {
+    if (definition.input.kind === "product") {
+      addProduct(next.bag.products, hold.item as ProductId, hold.star ?? 1, 1);
+    } else {
+      addCrop(next.bag.crops, hold.item, [], 1, false, 1);
+    }
+  }
+  next.machines[id] = { ...machine, queue: [] };
+  return changed(next, now);
 }
 
 /** @brief Crafts one batch immediately, or queues a batch for later. */

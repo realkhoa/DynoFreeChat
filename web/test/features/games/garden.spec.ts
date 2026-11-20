@@ -1737,6 +1737,43 @@ describe("chart tab", () => {
 });
 
 describe("warehouse machines", () => {
+  it("colors the level and clears a queue from the popover", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        warehouse: {
+          level: 1,
+          machines: {
+            seedMaker: {
+              level: 3,
+              lastCraftAt: 0,
+              queue: [
+                { item: "carrot", startedAt: 0, readyAt: 0 },
+                { item: "carrot", startedAt: 0, readyAt: 0 },
+              ],
+            },
+          },
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:warehouse"]')?.click();
+    await settle();
+
+    const row = host.querySelector<HTMLButtonElement>(".garden-warehouse-row");
+    expect(row?.querySelector(".is-level-3")).not.toBeNull();
+    row?.click();
+    await settle();
+    expect(host.querySelector(".garden-menu-info")?.textContent).toContain("2");
+    host.querySelector<HTMLButtonElement>('[data-act="machineClearQueue"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "clearMachineQueue")?.action).toMatchObject({
+      kind: "clearMachineQueue",
+      machine: "seedMaker",
+    });
+  });
+
   it("shows one label per machine and queues from the popover", async () => {
     const api = new FakeGardenApi(
       makeState({

@@ -1485,3 +1485,53 @@
 .garden-staff-menu .garden-line {
   white-space: pre;
 }
+
+/* Warehouse: one compact line per machine, level colour-coded. */
+.garden-warehouse-machine {
+  display: block;
+  width: 100%;
+}
+
+.garden-warehouse-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 4px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  color: #d4d4d4;
+  font: 9.5px/15px var(--font-mono);
+  text-align: left;
+  cursor: pointer;
+}
+
+.garden-warehouse-row:hover {
+  background: var(--hover-row);
+}
+
+.garden-warehouse-name {
+  color: #dcdcaa;
+}
+
+.garden-warehouse-level.is-level-1 {
+  color: #ffffff;
+}
+
+.garden-warehouse-level.is-level-2 {
+  color: #6fe3b5;
+}
+
+.garden-warehouse-level.is-level-3 {
+  color: #9cdcfe;
+}
+
+.garden-warehouse-status {
+  color: #8a8a8a;
+}
+
+.garden-warehouse-queue {
+  margin-left: auto;
+  color: #d7ba7d;
+}
