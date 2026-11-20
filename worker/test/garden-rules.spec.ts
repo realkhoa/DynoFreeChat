@@ -271,11 +271,11 @@ describe("garden ledger rules", () => {
       bornAt: NOW - 10 * FARM_CYCLE_MS,
       pats: 0,
       lastProduceAt: NOW - 10 * FARM_CYCLE_MS,
-      effects: ["golden"],
+      effects: ["golden", "golden", "diamond"],
     };
     const settled = settleFarm(ledger, NOW + 10 * FARM_CYCLE_MS);
     const egg = settled.bag.products?.find((stack) => stack.product === "egg");
-    expect(egg?.effects).toEqual(["golden"]);
+    expect(egg?.effects).toEqual(["golden", "golden", "diamond"]);
 
     const warehouse = run(settled, { kind: "buildWarehouse" });
     if (!warehouse.ok) throw new Error("warehouse failed");
@@ -285,7 +285,7 @@ describe("garden ledger rules", () => {
     expect(crafted.ok).toBe(true);
     if (!crafted.ok) return;
     const mayo = crafted.ledger.bag.products?.find((stack) => stack.product === "mayo");
-    expect(mayo?.effects).toEqual(["golden"]);
+    expect(mayo?.effects).toEqual(["golden", "golden", "diamond"]);
   });
 
   it("keeps reharvest plants after picking and regrows the fruit", () => {

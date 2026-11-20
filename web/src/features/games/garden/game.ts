@@ -1234,7 +1234,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const lines = [
       `// ${t("farm.stats")}`,
       labelValue(t("farm.quality"), `${"*".repeat(stars)} ${stars}/5`),
-      labelValue(t("farm.mutations"), effectBadge(animal.effects ?? []) || t("side.none")),
+      labelValue(t("farm.mutations"), effectListText(animal.effects ?? [])),
       labelValue(
         t("farm.pats"),
         `${animal.pats} · ${t("farm.age")} ${formatDuration(Math.max(0, at - animal.bornAt))}`,

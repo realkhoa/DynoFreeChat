@@ -1870,14 +1870,13 @@ function patAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now
   const next = clone(ledger);
   const pats = animal.pats + 1;
   const effects = canonicalEffects(animal.effects ?? []);
-  // Petting is the mutation path for livestock: a small deterministic roll.
-  if (effects.length < 5) {
-    const rng = createRng(hash32(`animalmut:${ledger.playerId}:${building}:${slot}:${pats}`));
-    if (rng() < 0.08) {
-      const pool = EFFECTS.filter((effect) => effect.natural);
-      const picked = pool[Math.floor(rng() * pool.length)];
-      if (picked !== undefined) effects.push(picked.id);
-    }
+  // Petting is the mutation path for livestock. Each type can stack up to
+  // MAX_EFFECT_STACK copies, so one animal can carry several mutations.
+  const rng = createRng(hash32(`animalmut:${ledger.playerId}:${building}:${slot}:${pats}`));
+  if (rng() < 0.08) {
+    const pool = EFFECTS.filter((effect) => effect.natural);
+    const picked = pool[Math.floor(rng() * pool.length)];
+    if (picked !== undefined) effects.push(picked.id);
   }
   next.animals[building][slot] = {
     ...animal,
