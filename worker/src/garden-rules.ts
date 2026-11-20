@@ -142,6 +142,7 @@ import {
   FINAL_SHOP_PRESTIGE,
   prestigeGrowScale,
   prestigeRequirement,
+  prestigeStarterSeeds,
   eventsAt,
   growTimeForEvents,
   rollEffectsFor,
@@ -2533,7 +2534,7 @@ function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): Ru
     barn: next.animals.barn.map(() => null),
     pond: (next.animals.pond ?? []).map(() => null),
   };
-  next.bag = { ...next.bag, seeds: {}, crops: [] };
+  next.bag = { ...next.bag, seeds: { ...prestigeStarterSeeds(next.prestige) }, crops: [] };
   next.stats = { ...next.stats, planted: 0, harvested: 0, earned: 0 };
   next.prestige = ledger.prestige + 1;
   next.questDay = wheelDayAt(now);

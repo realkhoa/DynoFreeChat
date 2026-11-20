@@ -2148,6 +2148,20 @@ export function prestigeRequirement(level: number): number {
   return PRESTIGE_BASE_EARNED * (Math.max(0, level) + 1);
 }
 
+/** @brief Starter seeds handed out when a prestige reset wipes the bag. */
+export function prestigeStarterSeeds(level: number): Partial<Record<SeedId, number>> {
+  const seeds: Partial<Record<SeedId, number>> = {
+    carrot: 20,
+    parsnip: 10,
+    potato: 5,
+  };
+  if (level >= 1) seeds.corn = 5;
+  if (level >= 2) seeds.pumpkin = 3;
+  if (level >= 3) seeds.watermelon = 2;
+  if (level >= 5) seeds.dragonFruit = 1;
+  return seeds;
+}
+
 /** @brief Sale multiplier granted by prestige levels (+50% per level). */
 export function prestigeSellBonus(level: number): number {
   return 1 + Math.max(0, level) * 0.5;

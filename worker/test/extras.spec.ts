@@ -259,6 +259,10 @@ describe("extras", () => {
     expect(prestiged.ledger.machines.seedMaker?.level).toBe(2);
     expect(prestiged.ledger.plots.every((plot) => plot === null)).toBe(true);
     expect(prestiged.ledger.animals.coop.every((animal) => animal === null)).toBe(true);
+    // The reset still hands back a starter seed pack.
+    expect(prestiged.ledger.bag.seeds.carrot).toBe(20);
+    expect(prestiged.ledger.bag.seeds.parsnip).toBe(10);
+    expect(prestiged.ledger.bag.seeds.potato).toBe(5);
   });
 
   it("buys final-shop plants with prestige coins", () => {

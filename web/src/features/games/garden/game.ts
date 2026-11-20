@@ -52,6 +52,7 @@ import {
   PRESTIGE_SHOP,
   prestigeGrowScale,
   prestigeRequirement,
+  prestigeStarterSeeds,
   prestigeSellBonus,
   SPRAYS,
   SPRAY_MUTATION_BOOST,
@@ -3582,6 +3583,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }),
       ),
     );
+    const starters = Object.entries(prestigeStarterSeeds(prestigeLevel + 1))
+      .map(([seed, qty]) => `${seedName(seed as SeedId)} ×${qty}`)
+      .join(", ");
+    control.append(lineBlock(t("prestige.starterSeeds", { list: starters })));
     const prestigeCoinLine = lineBlock(
       t("prestige.coins", { coins: formatCompact(extras.prestigeCoins ?? 0) }),
     );
