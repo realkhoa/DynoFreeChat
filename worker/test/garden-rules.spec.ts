@@ -230,6 +230,20 @@ describe("garden ledger rules", () => {
     expect(run(repaired.ledger, { kind: "plant", slot: 0, seed: "carrot" }).ok).toBe(true);
   });
 
+  it("only plants fruit seeds in fruit-tree plots", () => {
+    const ledger = makeLedger();
+    ledger.prestige = 5;
+    ledger.bag.seeds.starfruit = 1;
+    const crop = run(ledger, { kind: "plant", slot: 0, seed: "starfruit" });
+    expect(crop.ok).toBe(false);
+    if (!crop.ok) expect(crop.code).toBe("WRONG_AREA");
+    const tree = run(ledger, { kind: "plantFruitSeed", slot: 0, seed: "starfruit" });
+    expect(tree.ok).toBe(true);
+    if (!tree.ok) return;
+    expect(tree.ledger.trees[0]?.tree).toBe("starfruit");
+    expect(tree.ledger.bag.seeds.starfruit).toBe(0);
+  });
+
   it("buys a fruit tree into the first free slot", () => {
     const ledger = makeLedger();
     ledger.coins = 1_000;
@@ -248,7 +262,7 @@ describe("garden ledger rules", () => {
     if (!locked.ok) expect(locked.code).toBe("PRESTIGE_LOCKED");
 
     ledger.prestige = 5;
-    const allowed = run(ledger, { kind: "plant", slot: 0, seed: "cocomelon" });
+    const allowed = run(ledger, { kind: "plantFruitSeed", slot: 0, seed: "cocomelon" });
     expect(allowed.ok).toBe(true);
   });
 

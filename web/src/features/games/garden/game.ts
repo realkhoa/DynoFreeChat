@@ -109,6 +109,7 @@ import {
   plotView,
   strongestEffect,
   treeById,
+  treeLikeById,
   type EffectId,
   type GardenAction,
   type GardenSnapshot,
@@ -1745,7 +1746,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (tree === null) {
         lines.push("", t("garden.empty"), t("garden.pickTree", { slot: label.plot }));
       } else {
-        const definition = treeById(tree.tree);
+        const definition = treeLikeById(tree.tree);
         const ready = at >= tree.readyAt;
         const total = Math.max(1, tree.readyAt - tree.plantedAt);
         const progress = Math.min(1, Math.max(0, at - tree.plantedAt) / total);
@@ -2106,6 +2107,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             `${fitText(treeName(treeDef.id), 9)} ${fitText(`${treeDef.buy}c`, 6)} ${formatDuration(treeDef.growMs, "short")}`,
             "menuTree",
             { data: { tree: treeDef.id }, disabled: (state?.coins ?? 0) < treeDef.buy },
+          ),
+        );
+      }
+      const ownedFruit = SEEDS.filter(
+        (seed) => seed.category === "fruit" && (state?.bag.seeds[seed.id] ?? 0) > 0,
+      );
+      for (const seed of ownedFruit) {
+        rows.append(
+          menuRow(
+            `${fitText(seedName(seed.id), 9)} ${t("garden.bag")} ${state?.bag.seeds[seed.id] ?? 0}`,
+            "menuFruitSeed",
+            { data: { seed: seed.id } },
           ),
         );
       }
@@ -4814,8 +4827,36 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             return;
           }
           if (tool.kind === "plant") {
-            // Quick plant: one click sows the picked seed, no menu in the way.
-            const occupied = area === "tree" || plotAt(slot) !== null || isPreviewPage();
+            const seedDef = seedById(tool.seed);
+            if (area === "tree") {
+              if (seedDef?.category !== "fruit") {
+                message = { text: translateError("WRONG_AREA"), kind: "err" };
+                render();
+                return;
+              }
+              if (treeAt(slot) !== null || isPreviewPage()) {
+                message = { text: t("garden.plantOccupied"), kind: "info" };
+                render();
+                return;
+              }
+              if ((state?.bag.seeds[tool.seed] ?? 0) < 1) {
+                message = { text: t("garden.plantNoSeeds"), kind: "err" };
+                tool = null;
+                render();
+                return;
+              }
+              void runAction(
+                { kind: "plantFruitSeed", slot, seed: tool.seed },
+                t("garden.plantedFruitSeed", { seed: seedName(tool.seed) }),
+              );
+              return;
+            }
+            if (seedDef?.category === "fruit") {
+              message = { text: translateError("WRONG_AREA"), kind: "err" };
+              render();
+              return;
+            }
+            const occupied = plotAt(slot) !== null || isPreviewPage();
             if (occupied) {
               message = { text: t("garden.plantOccupied"), kind: "info" };
               render();
@@ -5162,6 +5203,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           t("garden.patchBought", { patch: plotLabel(menu?.slot ?? cropOffset(), "crop").patch }),
         );
         closeMenu();
+        return;
+      }
+      case "menuFruitSeed": {
+        const seed = target.dataset.seed as SeedId | undefined;
+        const slot = menu?.slot;
+        if (seed !== undefined && slot !== undefined) {
+          closeMenu();
+          void runAction(
+            { kind: "plantFruitSeed", slot, seed },
+            t("garden.plantedFruitSeed", { seed: seedName(seed) }),
+          );
+        }
         return;
       }
       case "repairPlot": {

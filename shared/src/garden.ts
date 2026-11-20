@@ -3010,6 +3010,7 @@ export type GardenAction =
   | { readonly kind: "buyFinalSeed"; readonly seed: SeedId }
   | { readonly kind: "repairPlot"; readonly slot: number }
   | { readonly kind: "buyTree"; readonly tree: TreeId }
+  | { readonly kind: "plantFruitSeed"; readonly slot: number; readonly seed: SeedId }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
   | {
@@ -3075,7 +3076,8 @@ export type GardenErrorCode =
   | "CANNOT_VISIT_SELF"
   | "GIFT_SELF"
   | "PRESTIGE_LOCKED"
-  | "PLOT_DAMAGED";
+  | "PLOT_DAMAGED"
+  | "WRONG_AREA";
 
 /** Successful response to a garden action. */
 export interface GardenActResponse {
@@ -3121,6 +3123,21 @@ export function seedById(id: string): SeedDefinition | undefined {
 /** @brief Looks one fruit tree up by id. */
 export function treeById(id: string): TreeDefinition | undefined {
   return TREES.find((tree) => tree.id === id);
+}
+
+/** @brief Definition for a planted tree or a fruit seed growing in a tree plot. */
+export function treeLikeById(id: string): TreeDefinition | undefined {
+  const tree = treeById(id);
+  if (tree !== undefined) return tree;
+  const seed = seedById(id);
+  if (seed === undefined || seed.category !== "fruit") return undefined;
+  return {
+    id: seed.id as unknown as TreeId,
+    growMs: seed.growMs,
+    buy: seed.buy,
+    sell: seed.sell,
+    art: seed.art,
+  };
 }
 
 /**
@@ -3590,6 +3607,13 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return typeof value.id === "string" && value.id.length > 0 ? { kind, id: value.id } : null;
   }
   if (kind === "prestige") return { kind };
+  if (kind === "plantFruitSeed") {
+    const slot = Number(value.slot);
+    const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= totalTrees(MAX_TABS)) return null;
+    if (seed === undefined || seed.category !== "fruit") return null;
+    return { kind, slot, seed: seed.id };
+  }
   if (kind === "buyTree") {
     const tree = typeof value.tree === "string" ? treeById(value.tree) : undefined;
     if (tree === undefined) return null;

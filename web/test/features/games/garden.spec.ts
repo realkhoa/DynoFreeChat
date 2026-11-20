@@ -2334,6 +2334,11 @@ describe("market tab", () => {
     host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
     await settle();
     expect(host.querySelector("[data-restock-timer]")?.textContent).toContain("Đổi hàng");
+    const treeCard = host.querySelector<HTMLButtonElement>('[data-act="buyTree"]');
+    expect(treeCard).not.toBeNull();
+    treeCard?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "buyTree")).not.toBeUndefined();
     const cards = host.querySelectorAll<HTMLButtonElement>(".garden-buy-card");
     expect(cards.length).toBe(SEASON.shop.offers.length + 12 + SEASON.shop.tools.length + TREES.length);
     // Supplies and rare tools keep their own labelled sections.

@@ -14,6 +14,7 @@ import {
   resolvedTreeEffects,
   strongestEffect,
   treeById,
+  treeLikeById,
   type AnimalId,
   type AnimalState,
   type PlotState,
@@ -185,7 +186,7 @@ export function treeCellRender(
       progress: 0,
     };
   }
-  const definition = treeById(tree.tree);
+  const definition = treeLikeById(tree.tree);
   const glyph =
     definition?.art[
       now >= tree.readyAt

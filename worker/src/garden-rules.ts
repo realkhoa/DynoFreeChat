@@ -159,6 +159,7 @@ import {
   totalCrops,
   totalTrees,
   treeById,
+  treeLikeById,
   type ActiveFertilizer,
   type ActiveSpray,
   type AnimalId,
@@ -639,6 +640,8 @@ export function applyGardenAction(
       return repairPlot(ledger, action.slot, now);
     case "buyTree":
       return buyTree(ledger, action.tree, now);
+    case "plantFruitSeed":
+      return plantFruitSeed(ledger, action.slot, action.seed, now);
     case "plantTree":
       return plantTree(ledger, action.slot, action.tree, now, rng);
     case "harvest":
@@ -909,6 +912,7 @@ function plantAll(ledger: GardenLedger, seedId: SeedId, now: number, rng: () => 
   if (prestigeTierForSeed(seed.id) > ledger.prestige) {
     return { ok: false, code: "PRESTIGE_LOCKED" };
   }
+  if (seed.category === "fruit") return { ok: false, code: "WRONG_AREA" };
   if (ledger.damagedPlots?.every((damaged) => damaged === true) === true) {
     return { ok: false, code: "PLOT_DAMAGED" };
   }
@@ -1033,6 +1037,7 @@ function plant(
   if (prestigeTierForSeed(seed.id) > ledger.prestige) {
     return { ok: false, code: "PRESTIGE_LOCKED" };
   }
+  if (seed.category === "fruit") return { ok: false, code: "WRONG_AREA" };
   const owned = ledger.bag.seeds[seed.id] ?? 0;
   if (owned < 1) return { ok: false, code: "NO_SEED" };
 
@@ -1238,7 +1243,7 @@ function harvestTree(
   if (tree === null) return { ok: false, code: "PLOT_EMPTY" };
   if (tree.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
   if (now < tree.readyAt) return { ok: false, code: "NOT_READY" };
-  const definition = treeById(tree.tree);
+  const definition = treeLikeById(tree.tree);
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
 
   const next = clone(ledger);
@@ -2588,6 +2593,42 @@ function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): Ru
   next.stats = { ...next.stats, planted: 0, harvested: 0, earned: 0 };
   next.prestige = ledger.prestige + 1;
   next.questDay = wheelDayAt(now);
+  return changed(next, now);
+}
+
+/** @brief Plants an owned fruit seed in a fruit-tree plot. */
+function plantFruitSeed(ledger: GardenLedger, slot: number, seedId: SeedId, now: number): RuleResult {
+  if (slot >= ledger.trees.length) return { ok: false, code: "PLOT_LOCKED" };
+  if (ledger.trees[slot] !== null) return { ok: false, code: "PLOT_OCCUPIED" };
+  const seed = seedById(seedId);
+  if (seed === undefined || seed.category !== "fruit") return { ok: false, code: "WRONG_AREA" };
+  if ((ledger.bag.seeds[seed.id] ?? 0) < 1) return { ok: false, code: "NO_SEED" };
+  if (prestigeTierForSeed(seed.id) > ledger.prestige) return { ok: false, code: "PRESTIGE_LOCKED" };
+  const next = clone(ledger);
+  next.bag.seeds[seed.id] = (next.bag.seeds[seed.id] ?? 0) - 1;
+  const events = eventsAt(now);
+  next.trees[slot] = {
+    slot,
+    tree: seed.id as unknown as TreeId,
+    plantedAt: now,
+    readyAt:
+      now +
+      growTimeForEvents(
+        seed,
+        events,
+        null,
+        dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
+      ),
+    effects: [],
+    pest: false,
+    protectedUntil: 0,
+    watered: false,
+    fertilized: false,
+    harvests: 0,
+    fertilizer: null,
+    spray: null,
+  };
+  next.stats.planted += 1;
   return changed(next, now);
 }
 
