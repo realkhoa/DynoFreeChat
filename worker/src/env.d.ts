@@ -21,4 +21,6 @@ export interface Env {
   LOCK_PIN_HASH?: string;
   /** Secret shared by the cron trigger and the bot automation routes. */
   BOT_SECRET?: string;
+  /** OpenCode Go key used by the recipe lab. */
+  OPENCODE_API_KEY?: string;
 }

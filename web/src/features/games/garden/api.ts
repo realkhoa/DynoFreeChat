@@ -196,6 +196,22 @@ export class GardenApi {
     return this.request<{ bots: GardenBot[] }>("/api/garden/bots", { method: "GET" });
   }
 
+  /** @brief Asks the recipe-lab model whether a combination makes sense. */
+  async validateRecipe(
+    inputs: string[],
+    output: string,
+  ): Promise<{
+    valid: boolean;
+    reason: string;
+    suggestedPrice: number;
+  }> {
+    return this.request<{ valid: boolean; reason: string; suggestedPrice: number }>("/api/garden/recipe", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inputs, output }),
+    });
+  }
+
   /** @brief Reads the public global sale log for the log tab. */
   async sales(): Promise<{ entries: GlobalSaleEntry[] }> {
     return this.request<{ entries: GlobalSaleEntry[] }>("/api/garden/sales?limit=100", {

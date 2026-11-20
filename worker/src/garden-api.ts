@@ -83,6 +83,7 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   const auth = parseGardenAuth(request.headers.get(GARDEN_AUTH_HEADER));
   if (auth === null) return json({ code: "UNAUTHORIZED" }, 401);
 
+  if (name === "recipe" && request.method === "POST") return recipeRoute(env, request);
   if (name === "state" && request.method === "GET") return ownerResponse(env, auth, "/state", "GET", now);
   if (name === "act" && request.method === "POST")
     return ownerResponse(env, auth, "/act", "POST", now, request);
@@ -92,6 +93,64 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
     return forwardOwner(env, auth, "/recovery", "POST", request);
 
   return json({ code: "NOT_FOUND" }, 404);
+}
+
+/** @brief Validates a player-proposed cooking recipe with OpenCode Go Beam Free. */
+async function recipeRoute(env: Env, request: Request): Promise<Response> {
+  const body = await readJson(request);
+  const inputs = Array.isArray(body.inputs)
+    ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 4)
+    : [];
+  const output = typeof body.output === "string" ? body.output.trim().slice(0, 40) : "";
+  if (inputs.length < 2 || output.length === 0) return json({ code: "BAD_REQUEST" }, 400);
+  const key = env.OPENCODE_API_KEY;
+  if (key === undefined || key.length === 0) return json({ code: "RECIPE_AI_OFFLINE" }, 503);
+  const prompt = [
+    "You validate recipes for a cozy ASCII farming game.",
+    "Accept only combinations that are edible/plausible cooking or crafting and have a clear theme.",
+    "Reject nonsense, duplicates, impossible items, or outputs that do not relate to the inputs.",
+    'Reply with JSON only: {"valid":boolean,"reason":string,"suggestedPrice":number}.',
+    `Inputs: ${inputs.join(" + ")}`,
+    `Proposed output: ${output}`,
+  ].join("\n");
+  try {
+    const response = await fetch("https://opencode.ai/inference/go/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+        "x-opencode-session": "dynofreechat-recipe-lab",
+        "user-agent": "DynoFreeChat/1.0",
+      },
+      body: JSON.stringify({
+        model: "beam-free",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 500,
+      }),
+    });
+    if (!response.ok) return json({ code: "RECIPE_AI_ERROR" }, 502);
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string | null } }>;
+    };
+    const raw = payload.choices?.[0]?.message?.content ?? "";
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match === null) return json({ code: "RECIPE_AI_ERROR" }, 502);
+    const parsed = JSON.parse(match[0]) as {
+      valid?: unknown;
+      reason?: unknown;
+      suggestedPrice?: unknown;
+    };
+    return json({
+      valid: parsed.valid === true,
+      reason: typeof parsed.reason === "string" ? parsed.reason : "",
+      suggestedPrice:
+        typeof parsed.suggestedPrice === "number"
+          ? Math.max(1, Math.min(5_000_000_000, Math.floor(parsed.suggestedPrice)))
+          : 0,
+    });
+  } catch {
+    return json({ code: "RECIPE_AI_ERROR" }, 502);
+  }
 }
 
 /** @brief Durable Object stub for the bot manager. */
