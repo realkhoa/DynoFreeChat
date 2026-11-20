@@ -2149,11 +2149,14 @@ export function dailyQuestsFor(playerId: string, day: number): QuestDefinition[]
 }
 
 /** Lifetime earnings needed before the next prestige. */
-export const PRESTIGE_BASE_EARNED = 100_000_000_000;
+/** Lifetime earnings required for the first prestige: 10,000b. */
+export const PRESTIGE_BASE_EARNED = 10_000 * 1_000_000_000;
 
 /** @brief Lifetime earnings required to prestige again. */
 export function prestigeRequirement(level: number): number {
-  return PRESTIGE_BASE_EARNED * (Math.max(0, level) + 1);
+  // Next level = previous × 2^level: base × 2^(level*(level+1)/2).
+  const exponent = Math.min(40, (Math.max(0, level) * (Math.max(0, level) + 1)) / 2);
+  return PRESTIGE_BASE_EARNED * 2 ** exponent;
 }
 
 /** @brief Starter seeds handed out when a prestige reset wipes the bag. */

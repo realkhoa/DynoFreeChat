@@ -56,6 +56,7 @@ import {
   prestigeMutationBonus,
   prestigeSellBonus,
   prestigeGrowScale,
+  prestigeRequirement,
   seedMakerChance,
   wealthBadLuck,
   sprayBoostFor,
@@ -401,6 +402,13 @@ describe("farm buildings", () => {
     expect(seedMakerChance(2)).toBeCloseTo(0.7);
     expect(seedMakerChance(5)).toBe(1);
     expect(seedMakerChance(9)).toBe(1);
+  });
+
+  it("prices prestige resets at 10,000b doubling per level", () => {
+    expect(prestigeRequirement(0)).toBe(10_000_000_000_000);
+    expect(prestigeRequirement(1)).toBe(20_000_000_000_000);
+    expect(prestigeRequirement(2)).toBe(80_000_000_000_000);
+    expect(prestigeRequirement(3)).toBe(640_000_000_000_000);
   });
 
   it("ships the prestige-only cocomelon seed", () => {
