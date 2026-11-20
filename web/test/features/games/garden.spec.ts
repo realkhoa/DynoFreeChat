@@ -1885,6 +1885,36 @@ describe("mounted machines", () => {
   });
 });
 
+describe("sell all dialog", () => {
+  it("shows the amount before selling everything", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        bag: {
+          seeds: {},
+          crops: [
+            { item: "carrot", effects: [], qty: 2 },
+            { item: "tomato", effects: [], qty: 1 },
+          ],
+          supplies: {},
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="sellAll"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "sellAll")).toBe(false);
+    const dialog = host.querySelector(".garden-sell-all-dialog")?.textContent ?? "";
+    expect(dialog).toContain("Thực nhận");
+    expect(dialog).toContain("Tạm tính");
+
+    host.querySelector<HTMLButtonElement>('[data-act="sellAllConfirm"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "sellAll")).toBeTruthy();
+  });
+});
+
 describe("bulk uproot preview", () => {
   it("lists the crops before confirming the uproot", async () => {
     const carrot = {

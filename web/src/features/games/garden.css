@@ -1535,3 +1535,18 @@
   margin-left: auto;
   color: #d7ba7d;
 }
+
+/* Sell-all confirmation: centered on desktop, full width on phones. */
+.garden-sell-all-dialog {
+  width: 340px;
+}
+
+@media (max-width: 760px) {
+  .garden-sell-all-dialog {
+    left: 4px !important;
+    right: 4px !important;
+    top: 25% !important;
+    width: auto;
+    transform: none !important;
+  }
+}

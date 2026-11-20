@@ -231,6 +231,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let specialMenu: { slot: number; x: number; y: number } | null = null;
   let bulkPanel: "plan" | "uproot" | null = null;
   let confirmPrestige = false;
+  let sellAllDialog: { gross: number; net: number; stacks: number; qty: number } | null = null;
   let uprootPending: { seed?: SeedId; tree?: TreeId; priceBelow?: number; profit?: "loss" | "win" } | null =
     null;
   let uprootPriceDraft = "";
@@ -845,15 +846,28 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     );
   }
 
-  /** @brief Sells every harvested crop. */
+  /** @brief Opens the sell-all confirmation with the pending amount. */
   function sellAll(): void {
     if (state === null || season === null || state.bag.crops.length === 0) return;
-    const currentSeason = season;
     const total = state.bag.crops.reduce(
-      (sum, stack) => sum + cropSellPrice(stack, currentSeason) * stack.qty,
+      (sum, stack) => sum + cropSellPrice(stack, season as SeasonSnapshot) * stack.qty,
       0,
     );
-    void runAction({ kind: "sellAll" }, t("market.sellAllValue", { coins: total }));
+    sellAllDialog = {
+      gross: total,
+      net: total - Math.round(total * 0.1),
+      stacks: state.bag.crops.length,
+      qty: state.bag.crops.reduce((sum, stack) => sum + stack.qty, 0),
+    };
+    render();
+  }
+
+  /** @brief Confirms the pending sell-all and closes the dialog. */
+  function confirmSellAll(): void {
+    const dialog = sellAllDialog;
+    sellAllDialog = null;
+    if (dialog === null) return;
+    void runAction({ kind: "sellAll" }, t("market.sellAllValue", { coins: formatCompact(dialog.gross) }));
   }
 
   /** @brief Registers a visitor identity the first time a friend action runs. */
@@ -2969,6 +2983,45 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Confirmation dialog for the quick Sell-all button. */
+  function buildSellAllDialog(): HTMLElement | null {
+    if (sellAllDialog === null) return null;
+    const wrap = div("garden-menu garden-sell-all-dialog");
+    wrap.style.left = "50%";
+    wrap.style.top = "30%";
+    wrap.style.transform = "translateX(-50%)";
+    const head = div("garden-menu-head");
+    head.append(span("garden-menu-title", t("market.sellAllTitle")));
+    head.append(
+      (() => {
+        const close = document.createElement("button");
+        close.type = "button";
+        close.className = "garden-menu-close";
+        close.dataset.act = "sellAllCancel";
+        close.textContent = "×";
+        close.setAttribute("aria-label", t("common.close"));
+        return close;
+      })(),
+    );
+    wrap.append(head);
+    const info = document.createElement("pre");
+    info.className = "garden-menu-info";
+    info.textContent = [
+      t("market.sellAllSummary", { stacks: sellAllDialog.stacks, qty: sellAllDialog.qty }),
+      labelValue(t("market.sellAllGross"), `${formatCompact(sellAllDialog.gross)}c`),
+      labelValue(t("market.sellAllTax"), `-${formatCompact(sellAllDialog.gross - sellAllDialog.net)}c`),
+      labelValue(t("market.sellAllNet"), `${formatCompact(sellAllDialog.net)}c`),
+    ].join("\n");
+    wrap.append(info);
+    const rows = div("garden-menu-rows");
+    rows.append(
+      menuRow(t("market.sellAllConfirm"), "sellAllConfirm"),
+      menuRow(t("auto.cancelUproot"), "sellAllCancel"),
+    );
+    wrap.append(rows);
+    return wrap;
+  }
+
   /** @brief Popover for one premium plot: info first, actions below. */
   function buildSpecialMenu(at: number): HTMLElement | null {
     if (specialMenu === null || state === null) return null;
@@ -3937,6 +3990,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (specialMenu !== null) {
       const specialEl = buildSpecialMenu(now());
       if (specialEl !== null) parts.push(specialEl);
+    }
+    if (sellAllDialog !== null) {
+      const sellEl = buildSellAllDialog();
+      if (sellEl !== null) parts.push(sellEl);
     }
     root.replaceChildren(...parts);
     fitMenu();
@@ -4965,6 +5022,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "sellAll":
         sellAll();
         return;
+      case "sellAllConfirm":
+        confirmSellAll();
+        return;
+      case "sellAllCancel":
+        sellAllDialog = null;
+        render();
+        return;
       case "restore":
         void restoreGarden();
         return;
@@ -5002,6 +5066,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       if (staffMenu !== null) {
         closeStaffMenu();
+        return;
+      }
+      if (sellAllDialog !== null) {
+        sellAllDialog = null;
+        render();
         return;
       }
       if (specialMenu !== null) {
@@ -5085,6 +5154,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function onPointerDown(event: PointerEvent): void {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    if (sellAllDialog !== null && target.closest(".garden-sell-all-dialog") === null) {
+      sellAllDialog = null;
+      render();
+    }
     if (
       specialMenu !== null &&
       target.closest(".garden-menu") === null &&
