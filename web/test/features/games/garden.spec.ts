@@ -351,7 +351,7 @@ describe("garden tab", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    expect(host.querySelectorAll(".garden-tab")).toHaveLength(10);
+    expect(host.querySelectorAll(".garden-tab")).toHaveLength(11);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
     // The cell shows only the strongest mutation; the detail panel shows all.
@@ -1844,6 +1844,8 @@ describe("daily quests and prestige", () => {
       kind: "claimQuest",
       id: "water10",
     });
+    host.querySelector<HTMLButtonElement>('[data-act="tab:prestige"]')?.click();
+    await settle();
     expect(host.textContent).toContain("12.345c");
 
     const prestige = host.querySelector<HTMLButtonElement>('[data-act="prestige"]');
@@ -2004,7 +2006,7 @@ describe("prestige shop", () => {
     );
     const { host, game } = await mountGame(api);
     mounted.push(game);
-    host.querySelector<HTMLButtonElement>('[data-act="tab:extras"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-act="tab:prestige"]')?.click();
     await settle();
 
     const button = host.querySelector<HTMLButtonElement>(
@@ -2026,14 +2028,14 @@ describe("final shop", () => {
     const low = new FakeGardenApi(makeState({ extras: { ...EXTRAS, prestige: 4 } }));
     const lowMount = await mountGame(low);
     mounted.push(lowMount.game);
-    lowMount.host.querySelector<HTMLButtonElement>('[data-act="tab:extras"]')?.click();
+    lowMount.host.querySelector<HTMLButtonElement>('[data-act="tab:prestige"]')?.click();
     await settle();
     expect(lowMount.host.textContent).toContain("Mở khoá ở Prestige 5");
 
     const high = new FakeGardenApi(makeState({ extras: { ...EXTRAS, prestige: 5 } }));
     const highMount = await mountGame(high);
     mounted.push(highMount.game);
-    highMount.host.querySelector<HTMLButtonElement>('[data-act="tab:extras"]')?.click();
+    highMount.host.querySelector<HTMLButtonElement>('[data-act="tab:prestige"]')?.click();
     await settle();
     expect(highMount.host.textContent).toContain("Cửa hàng cuối");
     expect(highMount.host.textContent).toContain("Đã mở khoá");

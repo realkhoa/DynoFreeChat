@@ -61,6 +61,7 @@ export const VI: Dictionary = {
   "tabs.rank": "xếp hạng",
   "tabs.warehouse": "kho",
   "tabs.extras": "mở rộng",
+  "tabs.prestige": "prestige",
   "tabs.levels": "cấp độ",
 
   "garden.code": "Mã vườn",
@@ -621,6 +622,7 @@ export const VI: Dictionary = {
   "quests.pat5": "Vuốt 5 động vật",
   "quests.craft2": "Chế biến 2 mẻ trong kho",
   "prestige.title": "Prestige",
+  "prestige.mutationBonus": "Tỉ lệ mutation +{percent}%",
   "finalShop.title": "Cửa hàng cuối",
   "finalShop.locked": "Mở khoá ở Prestige {tier}.",
   "finalShop.unlocked": "Đã mở khoá.",
@@ -924,6 +926,7 @@ export const EN: Dictionary = {
   "tabs.rank": "rank",
   "tabs.warehouse": "warehouse",
   "tabs.extras": "extras",
+  "tabs.prestige": "prestige",
   "tabs.levels": "levels",
 
   "garden.code": "Garden code",
@@ -1484,6 +1487,7 @@ export const EN: Dictionary = {
   "quests.pat5": "Pet 5 animals",
   "quests.craft2": "Craft 2 machine batches",
   "prestige.title": "Prestige",
+  "prestige.mutationBonus": "Mutation rate +{percent}%",
   "finalShop.title": "Final shop",
   "finalShop.locked": "Unlocks at Prestige {tier}.",
   "finalShop.unlocked": "Unlocked.",

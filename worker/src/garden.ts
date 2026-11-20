@@ -524,6 +524,7 @@ export class Garden extends DurableObject<Env> {
         spent: stats.spent ?? 0,
         tax: stats.tax ?? 0,
       },
+      publishedPrestige: typeof raw.publishedPrestige === "number" ? raw.publishedPrestige : 0,
     };
     return {
       ...meta,
@@ -999,6 +1000,7 @@ export class Garden extends DurableObject<Env> {
     );
     if (settled !== ledger) this.write(settled);
     const ledgerNow = settled;
+    await this.syncPrestige(ledgerNow);
     if (now - ledgerNow.lastSeen > 60_000) {
       // Presence stamps must not rewrite every plant row: one meta row is enough.
       ledgerNow.lastSeen = now;
@@ -1061,6 +1063,7 @@ export class Garden extends DurableObject<Env> {
         : advanceQuests(settled, result.ledger, action, now);
     const finalLedger = settleMachines(advanced, now);
     this.write(finalLedger);
+    await this.syncPrestige(finalLedger);
 
     // Big sales echo into the world chat; one message per action at most.
     const beforeCount = settled.sales?.length ?? 0;
@@ -1462,6 +1465,18 @@ export class Garden extends DurableObject<Env> {
       waters,
       cheers,
     );
+  }
+
+  /** @brief Backfills the hub prestige for saves that predate the column. */
+  private async syncPrestige(ledger: GardenLedger): Promise<void> {
+    if (ledger.prestige === ledger.publishedPrestige) return;
+    ledger.publishedPrestige = ledger.prestige;
+    try {
+      this.writeMeta(ledger);
+    } catch {
+      // A failed meta write only means we retry on the next state read.
+    }
+    await this.publish(ledger);
   }
 
   /** @brief Publishes leaderboard fields to the Hub; failures never block play. */

@@ -139,7 +139,17 @@ const UPROOT_ARM_MS = 4_000;
 
 /** One active tab inside the document. */
 type Tab =
-  "garden" | "market" | "event" | "chart" | "bots" | "rank" | "farm" | "warehouse" | "extras" | "levels";
+  | "garden"
+  | "market"
+  | "event"
+  | "chart"
+  | "bots"
+  | "rank"
+  | "farm"
+  | "warehouse"
+  | "extras"
+  | "prestige"
+  | "levels";
 
 /** Whether the document is showing the owner's garden or a friend's. */
 type Mode = "owner" | "visit";
@@ -1065,6 +1075,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       savedTab === "farm" ||
       savedTab === "warehouse" ||
       savedTab === "extras" ||
+      savedTab === "prestige" ||
       savedTab === "levels"
     ) {
       tab = savedTab;
@@ -1443,6 +1454,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       "farm",
       "warehouse",
       "extras",
+      "prestige",
       "levels",
     ] as const) {
       const button = document.createElement("button");
@@ -3450,6 +3462,88 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Builds the dedicated Prestige tab: control, buffs and shops. */
+  function buildPrestige(): HTMLElement {
+    const wrap = div("garden-market garden-prestige");
+    if (state === null) return lineBlock(t("common.loading"));
+    const extras = state.extras;
+    const prestigeLevel = extras.prestige ?? 0;
+    const prestigeNeed = prestigeRequirement(prestigeLevel);
+
+    const control = div("garden-market-panel");
+    control.append(lineBlock(`// ${t("prestige.title")}`));
+    control.append(
+      lineBlock(
+        t("prestige.level", {
+          level: prestigeLevel,
+          sell: Math.round((prestigeSellBonus(prestigeLevel) - 1) * 100),
+          grow: Math.round((1 - prestigeGrowScale(prestigeLevel)) * 100),
+        }),
+      ),
+    );
+    control.append(
+      lineBlock(
+        t("prestige.mutationBonus", {
+          percent: Math.round(prestigeLevel * 1),
+        }),
+      ),
+    );
+    if (state.stats.earned >= prestigeNeed) {
+      control.append(
+        actionButton(
+          confirmPrestige
+            ? t("prestige.confirm", { level: prestigeLevel + 1 })
+            : t("prestige.ready", { level: prestigeLevel + 1 }),
+          "prestige",
+        ),
+      );
+    } else {
+      control.append(
+        lineBlock(
+          t("prestige.progress", {
+            earned: formatCompact(state.stats.earned),
+            need: formatCompact(prestigeNeed),
+          }),
+        ),
+      );
+    }
+    if ((extras.taxLast ?? 0) > 0) {
+      control.append(lineBlock(`// ${t("tax.last", { coins: formatCompact(extras.taxLast ?? 0) })}`));
+    }
+    wrap.append(control);
+
+    const shop = div("garden-market-panel");
+    shop.append(lineBlock(`// ${t("prestige.shop")}`));
+    for (const offer of PRESTIGE_SHOP) {
+      const locked = prestigeLevel < offer.tier;
+      const button = actionButton(
+        locked
+          ? t("prestige.shopLocked", { name: seedName(offer.seed), tier: offer.tier })
+          : t("prestige.shopBuy", {
+              name: seedName(offer.seed),
+              cost: formatCompact(offer.price),
+            }),
+        "buyPrestigeSeed",
+        !locked && (state.coins ?? 0) >= offer.price,
+      );
+      button.dataset.seed = offer.seed;
+      shop.append(button);
+    }
+    wrap.append(shop);
+
+    const final = div("garden-market-panel");
+    const finalUnlocked = prestigeLevel >= FINAL_SHOP_PRESTIGE;
+    final.append(lineBlock(`// ${t("finalShop.title")}`));
+    final.append(
+      lineBlock(
+        finalUnlocked ? t("finalShop.unlocked") : t("finalShop.locked", { tier: FINAL_SHOP_PRESTIGE }),
+      ),
+    );
+    if (finalUnlocked) final.append(lineBlock(t("finalShop.comingSoon")));
+    wrap.append(final);
+    return wrap;
+  }
+
   /** @brief Builds the skill level tab with XP bars and perks. */
   function buildLevels(): HTMLElement {
     const wrap = div("garden-levels");
@@ -3573,61 +3667,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     if ((extras.quests ?? []).length === 0) wrap.append(lineBlock(t("quests.empty")));
 
-    const prestigeLevel = extras.prestige ?? 0;
-    const prestigeNeed = prestigeRequirement(prestigeLevel);
-    wrap.append(lineBlock(`// ${t("prestige.title")}`));
-    wrap.append(
-      lineBlock(
-        t("prestige.level", {
-          level: prestigeLevel,
-          sell: Math.round((prestigeSellBonus(prestigeLevel) - 1) * 100),
-          grow: Math.round((1 - prestigeGrowScale(prestigeLevel)) * 100),
-        }),
-      ),
-    );
-    if (state.stats.earned >= prestigeNeed) {
-      wrap.append(
-        actionButton(
-          confirmPrestige
-            ? t("prestige.confirm", { level: prestigeLevel + 1 })
-            : t("prestige.ready", { level: prestigeLevel + 1 }),
-          "prestige",
-        ),
-      );
-    } else {
-      wrap.append(
-        lineBlock(
-          t("prestige.progress", {
-            earned: formatCompact(state.stats.earned),
-            need: formatCompact(prestigeNeed),
-          }),
-        ),
-      );
-    }
-    wrap.append(lineBlock(`// ${t("prestige.shop")}`));
-    for (const offer of PRESTIGE_SHOP) {
-      const locked = prestigeLevel < offer.tier;
-      const button = actionButton(
-        locked
-          ? t("prestige.shopLocked", { name: seedName(offer.seed), tier: offer.tier })
-          : t("prestige.shopBuy", {
-              name: seedName(offer.seed),
-              cost: formatCompact(offer.price),
-            }),
-        "buyPrestigeSeed",
-        !locked && (state.coins ?? 0) >= offer.price,
-      );
-      button.dataset.seed = offer.seed;
-      wrap.append(button);
-    }
-    const finalUnlocked = prestigeLevel >= FINAL_SHOP_PRESTIGE;
-    wrap.append(lineBlock(`// ${t("finalShop.title")}`));
-    wrap.append(
-      lineBlock(
-        finalUnlocked ? t("finalShop.unlocked") : t("finalShop.locked", { tier: FINAL_SHOP_PRESTIGE }),
-      ),
-    );
-    if (finalUnlocked) wrap.append(lineBlock(t("finalShop.comingSoon")));
     if ((extras.taxLast ?? 0) > 0) {
       wrap.append(lineBlock(`// ${t("tax.last", { coins: formatCompact(extras.taxLast ?? 0) })}`));
     }
@@ -4068,6 +4107,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (tab === "farm") return buildFarm();
     if (tab === "warehouse") return buildWarehouse();
     if (tab === "extras") return buildExtras();
+    if (tab === "prestige") return buildPrestige();
     if (tab === "levels") return buildLevels();
     return buildEvent();
   }

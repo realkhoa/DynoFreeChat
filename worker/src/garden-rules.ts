@@ -237,6 +237,8 @@ export interface GardenLedger {
   stats: LedgerStats;
   /** Recent sale log, newest last. */
   sales: SaleRecord[];
+  /** Prestige level already pushed to the leaderboard hub. */
+  publishedPrestige: number;
   /** Building levels (0 = not built). */
   buildings: Record<BuildingId, number>;
   /** Animals per building slot. */
@@ -388,6 +390,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {}, products: [], tools: {} },
     stats: { planted: 0, harvested: 0, earned: 0, spent: 0, tax: 0 },
     sales: [],
+    publishedPrestige: 0,
     buildings: { coop: 0, barn: 0, pond: 0 },
     animals: { coop: [], barn: [], pond: [] },
     farmSettledAt: input.now,
