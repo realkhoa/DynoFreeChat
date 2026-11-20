@@ -51,6 +51,8 @@ import {
   FINAL_SHOP_PRESTIGE,
   PRESTIGE_SHOP,
   prestigeGrowScale,
+  weeklyModifier,
+  weekEndsAt,
   prestigeRequirement,
   prestigeStarterSeeds,
   prestigeSellBonus,
@@ -4577,6 +4579,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const wrap = div("garden-event");
 
     const seasonPanel = div("garden-event-panel");
+    const modifier = weeklyModifier(now());
+    seasonPanel.append(
+      lineBlock(
+        t("event.weekly", {
+          name: t(`weekly.${modifier.id}`),
+          time: formatDuration(Math.max(0, weekEndsAt(now()) - now())),
+        }),
+      ),
+    );
     seasonPanel.append(lineBlock(`// ${t("event.now")}`));
     if (season !== null) {
       seasonPanel.append(

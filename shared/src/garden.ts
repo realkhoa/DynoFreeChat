@@ -2381,6 +2381,38 @@ export function merchantWindowAt(now: number): number {
   return Math.floor((now - EPOCH_MS) / MERCHANT_WINDOW_MS);
 }
 
+/** One rotating weekly gameplay modifier. */
+export interface WeeklyModifier {
+  /** Stable id used by i18n and the UI. */
+  readonly id: "calm" | "goldRush" | "growth" | "mutation";
+  /** Multiplier on crop/animal sale gross. */
+  readonly sellScale: number;
+  /** Multiplier on growth time. */
+  readonly growScale: number;
+  /** Extra absolute mutation chance while planting. */
+  readonly mutationBonus: number;
+}
+
+/** Weekly modifier rotation, deterministic by week key. */
+export const WEEKLY_MODIFIERS: readonly WeeklyModifier[] = [
+  { id: "calm", sellScale: 1, growScale: 1, mutationBonus: 0 },
+  { id: "goldRush", sellScale: 1.15, growScale: 1, mutationBonus: 0 },
+  { id: "growth", sellScale: 1, growScale: 0.9, mutationBonus: 0 },
+  { id: "mutation", sellScale: 1, growScale: 1, mutationBonus: 0.02 },
+];
+
+/** @brief Modifier active this week. */
+export function weeklyModifier(now: number): WeeklyModifier {
+  const index =
+    ((weekKeyAt(now) % WEEKLY_MODIFIERS.length) + WEEKLY_MODIFIERS.length) % WEEKLY_MODIFIERS.length;
+  return WEEKLY_MODIFIERS[index] ?? WEEKLY_MODIFIERS[0]!;
+}
+
+/** @brief Server time the current week ends. */
+export function weekEndsAt(now: number): number {
+  return EPOCH_MS + (weekKeyAt(now) + 1) * WEEK_MS;
+}
+
 /** @brief Current weekly tournament key. */
 export function weekKeyAt(now: number): number {
   return Math.floor((now - EPOCH_MS) / WEEK_MS);

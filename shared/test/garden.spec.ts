@@ -8,6 +8,10 @@
 import { describe, expect, it } from "vitest";
 import {
   EPOCH_MS,
+  WEEKLY_MODIFIERS,
+  weekEndsAt,
+  weeklyModifier,
+  WEEK_MS,
   dayPhaseAt,
   DAY_PHASES,
   DAY_CYCLE_MS,
@@ -440,6 +444,13 @@ describe("farm buildings", () => {
     expect(seedMakerChance(2)).toBeCloseTo(0.7);
     expect(seedMakerChance(5)).toBe(1);
     expect(seedMakerChance(9)).toBe(1);
+  });
+
+  it("rotates a deterministic weekly modifier", () => {
+    const first = weeklyModifier(NOW);
+    expect(WEEKLY_MODIFIERS.some((entry) => entry.id === first.id)).toBe(true);
+    expect(weeklyModifier(NOW + WEEK_MS).id).not.toBe(first.id);
+    expect(weekEndsAt(NOW)).toBeGreaterThan(NOW);
   });
 
   it("prices prestige resets at 10,000b doubling per level", () => {

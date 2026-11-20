@@ -138,6 +138,7 @@ import {
   prestigeSkillSellBonus,
   prestigeSkillGrowScale,
   prestigeSkillMutationBonus,
+  weeklyModifier,
   wealthBadLuck,
   prestigeTierForSeed,
   PRESTIGE_SHOP,
@@ -1047,13 +1048,21 @@ function mutationChances(ledger: GardenLedger): Partial<Record<EffectId, number>
 }
 
 /** @brief Combined prestige + merchant sell multiplier. */
-function sellMultiplier(ledger: GardenLedger): number {
-  return prestigeSellBonus(ledger.prestige) * prestigeSkillSellBonus(ledger.prestigeSkills);
+function sellMultiplier(ledger: GardenLedger, now: number): number {
+  return (
+    prestigeSellBonus(ledger.prestige) *
+    prestigeSkillSellBonus(ledger.prestigeSkills) *
+    weeklyModifier(now).sellScale
+  );
 }
 
 /** @brief Combined prestige + farmer growth-time multiplier. */
-function growthScale(ledger: GardenLedger): number {
-  return prestigeGrowScale(ledger.prestige) * prestigeSkillGrowScale(ledger.prestigeSkills);
+function growthScale(ledger: GardenLedger, now: number): number {
+  return (
+    prestigeGrowScale(ledger.prestige) *
+    prestigeSkillGrowScale(ledger.prestigeSkills) *
+    weeklyModifier(now).growScale
+  );
 }
 
 /** @brief Combined prestige + artisan mutation chance. */
@@ -1092,7 +1101,7 @@ function plant(
     readyAt:
       now +
       Math.round(
-        growTimeForEvents(seed, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger)) *
+        growTimeForEvents(seed, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger, now)) *
           soilGrowthFactor(ledger.soil[slot] ?? SOIL_START),
       ),
     effects: [],
@@ -1132,7 +1141,7 @@ function plantTree(
     tree: tree.id,
     plantedAt: now,
     readyAt:
-      now + growTimeForEvents(tree, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger)),
+      now + growTimeForEvents(tree, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger, now)),
     effects: [],
     pest: false,
     protectedUntil: 0,
@@ -1243,11 +1252,11 @@ function harvest(
             seed,
             events,
             plot.fertilizer,
-            dayPhaseAt(now).phase.growScale * growthScale(ledger),
+            dayPhaseAt(now).phase.growScale * growthScale(ledger, now),
           ) * soilGrowthFactor(fertility),
         ),
       effects: [],
-      mutationBoost: mutationSkillBonus(ledger),
+      mutationBoost: mutationSkillBonus(ledger) + weeklyModifier(now).mutationBonus,
       badLuck: wealthBadLuck(ledger.coins),
       pest: false,
       protectedUntil: plot.protectedUntil,
@@ -1302,7 +1311,7 @@ function harvestTree(
         definition,
         events,
         tree.fertilizer,
-        dayPhaseAt(now).phase.growScale * growthScale(ledger),
+        dayPhaseAt(now).phase.growScale * growthScale(ledger, now),
       ),
     effects: [],
     pest: false,
@@ -2009,7 +2018,10 @@ function sellAnimal(ledger: GardenLedger, building: BuildingId, slot: number, no
   const animal = ledger.animals[building]?.[slot] ?? null;
   if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
   if (animalIsIncubating(animal, now)) return { ok: false, code: "ALREADY_BREEDING" };
-  const gross = animalMeatPrice(animal.kind, animalQuality(animal, now), ledger.pondGrowth ?? 0);
+  const gross = Math.round(
+    animalMeatPrice(animal.kind, animalQuality(animal, now), ledger.pondGrowth ?? 0) *
+      weeklyModifier(now).sellScale,
+  );
   const tax = Math.round(gross * SELL_TAX_RATE);
 
   const next = clone(ledger);
@@ -2045,7 +2057,12 @@ function sellProduct(
     : ranchingSellBonus(ledger.skills.ranching.level);
   const pond = product === "roe" || product === "snailMeat" ? pondGrowthFactor(ledger.pondGrowth ?? 0) : 1;
   const gross = Math.round(
-    productPrice(stack, season) * qty * (1 + petEffect(ledger, "sell")) * (1 + bonus) * pond,
+    productPrice(stack, season) *
+      qty *
+      (1 + petEffect(ledger, "sell")) *
+      (1 + bonus) *
+      pond *
+      weeklyModifier(now).sellScale,
   );
   const tax = Math.round(gross * SELL_TAX_RATE);
 
@@ -2659,7 +2676,7 @@ function plantFruitSeed(ledger: GardenLedger, slot: number, seedId: SeedId, now:
     tree: seed.id as unknown as TreeId,
     plantedAt: now,
     readyAt:
-      now + growTimeForEvents(seed, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger)),
+      now + growTimeForEvents(seed, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger, now)),
     effects: [],
     pest: false,
     protectedUntil: 0,
@@ -3934,7 +3951,7 @@ function sellCrop(
     cropSellPrice(stack, season) *
       (1 + petEffect(ledger, "sell")) *
       (1 + farmingSellBonus(ledger.skills.farming.level)) *
-      sellMultiplier(ledger),
+      sellMultiplier(ledger, now),
   );
   const future = ledger.futures.find(
     (entry) => entry.item === item && entry.expiresAt > now && entry.qty > 0,
@@ -3966,7 +3983,7 @@ function sellAll(ledger: GardenLedger, season: SeasonSnapshot, now: number): Rul
       cropSellPrice(stack, season) *
         (1 + petEffect(ledger, "sell")) *
         (1 + farmingSellBonus(ledger.skills.farming.level)) *
-        sellMultiplier(ledger),
+        sellMultiplier(ledger, now),
     );
     const future = next.futures.find(
       (entry) => entry.item === stack.item && entry.expiresAt > now && entry.qty > 0,

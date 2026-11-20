@@ -751,6 +751,11 @@ export const VI: Dictionary = {
   "market.sold": "Đã bán {seed} +{coins}c",
 
   "event.now": "Đang diễn ra",
+  "event.weekly": "Tuần này: {name} · còn {time}",
+  "weekly.calm": "Tuần yên ả",
+  "weekly.goldRush": "Tuần vàng · +15% giá bán",
+  "weekly.growth": "Tuần sinh trưởng · lớn nhanh 10%",
+  "weekly.mutation": "Tuần đột biến · +2% mutation",
   "event.next": "Tiếp theo",
   "event.left": "Còn {time}",
   "event.leaderboard": "Bảng xếp hạng",
@@ -1801,6 +1806,11 @@ export const EN: Dictionary = {
   "market.sold": "Sold {seed} +{coins}c",
 
   "event.now": "Now",
+  "event.weekly": "This week: {name} · ends in {time}",
+  "weekly.calm": "Calm week",
+  "weekly.goldRush": "Gold rush · +15% sale",
+  "weekly.growth": "Growth week · 10% faster",
+  "weekly.mutation": "Mutation week · +2% mutation",
   "event.next": "Next",
   "event.left": "{time} left",
   "event.leaderboard": "Leaderboard",
