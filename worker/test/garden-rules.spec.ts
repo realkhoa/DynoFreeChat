@@ -265,7 +265,7 @@ describe("garden ledger rules", () => {
   it("carries animal mutations into produce and through machines", () => {
     const ledger = makeLedger();
     ledger.buildings.coop = 1;
-    ledger.coins = 10_000_000;
+    ledger.coins = 30_000_000;
     ledger.animals.coop[0] = {
       kind: "chicken",
       bornAt: NOW - 10 * FARM_CYCLE_MS,
