@@ -249,6 +249,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let specialPicker: number | null = null;
   let specialMenu: { slot: number; x: number; y: number } | null = null;
   let machineQty = 1;
+  let chartSort: "roi" | "income" | "pressure" = "roi";
   let globalSales: GlobalSaleEntry[] = [];
   let globalSalesStatus: "idle" | "loading" | "error" = "idle";
   let dynopediaCategory = "effects";
@@ -4234,7 +4235,34 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     head.append(timer, span("garden-chart-hint", t("chart.hint")));
     wrap.append(head);
 
-    const items = [...chartMarket.items].sort((left, right) => right.multiplier - left.multiplier);
+    const sortBar = div("garden-tools");
+    sortBar.append(span("garden-hint", t("chart.sort")));
+    const sortButton = (mode: "roi" | "income" | "pressure", label: string) => {
+      const button = actionButton(label, "chartSort");
+      button.dataset.sort = mode;
+      if (chartSort === mode) button.classList.add("is-active");
+      sortBar.append(button);
+    };
+    sortButton("roi", t("chart.sortRoi"));
+    sortButton("income", t("chart.sortIncome"));
+    sortButton("pressure", t("chart.sortPressure"));
+    sortBar.append(span("garden-hint", t("chart.simNote")));
+    wrap.append(sortBar);
+
+    const simulated = chartMarket.items.map((item) => {
+      const seed = seedById(item.item);
+      const tree = treeById(item.item);
+      const cost = (seed?.buy ?? tree?.buy ?? 0) * 1000;
+      const income = item.price * 1000;
+      const profit = income - cost;
+      const roi = cost <= 0 ? 0 : (profit / cost) * 100;
+      return { ...item, cost, income, profit, roi };
+    });
+    const items = [...simulated].sort((left, right) => {
+      if (chartSort === "roi") return right.roi - left.roi;
+      if (chartSort === "income") return right.income - left.income;
+      return right.multiplier - left.multiplier;
+    });
     for (const item of items) {
       const row = div("garden-chart-row");
       const change = item.previous === 0 ? 0 : (item.multiplier / item.previous - 1) * 100;
@@ -4249,8 +4277,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           "garden-chart-trend",
           `${item.multiplier > item.previous ? "^" : item.multiplier < item.previous ? "v" : "-"} ${change >= 0 ? "+" : ""}${change.toFixed(0)}%`,
         ),
+        span("garden-chart-roi", `${item.roi >= 0 ? "+" : ""}${item.roi.toFixed(0)}%`),
+        span("garden-chart-income", `${formatCompact(item.income)}c`),
         span("garden-chart-sold", `${t("chart.sold")} ${item.sold}/${chartMarket.soldTarget}`),
       );
+      row.title = t("chart.simTooltip", {
+        cost: formatCompact(item.cost),
+        profit: formatCompact(item.profit),
+      });
       wrap.append(row);
     }
     if (chartMarket.offers.length > 0) {
@@ -5121,6 +5155,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "detachMachine": {
         const slot = target.dataset.slot as AttachmentSlot | undefined;
         if (slot !== undefined) void runAction({ kind: "detachMachine", slot }, t("attachments.detached"));
+        return;
+      }
+      case "chartSort": {
+        const sort = target.dataset.sort;
+        if (sort === "roi" || sort === "income" || sort === "pressure") {
+          chartSort = sort;
+          render();
+        }
         return;
       }
       case "logRefresh":

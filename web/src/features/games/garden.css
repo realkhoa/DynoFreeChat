@@ -844,7 +844,7 @@
 
 .garden-chart-row {
   display: grid;
-  grid-template-columns: 1fr 72px 54px 72px 96px;
+  grid-template-columns: 1fr 64px 48px 62px 56px 70px 78px;
   gap: 8px;
   padding: 1px 4px;
   border-radius: 2px;
@@ -1067,7 +1067,7 @@
   }
 
   .garden-chart-row {
-    grid-template-columns: 1fr 52px 42px 52px 64px;
+    grid-template-columns: 1fr 46px 38px 46px 42px 54px 58px;
     gap: 4px;
     font-size: 8.5px;
   }
@@ -1555,4 +1555,15 @@
 .garden-buy-card.is-prestige-locked {
   border-style: dashed;
   color: #8a8a8a;
+}
+
+/* Chart simulation columns: ROI and 1000-plant income. */
+.garden-chart-roi {
+  color: #6fe3b5;
+  text-align: right;
+}
+
+.garden-chart-income {
+  color: #dcdcaa;
+  text-align: right;
 }

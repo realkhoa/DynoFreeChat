@@ -1755,6 +1755,14 @@ describe("chart tab", () => {
     expect(rows[0]?.textContent).toContain("x1.50");
     expect(rows[1]?.classList.contains("is-down")).toBe(true);
     expect(rows[1]?.textContent).toContain("12/8");
+    // 1000-plant simulation: carrot sells for 14k on a 5k seed cost.
+    expect(rows[0]?.textContent).toContain("+180%");
+    expect(rows[0]?.textContent).toContain("14.000c");
+    host.querySelector<HTMLButtonElement>('[data-act="chartSort"][data-sort="income"]')?.click();
+    await settle();
+    expect(
+      host.querySelector<HTMLButtonElement>('[data-act="chartSort"][data-sort="income"]')?.classList,
+    ).toContain("is-active");
   });
 });
 
