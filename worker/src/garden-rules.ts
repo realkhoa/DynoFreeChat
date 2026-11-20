@@ -2514,8 +2514,9 @@ function liquidationValue(ledger: GardenLedger, season: SeasonSnapshot, now: num
   return total;
 }
 
-/** @brief Returns every held/queued machine input to the bag. */
-function recoverMachineInputs(ledger: GardenLedger): void {
+/** @brief Sells every held/queued machine input and clears the machines. */
+function liquidateMachineInputs(ledger: GardenLedger, season: SeasonSnapshot): number {
+  let total = 0;
   for (const [id, machine] of Object.entries(ledger.machines) as Array<[MachineId, MachineState]>) {
     const jobs: MachineJob[] = [];
     if (machine.job !== undefined) jobs.push(machine.job);
@@ -2524,10 +2525,25 @@ function recoverMachineInputs(ledger: GardenLedger): void {
     for (const job of jobs) {
       const effects = job.effects ?? [];
       if (productById(job.item) !== undefined) {
-        ledger.bag.products = ledger.bag.products ?? [];
-        addProduct(ledger.bag.products, job.item as ProductId, job.star ?? 1, 1, effects);
+        total += productPrice(
+          {
+            product: job.item as ProductId,
+            star: job.star ?? 1,
+            qty: 1,
+            effects,
+          },
+          season,
+        );
       } else {
-        addCrop(ledger.bag.crops, job.item as ItemId, effects, 1, false, job.star ?? 1);
+        total += cropSellPrice(
+          {
+            item: job.item as ItemId,
+            star: job.star ?? 1,
+            qty: 1,
+            effects,
+          },
+          season,
+        );
       }
     }
     ledger.machines[id] = {
@@ -2537,6 +2553,7 @@ function recoverMachineInputs(ledger: GardenLedger): void {
       lastCraftAt: 0,
     };
   }
+  return total;
 }
 
 /** @brief Resets crops and animals for permanent prestige bonuses. */
@@ -2545,8 +2562,10 @@ function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): Ru
     return { ok: false, code: "BAD_REQUEST" };
   }
   const next = clone(ledger);
-  // Prestige converts wallet + living garden value into prestige coins.
-  const earned = Math.floor(liquidationValue(ledger, season, now) / PRESTIGE_COIN_VALUE);
+  // Prestige sells machine inputs automatically, then converts the wallet plus
+  // living garden and machine value into prestige coins.
+  const machineValue = liquidateMachineInputs(next, season);
+  const earned = Math.floor((liquidationValue(ledger, season, now) + machineValue) / PRESTIGE_COIN_VALUE);
   next.coins = 0;
   next.prestigeCoins = (next.prestigeCoins ?? 0) + earned;
   next.prestigeProgress = 0;
@@ -2564,7 +2583,6 @@ function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): Ru
     seeds: { ...prestigeStarterSeeds(next.prestige) },
     crops: [],
   };
-  recoverMachineInputs(next);
   next.stats = { ...next.stats, planted: 0, harvested: 0, earned: 0 };
   next.prestige = ledger.prestige + 1;
   next.questDay = wheelDayAt(now);

@@ -270,15 +270,11 @@ describe("extras", () => {
     expect(prestiged.ledger.prestigeCoins).toBe(2);
     expect(prestiged.ledger.warehouse).toBe(1);
     expect(prestiged.ledger.machines.seedMaker?.level).toBe(2);
-    // Held machine inputs come back to the bag instead of vanishing.
+    // Held machine inputs are sold with the garden, never returned.
     expect(prestiged.ledger.machines.seedMaker?.job).toBeUndefined();
     expect(prestiged.ledger.machines.seedMaker?.queue).toEqual([]);
-    expect(
-      prestiged.ledger.bag.crops
-        .filter((stack) => stack.item === "tomato")
-        .reduce((sum, stack) => sum + stack.qty, 0),
-    ).toBe(2);
-    expect(prestiged.ledger.bag.products?.find((stack) => stack.product === "milk")?.star).toBe(4);
+    expect(prestiged.ledger.bag.crops.filter((stack) => stack.item === "tomato")).toHaveLength(0);
+    expect(prestiged.ledger.bag.products?.some((stack) => stack.product === "milk")).toBe(false);
     expect(prestiged.ledger.plots.every((plot) => plot === null)).toBe(true);
     expect(prestiged.ledger.animals.coop.every((animal) => animal === null)).toBe(true);
     // The reset still hands back a starter seed pack.

@@ -687,7 +687,8 @@ export const VI: Dictionary = {
   "prestige.coins": "Xu prestige: {coins} ✦",
   "prestige.starterSeeds": "Tặng kèm khi reset: {list}",
   "prestige.coinsShort": "Có",
-  "prestige.conversionHint": "Khi Prestige: toàn bộ tiền + giá trị cây/động vật đổi thành xu, 100b = 1 xu.",
+  "prestige.conversionHint":
+    "Khi Prestige: tiền + cây/động vật + đồ trong máy được bán và đổi thành xu, 100b = 1 xu.",
   "finalShop.bought": "Đã mua cây cửa hàng cuối",
   "prestige.shopBuy": "Mua {name} · {cost}c",
   "prestige.tierLocked": "Cần Prestige {tier}",
@@ -1622,7 +1623,8 @@ export const EN: Dictionary = {
   "prestige.coins": "Prestige coins: {coins} ✦",
   "prestige.starterSeeds": "Starter pack after reset: {list}",
   "prestige.coinsShort": "Owned",
-  "prestige.conversionHint": "On prestige: wallet + crop/animal value converts at 100b = 1 coin.",
+  "prestige.conversionHint":
+    "On prestige: wallet + crops/animals + machine contents are sold and converted at 100b = 1 coin.",
   "finalShop.bought": "Final shop plant bought",
   "prestige.shopBuy": "Buy {name} · {cost}c",
   "prestige.tierLocked": "Requires Prestige {tier}",
