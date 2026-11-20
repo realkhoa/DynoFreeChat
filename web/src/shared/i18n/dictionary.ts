@@ -753,6 +753,9 @@ export const VI: Dictionary = {
 
   "event.now": "Đang diễn ra",
   "event.weekly": "Tuần này: {name} · còn {time}",
+  "raid.hp": "Châu chấu tấn công: {hp}/{max} HP · còn {time}",
+  "raid.hit": "Đánh đuổi · {cost}c",
+  "raid.hitDone": "Đã đánh vào bầy châu chấu",
   "weekly.calm": "Tuần yên ả",
   "weekly.goldRush": "Tuần vàng · +15% giá bán",
   "weekly.growth": "Tuần sinh trưởng · lớn nhanh 10%",
@@ -1821,6 +1824,9 @@ export const EN: Dictionary = {
 
   "event.now": "Now",
   "event.weekly": "This week: {name} · ends in {time}",
+  "raid.hp": "Locust raid: {hp}/{max} HP · {time} left",
+  "raid.hit": "Strike · {cost}c",
+  "raid.hitDone": "Hit the locust swarm",
   "weekly.calm": "Calm week",
   "weekly.goldRush": "Gold rush · +15% sale",
   "weekly.growth": "Growth week · 10% faster",

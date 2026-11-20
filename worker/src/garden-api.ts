@@ -55,6 +55,7 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   if (name === "season" && request.method === "GET") return seasonRoute(env, now);
   if (name === "market" && request.method === "GET") return marketRoute(env);
   if (name === "leaderboard" && request.method === "GET") return leaderboard(env, url);
+  if (name === "raid" && request.method === "GET") return hubStub(env).fetch("https://hub/raid");
   if (name === "sales" && request.method === "GET") {
     const limit = encodeURIComponent(url.searchParams.get("limit") ?? "100");
     return hubStub(env).fetch(`https://hub/sales?limit=${limit}`);
@@ -84,6 +85,7 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   if (auth === null) return json({ code: "UNAUTHORIZED" }, 401);
 
   if (name === "recipe" && request.method === "POST") return recipeRoute(env, auth, request);
+  if (name === "raid" && request.method === "POST") return forwardOwner(env, auth, "/raid", "POST", request);
   if (name === "state" && request.method === "GET") return ownerResponse(env, auth, "/state", "GET", now);
   if (name === "act" && request.method === "POST")
     return ownerResponse(env, auth, "/act", "POST", now, request);

@@ -10,6 +10,7 @@ import type {
   GardenAction,
   GardenActResponse,
   GardenSnapshot,
+  RaidSnapshot,
   GlobalSaleEntry,
   GardenStateResponse,
   LeaderboardEntry,
@@ -194,6 +195,20 @@ export class GardenApi {
   /** @brief Lists the server-side bot gardens. */
   async bots(): Promise<{ bots: GardenBot[] }> {
     return this.request<{ bots: GardenBot[] }>("/api/garden/bots", { method: "GET" });
+  }
+
+  /** @brief Reads the shared locust raid. */
+  async raid(): Promise<RaidSnapshot> {
+    return this.request<RaidSnapshot>("/api/garden/raid", { method: "GET" });
+  }
+
+  /** @brief Spends one raid hit on the shared locust swarm. */
+  async raidHit(): Promise<{ raid: RaidSnapshot & { defeated?: boolean }; coins: number }> {
+    return this.request<{ raid: RaidSnapshot & { defeated?: boolean }; coins: number }>("/api/garden/raid", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
   }
 
   /** @brief Asks the recipe-lab model whether a combination makes sense. */

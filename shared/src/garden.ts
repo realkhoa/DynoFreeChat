@@ -1775,6 +1775,33 @@ export interface CustomRecipe {
   readonly createdAt: number;
 }
 
+/** Shared locust-raid state. */
+export interface RaidSnapshot {
+  /** Day window index. */
+  readonly window: number;
+  /** Remaining swarm HP. */
+  readonly hp: number;
+  /** Starting HP. */
+  readonly maxHp: number;
+  /** Server time the raid resets. */
+  readonly endsAt: number;
+}
+
+/** Locust raid size and duration. */
+export const RAID_MAX_HP = 10_000;
+export const RAID_HIT_DAMAGE = 250;
+export const RAID_HIT_COST = 100_000;
+
+/** @brief Daily raid window. */
+export function raidWindowAt(now: number): number {
+  return Math.floor((now - EPOCH_MS) / DAY_MS);
+}
+
+/** @brief End of the current raid window. */
+export function raidEndsAt(now: number): number {
+  return EPOCH_MS + (raidWindowAt(now) + 1) * DAY_MS;
+}
+
 /** One public row in the global sale log. */
 export interface GlobalSaleEntry extends SaleRecord {
   /** Seller share code. */

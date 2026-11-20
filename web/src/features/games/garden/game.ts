@@ -117,6 +117,7 @@ import {
   type EffectId,
   type GardenAction,
   type GardenSnapshot,
+  type RaidSnapshot,
   type GlobalSaleEntry,
   type LeaderboardEntry,
   type PlotState,
@@ -268,6 +269,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let specialMenu: { slot: number; x: number; y: number } | null = null;
   let machineQty = 1;
   let chartSort: "roi" | "income" | "pressure" = "roi";
+  let raidSnapshot: RaidSnapshot | null = null;
   let globalSales: GlobalSaleEntry[] = [];
   let globalSalesStatus: "idle" | "loading" | "error" = "idle";
   let dynopediaCategory = "effects";
@@ -1085,6 +1087,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (next === "rank") void loadLeaderboard();
     if (next === "extras") void loadExtras();
     if (next === "log") void loadGlobalSales();
+    if (next === "event") void loadRaid();
     syncGardenQuery();
     render();
   }
@@ -4606,6 +4609,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Loads the shared locust raid. */
+  async function loadRaid(): Promise<void> {
+    try {
+      raidSnapshot = await api.raid();
+      render();
+    } catch {
+      // The raid widget simply stays hidden while offline.
+    }
+  }
+
   /** @brief Builds the event tab: season, leaderboard and the backup panel. */
   function buildEvent(): HTMLElement {
     const wrap = div("garden-event");
@@ -4620,6 +4633,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }),
       ),
     );
+    if (raidSnapshot !== null) {
+      seasonPanel.append(
+        lineBlock(
+          t("raid.hp", {
+            hp: formatCompact(raidSnapshot.hp),
+            max: formatCompact(raidSnapshot.maxHp),
+            time: formatDuration(Math.max(0, raidSnapshot.endsAt - now())),
+          }),
+        ),
+      );
+      const hit = actionButton(t("raid.hit", { cost: formatCompact(100_000) }), "raidHit");
+      seasonPanel.append(hit);
+    }
     seasonPanel.append(lineBlock(`// ${t("event.now")}`));
     if (season !== null) {
       seasonPanel.append(
@@ -5538,6 +5564,25 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "cookRecipe": {
         const id = target.dataset.id;
         if (id !== undefined) void runAction({ kind: "cookRecipe", id }, t("recipe.cooked"));
+        return;
+      }
+      case "raidHit": {
+        void api
+          .raidHit()
+          .then((result) => {
+            raidSnapshot = result.raid;
+            message = { text: t("raid.hitDone"), kind: "info" };
+          })
+          .catch((error: unknown) => {
+            message = {
+              text: translateError(error instanceof Error ? error.message : "TRY_LATER"),
+              kind: "err",
+            };
+          })
+          .finally(() => {
+            void refresh();
+            render();
+          });
         return;
       }
       case "recipeValidate": {

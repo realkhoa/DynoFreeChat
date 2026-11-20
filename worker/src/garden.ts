@@ -12,6 +12,9 @@ import { DurableObject } from "cloudflare:workers";
 import {
   ACTIONS_PER_MINUTE,
   GARDEN_PROTOCOL_VERSION,
+  RAID_MAX_HP,
+  raidWindowAt,
+  raidEndsAt,
   GUEST_WATER_CUT_RATIO,
   CROPS_PER_TAB,
   MAX_TABS,
@@ -459,6 +462,7 @@ export class Garden extends DurableObject<Env> {
     if (request.method === "GET" && url.pathname === "/snapshot") return this.snapshot();
     if (request.method === "POST" && url.pathname === "/profile") return this.profile(request);
     if (request.method === "POST" && url.pathname === "/recipe") return this.learnRecipe(request);
+    if (request.method === "POST" && url.pathname === "/raid") return this.hitRaid(request);
     if (request.method === "POST" && url.pathname === "/recovery") return this.rotateRecovery(request);
     if (request.method === "POST" && url.pathname === "/issue-token") return this.issueToken(request);
     if (request.method === "POST" && url.pathname === "/identity") return this.identity(request);
@@ -545,6 +549,7 @@ export class Garden extends DurableObject<Env> {
       collection: raw.collection ?? [],
       codexClaimed: raw.codexClaimed ?? [],
       timeline: raw.timeline ?? [],
+      raidLastAt: typeof raw.raidLastAt === "number" ? raw.raidLastAt : 0,
       recipes: raw.recipes ?? [],
       recipeCookedAt: raw.recipeCookedAt ?? {},
       chainStep: typeof raw.chainStep === "number" ? raw.chainStep : 0,
@@ -898,6 +903,35 @@ export class Garden extends DurableObject<Env> {
   }
 
   // ------------------------------------------------------------------- auth
+
+  /** @brief Charges one raid hit and forwards damage to the hub boss. */
+  private async hitRaid(request: Request): Promise<Response> {
+    const ledger = await this.authorize(request);
+    if (ledger === null) return this.unauthorized();
+    const now = Date.now();
+    if (now - (ledger.raidLastAt ?? 0) < 60 * 60_000) {
+      return json({ code: "TRY_LATER" }, 429);
+    }
+    if (ledger.coins < 100_000) return json({ code: "NOT_ENOUGH_COINS" }, 400);
+    const hub = this.env.GARDEN_HUB.get(this.env.GARDEN_HUB.idFromName(HUB_NAME));
+    const response = await hub.fetch("https://hub/raid/hit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ damage: 250 }),
+    });
+    if (!response.ok) return json({ code: "TRY_LATER" }, 502);
+    const raid = (await response.json()) as Record<string, unknown>;
+    const next = structuredClone(ledger);
+    next.coins -= 100_000;
+    next.stats.spent += 100_000;
+    next.raidLastAt = now;
+    if (raid.defeated === true) {
+      next.coins += 1_000_000;
+      next.stats.earned += 1_000_000;
+    }
+    this.write(next);
+    return json({ ok: true, raid, coins: next.coins });
+  }
 
   /** @brief Stores one AI-approved custom recipe, capped at twenty. */
   private async learnRecipe(request: Request): Promise<Response> {
@@ -1717,6 +1751,11 @@ export class GardenHub extends DurableObject<Env> {
         window_start INTEGER NOT NULL,
         count INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS raids (
+        window INTEGER PRIMARY KEY,
+        hp INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         player_id TEXT NOT NULL,
@@ -1765,6 +1804,8 @@ export class GardenHub extends DurableObject<Env> {
     if (request.method === "GET" && url.pathname === "/by-code") return this.byCode(url);
     if (request.method === "GET" && url.pathname === "/by-recovery") return this.byRecovery(url);
     if (request.method === "GET" && url.pathname === "/leaderboard") return this.leaderboard(url);
+    if (request.method === "GET" && url.pathname === "/raid") return this.raid();
+    if (request.method === "POST" && url.pathname === "/raid/hit") return this.raidHit(request);
     if (request.method === "POST" && url.pathname === "/sale") return this.recordSale(request);
     if (request.method === "GET" && url.pathname === "/sales") return this.sales(url);
     if (request.method === "GET" && url.pathname === "/bots") return this.botList();
@@ -1907,6 +1948,52 @@ export class GardenHub extends DurableObject<Env> {
         harvested: row.harvested,
         updatedAt: row.updated_at,
       })),
+    });
+  }
+
+  /** @brief Current shared locust raid. */
+  private raid(): Response {
+    const now = Date.now();
+    const window = raidWindowAt(now);
+    const row = this.sql
+      .exec<SqlRow<{ hp: number }>>("SELECT hp FROM raids WHERE window = ?", window)
+      .toArray()[0];
+    if (row === undefined) {
+      this.sql.exec("INSERT INTO raids (window, hp, updated_at) VALUES (?, ?, ?)", window, RAID_MAX_HP, now);
+    }
+    const hp = row?.hp ?? RAID_MAX_HP;
+    return json({
+      window,
+      hp,
+      maxHp: RAID_MAX_HP,
+      endsAt: raidEndsAt(now),
+    });
+  }
+
+  /** @brief Applies damage to the shared locust raid. */
+  private async raidHit(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const damage = typeof body.damage === "number" ? Math.max(1, Math.min(1000, Math.floor(body.damage))) : 0;
+    if (damage <= 0) return json({ code: "BAD_REQUEST" }, 400);
+    const now = Date.now();
+    const window = raidWindowAt(now);
+    this.raid();
+    this.sql.exec(
+      "UPDATE raids SET hp = MAX(0, hp - ?), updated_at = ? WHERE window = ?",
+      damage,
+      now,
+      window,
+    );
+    const row = this.sql
+      .exec<SqlRow<{ hp: number }>>("SELECT hp FROM raids WHERE window = ?", window)
+      .toArray()[0];
+    const hp = row?.hp ?? 0;
+    return json({
+      window,
+      hp,
+      maxHp: RAID_MAX_HP,
+      endsAt: raidEndsAt(now),
+      defeated: hp <= 0,
     });
   }
 

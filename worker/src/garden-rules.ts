@@ -332,6 +332,7 @@ export interface GardenLedger {
   collection: string[];
   codexClaimed: string[];
   timeline: TimelineEvent[];
+  raidLastAt: number;
   chainStep: number;
   recipes: CustomRecipe[];
   recipeCookedAt: Record<string, number>;
@@ -471,6 +472,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     collection: [],
     codexClaimed: [],
     timeline: [],
+    raidLastAt: 0,
     chainStep: 0,
     recipes: [],
     recipeCookedAt: {},
