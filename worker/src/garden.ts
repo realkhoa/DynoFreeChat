@@ -548,6 +548,11 @@ export class Garden extends DurableObject<Env> {
       wheelLast: raw.wheelLast ?? "",
       wheelDay: typeof raw.wheelDay === "number" ? raw.wheelDay : 0,
       prestige: typeof raw.prestige === "number" ? raw.prestige : 0,
+      prestigeSkills: {
+        merchant: raw.prestigeSkills?.merchant ?? 0,
+        farmer: raw.prestigeSkills?.farmer ?? 0,
+        artisan: raw.prestigeSkills?.artisan ?? 0,
+      },
       questDay: typeof raw.questDay === "number" ? raw.questDay : 0,
       questProgress: raw.questProgress ?? {},
       questClaims: raw.questClaims ?? [],

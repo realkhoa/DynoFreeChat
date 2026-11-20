@@ -135,6 +135,9 @@ import {
   dailyQuestsFor,
   prestigeSellBonus,
   prestigeMutationBonus,
+  prestigeSkillSellBonus,
+  prestigeSkillGrowScale,
+  prestigeSkillMutationBonus,
   wealthBadLuck,
   prestigeTierForSeed,
   PRESTIGE_SHOP,
@@ -171,6 +174,7 @@ import {
   type FertilizerId,
   type SprayId,
   type GardenAction,
+  type PrestigeSkillId,
   type GardenErrorCode,
   type GardenSnapshot,
   type ItemId,
@@ -328,6 +332,7 @@ export interface GardenLedger {
   prestige: number;
   /** Prestige coins earned per 1000b lifetime earnings. */
   prestigeCoins: number;
+  prestigeSkills: { merchant: number; farmer: number; artisan: number };
   /** Earnings progress toward the next prestige coin. */
   prestigeProgress: number;
   /** Local day index of the daily quest board. */
@@ -458,6 +463,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     wheelDay: wheelDayAt(input.now),
     prestige: 0,
     prestigeCoins: 0,
+    prestigeSkills: { merchant: 0, farmer: 0, artisan: 0 },
     prestigeProgress: 0,
     questDay: wheelDayAt(input.now),
     questProgress: {},
@@ -532,6 +538,9 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
     prestige: ledger.prestige,
     prestigeCoins: ledger.prestigeCoins ?? 0,
     prestigeProgress: ledger.prestigeProgress ?? 0,
+    prestigeSkills: { ...(ledger.prestigeSkills ?? {}) },
+    prestigePoints:
+      ledger.prestige - Object.values(ledger.prestigeSkills ?? {}).reduce((sum, points) => sum + points, 0),
     quests: dailyQuestsFor(ledger.playerId, ledger.questDay).map((quest) => ({
       id: quest.id,
       kind: quest.kind,
@@ -647,6 +656,10 @@ export function applyGardenAction(
       return repairPlot(ledger, action.slot, now);
     case "claimCodex":
       return claimCodex(ledger, now);
+    case "buyPrestigeSkill":
+      return buyPrestigeSkill(ledger, action.skill, now);
+    case "respecPrestige":
+      return respecPrestige(ledger, now);
     case "buyTree":
       return buyTree(ledger, action.tree, action.slot, now);
     case "plantFruitSeed":
@@ -1029,6 +1042,21 @@ function mutationChances(ledger: GardenLedger): Partial<Record<EffectId, number>
   return out;
 }
 
+/** @brief Combined prestige + merchant sell multiplier. */
+function sellMultiplier(ledger: GardenLedger): number {
+  return prestigeSellBonus(ledger.prestige) * prestigeSkillSellBonus(ledger.prestigeSkills);
+}
+
+/** @brief Combined prestige + farmer growth-time multiplier. */
+function growthScale(ledger: GardenLedger): number {
+  return prestigeGrowScale(ledger.prestige) * prestigeSkillGrowScale(ledger.prestigeSkills);
+}
+
+/** @brief Combined prestige + artisan mutation chance. */
+function mutationSkillBonus(ledger: GardenLedger): number {
+  return prestigeMutationBonus(ledger.prestige) + prestigeSkillMutationBonus(ledger.prestigeSkills);
+}
+
 /** @brief Plants one bagged seed. */
 function plant(
   ledger: GardenLedger,
@@ -1060,12 +1088,8 @@ function plant(
     readyAt:
       now +
       Math.round(
-        growTimeForEvents(
-          seed,
-          events,
-          null,
-          dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
-        ) * soilGrowthFactor(ledger.soil[slot] ?? SOIL_START),
+        growTimeForEvents(seed, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger)) *
+          soilGrowthFactor(ledger.soil[slot] ?? SOIL_START),
       ),
     effects: [],
     pest: false,
@@ -1103,13 +1127,7 @@ function plantTree(
     tree: tree.id,
     plantedAt: now,
     readyAt:
-      now +
-      growTimeForEvents(
-        tree,
-        events,
-        null,
-        dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
-      ),
+      now + growTimeForEvents(tree, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger)),
     effects: [],
     pest: false,
     protectedUntil: 0,
@@ -1219,11 +1237,11 @@ function harvest(
             seed,
             events,
             plot.fertilizer,
-            dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
+            dayPhaseAt(now).phase.growScale * growthScale(ledger),
           ) * soilGrowthFactor(fertility),
         ),
       effects: [],
-      mutationBoost: prestigeMutationBonus(ledger.prestige),
+      mutationBoost: mutationSkillBonus(ledger),
       badLuck: wealthBadLuck(ledger.coins),
       pest: false,
       protectedUntil: plot.protectedUntil,
@@ -1278,7 +1296,7 @@ function harvestTree(
         definition,
         events,
         tree.fertilizer,
-        dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
+        dayPhaseAt(now).phase.growScale * growthScale(ledger),
       ),
     effects: [],
     pest: false,
@@ -2624,13 +2642,7 @@ function plantFruitSeed(ledger: GardenLedger, slot: number, seedId: SeedId, now:
     tree: seed.id as unknown as TreeId,
     plantedAt: now,
     readyAt:
-      now +
-      growTimeForEvents(
-        seed,
-        events,
-        null,
-        dayPhaseAt(now).phase.growScale * prestigeGrowScale(ledger.prestige),
-      ),
+      now + growTimeForEvents(seed, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger)),
     effects: [],
     pest: false,
     protectedUntil: 0,
@@ -2654,6 +2666,26 @@ function buyTree(
   const slot = wantedSlot ?? ledger.trees.findIndex((tree) => tree === null);
   if (slot < 0) return { ok: false, code: "PLOT_LOCKED" };
   return plantTree(ledger, slot, treeId, now, createRng(hash32(`tree:${ledger.playerId}:${treeId}:${now}`)));
+}
+
+/** @brief Spends one free prestige point on a skill branch. */
+function buyPrestigeSkill(ledger: GardenLedger, skill: PrestigeSkillId, now: number): RuleResult {
+  const spent = Object.values(ledger.prestigeSkills).reduce((sum, points) => sum + points, 0);
+  if (ledger.prestige - spent < 1) return { ok: false, code: "BAD_REQUEST" };
+  const next = clone(ledger);
+  next.prestigeSkills[skill] += 1;
+  return changed(next, now);
+}
+
+/** @brief Refunds every prestige point for one prestige coin. */
+function respecPrestige(ledger: GardenLedger, now: number): RuleResult {
+  const spent = Object.values(ledger.prestigeSkills).reduce((sum, points) => sum + points, 0);
+  if (spent < 1) return { ok: false, code: "NOTHING_TO_DO" };
+  if ((ledger.prestigeCoins ?? 0) < 1) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.prestigeCoins -= 1;
+  next.prestigeSkills = { merchant: 0, farmer: 0, artisan: 0 };
+  return changed(next, now);
 }
 
 /** @brief Claims coins for every newly discovered codex entry. */
@@ -3882,7 +3914,7 @@ function sellCrop(
     cropSellPrice(stack, season) *
       (1 + petEffect(ledger, "sell")) *
       (1 + farmingSellBonus(ledger.skills.farming.level)) *
-      prestigeSellBonus(ledger.prestige),
+      sellMultiplier(ledger),
   );
   const future = ledger.futures.find(
     (entry) => entry.item === item && entry.expiresAt > now && entry.qty > 0,
@@ -3914,7 +3946,7 @@ function sellAll(ledger: GardenLedger, season: SeasonSnapshot, now: number): Rul
       cropSellPrice(stack, season) *
         (1 + petEffect(ledger, "sell")) *
         (1 + farmingSellBonus(ledger.skills.farming.level)) *
-        prestigeSellBonus(ledger.prestige),
+        sellMultiplier(ledger),
     );
     const future = next.futures.find(
       (entry) => entry.item === stack.item && entry.expiresAt > now && entry.qty > 0,

@@ -1282,6 +1282,26 @@ export function wealthBadLuck(coins: number): number {
   return Math.min(0.2, 0.02 + Math.log10(coins / 1_000_000_000) * 0.02);
 }
 
+/** Branches in the prestige skill tree. */
+export type PrestigeSkillId = "merchant" | "farmer" | "artisan";
+
+/** Sell multiplier from merchant points (+10% each). */
+export function prestigeSkillSellBonus(skills: Partial<Record<PrestigeSkillId, number>> | undefined): number {
+  return 1 + (skills?.merchant ?? 0) * 0.1;
+}
+
+/** Growth-time multiplier from farmer points (-5% each, floor 10%). */
+export function prestigeSkillGrowScale(skills: Partial<Record<PrestigeSkillId, number>> | undefined): number {
+  return Math.max(0.1, 1 - (skills?.farmer ?? 0) * 0.05);
+}
+
+/** Absolute mutation chance from artisan points (+5% each). */
+export function prestigeSkillMutationBonus(
+  skills: Partial<Record<PrestigeSkillId, number>> | undefined,
+): number {
+  return (skills?.artisan ?? 0) * 0.05;
+}
+
 /** @brief Mutation-rate bonus per prestige level (absolute chance). */
 export function prestigeMutationBonus(level: number): number {
   return Math.max(0, level) * 0.05;
@@ -2235,6 +2255,10 @@ export interface ExtrasSnapshot {
   readonly prestigeCoins?: number;
   /** Progress toward the next prestige coin. */
   readonly prestigeProgress?: number;
+  /** Spent prestige skill points per branch. */
+  readonly prestigeSkills?: Partial<Record<PrestigeSkillId, number>>;
+  /** Unspent prestige skill points. */
+  readonly prestigePoints?: number;
 }
 
 /** Kinds of daily quest progress the server tracks. */
@@ -3030,6 +3054,8 @@ export type GardenAction =
   | { readonly kind: "repairPlot"; readonly slot: number }
   | { readonly kind: "buyTree"; readonly tree: TreeId; readonly slot?: number }
   | { readonly kind: "claimCodex" }
+  | { readonly kind: "buyPrestigeSkill"; readonly skill: PrestigeSkillId }
+  | { readonly kind: "respecPrestige" }
   | { readonly kind: "plantFruitSeed"; readonly slot: number; readonly seed: SeedId }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
@@ -3635,6 +3661,12 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return { kind, slot, seed: seed.id };
   }
   if (kind === "claimCodex") return { kind };
+  if (kind === "respecPrestige") return { kind };
+  if (kind === "buyPrestigeSkill") {
+    const skill = value.skill;
+    if (skill !== "merchant" && skill !== "farmer" && skill !== "artisan") return null;
+    return { kind, skill };
+  }
   if (kind === "buyTree") {
     const tree = typeof value.tree === "string" ? treeById(value.tree) : undefined;
     if (tree === undefined) return null;

@@ -3668,6 +3668,27 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     wrap.append(control);
 
+    const skillPanel = div("garden-market-panel");
+    skillPanel.append(lineBlock(`// ${t("prestige.skills")}`));
+    const skillPoints = extras.prestigePoints ?? Math.max(0, prestigeLevel);
+    skillPanel.append(lineBlock(t("prestige.points", { points: skillPoints })));
+    for (const skill of ["merchant", "farmer", "artisan"] as const) {
+      const level = extras.prestigeSkills?.[skill] ?? 0;
+      const button = actionButton(
+        t(`prestige.skill.${skill}`, { level }),
+        "buyPrestigeSkill",
+        skillPoints > 0,
+      );
+      button.dataset.skill = skill;
+      skillPanel.append(button);
+    }
+    if (skillPoints === 0 && prestigeLevel > 0) {
+      skillPanel.append(
+        actionButton(t("prestige.respec"), "respecPrestige", (extras.prestigeCoins ?? 0) >= 1),
+      );
+    }
+    wrap.append(skillPanel);
+
     const shop = div("garden-market-panel");
     shop.append(lineBlock(`// ${t("prestige.shop")}`));
     const addOffers = (label: string, offers: typeof PRESTIGE_SHOP): void => {
@@ -5439,6 +5460,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }
         return;
       }
+      case "buyPrestigeSkill": {
+        const skill = target.dataset.skill;
+        if (skill === "merchant" || skill === "farmer" || skill === "artisan") {
+          void runAction({ kind: "buyPrestigeSkill", skill }, t("prestige.skillBought"));
+        }
+        return;
+      }
+      case "respecPrestige":
+        void runAction({ kind: "respecPrestige" }, t("prestige.respecDone"));
+        return;
       case "claimCodex": {
         void runAction({ kind: "claimCodex" }, t("dynopedia.claimed"));
         return;

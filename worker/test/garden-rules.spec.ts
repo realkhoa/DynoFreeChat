@@ -188,6 +188,24 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.plots[0]?.effects).toEqual([]);
   });
 
+  it("spends prestige skill points and respecs for one coin", () => {
+    const ledger = makeLedger();
+    ledger.prestige = 2;
+    ledger.prestigeCoins = 1;
+    const bought = run(ledger, { kind: "buyPrestigeSkill", skill: "merchant" });
+    expect(bought.ok).toBe(true);
+    if (!bought.ok) return;
+    expect(bought.ledger.prestigeSkills.merchant).toBe(1);
+    const second = run(bought.ledger, { kind: "buyPrestigeSkill", skill: "farmer" });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    const respec = run(second.ledger, { kind: "respecPrestige" });
+    expect(respec.ok).toBe(true);
+    if (!respec.ok) return;
+    expect(respec.ledger.prestigeSkills).toEqual({ merchant: 0, farmer: 0, artisan: 0 });
+    expect(respec.ledger.prestigeCoins).toBe(0);
+  });
+
   it("claims codex rewards exactly once", () => {
     const ledger = makeLedger();
     ledger.coins = 0;
