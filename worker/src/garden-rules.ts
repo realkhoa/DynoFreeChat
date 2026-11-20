@@ -787,7 +787,20 @@ export function settleSpecialReset(ledger: GardenLedger, now: number): GardenLed
   for (const plot of next.specialPlots ?? []) {
     if (plot === null) continue;
     const free = next.plots.findIndex((entry) => entry === null);
-    if (free >= 0) next.plots[free] = { ...plot, slot: free };
+    if (free >= 0) {
+      next.plots[free] = { ...plot, slot: free };
+    } else {
+      // Normal soil is full: keep the crop as a harvested premium stack so
+      // the reset never destroys value.
+      addCrop(
+        next.bag.crops,
+        plot.seed,
+        canonicalEffects([...plot.effects, SPECIAL_MUTATION]),
+        1,
+        plot.pest,
+        SPECIAL_QUALITY_STARS,
+      );
+    }
   }
   next.specialPlots = new Array<PlotState | null>(SPECIAL_SLOTS).fill(null);
   next.specialOwned = 0;
