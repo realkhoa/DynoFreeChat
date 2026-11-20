@@ -1058,7 +1058,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     moveSource = null;
     machineMenu = null;
     specialPicker = null;
-    if (next === "event") void loadLeaderboard();
     if (next === "chart") void loadChart();
     if (next === "bots") void loadBots();
     if (next === "rank") void loadLeaderboard();
@@ -4209,7 +4208,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     leaderboard.forEach((entry, index) => {
       const spent = entry.spent ?? 0;
       const roi = spent > 0 ? Math.round(((entry.earned - spent) / spent) * 100) : entry.earned > 0 ? 100 : 0;
-      const row = div("garden-rank-row");
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "garden-rank-row";
+      row.dataset.act = "rankVisit";
+      row.dataset.code = entry.code;
+      row.title = t("rank.visitHint", { nick: entry.nick });
       row.append(
         span("garden-rank-cell", `#${index + 1}`),
         span("garden-rank-cell is-name", `[${entry.prestige ?? 0}] ${entry.nick} · ${entry.code}`),
@@ -4410,24 +4414,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       seasonPanel.append(lineBlock(t("common.loading")));
     }
 
-    const board = div("garden-event-panel");
-    board.append(lineBlock(`// ${t("event.leaderboard")}`));
-    if (leaderboard.length === 0) board.append(lineBlock(t("event.leaderboardEmpty")));
-    leaderboard.forEach((entry, index) => {
-      const mine = entry.code === currentCode();
-      const row = rowButton(
-        "garden-leaderboard-row",
-        `${t("event.rank", {
-          rank: index + 1,
-          nick: mine ? t("event.you") : entry.nick,
-          coins: formatCompact(entry.earned),
-        })} [${t("event.visit")}]`,
-        "visit",
-      );
-      row.dataset.code = entry.code;
-      board.append(row);
-    });
-
     const backup = div("garden-event-panel");
     backup.append(lineBlock(`// ${t("event.recoveryTitle")}`));
     if (mode === "owner") {
@@ -4448,7 +4434,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     restoreRow.append(input, actionButton(t("garden.restore"), "restore"));
     backup.append(restoreRow);
 
-    wrap.append(seasonPanel, board, backup);
+    wrap.append(seasonPanel, backup);
     return wrap;
   }
 
@@ -5681,6 +5667,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "rotate":
         void rotateRecovery();
         return;
+      case "rankVisit": {
+        const code = target.dataset.code;
+        if (code !== undefined && code !== state?.code) openVisit(code);
+        return;
+      }
       case "visit": {
         const code = target.dataset.code;
         if (code !== undefined) openVisit(code);

@@ -286,7 +286,7 @@ class FakeGardenApi {
     this.calls.push({ method: "leaderboard" });
     return [
       {
-        code: "ABCDEF",
+        code: "ZZZZZZ",
         nick: "Tester",
         color: "#4ec9b0",
         earned: 1_000,
@@ -1009,6 +1009,10 @@ describe("rank tab", () => {
     expect(row?.textContent).toContain("1.000c");
     expect(row?.textContent).toContain("+100%");
     expect(row?.textContent).toContain("12");
+
+    host.querySelector<HTMLButtonElement>(".garden-rank-row:not(.is-head)")?.click();
+    await settle();
+    expect(host.querySelector(".stage-status")?.textContent).toContain("Chế độ xem");
   });
 });
 

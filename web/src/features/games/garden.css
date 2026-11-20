@@ -1579,3 +1579,18 @@
     animation: none;
   }
 }
+
+/* Leaderboard rows open the owner's garden on click. */
+button.garden-rank-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.garden-rank-row:hover {
+  background: var(--hover-row);
+}
