@@ -164,6 +164,36 @@ describe("garden catalog", () => {
       "starfruit",
       "hazelnut",
       "olive",
+      "broccoli",
+      "onion",
+      "garlic",
+      "wheat",
+      "sugarcane",
+      "cactus",
+      "daffodil",
+      "tulip",
+      "rose",
+      "daisy",
+      "greenBean",
+      "beet",
+      "radish",
+      "lettuce",
+      "cabbage",
+      "honeydew",
+      "cantaloupe",
+      "papaya",
+      "pomegranate",
+      "raspberry",
+      "blackberry",
+      "passionfruit",
+      "lychee",
+      "persimmon",
+      "fig",
+      "avocado",
+      "jalapeno",
+      "bellPepper",
+      "asparagus",
+      "ghostPepper",
       "cocomelon",
     ]);
     for (const seed of SEEDS) {
@@ -954,7 +984,7 @@ describe("garden growth math", () => {
 
 describe("garden wire parsing", () => {
   it("ships seven fruit trees and prices their fruit", () => {
-    expect(TREES).toHaveLength(7);
+    expect(TREES).toHaveLength(15);
     expect(TREES.map((tree) => tree.id)).toEqual([
       "apple",
       "grape",
@@ -963,6 +993,14 @@ describe("garden wire parsing", () => {
       "apricot",
       "coconut",
       "elderberry",
+      "banana",
+      "cherry",
+      "peach",
+      "pear",
+      "lemon",
+      "lime",
+      "mango",
+      "kiwi",
     ]);
     expect(treeById("apple")?.sell).toBeGreaterThan(treeById("apple")?.buy ?? 0);
     const season = seasonAt(NOW);

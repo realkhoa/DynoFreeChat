@@ -243,10 +243,55 @@ export type SeedId =
   | "starfruit"
   | "hazelnut"
   | "olive"
+  | "broccoli"
+  | "onion"
+  | "garlic"
+  | "wheat"
+  | "sugarcane"
+  | "cactus"
+  | "daffodil"
+  | "tulip"
+  | "rose"
+  | "daisy"
+  | "greenBean"
+  | "beet"
+  | "radish"
+  | "lettuce"
+  | "cabbage"
+  | "honeydew"
+  | "cantaloupe"
+  | "papaya"
+  | "pomegranate"
+  | "raspberry"
+  | "blackberry"
+  | "passionfruit"
+  | "lychee"
+  | "persimmon"
+  | "fig"
+  | "avocado"
+  | "ghostPepper"
+  | "jalapeno"
+  | "bellPepper"
+  | "asparagus"
   | "cocomelon";
 
 /** Fruit tree ids shipped in this build. */
-export type TreeId = "apple" | "grape" | "orange" | "plum" | "apricot" | "coconut" | "elderberry";
+export type TreeId =
+  | "apple"
+  | "grape"
+  | "orange"
+  | "plum"
+  | "apricot"
+  | "coconut"
+  | "elderberry"
+  | "banana"
+  | "cherry"
+  | "peach"
+  | "pear"
+  | "lemon"
+  | "lime"
+  | "mango"
+  | "kiwi";
 
 /** Anything that can sit in the harvest bag: a crop seed or a tree fruit. */
 export type ItemId = SeedId | TreeId;
@@ -494,6 +539,46 @@ export const SEEDS: readonly SeedDefinition[] = [
     prestigeOnly: true,
     rareChance: 0.0025,
   },
+  { id: "broccoli", growMs: 20 * 60_000, buy: 80, sell: 160, art: [".", "v", "Y", "B"], regrow: true },
+  { id: "onion", growMs: 18 * 60_000, buy: 60, sell: 110, art: [".", "v", "Y", "o"], regrow: false },
+  { id: "garlic", growMs: 22 * 60_000, buy: 90, sell: 170, art: [".", "v", "Y", "G"], regrow: false },
+  { id: "wheat", growMs: 24 * 60_000, buy: 70, sell: 130, art: [".", "v", "Y", "W"], regrow: true },
+  { id: "sugarcane", growMs: 30 * 60_000, buy: 110, sell: 220, art: [".", "v", "Y", "S"], regrow: true },
+  { id: "cactus", growMs: 35 * 60_000, buy: 160, sell: 280, art: [".", "v", "Y", "c"], regrow: true },
+  { id: "daffodil", growMs: 18 * 60_000, buy: 50, sell: 95, art: [".", "v", "Y", "d"], regrow: false },
+  { id: "tulip", growMs: 20 * 60_000, buy: 60, sell: 115, art: [".", "v", "Y", "u"], regrow: false },
+  { id: "rose", growMs: 26 * 60_000, buy: 140, sell: 260, art: [".", "v", "Y", "R"], regrow: false },
+  { id: "daisy", growMs: 16 * 60_000, buy: 40, sell: 75, art: [".", "v", "Y", "y"], regrow: false },
+  { id: "greenBean", growMs: 22 * 60_000, buy: 70, sell: 140, art: [".", "v", "Y", "n"], regrow: true },
+  { id: "beet", growMs: 24 * 60_000, buy: 90, sell: 180, art: [".", "v", "Y", "b"], regrow: false },
+  { id: "radish", growMs: 18 * 60_000, buy: 50, sell: 100, art: [".", "v", "Y", "r"], regrow: false },
+  { id: "lettuce", growMs: 20 * 60_000, buy: 60, sell: 120, art: [".", "v", "Y", "l"], regrow: false },
+  { id: "cabbage", growMs: 28 * 60_000, buy: 120, sell: 230, art: [".", "v", "Y", "k"], regrow: false },
+  { id: "honeydew", growMs: 32 * 60_000, buy: 200, sell: 380, art: [".", "v", "Y", "h"], regrow: true },
+  { id: "cantaloupe", growMs: 34 * 60_000, buy: 220, sell: 420, art: [".", "v", "Y", "q"], regrow: true },
+  { id: "papaya", growMs: 36 * 60_000, buy: 260, sell: 500, art: [".", "v", "Y", "p"], regrow: true },
+  { id: "pomegranate", growMs: 40 * 60_000, buy: 320, sell: 620, art: [".", "v", "Y", "P"], regrow: true },
+  { id: "raspberry", growMs: 24 * 60_000, buy: 100, sell: 210, art: [".", "v", "Y", "j"], regrow: true },
+  { id: "blackberry", growMs: 26 * 60_000, buy: 120, sell: 250, art: [".", "v", "Y", "x"], regrow: true },
+  { id: "passionfruit", growMs: 38 * 60_000, buy: 300, sell: 600, art: [".", "v", "Y", "f"], regrow: true },
+  { id: "lychee", growMs: 42 * 60_000, buy: 360, sell: 720, art: [".", "v", "Y", "L"], regrow: true },
+  { id: "persimmon", growMs: 36 * 60_000, buy: 280, sell: 560, art: [".", "v", "Y", "m"], regrow: true },
+  { id: "fig", growMs: 30 * 60_000, buy: 240, sell: 480, art: [".", "v", "Y", "F"], regrow: true },
+  { id: "avocado", growMs: 44 * 60_000, buy: 400, sell: 800, art: [".", "v", "Y", "A"], regrow: true },
+  { id: "jalapeno", growMs: 28 * 60_000, buy: 150, sell: 300, art: [".", "v", "Y", "i"], regrow: true },
+  { id: "bellPepper", growMs: 30 * 60_000, buy: 170, sell: 340, art: [".", "v", "Y", "v"], regrow: true },
+  { id: "asparagus", growMs: 32 * 60_000, buy: 190, sell: 380, art: [".", "v", "Y", "a"], regrow: true },
+  {
+    id: "ghostPepper",
+    growMs: 50 * 60_000,
+    buy: 7_000_000,
+    sell: 350_000,
+    art: [".", "v", "Y", "!"],
+    regrow: true,
+    rare: true,
+    prestigeOnly: true,
+    rareChance: 0.01,
+  },
   // Prestige tier 1: expensive, multi-harvest, never in the normal market.
   {
     id: "cocomelon",
@@ -640,6 +725,14 @@ export const TREES: readonly TreeDefinition[] = [
   { id: "apricot", growMs: 40 * 60_000, buy: 320, sell: 500, art: [".", "v", "Y", "A"] },
   { id: "coconut", growMs: 45 * 60_000, buy: 400, sell: 620, art: [".", "v", "Y", "C"] },
   { id: "elderberry", growMs: 50 * 60_000, buy: 480, sell: 760, art: [".", "v", "Y", "e"] },
+  { id: "banana", growMs: 28 * 60_000, buy: 180, sell: 320, art: [".", "v", "Y", "N"] },
+  { id: "cherry", growMs: 30 * 60_000, buy: 200, sell: 360, art: [".", "v", "Y", "C"] },
+  { id: "peach", growMs: 32 * 60_000, buy: 240, sell: 430, art: [".", "v", "Y", "E"] },
+  { id: "pear", growMs: 34 * 60_000, buy: 260, sell: 470, art: [".", "v", "Y", "R"] },
+  { id: "lemon", growMs: 36 * 60_000, buy: 300, sell: 540, art: [".", "v", "Y", "Z"] },
+  { id: "lime", growMs: 38 * 60_000, buy: 320, sell: 580, art: [".", "v", "Y", "I"] },
+  { id: "mango", growMs: 42 * 60_000, buy: 380, sell: 700, art: [".", "v", "Y", "M"] },
+  { id: "kiwi", growMs: 44 * 60_000, buy: 420, sell: 780, art: [".", "v", "Y", "K"] },
 ];
 
 /** One luck effect and how it changes a crop's value. */
@@ -1159,6 +1252,7 @@ export const PRESTIGE_SHOP: readonly PrestigeShopOffer[] = [
   { seed: "starfruit", tier: 2, price: 10_000_000 },
   { seed: "lotus", tier: 2, price: 10_000_000 },
   { seed: "hazelnut", tier: 2, price: 10_000_000 },
+  { seed: "ghostPepper", tier: 2, price: 7_000_000 },
   { seed: "venusFlyTrap", tier: 3, price: 10_000_000 },
   { seed: "olive", tier: 3, price: 20_000_000 },
   { seed: "cocomelon", tier: 5, price: 1_000_000_000 },
