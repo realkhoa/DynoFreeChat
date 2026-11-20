@@ -71,6 +71,7 @@ import {
   settlePest,
   settleExtras,
   settleStaff,
+  settleAttachments,
   settleSpecialReset,
   extrasSnapshot,
   ledgerSnapshot,
@@ -452,6 +453,8 @@ export class Garden extends DurableObject<Env> {
       farmSettledAt: raw.farmSettledAt ?? raw.updatedAt ?? 0,
       shopStock: raw.shopStock ?? {},
       pondGrowth: raw.pondGrowth ?? 0,
+      attachments: raw.attachments ?? {},
+      attachmentSettledAt: raw.attachmentSettledAt ?? raw.updatedAt ?? 0,
       toolsSettledAt: raw.toolsSettledAt ?? raw.updatedAt ?? 0,
       pestSettledAt: raw.pestSettledAt ?? raw.updatedAt ?? 0,
       soil: this.readSoil(tabs, raw.soil),
@@ -970,7 +973,10 @@ export class Garden extends DurableObject<Env> {
     const settled = settleStaff(
       settleExtras(
         settleSpecialReset(
-          settlePest(settleTools(settleFarm(settleMachines(ledger, now), now), now), now),
+          settlePest(
+            settleTools(settleAttachments(settleFarm(settleMachines(ledger, now), now), now), now),
+            now,
+          ),
           now,
         ),
         now,
@@ -1022,7 +1028,13 @@ export class Garden extends DurableObject<Env> {
     // Machines settle after the action, so an explicit collect still finds its
     // finished job; state reads settle them anyway.
     const settled = settleStaff(
-      settleExtras(settleSpecialReset(settlePest(settleTools(settleFarm(ledger, now), now), now), now), now),
+      settleExtras(
+        settleSpecialReset(
+          settlePest(settleTools(settleAttachments(settleFarm(ledger, now), now), now), now),
+          now,
+        ),
+        now,
+      ),
       now,
     );
     const result = applyGardenAction(settled, action as GardenAction, season, now);
@@ -1266,6 +1278,7 @@ export class Garden extends DurableObject<Env> {
         pond: (ledger.animals.pond ?? []).map((animal) => (animal === null ? null : { ...animal })),
       },
       pondGrowth: ledger.pondGrowth ?? 0,
+      attachments: { ...(ledger.attachments ?? {}) },
       specialOwned: Math.min(SPECIAL_SLOTS, ledger.specialOwned ?? 0),
       specialPatches: ledger.specialPatches ?? 0,
       specialUnlocked: [...(ledger.specialUnlocked ?? [])],

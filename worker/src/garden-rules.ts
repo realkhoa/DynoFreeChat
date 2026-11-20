@@ -159,6 +159,9 @@ import {
   type SupplyId,
   type PlotState,
   type ProductId,
+  attachmentById,
+  type AttachmentId,
+  type AttachmentSlot,
   type FutureLock,
   type PetId,
   type MachineDefinition,
@@ -235,6 +238,8 @@ export interface GardenLedger {
   farmSettledAt: number;
   /** Fish pond growth in percent. */
   pondGrowth: number;
+  attachments: Partial<Record<AttachmentSlot, AttachmentId>>;
+  attachmentSettledAt: number;
   /** Last automatic-tool settlement. */
   toolsSettledAt: number;
   /** Last pest strike roll. */
@@ -379,6 +384,8 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     animals: { coop: [], barn: [], pond: [] },
     farmSettledAt: input.now,
     pondGrowth: 0,
+    attachments: {},
+    attachmentSettledAt: input.now,
     toolsSettledAt: input.now,
     pestSettledAt: input.now,
     soil: new Array<number>(totalCrops(STARTING_TABS)).fill(SOIL_START),
@@ -520,6 +527,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     },
     farmSettledAt: ledger.farmSettledAt,
     pondGrowth: ledger.pondGrowth ?? 0,
+    attachments: { ...(ledger.attachments ?? {}) },
     shopStock: { ...ledger.shopStock },
     soil: [...ledger.soil],
     specialOwned: ledger.specialOwned ?? 0,
@@ -696,6 +704,10 @@ export function applyGardenAction(
       return queueMachine(ledger, action.machine, action.item, now);
     case "clearMachineQueue":
       return clearMachineQueue(ledger, action.machine, now);
+    case "attachMachine":
+      return attachMachine(ledger, action.slot, action.id, now);
+    case "detachMachine":
+      return detachMachine(ledger, action.slot, now);
     case "collectMachine":
       return collectMachine(ledger, action.machine, now);
     case "harvestAll":
@@ -1886,6 +1898,61 @@ function sellAllProducts(ledger: GardenLedger, season: SeasonSnapshot, now: numb
  * at its current quality; when it does not, animals go unfed and produce
  * nothing for those cycles.
  */
+/** @brief Mounts a passive machine on the garden or a building. */
+function attachMachine(
+  ledger: GardenLedger,
+  slot: AttachmentSlot,
+  id: AttachmentId,
+  now: number,
+): RuleResult {
+  const definition = attachmentById(id);
+  if (definition === undefined || definition.slot !== slot) return { ok: false, code: "BAD_REQUEST" };
+  if (ledger.coins < definition.price) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= definition.price;
+  next.stats.spent += definition.price;
+  next.attachments = { ...next.attachments, [slot]: id };
+  return changed(next, now);
+}
+
+/** @brief Removes a mounted machine; there is no refund. */
+function detachMachine(ledger: GardenLedger, slot: AttachmentSlot, now: number): RuleResult {
+  if (ledger.attachments?.[slot] === undefined) return { ok: false, code: "NOTHING_TO_DO" };
+  const next = clone(ledger);
+  next.attachments = { ...next.attachments };
+  delete next.attachments[slot];
+  return changed(next, now);
+}
+
+/** @brief Waters a few crops per cycle while the sprinkler is mounted. */
+export function settleAttachments(ledger: GardenLedger, now: number): GardenLedger {
+  if (ledger.attachments?.garden !== "sprinkler") return ledger;
+  const elapsed = now - (ledger.attachmentSettledAt ?? now);
+  const cycles = Math.min(20, Math.floor(elapsed / FARM_CYCLE_MS));
+  if (cycles <= 0) return ledger;
+  const next = clone(ledger);
+  next.attachmentSettledAt = (ledger.attachmentSettledAt ?? now) + cycles * FARM_CYCLE_MS;
+  let watered = 0;
+  const budget = cycles * 5;
+  for (let slot = 0; slot < next.plots.length && watered < budget; slot += 1) {
+    const plot = next.plots[slot] ?? null;
+    if (plot === null || plot.watered || now >= plot.readyAt) continue;
+    const remaining = plot.readyAt - now;
+    next.plots[slot] = {
+      ...plot,
+      readyAt: Math.max(now + 1_000, plot.readyAt - Math.round(remaining * WATER_CUT_RATIO)),
+      watered: true,
+      effects: canonicalEffects([...plot.effects, "wet"]),
+    };
+    watered += 1;
+  }
+  if (watered === 0) return ledger;
+  next.rev += 1;
+  next.updatedAt = now;
+  next.lastSeen = now;
+  return next;
+}
+
 export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
   const animals = BUILDING_IDS.flatMap((building) => ledger.animals[building] ?? []).filter(
     (animal): animal is AnimalState => animal !== null,
@@ -1895,7 +1962,10 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
 
   const cycles = Math.min(100, Math.floor(elapsed / FARM_CYCLE_MS));
   if (cycles <= 0) return ledger;
-  const pondSteps = ledger.buildings.pond > 0 ? Math.floor(cycles / POND_GROWTH_CYCLES) : 0;
+  const pondSteps =
+    ledger.buildings.pond > 0
+      ? Math.floor(cycles / POND_GROWTH_CYCLES) * (ledger.attachments?.pond === "aerator" ? 2 : 1)
+      : 0;
   // An idle farm with no pond has nothing to settle.
   if (animals.length === 0 && pondSteps <= 0) return ledger;
   const next = clone(ledger);
@@ -1924,7 +1994,8 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
   for (const entry of collections) {
     const definition = animalById(entry.animal.kind);
     if (definition === undefined) continue;
-    const interval = animalIntervalMs(entry.animal.kind);
+    const heated = entry.building !== "pond" && ledger.attachments?.[entry.building] === "heater";
+    const interval = Math.round(animalIntervalMs(entry.animal.kind) * (heated ? 0.8 : 1));
     const produced = Math.min(50, Math.floor((now - entry.animal.lastProduceAt) / interval));
     if (produced <= 0) continue;
     const star = animalQuality(entry.animal, now);
@@ -2715,7 +2786,9 @@ export function settlePest(ledger: GardenLedger, now: number): GardenLedger {
           if (plant === null || plant.pest || plant.protectedUntil > now) continue;
           const rng = createRng(hash32(`pest:${ledger.playerId}:c${slot}:${cycle}`));
           const shield =
-            (1 - 0.12 * ledger.greenhouse) * (1 - (ledger.pet * 0.15 + petEffect(ledger, "pestShield")));
+            (1 - 0.12 * ledger.greenhouse) *
+            (1 - (ledger.pet * 0.15 + petEffect(ledger, "pestShield"))) *
+            (ledger.attachments?.garden === "scarecrow" ? 0.5 : 1);
           if (rng() >= PEST_CHANCE_PER_CYCLE * shield) continue;
           if (now < ledger.insuranceUntil) next.coins += INSURANCE_PAYOUT;
           const remaining = Math.max(0, plant.readyAt - now);
@@ -2731,7 +2804,7 @@ export function settlePest(ledger: GardenLedger, now: number): GardenLedger {
       const tree = next.trees[slot] ?? null;
       if (tree === null || tree.pest || tree.protectedUntil > now) continue;
       const rng = createRng(hash32(`pest:${ledger.playerId}:t${slot}:${cycle}`));
-      if (rng() >= PEST_CHANCE_PER_CYCLE) continue;
+      if (rng() >= PEST_CHANCE_PER_CYCLE * (ledger.attachments?.garden === "scarecrow" ? 0.5 : 1)) continue;
       const remaining = Math.max(0, tree.readyAt - now);
       next.trees[slot] = {
         ...tree,
@@ -3255,6 +3328,7 @@ function clone(ledger: GardenLedger): GardenLedger {
     },
     farmSettledAt: ledger.farmSettledAt,
     pondGrowth: ledger.pondGrowth ?? 0,
+    attachments: { ...(ledger.attachments ?? {}) },
     soil: [...ledger.soil],
     specialOwned: Math.min(SPECIAL_SLOTS, ledger.specialOwned ?? 0),
     specialPatches: ledger.specialPatches ?? 0,

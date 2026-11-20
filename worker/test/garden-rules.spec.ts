@@ -35,6 +35,7 @@ import {
   settleTools,
   type GardenLedger,
   settleSpecialReset,
+  settleAttachments,
 } from "../src/garden-rules";
 
 /** Server time inside the golden-hour wave, so growth is unmodified by rain. */
@@ -641,6 +642,52 @@ describe("garden ledger rules", () => {
     expect(reset.specialOwned).toBe(0);
     expect(reset.specialPlots.every((plot) => plot === null)).toBe(true);
     expect(reset.plots[0]?.seed).toBe("carrot");
+  });
+
+  it("mounts passive machines and the sprinkler waters crops", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000;
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const mounted = run(ledger, { kind: "attachMachine", slot: "garden", id: "sprinkler" });
+    expect(mounted.ok).toBe(true);
+    if (!mounted.ok) return;
+    expect(mounted.ledger.attachments.garden).toBe("sprinkler");
+    expect(mounted.ledger.coins).toBe(ledger.coins - 3_000_000);
+
+    const watered = settleAttachments(mounted.ledger, NOW + FARM_CYCLE_MS);
+    expect(watered.plots[0]?.watered).toBe(true);
+
+    const removed = run(mounted.ledger, { kind: "detachMachine", slot: "garden" });
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) return;
+    expect(removed.ledger.attachments.garden).toBeUndefined();
+  });
+
+  it("juices crops with the new machine", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000;
+    ledger.bag.crops = [{ item: "apple", effects: [], qty: 1 }];
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const machine = run(built.ledger, { kind: "buildMachine", machine: "juicer" });
+    if (!machine.ok) throw new Error("juicer failed");
+    const crafted = run(machine.ledger, { kind: "craftMachine", machine: "juicer", item: "apple" });
+    expect(crafted.ok).toBe(true);
+    if (!crafted.ok) return;
+    expect(crafted.ledger.bag.products?.some((stack) => stack.product === "juice")).toBe(true);
   });
 
   it("fertilizes the whole garden and bills per plant without bag stock", () => {

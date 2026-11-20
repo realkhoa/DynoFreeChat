@@ -167,8 +167,8 @@ describe("garden catalog", () => {
   });
 
   it("ships fertilizers and sprays with their shop data", () => {
-    expect(FERTILIZERS).toHaveLength(3);
-    expect(SPRAYS).toHaveLength(4);
+    expect(FERTILIZERS).toHaveLength(5);
+    expect(SPRAYS).toHaveLength(7);
     expect(fertilizerById("speedGrow")?.growMultiplier).toBeLessThan(1);
     expect(fertilizerById("superGrow")?.harvests).toBe(4);
     expect(sprayById("goldenSpray")?.effects).toEqual(["golden"]);
@@ -607,7 +607,7 @@ describe("market pressure", () => {
   it("lists every sellable and buyable item with a base price", () => {
     expect(marketBaseItems(seasonAt(EPOCH_MS))).toHaveLength(SEEDS.length + TREES.length);
     expect(marketBuyBaseItems(seasonAt(EPOCH_MS))).toHaveLength(
-      SEEDS.filter((seed) => seed.rare !== true).length + 7,
+      SEEDS.filter((seed) => seed.rare !== true).length + FERTILIZERS.length + SPRAYS.length,
     );
   });
 

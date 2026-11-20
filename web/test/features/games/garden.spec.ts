@@ -1256,7 +1256,7 @@ describe("bulk supplies", () => {
 
     // Every fertilizer is offered, even with an empty bag.
     const rows = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-act="quickSupplyAll"]'));
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(5);
     expect(rows.some((row) => row.textContent?.includes("× 3"))).toBe(true);
     const speed = rows.find((row) => row.dataset.supply === "speedGrow");
     expect(speed?.disabled).toBe(false);
@@ -1282,7 +1282,7 @@ describe("bulk supplies", () => {
     host.querySelectorAll<HTMLButtonElement>('[data-act="pickAllSupply"]')[1]?.click();
     await settle();
     const rows = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-act="quickSupplyAll"]'));
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(7);
     const golden = rows.find((row) => row.dataset.supply === "goldenSpray");
     expect(golden?.disabled).toBe(false);
     golden?.click();
@@ -1867,6 +1867,24 @@ describe("compact amounts", () => {
   });
 });
 
+describe("mounted machines", () => {
+  it("mounts a passive machine from the garden tab", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 10_000_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const spr = host.querySelector<HTMLButtonElement>('[data-act="attachMachine"][data-id="sprinkler"]');
+    expect(spr).not.toBeNull();
+    spr?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "attachMachine")?.action).toMatchObject({
+      kind: "attachMachine",
+      slot: "garden",
+      id: "sprinkler",
+    });
+  });
+});
+
 describe("bulk uproot preview", () => {
   it("lists the crops before confirming the uproot", async () => {
     const carrot = {
@@ -1930,10 +1948,10 @@ describe("market tab", () => {
     await settle();
     expect(host.querySelector("[data-restock-timer]")?.textContent).toContain("Đổi hàng");
     const cards = host.querySelectorAll<HTMLButtonElement>(".garden-buy-card");
-    expect(cards.length).toBe(SEASON.shop.offers.length + 7 + SEASON.shop.tools.length);
+    expect(cards.length).toBe(SEASON.shop.offers.length + 12 + SEASON.shop.tools.length);
     // Supplies and rare tools keep their own labelled sections.
     const supplies = host.querySelectorAll('.garden-buy-card[data-act="buySupply"]');
-    expect(supplies).toHaveLength(7);
+    expect(supplies).toHaveLength(12);
     const supplyNames = [...supplies].map((card) => card.textContent ?? "");
     expect(supplyNames.some((text) => text.includes("Phân tăng trưởng"))).toBe(true);
     expect(supplyNames.some((text) => text.includes("Spray bão tố"))).toBe(true);

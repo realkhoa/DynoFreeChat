@@ -488,10 +488,11 @@ export const SEEDS: readonly SeedDefinition[] = [
 export const EVENT_SEED_CHANCE = 0.01;
 
 /** Multiplier-aware fertilizer ids. */
-export type FertilizerId = "compost" | "speedGrow" | "superGrow";
+export type FertilizerId = "compost" | "speedGrow" | "superGrow" | "bioBoost" | "moonCompost";
 
 /** Mutation-boosting spray ids. */
-export type SprayId = "goldenSpray" | "frostSpray" | "snowSpray" | "stormSpray";
+export type SprayId =
+  "goldenSpray" | "frostSpray" | "snowSpray" | "stormSpray" | "cosmicSpray" | "diamondSpray" | "prismSpray";
 
 /** Anything the player can buy in the supplies shop. */
 export type SupplyId = FertilizerId | SprayId;
@@ -538,6 +539,8 @@ export const FERTILIZERS: readonly FertilizerDefinition[] = [
   { id: "compost", growMultiplier: 0.75, harvests: 2, price: 25 },
   { id: "speedGrow", growMultiplier: 0.6, harvests: 3, price: 60 },
   { id: "superGrow", growMultiplier: 0.45, harvests: 4, price: 140 },
+  { id: "bioBoost", growMultiplier: 0.5, harvests: 5, price: 260 },
+  { id: "moonCompost", growMultiplier: 0.55, harvests: 4, price: 420 },
 ];
 
 /** Spray catalog; mutation sprays are premium items now. */
@@ -551,6 +554,9 @@ export const SPRAYS: readonly SprayDefinition[] = [
     harvests: 3,
     price: 75_000,
   },
+  { id: "cosmicSpray", effects: ["cosmic", "meteor", "aurora"], harvests: 2, price: 60_000 },
+  { id: "diamondSpray", effects: ["diamond", "crystal"], harvests: 2, price: 120_000 },
+  { id: "prismSpray", effects: ["rainbow", "glimmering"], harvests: 3, price: 90_000 },
 ];
 
 /** The fields a bulk fertilizer or spray reads from a crop or a tree. */
@@ -801,7 +807,10 @@ export type ProductId =
   | "cheese"
   | "pickles"
   | "oil"
-  | "fabric";
+  | "fabric"
+  | "juice"
+  | "jam"
+  | "butter";
 
 /** One animal definition. */
 export interface AnimalDefinition {
@@ -889,11 +898,24 @@ export const PRODUCTS: readonly ProductDefinition[] = [
   { id: "pickles", base: 300 },
   { id: "oil", base: 2_600 },
   { id: "fabric", base: 100_000 },
+  { id: "juice", base: 800 },
+  { id: "jam", base: 1_200 },
+  { id: "butter", base: 5_000 },
 ];
 
 /** Warehouse machine ids. */
 export type MachineId =
-  "seedMaker" | "mayoMaker" | "cheesePress" | "pickleJar" | "oilPress" | "loom" | "dryer" | "keg";
+  | "seedMaker"
+  | "mayoMaker"
+  | "cheesePress"
+  | "pickleJar"
+  | "oilPress"
+  | "loom"
+  | "dryer"
+  | "keg"
+  | "juicer"
+  | "jamMaker"
+  | "butterChurn";
 
 /** One machine recipe. */
 export interface MachineDefinition {
@@ -1007,9 +1029,58 @@ export const MACHINES: readonly MachineDefinition[] = [
     gradeByPrice: true,
     queued: true,
   },
+  {
+    id: "juicer",
+    input: { kind: "seedCrop" },
+    output: { kind: "product", product: "juice" },
+    multiplier: 12,
+    cooldownCycles: 2,
+    allProduce: true,
+  },
+  {
+    id: "jamMaker",
+    input: { kind: "seedCrop" },
+    output: { kind: "product", product: "jam" },
+    multiplier: 15,
+    cooldownCycles: 3,
+    allProduce: true,
+  },
+  {
+    id: "butterChurn",
+    input: { kind: "product", product: "milk" },
+    output: { kind: "product", product: "butter" },
+    multiplier: 20,
+    cooldownCycles: 2,
+  },
 ];
 
 /** @brief Machine definition by id. */
+/** Passive machines mounted on the garden or farm buildings. */
+export type AttachmentId = "sprinkler" | "scarecrow" | "heater" | "aerator";
+
+/** Where an attachment can be mounted. */
+export type AttachmentSlot = "garden" | "coop" | "barn" | "pond";
+
+/** One mountable passive machine. */
+export interface AttachmentDefinition {
+  readonly id: AttachmentId;
+  readonly slot: AttachmentSlot;
+  readonly price: number;
+}
+
+/** Attachment catalog. */
+export const ATTACHMENTS: readonly AttachmentDefinition[] = [
+  { id: "sprinkler", slot: "garden", price: 3_000_000 },
+  { id: "scarecrow", slot: "garden", price: 4_000_000 },
+  { id: "heater", slot: "coop", price: 5_000_000 },
+  { id: "aerator", slot: "pond", price: 6_000_000 },
+];
+
+/** @brief Attachment definition by id. */
+export function attachmentById(id: string): AttachmentDefinition | undefined {
+  return ATTACHMENTS.find((entry) => entry.id === id);
+}
+
 export function machineById(id: string): MachineDefinition | undefined {
   return MACHINES.find((machine) => machine.id === id);
 }
@@ -2065,6 +2136,8 @@ export interface GardenSnapshot {
   readonly buildings: Readonly<Record<BuildingId, number>>;
   /** Animals per building slot. */
   readonly animals: Readonly<Record<BuildingId, readonly (AnimalState | null)[]>>;
+  /** Passive machines mounted on the garden or buildings. */
+  readonly attachments?: Readonly<Partial<Record<AttachmentSlot, AttachmentId>>>;
   /** Last time farm upkeep and production were settled. */
   readonly farmSettledAt: number;
   /** Fish pond growth in percent, `0..100`; every ten cycles adds ten. */
@@ -2121,6 +2194,8 @@ export interface VisitSnapshot {
   readonly buildings: Readonly<Record<BuildingId, number>>;
   /** Animals per building slot. */
   readonly animals: Readonly<Record<BuildingId, readonly (AnimalState | null)[]>>;
+  /** Passive machines mounted on the garden or buildings. */
+  readonly attachments?: Readonly<Partial<Record<AttachmentSlot, AttachmentId>>>;
   /** Fish pond growth in percent, `0..100`. */
   readonly pondGrowth: number;
   /** Bought premium plots, `0..SPECIAL_SLOTS`. */
@@ -2588,6 +2663,8 @@ export type GardenAction =
     }
   | { readonly kind: "collectMachine"; readonly machine: MachineId }
   | { readonly kind: "clearMachineQueue"; readonly machine: MachineId }
+  | { readonly kind: "attachMachine"; readonly slot: AttachmentSlot; readonly id: AttachmentId }
+  | { readonly kind: "detachMachine"; readonly slot: AttachmentSlot }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
   | { readonly kind: "sellAll" }
@@ -3168,6 +3245,18 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     }
     const tool = typeof value.tool === "string" ? toolById(value.tool) : undefined;
     return tool === undefined ? null : { kind, code, tool: tool.id, qty };
+  }
+  if (kind === "attachMachine") {
+    const slot = value.slot;
+    const id = typeof value.id === "string" ? attachmentById(value.id) : undefined;
+    if (slot !== "garden" && slot !== "coop" && slot !== "barn" && slot !== "pond") return null;
+    if (id === undefined || id.slot !== slot) return null;
+    return { kind, slot, id: id.id };
+  }
+  if (kind === "detachMachine") {
+    const slot = value.slot;
+    if (slot !== "garden" && slot !== "coop" && slot !== "barn" && slot !== "pond") return null;
+    return { kind, slot };
   }
   if (kind === "clearMachineQueue") {
     const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;

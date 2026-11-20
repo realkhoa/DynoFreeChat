@@ -62,6 +62,8 @@ import {
   resolvedTreeEffects,
   ANIMALS,
   BUILDING_IDS,
+  ATTACHMENTS,
+  type AttachmentSlot,
   BUILDINGS,
   BREED_CYCLES,
   FARM_CYCLE_MS,
@@ -2572,6 +2574,35 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
       wrap.append(lineBlock(`// ${t("staff.title")}`));
       wrap.append(buildStaffBar());
+
+      wrap.append(lineBlock(`// ${t("attachments.title")}`));
+      const attachRow = div("garden-tools");
+      for (const slot of ["garden", "coop", "barn", "pond"] as const) {
+        const current = state?.attachments?.[slot];
+        if (current !== undefined) {
+          const detach = actionButton(
+            t("attachments.detach", { name: t(`attachments.${current}`) }),
+            "detachMachine",
+          );
+          detach.dataset.slot = slot;
+          attachRow.append(detach);
+        } else {
+          for (const attachment of ATTACHMENTS.filter((entry) => entry.slot === slot)) {
+            const button = actionButton(
+              t("attachments.install", {
+                name: t(`attachments.${attachment.id}`),
+                cost: formatCompact(attachment.price),
+              }),
+              "attachMachine",
+              (state?.coins ?? 0) >= attachment.price,
+            );
+            button.dataset.slot = slot;
+            button.dataset.id = attachment.id;
+            attachRow.append(button);
+          }
+        }
+      }
+      wrap.append(attachRow);
     }
     wrap.append(buildSpecialBoard(now()));
     const layout = div("garden-layout");
@@ -4474,6 +4505,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (machine !== undefined) {
           void runAction({ kind: "clearMachineQueue", machine }, t("warehouse.clearedQueue"));
         }
+        return;
+      }
+      case "attachMachine": {
+        const slot = target.dataset.slot as AttachmentSlot | undefined;
+        const id = target.dataset.id;
+        if (slot !== undefined && id !== undefined) {
+          void runAction({ kind: "attachMachine", slot, id: id as never }, t("attachments.installed"));
+        }
+        return;
+      }
+      case "detachMachine": {
+        const slot = target.dataset.slot as AttachmentSlot | undefined;
+        if (slot !== undefined) void runAction({ kind: "detachMachine", slot }, t("attachments.detached"));
         return;
       }
       case "machineQueue": {
