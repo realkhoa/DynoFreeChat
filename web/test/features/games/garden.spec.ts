@@ -1999,7 +1999,7 @@ describe("prestige shop", () => {
     const api = new FakeGardenApi(
       makeState({
         coins: 2_000_000_000,
-        extras: { ...EXTRAS, prestige: 1 },
+        extras: { ...EXTRAS, prestige: 5 },
       }),
     );
     const { host, game } = await mountGame(api);
@@ -2018,6 +2018,25 @@ describe("prestige shop", () => {
       kind: "buyPrestigeSeed",
       seed: "cocomelon",
     });
+  });
+});
+
+describe("final shop", () => {
+  it("locks below prestige 5 and unlocks at 5", async () => {
+    const low = new FakeGardenApi(makeState({ extras: { ...EXTRAS, prestige: 4 } }));
+    const lowMount = await mountGame(low);
+    mounted.push(lowMount.game);
+    lowMount.host.querySelector<HTMLButtonElement>('[data-act="tab:extras"]')?.click();
+    await settle();
+    expect(lowMount.host.textContent).toContain("Mở khoá ở Prestige 5");
+
+    const high = new FakeGardenApi(makeState({ extras: { ...EXTRAS, prestige: 5 } }));
+    const highMount = await mountGame(high);
+    mounted.push(highMount.game);
+    highMount.host.querySelector<HTMLButtonElement>('[data-act="tab:extras"]')?.click();
+    await settle();
+    expect(highMount.host.textContent).toContain("Cửa hàng cuối");
+    expect(highMount.host.textContent).toContain("Đã mở khoá");
   });
 });
 

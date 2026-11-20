@@ -44,6 +44,7 @@ import {
   PLOTS_PER_PATCH,
   TREES_PER_TAB,
   SEEDS,
+  FINAL_SHOP_PRESTIGE,
   PRESTIGE_SHOP,
   prestigeGrowScale,
   prestigeRequirement,
@@ -3619,6 +3620,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       button.dataset.seed = offer.seed;
       wrap.append(button);
     }
+    const finalUnlocked = prestigeLevel >= FINAL_SHOP_PRESTIGE;
+    wrap.append(lineBlock(`// ${t("finalShop.title")}`));
+    wrap.append(
+      lineBlock(
+        finalUnlocked ? t("finalShop.unlocked") : t("finalShop.locked", { tier: FINAL_SHOP_PRESTIGE }),
+      ),
+    );
+    if (finalUnlocked) wrap.append(lineBlock(t("finalShop.comingSoon")));
     if ((extras.taxLast ?? 0) > 0) {
       wrap.append(lineBlock(`// ${t("tax.last", { coins: formatCompact(extras.taxLast ?? 0) })}`));
     }

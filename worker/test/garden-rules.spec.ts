@@ -187,7 +187,7 @@ describe("garden ledger rules", () => {
     expect(locked.ok).toBe(false);
     if (!locked.ok) expect(locked.code).toBe("PRESTIGE_LOCKED");
 
-    ledger.prestige = 1;
+    ledger.prestige = 5;
     const allowed = run(ledger, { kind: "plant", slot: 0, seed: "cocomelon" });
     expect(allowed.ok).toBe(true);
   });

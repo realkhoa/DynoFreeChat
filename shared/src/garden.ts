@@ -1098,9 +1098,12 @@ export interface PrestigeShopOffer {
   readonly price: number;
 }
 
+/** Prestige level that unlocks the final shop. */
+export const FINAL_SHOP_PRESTIGE = 5;
+
 /** Seeds unlocked by prestige tiers. */
 export const PRESTIGE_SHOP: readonly PrestigeShopOffer[] = [
-  { seed: "cocomelon", tier: 1, price: 1_000_000_000 },
+  { seed: "cocomelon", tier: 5, price: 1_000_000_000 },
   { seed: "starfruit", tier: 2, price: 50_000_000 },
   { seed: "lotus", tier: 3, price: 150_000_000 },
 ];

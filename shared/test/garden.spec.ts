@@ -390,7 +390,7 @@ describe("farm buildings", () => {
     expect(seed?.regrow).toBe(true);
     expect(seed?.buy).toBe(1_000_000_000);
     expect(seed?.sell).toBe(50_000_000);
-    expect(PRESTIGE_SHOP.some((offer) => offer.seed === "cocomelon" && offer.tier === 1)).toBe(true);
+    expect(PRESTIGE_SHOP.some((offer) => offer.seed === "cocomelon" && offer.tier === 5)).toBe(true);
     expect(prestigeMutationBonus(1)).toBe(0.01);
   });
 
