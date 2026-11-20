@@ -638,6 +638,36 @@ describe("garden ledger rules", () => {
     expect(second.ledger.coins).toBe(harvested.ledger.coins - 2_000_000_000);
   });
 
+  it("fertilizes and sprays premium crops for free", () => {
+    const ledger = makeLedger();
+    ledger.specialOwned = 1;
+    ledger.specialPlots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: ["brainrot"],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const fertilized = run(ledger, { kind: "fertilizeSpecial", slot: 0, supply: "superGrow" });
+    expect(fertilized.ok).toBe(true);
+    if (!fertilized.ok) return;
+    expect(fertilized.ledger.specialPlots[0]?.fertilizer?.id).toBe("superGrow");
+    expect(fertilized.ledger.bag.supplies.superGrow ?? 0).toBe(0);
+
+    const sprayed = run(fertilized.ledger, { kind: "spraySpecial", slot: 0, supply: "goldenSpray" });
+    expect(sprayed.ok).toBe(true);
+    if (!sprayed.ok) return;
+    expect(sprayed.ledger.specialPlots[0]?.spray?.id).toBe("goldenSpray");
+    expect(sprayed.ledger.bag.supplies.goldenSpray ?? 0).toBe(0);
+  });
+
   it("only keeps positive weather mutations on premium crops", () => {
     const ledger = makeLedger();
     ledger.specialOwned = 1;

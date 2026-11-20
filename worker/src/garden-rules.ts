@@ -634,6 +634,10 @@ export function applyGardenAction(
     }
     case "waterSpecial":
       return withSpecial(ledger, water, action.slot, now);
+    case "fertilizeSpecial":
+      return withSpecialSupply(ledger, action.slot, action.supply, now, rng, "fertilize");
+    case "spraySpecial":
+      return withSpecialSupply(ledger, action.slot, action.supply, now, rng, "spray");
     case "uprootSpecial":
       return withSpecial(ledger, uproot, action.slot, now);
     case "waterAll":
@@ -844,6 +848,46 @@ function specializePlot(ledger: GardenLedger, slot: number, now: number, halve: 
       : plot.readyAt,
   };
   return next;
+}
+
+/** @brief Applies a free fertilizer/spray to a premium plot. */
+function withSpecialSupply(
+  ledger: GardenLedger,
+  slot: number,
+  supply: FertilizerId | SprayId,
+  now: number,
+  rng: () => number,
+  kind: "fertilize" | "spray",
+): RuleResult {
+  if (!specialSlotOpen(ledger, slot)) return { ok: false, code: "PLOT_LOCKED" };
+  const projected: GardenLedger = {
+    ...ledger,
+    tabs: 1,
+    unlockedPatches: [SPECIAL_PLOTS_PER_PATCH],
+    plots: ledger.specialPlots,
+    soil: new Array<number>(SPECIAL_SLOTS).fill(SOIL_START),
+    bag: {
+      ...ledger.bag,
+      supplies: { ...ledger.bag.supplies, [supply]: Math.max(1, ledger.bag.supplies[supply] ?? 0) },
+    },
+  };
+  const result =
+    kind === "fertilize"
+      ? fertilize(projected, slot, supply as FertilizerId, now, false)
+      : spray(projected, slot, supply as SprayId, now, false, rng);
+  if (!result.ok) return result;
+  return {
+    ...result,
+    ledger: {
+      ...result.ledger,
+      plots: ledger.plots,
+      soil: ledger.soil,
+      tabs: ledger.tabs,
+      unlockedPatches: ledger.unlockedPatches,
+      specialPlots: result.ledger.plots,
+      bag: { ...result.ledger.bag, supplies: ledger.bag.supplies },
+    },
+  };
 }
 
 /** @brief Sows one owned seed into every free, open plot. */

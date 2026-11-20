@@ -2613,6 +2613,8 @@ export type GardenAction =
   | { readonly kind: "plantSpecial"; readonly slot: number; readonly seed: SeedId }
   | { readonly kind: "harvestSpecial"; readonly slot: number }
   | { readonly kind: "waterSpecial"; readonly slot: number }
+  | { readonly kind: "fertilizeSpecial"; readonly slot: number; readonly supply: FertilizerId }
+  | { readonly kind: "spraySpecial"; readonly slot: number; readonly supply: SprayId }
   | { readonly kind: "uprootSpecial"; readonly slot: number }
   | { readonly kind: "waterAll" }
   | { readonly kind: "harvestAll" }
@@ -3149,6 +3151,22 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
       return null;
     }
     return { kind, ...(patch === undefined ? {} : { patch }) };
+  }
+  if (kind === "fertilizeSpecial") {
+    const slot = value.slot;
+    const supply = typeof value.supply === "string" ? fertilizerById(value.supply) : undefined;
+    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= SPECIAL_SLOTS) {
+      return null;
+    }
+    return supply === undefined ? null : { kind, slot, supply: supply.id };
+  }
+  if (kind === "spraySpecial") {
+    const slot = value.slot;
+    const supply = typeof value.supply === "string" ? sprayById(value.supply) : undefined;
+    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= SPECIAL_SLOTS) {
+      return null;
+    }
+    return supply === undefined ? null : { kind, slot, supply: supply.id };
   }
   if (kind === "plantSpecial") {
     const slot = value.slot;

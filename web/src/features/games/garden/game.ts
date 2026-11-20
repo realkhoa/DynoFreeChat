@@ -229,6 +229,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let machineMenu: { id: MachineId; x: number; y: number; anchorTop: number } | null = null;
   let specialPicker: number | null = null;
   let specialMenu: { slot: number; x: number; y: number } | null = null;
+  let specialSupplyPicker: { kind: "fertilize" | "spray"; slot: number } | null = null;
   let bulkPanel: "plan" | "uproot" | null = null;
   let confirmPrestige = false;
   let sellAllDialog: { gross: number; net: number; stacks: number; qty: number } | null = null;
@@ -2336,6 +2337,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       wrap.append(picker);
     }
+    if (specialSupplyPicker !== null) {
+      const picker = div("garden-tools");
+      picker.append(span("garden-hint", t("special.pickSupply")));
+      const catalog = specialSupplyPicker.kind === "fertilize" ? FERTILIZERS : SPRAYS;
+      for (const supply of catalog) {
+        const button = actionButton(
+          `${t(`supplies.${supply.id}`)} · ${t("special.free")}`,
+          specialSupplyPicker.kind === "fertilize" ? "specialFertilize" : "specialSpray",
+        );
+        button.dataset.slot = String(specialSupplyPicker.slot);
+        button.dataset.supply = supply.id;
+        picker.append(button);
+      }
+      wrap.append(picker);
+    }
     return wrap;
   }
 
@@ -3091,7 +3107,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       } else if (!plot.watered) {
         rows.append(menuRow(`[ ${t("garden.water")} ]`, "specialMenuWater"));
       }
-      rows.append(menuRow(`[ ${t("garden.uproot")} ]`, "specialMenuUproot"));
+      rows.append(
+        menuRow(`[ ${t("special.fertilizeFree")} ]`, "specialMenuFertilize"),
+        menuRow(`[ ${t("special.sprayFree")} ]`, "specialMenuSpray"),
+        menuRow(`[ ${t("garden.uproot")} ]`, "specialMenuUproot"),
+      );
     }
     rows.append(menuRow(t("common.close"), "specialMenuClose"));
     wrap.append(rows);
@@ -4233,6 +4253,20 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         specialMenu = null;
         render();
         return;
+      case "specialMenuFertilize":
+        if (specialMenu !== null) {
+          specialSupplyPicker = { kind: "fertilize", slot: specialMenu.slot };
+          specialMenu = null;
+          render();
+        }
+        return;
+      case "specialMenuSpray":
+        if (specialMenu !== null) {
+          specialSupplyPicker = { kind: "spray", slot: specialMenu.slot };
+          specialMenu = null;
+          render();
+        }
+        return;
       case "specialMenuHarvest":
         if (specialMenu !== null) {
           const slot = specialMenu.slot;
@@ -4254,6 +4288,24 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           void runAction({ kind: "uprootSpecial", slot }, t("special.uprooted"));
         }
         return;
+      case "specialFertilize": {
+        const slot = Number(target.dataset.slot);
+        const supply = target.dataset.supply as FertilizerId | undefined;
+        if (Number.isInteger(slot) && supply !== undefined) {
+          specialSupplyPicker = null;
+          void runAction({ kind: "fertilizeSpecial", slot, supply }, t("special.fertilizedFree"));
+        }
+        return;
+      }
+      case "specialSpray": {
+        const slot = Number(target.dataset.slot);
+        const supply = target.dataset.supply as SprayId | undefined;
+        if (Number.isInteger(slot) && supply !== undefined) {
+          specialSupplyPicker = null;
+          void runAction({ kind: "spraySpecial", slot, supply }, t("special.sprayedFree"));
+        }
+        return;
+      }
       case "specialSeed": {
         const slot = Number(target.dataset.slot);
         const seed = target.dataset.seed as SeedId | undefined;

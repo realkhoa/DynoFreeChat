@@ -1867,6 +1867,44 @@ describe("compact amounts", () => {
   });
 });
 
+describe("premium free supplies", () => {
+  it("fertilizes a premium plot without owning the supply", async () => {
+    const plot = {
+      slot: 0,
+      seed: "carrot" as const,
+      plantedAt: CLOCK,
+      readyAt: CLOCK + 600_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const api = new FakeGardenApi(makeState({ specialOwned: 1, specialPlots: [plot] }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('.garden-special-cell[data-slot="0"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="specialMenuFertilize"]')?.click();
+    await settle();
+    const supply = host.querySelector<HTMLButtonElement>(
+      '[data-act="specialFertilize"][data-supply="superGrow"]',
+    );
+    expect(supply).not.toBeNull();
+    supply?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "fertilizeSpecial")?.action).toMatchObject({
+      kind: "fertilizeSpecial",
+      slot: 0,
+      supply: "superGrow",
+    });
+  });
+});
+
 describe("mounted machines", () => {
   it("mounts a passive machine from the garden tab", async () => {
     const api = new FakeGardenApi(makeState({ coins: 10_000_000 }));
