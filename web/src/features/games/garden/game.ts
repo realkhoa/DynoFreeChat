@@ -2348,14 +2348,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       picker.append(span("garden-hint", t("special.pickSupply")));
       const catalog = specialSupplyPicker.kind === "fertilize" ? FERTILIZERS : SPRAYS;
       for (const supply of catalog) {
+        const owned = state?.bag.supplies[supply.id] ?? 0;
         const button = actionButton(
-          `${t(`supplies.${supply.id}`)} · ${t("special.free")}`,
+          `${t(`supplies.${supply.id}`)} (${owned})`,
           specialSupplyPicker.kind === "fertilize" ? "specialFertilize" : "specialSpray",
+          owned > 0,
         );
         button.dataset.slot = String(specialSupplyPicker.slot);
         button.dataset.supply = supply.id;
         picker.append(button);
       }
+      picker.append(span("garden-hint", t("special.buySupplyHint")));
       wrap.append(picker);
     }
     return wrap;
@@ -3112,8 +3115,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         rows.append(menuRow(`[ ${t("garden.water")} ]`, "specialMenuWater"));
       }
       rows.append(
-        menuRow(`[ ${t("special.fertilizeFree")} ]`, "specialMenuFertilize"),
-        menuRow(`[ ${t("special.sprayFree")} ]`, "specialMenuSpray"),
+        menuRow(`[ ${t("special.fertilize")} ]`, "specialMenuFertilize"),
+        menuRow(`[ ${t("special.spray")} ]`, "specialMenuSpray"),
         menuRow(`[ ${t("garden.uproot")} ]`, "specialMenuUproot"),
       );
     }
@@ -4320,7 +4323,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const supply = target.dataset.supply as FertilizerId | undefined;
         if (Number.isInteger(slot) && supply !== undefined) {
           specialSupplyPicker = null;
-          void runAction({ kind: "fertilizeSpecial", slot, supply }, t("special.fertilizedFree"));
+          void runAction({ kind: "fertilizeSpecial", slot, supply }, t("special.fertilized"));
         }
         return;
       }
@@ -4329,7 +4332,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const supply = target.dataset.supply as SprayId | undefined;
         if (Number.isInteger(slot) && supply !== undefined) {
           specialSupplyPicker = null;
-          void runAction({ kind: "spraySpecial", slot, supply }, t("special.sprayedFree"));
+          void runAction({ kind: "spraySpecial", slot, supply }, t("special.sprayed"));
         }
         return;
       }

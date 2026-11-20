@@ -1913,7 +1913,7 @@ describe("machine queue while busy", () => {
 });
 
 describe("premium free supplies", () => {
-  it("fertilizes a premium plot without owning the supply", async () => {
+  it("fertilizes a premium plot with a bought supply", async () => {
     const plot = {
       slot: 0,
       seed: "carrot" as const,
@@ -1928,7 +1928,13 @@ describe("premium free supplies", () => {
       pest: false,
       protectedUntil: 0,
     };
-    const api = new FakeGardenApi(makeState({ specialOwned: 1, specialPlots: [plot] }));
+    const api = new FakeGardenApi(
+      makeState({
+        specialOwned: 1,
+        specialPlots: [plot],
+        bag: { seeds: {}, crops: [], supplies: { superGrow: 1 } },
+      }),
+    );
     const { host, game } = await mountGame(api);
     mounted.push(game);
 

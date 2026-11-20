@@ -657,7 +657,7 @@ describe("garden ledger rules", () => {
     expect(second.ledger.coins).toBe(harvested.ledger.coins - 2_000_000_000);
   });
 
-  it("fertilizes and sprays premium crops for free", () => {
+  it("fertilizes and sprays premium crops with bought supplies", () => {
     const ledger = makeLedger();
     ledger.specialOwned = 1;
     ledger.specialPlots[0] = {
@@ -674,6 +674,12 @@ describe("garden ledger rules", () => {
       pest: false,
       protectedUntil: 0,
     };
+    const denied = run(ledger, { kind: "fertilizeSpecial", slot: 0, supply: "superGrow" });
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) expect(denied.code).toBe("NO_SUPPLY");
+
+    ledger.bag.supplies.superGrow = 1;
+    ledger.bag.supplies.goldenSpray = 1;
     const fertilized = run(ledger, { kind: "fertilizeSpecial", slot: 0, supply: "superGrow" });
     expect(fertilized.ok).toBe(true);
     if (!fertilized.ok) return;
