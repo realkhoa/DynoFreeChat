@@ -403,6 +403,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "B"],
     regrow: true,
     rare: true,
+    prestigeOnly: true,
     rareChance: 0.02,
   },
   {
@@ -413,6 +414,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "e"],
     regrow: true,
     rare: true,
+    prestigeOnly: true,
     rareChance: 0.01,
   },
   {
@@ -423,6 +425,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "S"],
     regrow: true,
     rare: true,
+    prestigeOnly: true,
     rareChance: 0.01,
   },
   {
@@ -433,6 +436,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "D"],
     regrow: true,
     rare: true,
+    prestigeOnly: true,
     rareChance: 0.01,
   },
   {
@@ -443,6 +447,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "L"],
     regrow: true,
     rare: true,
+    prestigeOnly: true,
     rareChance: 0.01,
   },
   {
@@ -453,6 +458,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "V"],
     regrow: false,
     rare: true,
+    prestigeOnly: true,
     rareChance: 0.005,
   },
   {
@@ -463,6 +469,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "*"],
     regrow: true,
     rare: true,
+    prestigeOnly: true,
     rareChance: 0.005,
   },
   {
@@ -473,6 +480,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "H"],
     regrow: true,
     rare: true,
+    prestigeOnly: true,
     rareChance: 0.005,
   },
   {
@@ -483,6 +491,7 @@ export const SEEDS: readonly SeedDefinition[] = [
     art: [".", "v", "Y", "O"],
     regrow: true,
     rare: true,
+    prestigeOnly: true,
     rareChance: 0.0025,
   },
   // Prestige tier 1: expensive, multi-harvest, never in the normal market.
@@ -1143,9 +1152,16 @@ export const FINAL_SHOP: readonly FinalShopOffer[] = [{ seed: "cocomelon", coins
 
 /** Seeds unlocked by prestige tiers. */
 export const PRESTIGE_SHOP: readonly PrestigeShopOffer[] = [
+  { seed: "beanstalk", tier: 1, price: 3_000_000 },
+  { seed: "emberLily", tier: 1, price: 5_000_000 },
+  { seed: "sugarApple", tier: 1, price: 5_000_000 },
+  { seed: "durian", tier: 1, price: 5_000_000 },
+  { seed: "starfruit", tier: 2, price: 10_000_000 },
+  { seed: "lotus", tier: 2, price: 10_000_000 },
+  { seed: "hazelnut", tier: 2, price: 10_000_000 },
+  { seed: "venusFlyTrap", tier: 3, price: 10_000_000 },
+  { seed: "olive", tier: 3, price: 20_000_000 },
   { seed: "cocomelon", tier: 5, price: 1_000_000_000 },
-  { seed: "starfruit", tier: 2, price: 50_000_000 },
-  { seed: "lotus", tier: 3, price: 150_000_000 },
 ];
 
 /** @brief Minimum prestige tier needed to plant a seed; `0` for normal seeds. */
