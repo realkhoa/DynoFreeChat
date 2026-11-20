@@ -20,6 +20,7 @@ import {
   REGISTERS_PER_WINDOW,
   REGISTER_WINDOW_MS,
   parseGardenAction,
+  canonicalEffects,
   cropKey,
   parseCropKey,
   applyBuyMarket,
@@ -630,10 +631,18 @@ export class Garden extends DurableObject<Env> {
         continue;
       }
       if (row.kind === "product") {
-        const [product, starPart] = row.item.split(":");
+        const [product, starPart, ...effectParts] = row.item.split(":");
         const star = Number(starPart);
+        const effects = effectParts
+          .map((part) => effectById(part)?.id)
+          .filter((id): id is EffectId => id !== undefined);
         if (product !== undefined && Number.isInteger(star) && star >= 1 && star <= 5) {
-          products.push({ product: product as ProductStack["product"], star, qty: row.qty });
+          products.push({
+            product: product as ProductStack["product"],
+            star,
+            ...(effects.length === 0 ? {} : { effects: canonicalEffects(effects) }),
+            qty: row.qty,
+          });
         }
         continue;
       }
@@ -780,7 +789,11 @@ export class Garden extends DurableObject<Env> {
       const kind = stack.pest === true ? "cropPest" : "crop";
       desired.set(`${kind}:${cropKey(stack.item, stack.effects, stack.star ?? 1)}`, stack.qty);
     }
-    for (const stack of bag.products ?? []) desired.set(`product:${stack.product}:${stack.star}`, stack.qty);
+    for (const stack of bag.products ?? []) {
+      const effects = canonicalEffects(stack.effects ?? []);
+      const suffix = effects.length === 0 ? "" : `:${effects.join(":")}`;
+      desired.set(`product:${stack.product}:${stack.star}${suffix}`, stack.qty);
+    }
     for (const [tool, qty] of Object.entries(bag.tools ?? {})) {
       if (qty !== undefined && qty > 0) desired.set(`tool:${tool}`, qty);
     }

@@ -955,6 +955,8 @@ export interface MachineJob {
   readonly star?: number;
   /** Base sell price for crop inputs, used by the dryer grading. */
   readonly sell?: number;
+  /** Mutations carried into the machine output. */
+  readonly effects?: readonly EffectId[];
 }
 
 /** Price of the warehouse itself. */
@@ -1204,6 +1206,8 @@ export function buildingUpgradeCost(building: BuildingId): number {
 
 /** @brief One animal living in a building slot. */
 export interface AnimalState {
+  /** Mutations carried by the animal; its produce inherits them. */
+  readonly effects?: readonly EffectId[];
   /** Species. */
   readonly kind: AnimalId;
   /** Server time the animal was bought. */
@@ -1218,6 +1222,8 @@ export interface AnimalState {
 
 /** One stack of animal products in the bag. */
 export interface ProductStack {
+  /** Mutations carried by the product, inherited through crafting. */
+  readonly effects?: readonly EffectId[];
   /** Product id. */
   readonly product: ProductId;
   /** Quality stars, `1..5`. */
@@ -1294,7 +1300,8 @@ export function productPrice(stack: ProductStack, season: SeasonSnapshot): numbe
   const bonus = combinedSellBonus(
     season.events.length > 0 ? eventsAt(season.event.startedAt) : eventsAt(season.event.startedAt),
   );
-  return Math.max(1, Math.round(definition.base * quality * bonus));
+  const mutation = effectsMultiplier(stack.effects ?? []);
+  return Math.max(1, Math.round(definition.base * quality * bonus * mutation));
 }
 
 /** One occupied plot on the wire. */
@@ -2620,7 +2627,13 @@ export type GardenAction =
   | { readonly kind: "patAnimal"; readonly building: BuildingId; readonly slot: number }
   | { readonly kind: "breedAnimal"; readonly building: BuildingId; readonly slot: number }
   | { readonly kind: "sellAnimal"; readonly building: BuildingId; readonly slot: number }
-  | { readonly kind: "sellProduct"; readonly product: ProductId; readonly star: number; readonly qty: number }
+  | {
+      readonly kind: "sellProduct";
+      readonly product: ProductId;
+      readonly star: number;
+      readonly effects?: readonly EffectId[];
+      readonly qty: number;
+    }
   | { readonly kind: "sellAllProducts" }
   | { readonly kind: "buyTool"; readonly tool: ToolId; readonly qty: number }
   | { readonly kind: "buildWarehouse" }
@@ -3308,7 +3321,14 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     if (product === undefined) return null;
     if (typeof star !== "number" || !Number.isInteger(star) || star < 1 || star > 5) return null;
     if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 99) return null;
-    return { kind, product: product.id, star, qty };
+    const effects: EffectId[] = [];
+    if (Array.isArray(value.effects)) {
+      for (const id of value.effects) {
+        const effect = typeof id === "string" ? effectById(id) : undefined;
+        if (effect !== undefined) effects.push(effect.id);
+      }
+    }
+    return { kind, product: product.id, star, effects: canonicalEffects(effects), qty };
   }
   if (kind === "buyPatch") {
     const tab = value.tab;

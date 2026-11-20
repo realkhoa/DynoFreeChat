@@ -1227,6 +1227,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const lines = [
       `// ${t("farm.stats")}`,
       labelValue(t("farm.quality"), `${"*".repeat(stars)} ${stars}/5`),
+      labelValue(t("farm.mutations"), effectBadge(animal.effects ?? []) || t("side.none")),
       labelValue(
         t("farm.pats"),
         `${animal.pats} · ${t("farm.age")} ${formatDuration(Math.max(0, at - animal.bornAt))}`,
@@ -3325,11 +3326,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const unit = season === null ? 0 : productPrice(stack, season);
       const row = rowButton(
         "garden-market-row",
-        `${t(`products.${stack.product}`)} ${fitText(`${"*".repeat(stack.star)}`, 6)}${fitText(`x${stack.qty}`, 5)}${fitText(`${formatCompact(unit)}c`, 7)}[${t("market.sell")}]`,
+        `${t(`products.${stack.product}`)} ${effectBadge(stack.effects ?? [])} ${fitText(`${"*".repeat(stack.star)}`, 6)}${fitText(`x${stack.qty}`, 5)}${fitText(`${formatCompact(unit)}c`, 7)}[${t("market.sell")}]`,
         "sellProduct",
       );
       row.dataset.product = stack.product;
       row.dataset.star = String(stack.star);
+      row.dataset.effects = JSON.stringify(stack.effects ?? []);
       products.append(row);
     }
     if (stacks.length > 0) products.append(actionButton(t("farm.sellAllProducts"), "sellAllProducts"));
@@ -4790,8 +4792,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "sellProduct": {
         const product = target.dataset.product as ProductId | undefined;
         const star = Number(target.dataset.star);
+        let effects: EffectId[] = [];
+        try {
+          const parsed = JSON.parse(target.dataset.effects ?? "[]") as unknown;
+          if (Array.isArray(parsed))
+            effects = parsed.filter((entry): entry is EffectId => typeof entry === "string");
+        } catch {
+          effects = [];
+        }
         if (product !== undefined && Number.isInteger(star)) {
-          void runAction({ kind: "sellProduct", product, star, qty: 1 }, t("farm.soldProduct"));
+          void runAction({ kind: "sellProduct", product, star, effects, qty: 1 }, t("farm.soldProduct"));
         }
         return;
       }

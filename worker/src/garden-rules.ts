@@ -651,7 +651,7 @@ export function applyGardenAction(
     case "sellAnimal":
       return sellAnimal(ledger, action.building, action.slot, now);
     case "sellProduct":
-      return sellProduct(ledger, action.product, action.star, action.qty, season, now);
+      return sellProduct(ledger, action.product, action.star, action.effects ?? [], action.qty, season, now);
     case "sellAllProducts":
       return sellAllProducts(ledger, season, now);
     case "buyTool":
@@ -1721,15 +1721,35 @@ function emptyAnimalSlots(count: number): (AnimalState | null)[] {
 }
 
 /** @brief Adds one product unit to a mutable bag, merging equal star levels. */
-function addProduct(products: ProductStack[], product: ProductId, star: number, qty: number): void {
-  const index = products.findIndex((stack) => stack.product === product && stack.star === star);
+function addProduct(
+  products: ProductStack[],
+  product: ProductId,
+  star: number,
+  qty: number,
+  effects: readonly EffectId[] = [],
+): void {
+  const canonical = canonicalEffects(effects);
+  const index = products.findIndex(
+    (stack) =>
+      stack.product === product && stack.star === star && sameEffects(stack.effects ?? [], canonical),
+  );
   if (index < 0) {
-    products.push({ product, star, qty });
+    products.push({
+      product,
+      star,
+      ...(canonical.length === 0 ? {} : { effects: canonical }),
+      qty,
+    });
     return;
   }
   const stack = products[index];
   if (stack === undefined) return;
-  products[index] = { product, star, qty: stack.qty + qty };
+  products[index] = {
+    product,
+    star,
+    ...(canonical.length === 0 ? {} : { effects: canonical }),
+    qty: stack.qty + qty,
+  };
 }
 
 /** @brief Builds one animal building at level 1. */
@@ -1799,7 +1819,22 @@ function patAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now
   const animal = ledger.animals[building]?.[slot] ?? null;
   if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
   const next = clone(ledger);
-  next.animals[building][slot] = { ...animal, pats: animal.pats + 1 };
+  const pats = animal.pats + 1;
+  const effects = canonicalEffects(animal.effects ?? []);
+  // Petting is the mutation path for livestock: a small deterministic roll.
+  if (effects.length < 5) {
+    const rng = createRng(hash32(`animalmut:${ledger.playerId}:${building}:${slot}:${pats}`));
+    if (rng() < 0.08) {
+      const pool = EFFECTS.filter((effect) => effect.natural);
+      const picked = pool[Math.floor(rng() * pool.length)];
+      if (picked !== undefined) effects.push(picked.id);
+    }
+  }
+  next.animals[building][slot] = {
+    ...animal,
+    pats,
+    ...(effects.length === 0 ? {} : { effects: canonicalEffects(effects) }),
+  };
   grantXp(next, "ranching", 15);
   return changed(next, now);
 }
@@ -1859,12 +1894,15 @@ function sellProduct(
   ledger: GardenLedger,
   product: ProductId,
   star: number,
+  effects: readonly EffectId[],
   qty: number,
   season: SeasonSnapshot,
   now: number,
 ): RuleResult {
   const products = ledger.bag.products ?? [];
-  const stack = products.find((entry) => entry.product === product && entry.star === star);
+  const stack = products.find(
+    (entry) => entry.product === product && entry.star === star && sameEffects(entry.effects ?? [], effects),
+  );
   if (stack === undefined || stack.qty < qty) return { ok: false, code: "NO_PRODUCT" };
   const crafted = ["mayo", "cheese", "pickles", "oil", "fabric"].includes(product);
   const bonus = crafted
@@ -1883,7 +1921,9 @@ function sellProduct(
   grantXp(next, crafted ? "artisaning" : "ranching", 50 + Math.round(gross / 10));
   next.bag.products = (next.bag.products ?? [])
     .map((entry) =>
-      entry.product === product && entry.star === star ? { ...entry, qty: entry.qty - qty } : entry,
+      entry.product === product && entry.star === star && sameEffects(entry.effects ?? [], effects)
+        ? { ...entry, qty: entry.qty - qty }
+        : entry,
     )
     .filter((entry) => entry.qty > 0);
   return changed(next, now);
@@ -2026,7 +2066,7 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
     const produced = Math.min(50, Math.floor((now - entry.animal.lastProduceAt) / interval));
     if (produced <= 0) continue;
     const star = animalQuality(entry.animal, now);
-    addProduct((next.bag.products ??= []), definition.product, star, produced);
+    addProduct((next.bag.products ??= []), definition.product, star, produced, entry.animal.effects ?? []);
     collect(next, `product:${definition.product}`);
     if (star >= 5) collect(next, "star:5");
     next.animals[entry.building][entry.slot] = {
@@ -2920,6 +2960,7 @@ interface MachineHold {
   key: ItemId;
   star?: number;
   sell?: number;
+  effects?: readonly EffectId[];
 }
 
 /** @brief Removes one input from the bag for a machine. */
@@ -2940,7 +2981,7 @@ function takeMachineInput(
       )
       .filter((entry) => entry.qty > 0);
     // Product ids ride the same string field; only the star is used on output.
-    return { key: stack.product as unknown as ItemId, star: stack.star };
+    return { key: stack.product as unknown as ItemId, star: stack.star, effects: stack.effects ?? [] };
   }
   const input = machineInput(definition, item);
   if (input === null) return null;
@@ -2949,7 +2990,7 @@ function takeMachineInput(
   next.bag.crops = next.bag.crops
     .map((entry) => (entry === stack ? { ...entry, qty: entry.qty - 1 } : entry))
     .filter((entry) => entry.qty > 0);
-  return { key: input.key, sell: input.sell };
+  return { key: input.key, sell: input.sell, effects: stack.effects ?? [] };
 }
 
 /** @brief Produces one machine output from a held input. */
@@ -2972,6 +3013,7 @@ function produceMachineOutput(
       definition.output.product,
       star,
       Math.max(1, Math.round(converterOutput(level) * (1 + bonus))),
+      hold.effects ?? [],
     );
     return;
   }
@@ -3000,6 +3042,7 @@ function startMachineCraft(
         item: hold.key,
         ...(hold.star === undefined ? {} : { star: hold.star }),
         ...(hold.sell === undefined ? {} : { sell: hold.sell }),
+        ...(hold.effects === undefined ? {} : { effects: hold.effects }),
         startedAt: now,
         readyAt: now + cycles,
       },
@@ -3031,6 +3074,7 @@ function finishMachineJob(ledger: GardenLedger, id: MachineId, now: number): Gar
       key: job.item,
       ...(job.star === undefined ? {} : { star: job.star }),
       ...(job.sell === undefined ? {} : { sell: job.sell }),
+      ...(job.effects === undefined ? {} : { effects: job.effects }),
     },
     machine.level,
   );
@@ -3071,6 +3115,7 @@ export function settleMachines(ledger: GardenLedger, now: number): GardenLedger 
           key: hold.item,
           ...(hold.star === undefined ? {} : { star: hold.star }),
           ...(hold.sell === undefined ? {} : { sell: hold.sell }),
+          ...(hold.effects === undefined ? {} : { effects: hold.effects }),
         },
         now,
       );
@@ -3100,7 +3145,7 @@ function clearMachineQueue(ledger: GardenLedger, id: MachineId, now: number): Ru
   next.bag.products ??= [];
   for (const hold of queue) {
     if (definition.input.kind === "product") {
-      addProduct(next.bag.products, hold.item as ProductId, hold.star ?? 1, 1);
+      addProduct(next.bag.products, hold.item as ProductId, hold.star ?? 1, 1, hold.effects ?? []);
     } else {
       addCrop(next.bag.crops, hold.item, [], 1, false, 1);
     }
@@ -3162,6 +3207,7 @@ function queueMachine(
         item: hold.key,
         ...(hold.star === undefined ? {} : { star: hold.star }),
         ...(hold.sell === undefined ? {} : { sell: hold.sell }),
+        ...(hold.effects === undefined ? {} : { effects: hold.effects }),
         startedAt: 0,
         readyAt: 0,
       },

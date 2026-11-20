@@ -262,6 +262,32 @@ describe("garden ledger rules", () => {
     expect(harvested.ledger.stats.harvested).toBe(1);
   });
 
+  it("carries animal mutations into produce and through machines", () => {
+    const ledger = makeLedger();
+    ledger.buildings.coop = 1;
+    ledger.coins = 10_000_000;
+    ledger.animals.coop[0] = {
+      kind: "chicken",
+      bornAt: NOW - 10 * FARM_CYCLE_MS,
+      pats: 0,
+      lastProduceAt: NOW - 10 * FARM_CYCLE_MS,
+      effects: ["golden"],
+    };
+    const settled = settleFarm(ledger, NOW + 10 * FARM_CYCLE_MS);
+    const egg = settled.bag.products?.find((stack) => stack.product === "egg");
+    expect(egg?.effects).toEqual(["golden"]);
+
+    const warehouse = run(settled, { kind: "buildWarehouse" });
+    if (!warehouse.ok) throw new Error("warehouse failed");
+    const machine = run(warehouse.ledger, { kind: "buildMachine", machine: "mayoMaker" });
+    if (!machine.ok) throw new Error("mayo failed");
+    const crafted = run(machine.ledger, { kind: "craftMachine", machine: "mayoMaker" });
+    expect(crafted.ok).toBe(true);
+    if (!crafted.ok) return;
+    const mayo = crafted.ledger.bag.products?.find((stack) => stack.product === "mayo");
+    expect(mayo?.effects).toEqual(["golden"]);
+  });
+
   it("keeps reharvest plants after picking and regrows the fruit", () => {
     const tomato = makeLedger();
     tomato.bag.seeds.tomato = 1;
