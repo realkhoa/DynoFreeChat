@@ -113,8 +113,8 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.bag.seeds.carrot).toBe(2);
     const plot = planted.ledger.plots[0];
     expect(plot).not.toBeNull();
-    // Compare against the same deterministic roll the rule uses.
-    expect(plot?.effects).toEqual(rollEffectsFor(eventsAt(NOW), () => 0.01));
+    // Mutations now come from periodic growth checks, never the planting roll.
+    expect(plot?.effects).toEqual([]);
     expect(plot?.readyAt).toBeGreaterThan(NOW);
     expect(planted.ledger.stats.planted).toBe(1);
     expect(planted.ledger.rev).toBe(makeLedger().rev + 1);
@@ -182,16 +182,10 @@ describe("garden ledger rules", () => {
     expect(removed.ledger.trees[0]).toBeNull();
   });
 
-  it("gives rich players more bad mutation rolls", () => {
-    const poor = makeLedger();
-    const rich = makeLedger();
-    rich.coins = 1_000_000_000_000;
-    const plantedPoor = run(poor, { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.03);
-    const plantedRich = run(rich, { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.03);
-    if (!plantedPoor.ok || !plantedRich.ok) throw new Error("plant failed");
-    const bad = new Set(["burnt", "shriveled", "pale"]);
-    expect(plantedPoor.ledger.plots[0]?.effects.some((id) => bad.has(id))).toBe(false);
-    expect(plantedRich.ledger.plots[0]?.effects.some((id) => bad.has(id))).toBe(true);
+  it("does not roll mutations at planting", () => {
+    const planted = run(makeLedger(), { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.01);
+    if (!planted.ok) throw new Error("plant failed");
+    expect(planted.ledger.plots[0]?.effects).toEqual([]);
   });
 
   it("protects crops with a fire system and scarecrow", () => {
@@ -442,7 +436,7 @@ describe("garden ledger rules", () => {
     expect(first.ledger.plots[0]).not.toBeNull();
     expect(first.ledger.plots[0]?.harvests).toBe(1);
     expect(first.ledger.plots[0]?.readyAt).toBeGreaterThan(plot.readyAt);
-    expect(first.ledger.plots[0]?.effects).toEqual(rollEffectsFor(eventsAt(plot.readyAt), () => 0.1));
+    expect(first.ledger.plots[0]?.effects).toEqual([]);
     expect(first.ledger.bag.crops[0]).toMatchObject({
       item: "tomato",
       effects: resolvedCropEffects(plot, plot.readyAt),
@@ -555,9 +549,7 @@ describe("garden ledger rules", () => {
     const picked = run(sprayed.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt, 0.1);
     expect(picked.ok).toBe(true);
     if (!picked.ok) return;
-    expect(picked.ledger.plots[0]?.effects).toEqual(
-      rollEffectsFor(eventsAt(plot.readyAt), () => 0.1, {}, sprayBoostFor({ id: "snowSpray", left: 2 })),
-    );
+    expect(picked.ledger.plots[0]?.effects).toEqual([]);
     expect(picked.ledger.plots[0]?.spray).toEqual({ id: "snowSpray", left: 1 });
   });
 

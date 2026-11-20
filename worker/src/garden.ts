@@ -204,6 +204,8 @@ type PlotRow = SqlRow<{
   protected_until: number;
   favorite: number;
   disease: number;
+  mutation_boost: number;
+  bad_luck: number;
 }>;
 
 type TreeRow = SqlRow<{
@@ -221,6 +223,8 @@ type TreeRow = SqlRow<{
   protected_until: number;
   favorite: number;
   disease: number;
+  mutation_boost: number;
+  bad_luck: number;
 }>;
 
 type BagRow = SqlRow<{ kind: string; item: string; qty: number }>;
@@ -241,6 +245,8 @@ function plotStateKey(plot: PlotState): string {
     plot.protectedUntil,
     plot.favorite === true ? 1 : 0,
     plot.diseasedAt ?? 0,
+    plot.mutationBoost ?? 0,
+    plot.badLuck ?? 0,
   ].join("|");
 }
 
@@ -260,6 +266,8 @@ function plotRowKey(row: PlotRow): string {
     row.protected_until,
     row.favorite,
     row.disease,
+    row.mutation_boost,
+    row.bad_luck,
   ].join("|");
 }
 
@@ -279,6 +287,8 @@ function treeStateKey(tree: TreeState): string {
     tree.protectedUntil,
     tree.favorite === true ? 1 : 0,
     tree.diseasedAt ?? 0,
+    tree.mutationBoost ?? 0,
+    tree.badLuck ?? 0,
   ].join("|");
 }
 
@@ -298,6 +308,8 @@ function treeRowKey(row: TreeRow): string {
     row.protected_until,
     row.favorite,
     row.disease,
+    row.mutation_boost,
+    row.bad_luck,
   ].join("|");
 }
 
@@ -342,7 +354,9 @@ export class Garden extends DurableObject<Env> {
         spray TEXT,
         pest INTEGER NOT NULL DEFAULT 0,
         protected_until INTEGER NOT NULL DEFAULT 0,
-        disease INTEGER NOT NULL DEFAULT 0
+        disease INTEGER NOT NULL DEFAULT 0,
+        mutation_boost REAL NOT NULL DEFAULT 0,
+        bad_luck REAL NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS trees (
         slot INTEGER PRIMARY KEY,
@@ -357,7 +371,9 @@ export class Garden extends DurableObject<Env> {
         spray TEXT,
         pest INTEGER NOT NULL DEFAULT 0,
         protected_until INTEGER NOT NULL DEFAULT 0,
-        disease INTEGER NOT NULL DEFAULT 0
+        disease INTEGER NOT NULL DEFAULT 0,
+        mutation_boost REAL NOT NULL DEFAULT 0,
+        bad_luck REAL NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS bag (
         kind TEXT NOT NULL,
@@ -396,6 +412,10 @@ export class Garden extends DurableObject<Env> {
     if (!columns.some((column) => column.name === "disease")) {
       this.sql.exec("ALTER TABLE plots ADD COLUMN disease INTEGER NOT NULL DEFAULT 0");
     }
+    if (!columns.some((column) => column.name === "mutation_boost")) {
+      this.sql.exec("ALTER TABLE plots ADD COLUMN mutation_boost REAL NOT NULL DEFAULT 0");
+      this.sql.exec("ALTER TABLE plots ADD COLUMN bad_luck REAL NOT NULL DEFAULT 0");
+    }
     const treeColumns = this.sql.exec<{ name: string }>("PRAGMA table_info(trees)").toArray();
     if (!treeColumns.some((column) => column.name === "fertilizer")) {
       this.sql.exec("ALTER TABLE trees ADD COLUMN fertilizer TEXT");
@@ -412,6 +432,10 @@ export class Garden extends DurableObject<Env> {
     }
     if (!treeColumns.some((column) => column.name === "disease")) {
       this.sql.exec("ALTER TABLE trees ADD COLUMN disease INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!treeColumns.some((column) => column.name === "mutation_boost")) {
+      this.sql.exec("ALTER TABLE trees ADD COLUMN mutation_boost REAL NOT NULL DEFAULT 0");
+      this.sql.exec("ALTER TABLE trees ADD COLUMN bad_luck REAL NOT NULL DEFAULT 0");
     }
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS help (
@@ -579,7 +603,7 @@ export class Garden extends DurableObject<Env> {
     const plots = emptyCrops(tabs);
     const rows = this.sql
       .exec<PlotRow>(
-        "SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease FROM plots",
+        "SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck FROM plots",
       )
       .toArray();
     for (const row of rows) {
@@ -592,6 +616,8 @@ export class Garden extends DurableObject<Env> {
         pest: row.pest === 1,
         protectedUntil: row.protected_until,
         ...(row.disease > 0 ? { diseasedAt: row.disease } : {}),
+        ...(row.mutation_boost > 0 ? { mutationBoost: row.mutation_boost } : {}),
+        ...(row.bad_luck > 0 ? { badLuck: row.bad_luck } : {}),
         watered: row.watered === 1,
         fertilized: row.fertilized === 1,
         harvests: row.harvests,
@@ -611,7 +637,7 @@ export class Garden extends DurableObject<Env> {
     const trees = emptyTrees(tabs);
     const rows = this.sql
       .exec<TreeRow>(
-        "SELECT slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease FROM trees",
+        "SELECT slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck FROM trees",
       )
       .toArray();
     for (const row of rows) {
@@ -624,6 +650,8 @@ export class Garden extends DurableObject<Env> {
         pest: row.pest === 1,
         protectedUntil: row.protected_until,
         ...(row.disease > 0 ? { diseasedAt: row.disease } : {}),
+        ...(row.mutation_boost > 0 ? { mutationBoost: row.mutation_boost } : {}),
+        ...(row.bad_luck > 0 ? { badLuck: row.bad_luck } : {}),
         watered: row.watered === 1,
         fertilized: row.fertilized === 1,
         harvests: row.harvests,
@@ -730,14 +758,15 @@ export class Garden extends DurableObject<Env> {
       const key = plotStateKey(plot);
       if (stored.get(slot) === key) continue;
       this.sql.exec(
-        `INSERT INTO plots (slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO plots (slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(slot) DO UPDATE SET seed = excluded.seed, planted_at = excluded.planted_at,
            ready_at = excluded.ready_at, effect = excluded.effect, watered = excluded.watered,
            fertilized = excluded.fertilized, harvests = excluded.harvests,
            fertilizer = excluded.fertilizer, spray = excluded.spray,
            pest = excluded.pest, protected_until = excluded.protected_until,
-           favorite = excluded.favorite, disease = excluded.disease`,
+           favorite = excluded.favorite, disease = excluded.disease,
+           mutation_boost = excluded.mutation_boost, bad_luck = excluded.bad_luck`,
         plot.slot,
         plot.seed,
         plot.plantedAt,
@@ -752,6 +781,8 @@ export class Garden extends DurableObject<Env> {
         plot.protectedUntil,
         plot.favorite === true ? 1 : 0,
         plot.diseasedAt ?? 0,
+        plot.mutationBoost ?? 0,
+        plot.badLuck ?? 0,
       );
     }
   }
@@ -773,14 +804,15 @@ export class Garden extends DurableObject<Env> {
       const key = treeStateKey(tree);
       if (stored.get(slot) === key) continue;
       this.sql.exec(
-        `INSERT INTO trees (slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO trees (slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(slot) DO UPDATE SET tree = excluded.tree, planted_at = excluded.planted_at,
            ready_at = excluded.ready_at, effect = excluded.effect, watered = excluded.watered,
            fertilized = excluded.fertilized, harvests = excluded.harvests,
            fertilizer = excluded.fertilizer, spray = excluded.spray,
            pest = excluded.pest, protected_until = excluded.protected_until,
-           favorite = excluded.favorite, disease = excluded.disease`,
+           favorite = excluded.favorite, disease = excluded.disease,
+           mutation_boost = excluded.mutation_boost, bad_luck = excluded.bad_luck`,
         tree.slot,
         tree.tree,
         tree.plantedAt,
@@ -795,6 +827,8 @@ export class Garden extends DurableObject<Env> {
         tree.protectedUntil,
         tree.favorite === true ? 1 : 0,
         tree.diseasedAt ?? 0,
+        tree.mutationBoost ?? 0,
+        tree.badLuck ?? 0,
       );
     }
   }

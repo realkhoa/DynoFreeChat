@@ -1425,6 +1425,10 @@ export interface PlotState {
   readonly diseasedAt?: number;
   /** Burnt by a fire and unusable until repaired. */
   readonly damaged?: boolean;
+  /** Prestige mutation bonus stored at planting for periodic rolls. */
+  readonly mutationBoost?: number;
+  /** Wealth bad-luck bonus stored at planting for periodic rolls. */
+  readonly badLuck?: number;
   /** Pesticide protection expiry; pests cannot strike before it. */
   readonly protectedUntil: number;
   /** Whether the owner already watered this planting. */
@@ -1463,6 +1467,10 @@ export interface TreeState {
   readonly watered: boolean;
   /** Whether the owner already fertilized this cycle. */
   readonly fertilized: boolean;
+  /** Prestige mutation bonus stored at planting for periodic rolls. */
+  readonly mutationBoost?: number;
+  /** Wealth bad-luck bonus stored at planting for periodic rolls. */
+  readonly badLuck?: number;
   /** Fruits already picked from this tree. */
   readonly harvests: number;
   /** Active fertilizer, or `null`. */
@@ -3822,6 +3830,41 @@ export function rollEffects(
   return rolled;
 }
 
+/** @brief Rolls at most one mutation for one periodic growth check. */
+function rollOneMutation(
+  events: readonly EventDefinition[],
+  rng: () => number,
+  boost: Readonly<Partial<Record<EffectId, number>>>,
+  goodOnly: boolean,
+  mutationBoost: number,
+  badLuck: number,
+): EffectId | undefined {
+  const weights: Array<{ id: EffectId; weight: number }> = [];
+  let total = 0;
+  for (const effect of EFFECTS) {
+    if (!effect.natural) continue;
+    if (goodOnly && effect.multiplier <= 1) continue;
+    let weight = BASE_EFFECT_CHANCES[effect.id] ?? 0;
+    for (const event of events) weight += event.effectChances[effect.id] ?? 0;
+    weight = weight * GROWTH_MUTATION_SCALE * (boost[effect.id] ?? 1);
+    weight += mutationBoost;
+    if (effect.multiplier < 1) weight += badLuck;
+    if (weight <= 0) continue;
+    weights.push({ id: effect.id, weight });
+    total += weight;
+  }
+  if (total <= 0) return undefined;
+  // The phase only mutates when the aggregate chance fires; then exactly one
+  // weighted mutation is chosen (no per-effect jackpot).
+  if (rng() >= Math.min(1, total)) return undefined;
+  let pick = rng() * total;
+  for (const entry of weights) {
+    pick -= entry.weight;
+    if (pick < 0) return entry.id;
+  }
+  return weights[weights.length - 1]?.id;
+}
+
 /**
  * @brief Effects the weather adds while a plant grows.
  * @param kindId Seed or tree id; part of the deterministic roll.
@@ -3839,19 +3882,19 @@ export function weatherEffects(
   until: number,
   spray: ActiveSpray | null = null,
   goodOnly = false,
+  mutationBoost = 0,
+  badLuck = 0,
 ): EffectId[] {
   const end = Math.max(plantedAt, until);
   const effects: EffectId[] = [];
-  // Start with the phase after the planting one, then walk whole phases.
+  // One periodic check per day phase; at most one mutation per check, never a
+  // planting-time jackpot.
   let window = dayPhaseAt(dayPhaseAt(plantedAt).endsAt);
   for (let guard = 0; window.startsAt <= end && guard < 200; guard += 1) {
     const events = phaseEvents(window);
     const rng = createRng(hash32(`${kindId}:${slot}:${window.index}`));
-    effects.push(
-      ...rollEffectsFor(events, rng, {}, sprayBoostFor(spray), GROWTH_MUTATION_SCALE).filter(
-        (id) => !goodOnly || (effectById(id)?.multiplier ?? 1) > 1,
-      ),
-    );
+    const rolled = rollOneMutation(events, rng, sprayBoostFor(spray), goodOnly, mutationBoost, badLuck);
+    if (rolled !== undefined) effects.push(rolled);
     if (window.endsAt > end) break;
     window = dayPhaseAt(window.endsAt);
   }
@@ -3867,6 +3910,8 @@ export function resolvedCropEffects(plot: PlotState, until: number, goodOnly = f
     Math.min(until, plot.readyAt),
     plot.spray,
     goodOnly,
+    plot.mutationBoost ?? 0,
+    plot.badLuck ?? 0,
   );
   // Premium soil always feeds at least one good weather mutation.
   if (goodOnly && weather.length === 0) {
@@ -3883,7 +3928,16 @@ export function resolvedCropEffects(plot: PlotState, until: number, goodOnly = f
 export function resolvedTreeEffects(tree: TreeState, until: number): EffectId[] {
   return canonicalEffects([
     ...tree.effects,
-    ...weatherEffects(tree.tree, tree.slot, tree.plantedAt, Math.min(until, tree.readyAt), tree.spray),
+    ...weatherEffects(
+      tree.tree,
+      tree.slot,
+      tree.plantedAt,
+      Math.min(until, tree.readyAt),
+      tree.spray,
+      false,
+      tree.mutationBoost ?? 0,
+      tree.badLuck ?? 0,
+    ),
   ]);
 }
 
