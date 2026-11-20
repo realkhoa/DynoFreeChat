@@ -3001,7 +3001,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       lines.push(labelValue(t("warehouse.crafting"), materialName(job.item)));
     }
     if (definition.output.kind === "product") {
-      lines.push(labelValue(t("warehouse.output"), t(`products.${definition.output.product}`)));
+      const outputs = [
+        definition.output.product,
+        ...(definition.recipes?.map((recipe) => recipe.output) ?? []),
+      ];
+      lines.push(
+        labelValue(
+          t("warehouse.output"),
+          [...new Set(outputs)].map((product) => t(`products.${product}`)).join(", "),
+        ),
+      );
     }
     if (definition.output.kind === "seeds") {
       const chance = Math.round(seedMakerChance(state.extras.prestige ?? 0) * 100);
@@ -3073,23 +3082,25 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     const busy = job !== undefined || remaining > 0;
     if (definition.input.kind === "product") {
-      const inputProduct = definition.input.product;
-      const count =
-        state.bag.products
-          ?.filter((stack) => stack.product === inputProduct)
-          .reduce((sum, stack) => sum + stack.qty, 0) ?? 0;
-      const pair = div("garden-machine-row");
-      pair.append(
-        menuRow(`${t(`products.${inputProduct}`)} ×${count}`, "machineCraft", {
-          data: { machine: definition.id },
-          disabled: count < 1 || busy,
-        }),
-        menuRow(`+Q×${machineQty}`, "machineQueue", {
-          data: { machine: definition.id },
-          disabled: count < 1,
-        }),
-      );
-      rows.append(pair);
+      const inputs = [definition.input.product, ...(definition.recipes?.map((recipe) => recipe.input) ?? [])];
+      for (const inputProduct of [...new Set(inputs)]) {
+        const count =
+          state.bag.products
+            ?.filter((stack) => stack.product === inputProduct)
+            .reduce((sum, stack) => sum + stack.qty, 0) ?? 0;
+        const pair = div("garden-machine-row");
+        pair.append(
+          menuRow(`${t(`products.${inputProduct}`)} ×${count}`, "machineCraft", {
+            data: { machine: definition.id, item: inputProduct },
+            disabled: count < 1 || busy,
+          }),
+          menuRow(`+Q×${machineQty}`, "machineQueue", {
+            data: { machine: definition.id, item: inputProduct },
+            disabled: count < 1,
+          }),
+        );
+        rows.append(pair);
+      }
     } else {
       const allowed = definition.input.seeds;
       const allowFruit = definition.allProduce === true;
@@ -3780,10 +3791,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
               : t("dynopedia.crops");
         const output =
           machine.output.kind === "seeds" ? t("dynopedia.seedsOut") : t(`products.${machine.output.product}`);
+        const recipes = (machine.recipes ?? [])
+          .map((recipe) => `${t(`products.${recipe.input}`)} → ${t(`products.${recipe.output}`)}`)
+          .join(", ");
         rows.push({
           id: machine.id,
           title: t(`machines.${machine.id}`),
-          detail: `${input} → ${output} · ${machine.cooldownCycles} ${t("dynopedia.cycles")}${machine.queued === true ? ` · ${t("dynopedia.timed")}` : ""}`,
+          detail: `${input} → ${output}${recipes.length > 0 ? ` · ${recipes}` : ""} · ${machine.cooldownCycles} ${t("dynopedia.cycles")}${machine.queued === true ? ` · ${t("dynopedia.timed")}` : ""}`,
         });
       }
     } else if (dynopediaCategory === "supplies") {

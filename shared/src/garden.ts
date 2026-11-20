@@ -935,9 +935,17 @@ export type MachineId =
   | "juicer"
   | "jamMaker"
   | "butterChurn"
-  | "goatCheesePress"
-  | "duckMayoMaker"
   | "caviarFermenter";
+
+/** Extra product-to-product recipe on a converter. */
+export interface MachineRecipe {
+  /** Product consumed. */
+  readonly input: ProductId;
+  /** Product produced. */
+  readonly output: ProductId;
+  /** Informational multiplier. */
+  readonly multiplier: number;
+}
 
 /** One machine recipe. */
 export interface MachineDefinition {
@@ -951,6 +959,8 @@ export interface MachineDefinition {
   readonly output: { readonly kind: "seeds" } | { readonly kind: "product"; readonly product: ProductId };
   /** Output multiplier, purely informative for labels. */
   readonly multiplier: number;
+  /** Additional product-to-product recipes for a converter. */
+  readonly recipes?: readonly MachineRecipe[];
   /** Cycles between two crafts. */
   readonly cooldownCycles: number;
   /** Accepts tree fruit as well as crops (the dryer does). */
@@ -968,7 +978,7 @@ export interface MachineDefinition {
 /** One timed job running inside a machine. */
 export interface MachineJob {
   /** Item being processed; it lives in the machine, not in the bag. */
-  readonly item: ItemId;
+  readonly item: ItemId | ProductId;
   /** Server time the job started. */
   readonly startedAt: number;
   /** Server time the output is ready to collect. */
@@ -1005,6 +1015,7 @@ export const MACHINES: readonly MachineDefinition[] = [
     output: { kind: "product", product: "mayo" },
     multiplier: 10,
     cooldownCycles: 2,
+    recipes: [{ input: "duckEgg", output: "duckMayo", multiplier: 10 }],
   },
   {
     id: "cheesePress",
@@ -1012,6 +1023,7 @@ export const MACHINES: readonly MachineDefinition[] = [
     output: { kind: "product", product: "cheese" },
     multiplier: 100,
     cooldownCycles: 2,
+    recipes: [{ input: "goatMilk", output: "goatCheese", multiplier: 100 }],
   },
   {
     id: "pickleJar",
@@ -1076,20 +1088,7 @@ export const MACHINES: readonly MachineDefinition[] = [
     multiplier: 20,
     cooldownCycles: 2,
   },
-  {
-    id: "goatCheesePress",
-    input: { kind: "product", product: "goatMilk" },
-    output: { kind: "product", product: "goatCheese" },
-    multiplier: 100,
-    cooldownCycles: 2,
-  },
-  {
-    id: "duckMayoMaker",
-    input: { kind: "product", product: "duckEgg" },
-    output: { kind: "product", product: "duckMayo" },
-    multiplier: 10,
-    cooldownCycles: 2,
-  },
+
   {
     id: "caviarFermenter",
     input: { kind: "product", product: "roe" },
@@ -2829,12 +2828,12 @@ export type GardenAction =
   | {
       readonly kind: "craftMachine";
       readonly machine: MachineId;
-      readonly item?: ItemId;
+      readonly item?: ItemId | ProductId;
     }
   | {
       readonly kind: "queueMachine";
       readonly machine: MachineId;
-      readonly item?: ItemId;
+      readonly item?: ItemId | ProductId;
       readonly qty?: number;
     }
   | { readonly kind: "collectMachine"; readonly machine: MachineId }
@@ -3169,7 +3168,7 @@ export function parseCropKey(key: string): { item: ItemId; effects: EffectId[]; 
     if (effect === undefined) return null;
     effects.push(effect.id);
   }
-  return { item: item.id as ItemId, effects: canonicalEffects(effects), star };
+  return { item: item.id, effects: canonicalEffects(effects), star };
 }
 
 /**
@@ -3299,7 +3298,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     if (typeof star !== "number" || !Number.isInteger(star) || star < 1 || star > 5) return null;
     return {
       kind,
-      item: item.id as ItemId,
+      item: item.id,
       effects: canonicalEffects(effects),
       pest: value.pest === true,
       star,
@@ -3389,11 +3388,11 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const qty = value.qty;
     if (item === undefined) return null;
     if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 99) return null;
-    return { kind, item: item.id as ItemId, qty };
+    return { kind, item: item.id, qty };
   }
   if (kind === "spliceCrops") {
     const item = typeof value.item === "string" ? itemById(value.item) : undefined;
-    return item === undefined ? null : { kind, item: item.id as ItemId };
+    return item === undefined ? null : { kind, item: item.id };
   }
   if (kind === "sprayPestAll") return { kind };
   if (kind === "sprayPest") {
@@ -3408,13 +3407,15 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   if (kind === "craftMachine" || kind === "queueMachine") {
     const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
     if (machine === undefined) return null;
-    const item = value.item === undefined ? undefined : itemById(String(value.item));
-    if (value.item !== undefined && item === undefined) return null;
+    const rawItem = typeof value.item === "string" ? value.item : undefined;
+    const parsedItem = rawItem === undefined ? undefined : (itemById(rawItem) ?? productById(rawItem));
+    if (rawItem !== undefined && parsedItem === undefined) return null;
+    const item = parsedItem;
     if (kind === "craftMachine") {
       return {
         kind: "craftMachine",
         machine: machine.id,
-        ...(item === undefined ? {} : { item: item.id as ItemId }),
+        ...(item === undefined ? {} : { item: item.id }),
       };
     }
     const qty = value.qty === undefined ? 1 : value.qty;
@@ -3422,7 +3423,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return {
       kind: "queueMachine",
       machine: machine.id,
-      ...(item === undefined ? {} : { item: item.id as ItemId }),
+      ...(item === undefined ? {} : { item: item.id }),
       qty,
     };
   }

@@ -3218,18 +3218,61 @@ function machineInput(
 
 /** One input already removed from the bag and held by a machine. */
 interface MachineHold {
-  key: ItemId;
+  key: ItemId | ProductId;
   star?: number;
   sell?: number;
   effects?: readonly EffectId[];
+  output?: ProductId;
+}
+
+/** @brief All product recipes for a converter, including its default one. */
+function productRecipes(definition: MachineDefinition): Array<{ input: ProductId; output: ProductId }> {
+  const list: Array<{ input: ProductId; output: ProductId }> = [];
+  if (definition.input.kind === "product" && definition.output.kind === "product") {
+    list.push({ input: definition.input.product, output: definition.output.product });
+  }
+  for (const recipe of definition.recipes ?? []) {
+    list.push({ input: recipe.input, output: recipe.output });
+  }
+  return list;
+}
+
+/** @brief Output product for one machine input, following extra recipes. */
+function recipeOutputFor(definition: MachineDefinition, key: ItemId | ProductId): ProductId | undefined {
+  const recipe = productRecipes(definition).find((entry) => entry.input === key);
+  if (recipe !== undefined) return recipe.output;
+  return definition.output.kind === "product" ? definition.output.product : undefined;
 }
 
 /** @brief Removes one input from the bag for a machine. */
 function takeMachineInput(
   next: GardenLedger,
   definition: MachineDefinition,
-  item: ItemId | undefined,
+  item: ItemId | ProductId | undefined,
 ): MachineHold | null {
+  const recipes = productRecipes(definition);
+  if (recipes.length > 0) {
+    const available = recipes.filter((recipe) =>
+      next.bag.products.some((entry) => entry.product === recipe.input && entry.qty > 0),
+    );
+    const chosen = item === undefined ? available[0] : available.find((recipe) => recipe.input === item);
+    if (chosen === undefined) return null;
+    const stack = next.bag.products.find((entry) => entry.product === chosen.input && entry.qty > 0);
+    if (stack === undefined) return null;
+    next.bag.products = next.bag.products
+      .map((entry) =>
+        entry.product === stack.product && entry.star === stack.star
+          ? { ...entry, qty: entry.qty - 1 }
+          : entry,
+      )
+      .filter((entry) => entry.qty > 0);
+    return {
+      key: stack.product as unknown as ItemId,
+      star: stack.star,
+      effects: stack.effects ?? [],
+      output: chosen.output,
+    };
+  }
   if (definition.input.kind === "product") {
     const inputProduct = definition.input.product;
     const stack = next.bag.products.find((entry) => entry.product === inputProduct && entry.qty > 0);
@@ -3242,9 +3285,14 @@ function takeMachineInput(
       )
       .filter((entry) => entry.qty > 0);
     // Product ids ride the same string field; only the star is used on output.
-    return { key: stack.product as unknown as ItemId, star: stack.star, effects: stack.effects ?? [] };
+    return {
+      key: stack.product as unknown as ItemId,
+      star: stack.star,
+      effects: stack.effects ?? [],
+      output: recipeOutputFor(definition, stack.product as unknown as ItemId),
+    };
   }
-  const input = machineInput(definition, item);
+  const input = machineInput(definition, item as ItemId | undefined);
   if (input === null) return null;
   const stack = next.bag.crops.find((entry) => entry.item === input.key);
   if (stack === undefined || stack.qty < 1) return null;
@@ -3263,7 +3311,8 @@ function produceMachineOutput(
   roll: () => number,
 ): number {
   const bonus = artisaningOutputBonus(next.skills.artisaning.level);
-  if (definition.output.kind === "product") {
+  const outputProduct = hold.output ?? recipeOutputFor(definition, hold.key);
+  if (outputProduct !== undefined) {
     const star =
       definition.input.kind === "product"
         ? (hold.star ?? 1)
@@ -3271,10 +3320,10 @@ function produceMachineOutput(
           ? driedStarForSell(hold.sell ?? 0)
           : 1;
     const qty = Math.max(1, Math.round(converterOutput(level) * (1 + bonus)));
-    addProduct(next.bag.products, definition.output.product, star, qty, hold.effects ?? []);
+    addProduct(next.bag.products, outputProduct, star, qty, hold.effects ?? []);
     return qty;
   }
-  const seed = seedById(hold.key);
+  const seed = seedById(hold.key as ItemId);
   if (seed === undefined) return 0;
   if (roll() >= seedMakerChance(next.prestige)) return 0;
   const qty = Math.max(1, Math.round(seedMakerOutput(level) * (1 + bonus)));
@@ -3418,7 +3467,7 @@ function clearMachineQueue(ledger: GardenLedger, id: MachineId, now: number): Ru
     if (definition.input.kind === "product") {
       addProduct(next.bag.products, hold.item as ProductId, hold.star ?? 1, 1, hold.effects ?? []);
     } else {
-      addCrop(next.bag.crops, hold.item, [], 1, false, 1);
+      addCrop(next.bag.crops, hold.item as ItemId, [], 1, false, 1);
     }
   }
   next.machines[id] = { ...machine, queue: [] };
@@ -3429,7 +3478,7 @@ function clearMachineQueue(ledger: GardenLedger, id: MachineId, now: number): Ru
 function craftMachine(
   ledger: GardenLedger,
   id: MachineId,
-  item: ItemId | undefined,
+  item: ItemId | ProductId | undefined,
   now: number,
 ): RuleResult {
   const definition = machineById(id);
@@ -3460,7 +3509,7 @@ function craftMachine(
 function queueMachine(
   ledger: GardenLedger,
   id: MachineId,
-  item: ItemId | undefined,
+  item: ItemId | ProductId | undefined,
   qty: number,
   now: number,
 ): RuleResult {
