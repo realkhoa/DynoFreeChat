@@ -451,6 +451,38 @@ describe("garden tab", () => {
     expect(planted?.action).toMatchObject({ kind: "plant", slot: 1, seed: "carrot" });
   });
 
+  it("shows premium plot info and harvests from the context menu", async () => {
+    const ripe = {
+      slot: 0,
+      seed: "carrot" as const,
+      plantedAt: CLOCK - 10 * 60_000,
+      readyAt: CLOCK - 1_000,
+      effects: ["brainrot" as const],
+      watered: true,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const api = new FakeGardenApi(makeState({ specialOwned: 1, specialPlots: [ripe] }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('.garden-special-cell[data-slot="0"]')?.click();
+    await settle();
+    const info = host.querySelector(".garden-special-menu .garden-menu-info")?.textContent ?? "";
+    expect(info).toContain("Cà rốt");
+    expect(info).toContain("5★");
+    host.querySelector<HTMLButtonElement>('[data-act="specialMenuHarvest"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "harvestSpecial")?.action).toMatchObject({
+      kind: "harvestSpecial",
+      slot: 0,
+    });
+  });
+
   it("opens the premium board as ASCII cells and buys the next plot", async () => {
     const api = new FakeGardenApi(
       makeState({
@@ -468,6 +500,8 @@ describe("garden tab", () => {
     expect(host.querySelectorAll(".garden-special-cell[data-slot]")).toHaveLength(27);
 
     host.querySelector<HTMLButtonElement>('.garden-special-cell[data-slot="0"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="specialMenuPlant"]')?.click();
     await settle();
     const seed = host.querySelector<HTMLButtonElement>('[data-act="specialSeed"]');
     expect(seed).not.toBeNull();

@@ -19,6 +19,7 @@ import {
   SOIL_START,
   SPECIAL_PATCH_PRICE,
   SPECIAL_PLOT_PRICE,
+  SPECIAL_QUALITY_STARS,
   specialPlotCost,
   SPECIAL_PLOTS_PER_PATCH,
   SPECIAL_SLOTS,
@@ -225,6 +226,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let moveSource: { slot: number; area: "crop" | "tree" } | null = null;
   let machineMenu: { id: MachineId; x: number; y: number; anchorTop: number } | null = null;
   let specialPicker: number | null = null;
+  let specialMenu: { slot: number; x: number; y: number } | null = null;
   let bulkPanel: "plan" | "uproot" | null = null;
   let confirmPrestige = false;
   let uprootPriceDraft = "";
@@ -2836,6 +2838,81 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Popover for one premium plot: info first, actions below. */
+  function buildSpecialMenu(at: number): HTMLElement | null {
+    if (specialMenu === null || state === null) return null;
+    const view = specialView();
+    const slot = specialMenu.slot;
+    if (view === null || slot >= view.owned) return null;
+    const plot = view.plots[slot] ?? null;
+    const wrap = div("garden-menu garden-special-menu");
+    const left = Math.min(Math.max(8, specialMenu.x), Math.max(8, window.innerWidth - 340 - 8));
+    const top = Math.min(Math.max(8, specialMenu.y), Math.max(8, window.innerHeight - 160));
+    wrap.style.left = `${left}px`;
+    wrap.style.top = `${top}px`;
+
+    const head = div("garden-menu-head");
+    const patch = Math.floor(slot / SPECIAL_PLOTS_PER_PATCH);
+    const local = slot % SPECIAL_PLOTS_PER_PATCH;
+    head.append(
+      span(
+        "garden-menu-title",
+        `${t("special.title")} · V${patch + 1} · ${t("garden.plot", { slot: local + 1 })}`,
+      ),
+    );
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "garden-menu-close";
+    close.dataset.act = "specialMenuClose";
+    close.textContent = "×";
+    close.setAttribute("aria-label", t("common.close"));
+    head.append(close);
+    wrap.append(head);
+
+    const info = document.createElement("pre");
+    info.className = "garden-menu-info";
+    if (plot === null) {
+      info.textContent = `${t("special.empty")}\n${t("special.pickSeed")}`;
+    } else {
+      const effects = resolvedCropEffects(plot, at, true);
+      const star = SPECIAL_QUALITY_STARS;
+      const value =
+        season === null
+          ? null
+          : cropSellPrice({ item: plot.seed, effects, pest: plot.pest, star, qty: 1 }, season);
+      const lines = [
+        `// ${seedName(plot.seed)}`,
+        labelValue(t("garden.stage"), at >= plot.readyAt ? t("garden.ripe") : t("garden.growing")),
+        labelValue(
+          t("garden.timeLeft"),
+          at >= plot.readyAt ? t("special.ready") : formatDuration(plot.readyAt - at),
+        ),
+        labelValue(t("special.quality"), `${star}★`),
+        labelValue(t("garden.effects"), effectBadge(effects) || t("side.none")),
+        labelValue(t("side.value"), value === null ? "—" : `${formatCompact(value)}c`),
+      ];
+      if (effects.length > 1) lines.push(`// ${effectsMultiplier(effects)}x`);
+      if (plot.watered) lines.push(`// ${t("garden.wateredAlready")}`);
+      info.textContent = lines.join("\n");
+    }
+    wrap.append(info);
+
+    const rows = div("garden-menu-rows");
+    if (plot === null) {
+      rows.append(menuRow(`[ ${t("special.plantHere")} ]`, "specialMenuPlant"));
+    } else {
+      if (at >= plot.readyAt) {
+        rows.append(menuRow(`[ ${t("special.harvest")} ]`, "specialMenuHarvest"));
+      } else if (!plot.watered) {
+        rows.append(menuRow(`[ ${t("garden.water")} ]`, "specialMenuWater"));
+      }
+      rows.append(menuRow(`[ ${t("garden.uproot")} ]`, "specialMenuUproot"));
+    }
+    rows.append(menuRow(t("common.close"), "specialMenuClose"));
+    wrap.append(rows);
+    return wrap;
+  }
+
   /** @brief Builds the warehouse tab: machines, levels and crafting. */
   function buildWarehouse(): HTMLElement {
     const wrap = div("garden-warehouse");
@@ -3726,6 +3803,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const machineEl = buildMachineMenu(now());
       if (machineEl !== null) parts.push(machineEl);
     }
+    if (specialMenu !== null) {
+      const specialEl = buildSpecialMenu(now());
+      if (specialEl !== null) parts.push(specialEl);
+    }
     root.replaceChildren(...parts);
     fitMenu();
     fitStaffMenu();
@@ -3948,23 +4029,41 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           void runAction({ kind: "uprootSpecial", slot }, t("special.uprooted"));
           return;
         }
-        if (plot === null) {
-          specialPicker = specialPicker === slot ? null : slot;
-          render();
-          return;
-        }
-        if (now() >= plot.readyAt) {
-          void runAction({ kind: "harvestSpecial", slot }, t("special.harvested"));
-          return;
-        }
-        if (!plot.watered) {
-          void runAction({ kind: "waterSpecial", slot }, t("garden.watered"));
-          return;
-        }
-        message = { text: t("special.alreadyWatered"), kind: "info" };
+        specialPicker = null;
+        specialMenu = { slot, x: event.clientX, y: event.clientY };
         render();
         return;
       }
+      case "specialMenuClose":
+        specialMenu = null;
+        render();
+        return;
+      case "specialMenuPlant":
+        if (specialMenu !== null) specialPicker = specialMenu.slot;
+        specialMenu = null;
+        render();
+        return;
+      case "specialMenuHarvest":
+        if (specialMenu !== null) {
+          const slot = specialMenu.slot;
+          specialMenu = null;
+          void runAction({ kind: "harvestSpecial", slot }, t("special.harvested"));
+        }
+        return;
+      case "specialMenuWater":
+        if (specialMenu !== null) {
+          const slot = specialMenu.slot;
+          specialMenu = null;
+          void runAction({ kind: "waterSpecial", slot }, t("garden.watered"));
+        }
+        return;
+      case "specialMenuUproot":
+        if (specialMenu !== null) {
+          const slot = specialMenu.slot;
+          specialMenu = null;
+          void runAction({ kind: "uprootSpecial", slot }, t("special.uprooted"));
+        }
+        return;
       case "specialSeed": {
         const slot = Number(target.dataset.slot);
         const seed = target.dataset.seed as SeedId | undefined;
@@ -4731,6 +4830,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         closeStaffMenu();
         return;
       }
+      if (specialMenu !== null) {
+        specialMenu = null;
+        render();
+        return;
+      }
       if (menu !== null) closeMenu();
       else {
         selectedSlot = null;
@@ -4805,9 +4909,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
   /** @brief Closes the context menu when the pointer lands outside it. */
   function onPointerDown(event: PointerEvent): void {
-    if (menu === null) return;
     const target = event.target;
     if (!(target instanceof Element)) return;
+    if (
+      specialMenu !== null &&
+      target.closest(".garden-menu") === null &&
+      target.closest(".garden-special-cell") === null
+    ) {
+      specialMenu = null;
+      render();
+    }
+    if (menu === null) return;
     if (target.closest(".garden-menu") !== null || target.closest(".garden-cell") !== null) return;
     closeMenu();
   }
