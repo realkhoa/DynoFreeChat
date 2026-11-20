@@ -458,6 +458,7 @@ export class Garden extends DurableObject<Env> {
     if (request.method === "POST" && url.pathname === "/act") return this.act(request);
     if (request.method === "GET" && url.pathname === "/snapshot") return this.snapshot();
     if (request.method === "POST" && url.pathname === "/profile") return this.profile(request);
+    if (request.method === "POST" && url.pathname === "/recipe") return this.learnRecipe(request);
     if (request.method === "POST" && url.pathname === "/recovery") return this.rotateRecovery(request);
     if (request.method === "POST" && url.pathname === "/issue-token") return this.issueToken(request);
     if (request.method === "POST" && url.pathname === "/identity") return this.identity(request);
@@ -544,6 +545,7 @@ export class Garden extends DurableObject<Env> {
       collection: raw.collection ?? [],
       codexClaimed: raw.codexClaimed ?? [],
       timeline: raw.timeline ?? [],
+      recipes: raw.recipes ?? [],
       chainStep: typeof raw.chainStep === "number" ? raw.chainStep : 0,
       wheelSpins: raw.wheelSpins ?? 0,
       wheelPity: raw.wheelPity ?? 0,
@@ -895,6 +897,32 @@ export class Garden extends DurableObject<Env> {
   }
 
   // ------------------------------------------------------------------- auth
+
+  /** @brief Stores one AI-approved custom recipe, capped at twenty. */
+  private async learnRecipe(request: Request): Promise<Response> {
+    const ledger = await this.authorize(request);
+    if (ledger === null) return this.unauthorized();
+    const body = await readJson(request);
+    const inputs = Array.isArray(body.inputs)
+      ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 4)
+      : [];
+    const output = typeof body.output === "string" ? body.output.trim().slice(0, 40) : "";
+    const price =
+      typeof body.price === "number" ? Math.max(1, Math.min(5_000_000_000, Math.floor(body.price))) : 0;
+    if (inputs.length < 2 || output.length === 0) return json({ code: "BAD_REQUEST" }, 400);
+    const id = `${inputs.join("+")}>${output}`.toLowerCase();
+    const existing = (ledger.recipes ?? []).find((recipe) => recipe.id === id);
+    if (existing !== undefined) return json({ ok: true, recipe: existing });
+    if ((ledger.recipes ?? []).length >= 20) return json({ code: "BAD_REQUEST" }, 400);
+    const next = structuredClone(ledger);
+    const recipe = { id, inputs, output, price, createdAt: Date.now() };
+    next.recipes = [...(next.recipes ?? []), recipe].slice(-20);
+    next.rev += 1;
+    next.updatedAt = recipe.createdAt;
+    next.lastSeen = recipe.createdAt;
+    this.write(next);
+    return json({ ok: true, recipe });
+  }
 
   /** @brief Authenticates one owner request against the stored token digest. */
   private async authorize(request: Request): Promise<GardenLedger | null> {

@@ -83,7 +83,7 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   const auth = parseGardenAuth(request.headers.get(GARDEN_AUTH_HEADER));
   if (auth === null) return json({ code: "UNAUTHORIZED" }, 401);
 
-  if (name === "recipe" && request.method === "POST") return recipeRoute(env, request);
+  if (name === "recipe" && request.method === "POST") return recipeRoute(env, auth, request);
   if (name === "state" && request.method === "GET") return ownerResponse(env, auth, "/state", "GET", now);
   if (name === "act" && request.method === "POST")
     return ownerResponse(env, auth, "/act", "POST", now, request);
@@ -96,7 +96,7 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
 }
 
 /** @brief Validates a player-proposed cooking recipe with OpenCode Go Beam Free. */
-async function recipeRoute(env: Env, request: Request): Promise<Response> {
+async function recipeRoute(env: Env, auth: GardenCredentials, request: Request): Promise<Response> {
   const body = await readJson(request);
   const inputs = Array.isArray(body.inputs)
     ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 4)
@@ -140,13 +140,28 @@ async function recipeRoute(env: Env, request: Request): Promise<Response> {
       reason?: unknown;
       suggestedPrice?: unknown;
     };
+    const valid = parsed.valid === true;
+    const suggestedPrice =
+      typeof parsed.suggestedPrice === "number"
+        ? Math.max(1, Math.min(5_000_000_000, Math.floor(parsed.suggestedPrice)))
+        : 0;
+    let recipe: unknown = null;
+    if (valid) {
+      const saved = await gardenStub(env, auth.playerId).fetch("https://garden/recipe", {
+        method: "POST",
+        headers: ownerHeaders(auth.token),
+        body: JSON.stringify({ inputs, output, price: suggestedPrice }),
+      });
+      if (saved.ok) {
+        const payload = (await saved.json()) as { recipe?: unknown };
+        recipe = payload.recipe ?? null;
+      }
+    }
     return json({
-      valid: parsed.valid === true,
+      valid,
       reason: typeof parsed.reason === "string" ? parsed.reason : "",
-      suggestedPrice:
-        typeof parsed.suggestedPrice === "number"
-          ? Math.max(1, Math.min(5_000_000_000, Math.floor(parsed.suggestedPrice)))
-          : 0,
+      suggestedPrice,
+      recipe,
     });
   } catch {
     return json({ code: "RECIPE_AI_ERROR" }, 502);

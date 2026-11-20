@@ -3883,6 +3883,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     lab.append(recipeRow, actionButton(t("recipe.validate"), "recipeValidate"));
     if (recipeResult.length > 0) lab.append(lineBlock(recipeResult));
+    for (const recipe of state?.extras.recipes ?? []) {
+      lab.append(
+        lineBlock(
+          `${t("recipe.saved")}: ${recipe.inputs.join(" + ")} → ${recipe.output} · ${formatCompact(recipe.price)}c`,
+        ),
+      );
+    }
     wrap.append(lab);
 
     const categories = [
@@ -5530,6 +5537,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             recipeResult = result.valid
               ? t("recipe.valid", { price: formatCompact(result.suggestedPrice), reason: result.reason })
               : t("recipe.invalid", { reason: result.reason });
+            if (result.valid) void refresh();
           })
           .catch(() => {
             recipeResult = t("recipe.offline");

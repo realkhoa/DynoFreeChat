@@ -1734,6 +1734,20 @@ export const CONTRACT_CHAIN: readonly ContractChainStep[] = [
   { id: "gourmet", product: "caviar", qty: 1, star: 4, reward: 1_000_000 },
 ];
 
+/** One player-discovered recipe approved by the LLM. */
+export interface CustomRecipe {
+  /** Deterministic id from the sorted inputs/output. */
+  readonly id: string;
+  /** Ingredient ids chosen by the player. */
+  readonly inputs: readonly string[];
+  /** Dish name. */
+  readonly output: string;
+  /** Model-suggested coin value. */
+  readonly price: number;
+  /** Server time it was learned. */
+  readonly createdAt: number;
+}
+
 /** One public row in the global sale log. */
 export interface GlobalSaleEntry extends SaleRecord {
   /** Seller share code. */
@@ -2254,6 +2268,8 @@ export interface ExtrasSnapshot {
   readonly collection: readonly string[];
   /** Completed permanent NPC contract chain steps. */
   readonly chainStep?: number;
+  /** Recipes learned through the AI Recipe Lab. */
+  readonly recipes?: readonly CustomRecipe[];
   /** Greenhouse level, 0..3. */
   readonly greenhouse: number;
   /** Pet level (legacy field, unused by the gacha system). */
@@ -2543,6 +2559,8 @@ export interface GardenSnapshot {
   readonly timeline?: readonly TimelineEvent[];
   /** Completed steps in the permanent NPC contract chain. */
   readonly chainStep?: number;
+  /** Recipes learned through the AI Recipe Lab. */
+  readonly recipes?: readonly CustomRecipe[];
   /** Crop cells burnt by fire and awaiting repurchase. */
   readonly damagedPlots?: readonly boolean[];
   /** Fruit tree slots for the owned tabs, `tabs * TREES_PER_TAB` entries. */

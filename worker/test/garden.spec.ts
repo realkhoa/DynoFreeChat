@@ -231,6 +231,23 @@ describe("garden play", () => {
     expect(response.status).toBe(401);
   });
 
+  it("stores an AI-approved custom recipe", async () => {
+    const registered = await register();
+    const bindings = env as unknown as Env;
+    const garden = bindings.GARDEN.get(bindings.GARDEN.idFromName(registered.playerId));
+    const response = await garden.fetch("https://garden/recipe", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-dyno-garden-token": registered.token },
+      body: JSON.stringify({ inputs: ["roe", "milk"], output: "Caviar Latte", price: 500_000 }),
+    });
+    expect(response.status).toBe(200);
+    const loaded = await readState(registered);
+    expect(loaded.state.extras.recipes?.[0]).toMatchObject({
+      output: "Caviar Latte",
+      price: 500_000,
+    });
+  });
+
   it("buys a fruit tree through the API", async () => {
     const registered = await register();
     const bindings = env as unknown as Env;

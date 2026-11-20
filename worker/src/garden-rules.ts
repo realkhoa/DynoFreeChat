@@ -177,6 +177,7 @@ import {
   type SprayId,
   type GardenAction,
   type TimelineEvent,
+  type CustomRecipe,
   type PrestigeSkillId,
   type GardenErrorCode,
   type GardenSnapshot,
@@ -327,6 +328,7 @@ export interface GardenLedger {
   codexClaimed: string[];
   timeline: TimelineEvent[];
   chainStep: number;
+  recipes: CustomRecipe[];
   /** Wheel counters. */
   wheelSpins: number;
   wheelPity: number;
@@ -464,6 +466,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     codexClaimed: [],
     timeline: [],
     chainStep: 0,
+    recipes: [],
     wheelSpins: 0,
     wheelPity: 0,
     wheelLast: "",
@@ -525,6 +528,8 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
     lastStreakDay: ledger.lastStreakDay,
     achievements: [...ledger.achievements],
     collection: [...ledger.collection],
+    chainStep: ledger.chainStep ?? 0,
+    recipes: (ledger.recipes ?? []).map((recipe) => ({ ...recipe, inputs: [...recipe.inputs] })),
     greenhouse: ledger.greenhouse,
     pet: ledger.pet,
     insuranceUntil: ledger.insuranceUntil,
@@ -577,6 +582,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
       .reduce((sum, key) => sum + codexReward(key), 0),
     timeline: (ledger.timeline ?? []).map((entry) => ({ ...entry })),
     chainStep: ledger.chainStep ?? 0,
+    recipes: (ledger.recipes ?? []).map((recipe) => ({ ...recipe, inputs: [...recipe.inputs] })),
     plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
     trees: ledger.trees.map((tree) => (tree === null ? null : { ...tree })),
     bag: {
