@@ -78,6 +78,7 @@ import {
   maxBuildingLevel,
   MACHINES,
   MACHINE_MAX_LEVEL,
+  machineCycles,
   MACHINE_PRICE,
   WAREHOUSE_PRICE,
   converterOutput,
@@ -2667,7 +2668,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const definition = machineById(id);
     if (definition === undefined) return 0;
     if (built.job !== undefined) return Math.max(0, built.job.readyAt - at);
-    return Math.max(0, built.lastCraftAt + definition.cooldownCycles * FARM_CYCLE_MS - at);
+    return Math.max(
+      0,
+      built.lastCraftAt + machineCycles(built.level, definition.cooldownCycles) * FARM_CYCLE_MS - at,
+    );
   }
 
   /** @brief Opens the machine popover anchored on its warehouse row. */
@@ -2749,6 +2753,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (definition.output.kind === "product") {
       lines.push(labelValue(t("warehouse.output"), t(`products.${definition.output.product}`)));
     }
+    lines.push(labelValue(t("warehouse.queue"), String(built.queue?.length ?? 0)));
     info.textContent = lines.join("\n");
     wrap.append(info);
 
@@ -2787,12 +2792,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         state.bag.products
           ?.filter((stack) => stack.product === inputProduct)
           .reduce((sum, stack) => sum + stack.qty, 0) ?? 0;
-      rows.append(
+      const pair = div("garden-machine-row");
+      pair.append(
         menuRow(`${t(`products.${inputProduct}`)} ×${count}`, "machineCraft", {
           data: { machine: definition.id },
           disabled: count < 1,
         }),
+        menuRow("+Q", "machineQueue", {
+          data: { machine: definition.id },
+          disabled: count < 1,
+        }),
       );
+      rows.append(pair);
     } else {
       const allowed = definition.input.seeds;
       const allowFruit = definition.allProduce === true;
@@ -2803,11 +2814,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         .filter((stack) => allowed === undefined || allowed.includes(stack.item as SeedId))
         .map((stack) => stack.item);
       for (const item of [...new Set(items)]) {
-        rows.append(
+        const pair = div("garden-machine-row");
+        pair.append(
           menuRow(`[ ${itemName(item)} ]`, "machineCraft", {
             data: { machine: definition.id, item },
           }),
+          menuRow("+Q", "machineQueue", {
+            data: { machine: definition.id, item },
+          }),
         );
+        rows.append(pair);
       }
       if (items.length === 0) {
         rows.append(menuRow(t("warehouse.noInput"), "machineNoop", { disabled: true }));
@@ -2836,8 +2852,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (const machine of MACHINES) {
       const built = state.warehouse.machines[machine.id];
       const panel = div("garden-warehouse-machine");
-      panel.append(span("garden-farm-title", t(`machines.${machine.id}`)));
       if (built === undefined) {
+        panel.append(span("garden-farm-title", t(`machines.${machine.id}`)));
         panel.append(
           actionButton(
             t("warehouse.buildMachine", { cost: formatCompact(MACHINE_PRICE) }),
@@ -2867,17 +2883,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           built.level < MACHINE_MAX_LEVEL && (state.coins ?? 0) >= MACHINE_PRICE,
         );
         upgrade.dataset.machine = machine.id;
-        const open = actionButton(t("warehouse.open"), "machineMenuOpen");
-        open.dataset.machine = machine.id;
-        panel.append(
-          span(
-            "garden-farm-title",
-            `${t(`machines.${machine.id}`)} · ${t("warehouse.level")} ${built.level}/${MACHINE_MAX_LEVEL}`,
-          ),
-          span("garden-hint", status),
+        const open = actionButton(
+          `${t(`machines.${machine.id}`)} · ${t("warehouse.level")} ${built.level}/${MACHINE_MAX_LEVEL}`,
+          "machineMenuOpen",
         );
+        open.dataset.machine = machine.id;
+        panel.append(open, span("garden-hint", status));
         const actions = div("garden-farm-actions");
-        actions.append(open, upgrade);
+        actions.append(upgrade);
         panel.append(actions);
       }
       wrap.append(panel);
@@ -4270,6 +4283,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (machine !== undefined) {
           void runAction({ kind: "upgradeMachine", machine }, t("warehouse.machineUpgraded"));
         }
+        return;
+      }
+      case "machineQueue": {
+        const machine = target.dataset.machine as MachineId | undefined;
+        if (machine === undefined) return;
+        const item = target.dataset.item as ItemId | undefined;
+        void runAction(
+          { kind: "queueMachine", machine, ...(item === undefined ? {} : { item }) },
+          t("warehouse.queued"),
+        );
         return;
       }
       case "machineCraft": {

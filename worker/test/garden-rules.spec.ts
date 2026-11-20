@@ -1001,12 +1001,12 @@ describe("garden ledger rules", () => {
     if (!machine.ok) return;
     expect(machine.ledger.machines.seedMaker?.level).toBe(1);
 
-    // One tomato crop becomes three seeds at level 1.
+    // One tomato crop becomes five seeds at level 1.
     machine.ledger.bag.crops = [{ item: "tomato", effects: [], qty: 2 }];
     const seeds = run(machine.ledger, { kind: "craftMachine", machine: "seedMaker", item: "tomato" });
     expect(seeds.ok).toBe(true);
     if (!seeds.ok) return;
-    expect(seeds.ledger.bag.seeds.tomato).toBe(3);
+    expect(seeds.ledger.bag.seeds.tomato).toBe(5);
     expect(seeds.ledger.bag.crops[0]?.qty).toBe(1);
 
     const mayo = run(seeds.ledger, { kind: "buildMachine", machine: "mayoMaker" });
@@ -1016,7 +1016,7 @@ describe("garden ledger rules", () => {
     const crafted = run(mayo.ledger, { kind: "craftMachine", machine: "mayoMaker" });
     expect(crafted.ok).toBe(true);
     if (!crafted.ok) return;
-    expect(crafted.ledger.bag.products).toEqual([{ product: "mayo", star: 2, qty: 1 }]);
+    expect(crafted.ledger.bag.products).toEqual([{ product: "mayo", star: 2, qty: 2 }]);
   });
 
   it("stacks copies of the same mutation on one fruit", () => {
@@ -1046,6 +1046,52 @@ describe("garden ledger rules", () => {
     expect(doubled).toBeGreaterThan(single * 8);
   });
 
+  it("queues machine batches and processes them in order", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000;
+    ledger.bag.crops = [{ item: "apple", effects: [], qty: 2 }];
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const keg = run(built.ledger, { kind: "buildMachine", machine: "keg" });
+    if (!keg.ok) throw new Error("keg failed");
+
+    const first = run(keg.ledger, { kind: "queueMachine", machine: "keg", item: "apple" });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.ledger.machines.keg?.queue).toHaveLength(1);
+    expect(first.ledger.bag.crops[0]?.qty).toBe(1);
+
+    const second = run(first.ledger, { kind: "queueMachine", machine: "keg", item: "apple" });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.ledger.bag.crops).toHaveLength(0);
+    expect(second.ledger.machines.keg?.queue).toHaveLength(2);
+
+    const started = settleMachines(second.ledger, NOW);
+    expect(started.machines.keg?.job?.item).toBe("apple");
+    expect(started.machines.keg?.queue).toHaveLength(1);
+
+    const afterFirst = settleMachines(started, NOW + 4 * FARM_CYCLE_MS);
+    const afterSecond = settleMachines(afterFirst, NOW + 8 * FARM_CYCLE_MS);
+    expect(afterSecond.bag.products?.filter((stack) => stack.product === "wine")).toHaveLength(1);
+    expect(afterSecond.bag.products?.find((stack) => stack.product === "wine")?.qty).toBe(4);
+  });
+
+  it("boosts machine output and speed with levels", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000;
+    ledger.bag.crops = [{ item: "tomato", effects: [], qty: 1 }];
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const machine = run(built.ledger, { kind: "buildMachine", machine: "seedMaker" });
+    if (!machine.ok) throw new Error("machine failed");
+    machine.ledger.machines.seedMaker = { level: 3, lastCraftAt: 0 };
+    const crafted = run(machine.ledger, { kind: "craftMachine", machine: "seedMaker", item: "tomato" });
+    expect(crafted.ok).toBe(true);
+    if (!crafted.ok) return;
+    expect(crafted.ledger.bag.seeds.tomato).toBe(9);
+  });
+
   it("dries crops and fruit with a price-graded star", () => {
     const ledger = makeLedger();
     ledger.coins = 30_000_000;
@@ -1061,7 +1107,7 @@ describe("garden ledger rules", () => {
     const dried = run(dryer.ledger, { kind: "craftMachine", machine: "dryer", item: "carrot" });
     expect(dried.ok).toBe(true);
     if (!dried.ok) return;
-    expect(dried.ledger.bag.products).toEqual([{ product: "dried", star: 1, qty: 1 }]);
+    expect(dried.ledger.bag.products).toEqual([{ product: "dried", star: 1, qty: 2 }]);
 
     // The dryer runs on a three-cycle cooldown.
     const early = run(dried.ledger, { kind: "craftMachine", machine: "dryer", item: "apple" });
@@ -1077,7 +1123,7 @@ describe("garden ledger rules", () => {
     if (!fruit.ok) return;
     expect(fruit.ledger.bag.products?.find((stack) => stack.star === 4)).toMatchObject({
       product: "dried",
-      qty: 1,
+      qty: 2,
     });
 
     // The seed maker still refuses fruit.
@@ -1121,7 +1167,7 @@ describe("garden ledger rules", () => {
 
     const settled = settleMachines(scheduled.ledger, NOW + 4 * FARM_CYCLE_MS);
     expect(settled.machines.keg?.job).toBeUndefined();
-    expect(settled.bag.products).toEqual([{ product: "wine", star: 4, qty: 1 }]);
+    expect(settled.bag.products).toEqual([{ product: "wine", star: 4, qty: 2 }]);
 
     // Once idle again the keg accepts the next fruit.
     const next = run(

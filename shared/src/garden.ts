@@ -929,6 +929,10 @@ export interface MachineJob {
   readonly startedAt: number;
   /** Server time the output is ready to collect. */
   readonly readyAt: number;
+  /** Source quality for product inputs (mayo/cheese keep their star). */
+  readonly star?: number;
+  /** Base sell price for crop inputs, used by the dryer grading. */
+  readonly sell?: number;
 }
 
 /** Price of the warehouse itself. */
@@ -1018,16 +1022,23 @@ export interface MachineState {
   readonly lastCraftAt: number;
   /** Timed job currently brewing, if any. */
   readonly job?: MachineJob;
+  /** Pending jobs, in order; inputs are already held by the machine. */
+  readonly queue?: readonly MachineJob[];
 }
 
 /** @brief Seeds a seed maker returns for one crop at a level. */
 export function seedMakerOutput(level: number): number {
-  return 2 + Math.max(1, Math.min(MACHINE_MAX_LEVEL, level));
+  return 3 + Math.max(1, Math.min(MACHINE_MAX_LEVEL, level)) * 2;
 }
 
 /** @brief Products a converter returns for one input at a level. */
 export function converterOutput(level: number): number {
-  return Math.max(1, Math.min(MACHINE_MAX_LEVEL, level));
+  return Math.max(1, Math.min(MACHINE_MAX_LEVEL, level)) * 2;
+}
+
+/** @brief Cycles one machine craft takes at a level; higher levels run faster. */
+export function machineCycles(level: number, cooldownCycles: number): number {
+  return Math.max(1, cooldownCycles - (Math.max(1, Math.min(MACHINE_MAX_LEVEL, level)) - 1));
 }
 
 /**
@@ -2570,6 +2581,11 @@ export type GardenAction =
       readonly machine: MachineId;
       readonly item?: ItemId;
     }
+  | {
+      readonly kind: "queueMachine";
+      readonly machine: MachineId;
+      readonly item?: ItemId;
+    }
   | { readonly kind: "collectMachine"; readonly machine: MachineId }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
@@ -3105,13 +3121,23 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
     return machine === undefined ? null : { kind, machine: machine.id };
   }
-  if (kind === "craftMachine") {
+  if (kind === "craftMachine" || kind === "queueMachine") {
     const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
     if (machine === undefined) return null;
-    if (value.item === undefined) return { kind, machine: machine.id };
-    const item = typeof value.item === "string" ? itemById(value.item) : undefined;
-    if (item === undefined) return null;
-    return { kind, machine: machine.id, item: item.id as ItemId };
+    const item = value.item === undefined ? undefined : itemById(String(value.item));
+    if (value.item !== undefined && item === undefined) return null;
+    if (kind === "craftMachine") {
+      return {
+        kind: "craftMachine",
+        machine: machine.id,
+        ...(item === undefined ? {} : { item: item.id as ItemId }),
+      };
+    }
+    return {
+      kind: "queueMachine",
+      machine: machine.id,
+      ...(item === undefined ? {} : { item: item.id as ItemId }),
+    };
   }
   if (kind === "claimQuest") {
     return typeof value.id === "string" && value.id.length > 0 ? { kind, id: value.id } : null;

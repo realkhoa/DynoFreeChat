@@ -745,6 +745,21 @@
   padding-top: 3px;
 }
 
+.garden-machine-row {
+  display: flex;
+  gap: 2px;
+}
+
+.garden-machine-row .garden-menu-row:first-child {
+  flex: 1;
+}
+
+.garden-machine-row .garden-menu-row:last-child {
+  flex: 0 0 auto;
+  width: auto;
+  color: #9cdcfe;
+}
+
 .garden-menu-row {
   display: block;
   width: 100%;

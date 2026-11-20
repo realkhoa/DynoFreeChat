@@ -1702,6 +1702,41 @@ describe("chart tab", () => {
   });
 });
 
+describe("warehouse machines", () => {
+  it("shows one label per machine and queues from the popover", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        bag: { seeds: {}, crops: [{ item: "carrot", effects: [], qty: 2 }], supplies: {} },
+        warehouse: { level: 1, machines: { seedMaker: { level: 1, lastCraftAt: 0 } } },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:warehouse"]')?.click();
+    await settle();
+
+    const panel = host.querySelector(".garden-warehouse-machine");
+    expect(panel?.querySelectorAll(".garden-farm-title")).toHaveLength(0);
+    const open = panel?.querySelector<HTMLButtonElement>('[data-act="machineMenuOpen"]');
+    expect(open?.textContent).toContain("Máy tạo hạt");
+
+    open?.click();
+    await settle();
+    // The popover shows only this machine, not the whole warehouse again.
+    expect(host.querySelectorAll(".garden-menu .garden-farm-title")).toHaveLength(0);
+    const queue = host.querySelector<HTMLButtonElement>('[data-act="machineQueue"]');
+    expect(queue).not.toBeNull();
+    queue?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "queueMachine")?.action).toMatchObject({
+      kind: "queueMachine",
+      machine: "seedMaker",
+      item: "carrot",
+    });
+  });
+});
+
 describe("daily quests and prestige", () => {
   it("claims a completed quest and confirms prestige", async () => {
     const api = new FakeGardenApi(
