@@ -2581,6 +2581,7 @@ export type GardenAction =
   | {
       readonly kind: "uprootBulk";
       readonly seed?: SeedId;
+      readonly tree?: TreeId;
       readonly priceBelow?: number;
       readonly profit?: "loss" | "win";
     }
@@ -3009,14 +3010,20 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   }
   if (kind === "uprootBulk") {
     const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+    const tree = typeof value.tree === "string" ? treeById(value.tree) : undefined;
+    if (value.seed !== undefined && seed === undefined) return null;
+    if (value.tree !== undefined && tree === undefined) return null;
     const profitRaw = value.profit;
     const profit = profitRaw === "loss" || profitRaw === "win" ? profitRaw : undefined;
     const priceBelow = value.priceBelow;
-    if (seed === undefined && profit === undefined && priceBelow === undefined) return null;
+    if (seed === undefined && tree === undefined && profit === undefined && priceBelow === undefined) {
+      return null;
+    }
     if (priceBelow !== undefined && (typeof priceBelow !== "number" || priceBelow < 0)) return null;
     return {
       kind,
       ...(seed === undefined ? {} : { seed: seed.id }),
+      ...(tree === undefined ? {} : { tree: tree.id }),
       ...(profit === undefined ? {} : { profit }),
       ...(priceBelow === undefined ? {} : { priceBelow }),
     };

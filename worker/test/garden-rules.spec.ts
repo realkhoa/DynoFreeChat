@@ -158,6 +158,28 @@ describe("garden ledger rules", () => {
     expect(byValue.ledger.plots[1]).toBeNull();
   });
 
+  it("bulk uproots fruit trees too", () => {
+    const ledger = makeLedger();
+    ledger.trees[0] = {
+      slot: 0,
+      tree: "apple",
+      plantedAt: NOW,
+      readyAt: NOW + 10 * 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const removed = run(ledger, { kind: "uprootBulk", tree: "apple" });
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) return;
+    expect(removed.ledger.trees[0]).toBeNull();
+  });
+
   it("refuses plots beyond the bought tab, occupied plots and empty bags", () => {
     expect(run(makeLedger(), { kind: "plant", slot: 81, seed: "carrot" })).toMatchObject({
       ok: false,

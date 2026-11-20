@@ -1924,6 +1924,42 @@ describe("bulk uproot preview", () => {
   });
 });
 
+describe("bulk uproot trees", () => {
+  it("previews and removes a fruit tree", async () => {
+    const tree = {
+      slot: 0,
+      tree: "apple" as const,
+      plantedAt: CLOCK,
+      readyAt: CLOCK + 600_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const api = new FakeGardenApi(makeState({ trees: [tree] }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="bulkUproot"]')?.click();
+    await settle();
+    const button = host.querySelector<HTMLButtonElement>('[data-act="uprootTree"][data-tree="apple"]');
+    expect(button).not.toBeNull();
+    button?.click();
+    await settle();
+    expect(host.querySelector(".garden-garden")?.textContent).toContain("Sắp nhổ");
+    host.querySelector<HTMLButtonElement>('[data-act="uprootConfirm"]')?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "uprootBulk")?.action).toMatchObject({
+      kind: "uprootBulk",
+      tree: "apple",
+    });
+  });
+});
+
 describe("mobile layout", () => {
   it("ships responsive garden rules for stacking and small cells", () => {
     const css = readFileSync(resolve(process.cwd(), "src/features/games/garden.css"), "utf8");

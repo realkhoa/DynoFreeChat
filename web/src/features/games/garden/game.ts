@@ -231,7 +231,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let specialMenu: { slot: number; x: number; y: number } | null = null;
   let bulkPanel: "plan" | "uproot" | null = null;
   let confirmPrestige = false;
-  let uprootPending: { seed?: SeedId; priceBelow?: number; profit?: "loss" | "win" } | null = null;
+  let uprootPending: { seed?: SeedId; tree?: TreeId; priceBelow?: number; profit?: "loss" | "win" } | null =
+    null;
   let uprootPriceDraft = "";
   let giftCode = "";
   let giftAmount = "1000";
@@ -2323,39 +2324,57 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
-  /** @brief Crops the pending bulk-uproot filter would remove, grouped. */
-  function uprootTargets(filter: { seed?: SeedId; priceBelow?: number; profit?: "loss" | "win" }): {
-    summary: string;
-    count: number;
-  } {
+  /** @brief Crops and fruit trees the pending bulk-uproot filter would remove. */
+  function uprootTargets(filter: {
+    seed?: SeedId;
+    tree?: TreeId;
+    priceBelow?: number;
+    profit?: "loss" | "win";
+  }): { summary: string; count: number } {
     if (state === null || season === null) return { summary: "", count: 0 };
     const at = now();
-    const counts = new Map<SeedId, number>();
+    const counts = new Map<string, number>();
     let total = 0;
-    for (const plot of state.plots) {
-      if (plot === null || plot.favorite === true) continue;
-      if (filter.seed !== undefined && plot.seed !== filter.seed) continue;
-      const value = cropSellPrice(
-        {
-          item: plot.seed,
-          effects: resolvedCropEffects(plot, at),
-          pest: plot.pest,
-          star: 1,
-          qty: 1,
-        },
-        season,
-      );
-      if (filter.priceBelow !== undefined && value >= filter.priceBelow) continue;
-      if (filter.profit !== undefined) {
-        const cost = seedById(plot.seed)?.buy ?? 0;
-        const winning = value > cost;
-        if (filter.profit === "win" ? !winning : winning) continue;
-      }
-      counts.set(plot.seed, (counts.get(plot.seed) ?? 0) + 1);
+    const add = (name: string): void => {
+      counts.set(name, (counts.get(name) ?? 0) + 1);
       total += 1;
+    };
+    const matches = (value: number, cost: number): boolean => {
+      if (filter.priceBelow !== undefined && value >= filter.priceBelow) return false;
+      if (filter.profit !== undefined) {
+        const winning = value > cost;
+        if (filter.profit === "win" ? !winning : winning) return false;
+      }
+      return true;
+    };
+
+    if (filter.tree === undefined) {
+      for (const plot of state.plots) {
+        if (plot === null || plot.favorite === true) continue;
+        if (filter.seed !== undefined && plot.seed !== filter.seed) continue;
+        const value = cropSellPrice(
+          { item: plot.seed, effects: resolvedCropEffects(plot, at), pest: plot.pest, star: 1, qty: 1 },
+          season,
+        );
+        if (!matches(value, seedById(plot.seed)?.buy ?? 0)) continue;
+        add(seedName(plot.seed));
+      }
     }
-    const summary = [...counts].map(([seed, count]) => `${seedName(seed)} ×${count}`).join(", ");
-    return { summary, count: total };
+
+    if (filter.seed === undefined) {
+      for (const tree of state.trees) {
+        if (tree === null || tree.favorite === true) continue;
+        if (filter.tree !== undefined && tree.tree !== filter.tree) continue;
+        const value = cropSellPrice(
+          { item: tree.tree, effects: resolvedTreeEffects(tree, at), pest: tree.pest, star: 1, qty: 1 },
+          season,
+        );
+        if (!matches(value, treeById(tree.tree)?.buy ?? 0)) continue;
+        add(treeName(tree.tree));
+      }
+    }
+
+    return { summary: [...counts].map(([name, count]) => `${name} ×${count}`).join(", "), count: total };
   }
 
   /** @brief Builds the garden tab: pager plus the crop grid and fruit stack. */
@@ -2555,6 +2574,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
               "uprootSeed",
             );
             button.dataset.seed = seed;
+            panel.append(button);
+          }
+          const plantedTrees = new Map<TreeId, number>();
+          for (const tree of state?.trees ?? []) {
+            if (tree === null) continue;
+            plantedTrees.set(tree.tree, (plantedTrees.get(tree.tree) ?? 0) + 1);
+          }
+          for (const [tree, count] of plantedTrees) {
+            const button = actionButton(
+              `${t("auto.byPlant", { seed: treeName(tree) })} ×${count}`,
+              "uprootTree",
+            );
+            button.dataset.tree = tree;
             panel.append(button);
           }
           panel.append(actionButton(t("auto.loss"), "uprootLoss"), actionButton(t("auto.win"), "uprootWin"));
@@ -4231,6 +4263,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const seed = target.dataset.seed as SeedId | undefined;
         if (seed !== undefined) {
           uprootPending = { seed };
+          render();
+        }
+        return;
+      }
+      case "uprootTree": {
+        const tree = target.dataset.tree as TreeId | undefined;
+        if (tree !== undefined) {
+          uprootPending = { tree };
           render();
         }
         return;

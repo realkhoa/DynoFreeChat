@@ -874,32 +874,59 @@ function plantAll(ledger: GardenLedger, seedId: SeedId, now: number, rng: () => 
 /** @brief Uproots every crop matching a seed, value or profit filter. */
 function uprootBulk(
   ledger: GardenLedger,
-  filter: { seed?: SeedId; priceBelow?: number; profit?: "loss" | "win" },
+  filter: { seed?: SeedId; tree?: TreeId; priceBelow?: number; profit?: "loss" | "win" },
   season: SeasonSnapshot,
   now: number,
 ): RuleResult {
-  if (filter.seed === undefined && filter.priceBelow === undefined && filter.profit === undefined) {
+  if (
+    filter.seed === undefined &&
+    filter.tree === undefined &&
+    filter.priceBelow === undefined &&
+    filter.profit === undefined
+  ) {
     return { ok: false, code: "BAD_REQUEST" };
   }
   const next = clone(ledger);
   let removed = 0;
-  for (let slot = 0; slot < next.plots.length; slot += 1) {
-    const plot = next.plots[slot] ?? null;
-    if (plot === null || plot.favorite === true) continue;
-    if (filter.seed !== undefined && plot.seed !== filter.seed) continue;
-    const value = cropSellPrice(
-      { item: plot.seed, effects: resolvedCropEffects(plot, now), pest: plot.pest, star: 1, qty: 1 },
-      season,
-    );
-    if (filter.priceBelow !== undefined && value >= filter.priceBelow) continue;
+  const matchesValue = (value: number, cost: number): boolean => {
+    if (filter.priceBelow !== undefined && value >= filter.priceBelow) return false;
     if (filter.profit !== undefined) {
-      const cost = seedById(plot.seed)?.buy ?? 0;
       const winning = value > cost;
-      if (filter.profit === "win" ? !winning : winning) continue;
+      if (filter.profit === "win" ? !winning : winning) return false;
     }
-    next.plots[slot] = null;
-    removed += 1;
+    return true;
+  };
+
+  if (filter.tree === undefined) {
+    for (let slot = 0; slot < next.plots.length; slot += 1) {
+      const plot = next.plots[slot] ?? null;
+      if (plot === null || plot.favorite === true) continue;
+      if (filter.seed !== undefined && plot.seed !== filter.seed) continue;
+      const value = cropSellPrice(
+        { item: plot.seed, effects: resolvedCropEffects(plot, now), pest: plot.pest, star: 1, qty: 1 },
+        season,
+      );
+      if (!matchesValue(value, seedById(plot.seed)?.buy ?? 0)) continue;
+      next.plots[slot] = null;
+      removed += 1;
+    }
   }
+
+  if (filter.seed === undefined) {
+    for (let slot = 0; slot < next.trees.length; slot += 1) {
+      const tree = next.trees[slot] ?? null;
+      if (tree === null || tree.favorite === true) continue;
+      if (filter.tree !== undefined && tree.tree !== filter.tree) continue;
+      const value = cropSellPrice(
+        { item: tree.tree, effects: resolvedTreeEffects(tree, now), pest: tree.pest, star: 1, qty: 1 },
+        season,
+      );
+      if (!matchesValue(value, treeById(tree.tree)?.buy ?? 0)) continue;
+      next.trees[slot] = null;
+      removed += 1;
+    }
+  }
+
   if (removed === 0) return { ok: false, code: "NOTHING_TO_DO" };
   return changed(next, now);
 }
