@@ -3892,11 +3892,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     lab.append(recipeRow, actionButton(t("recipe.validate"), "recipeValidate"));
     if (recipeResult.length > 0) lab.append(lineBlock(recipeResult));
     for (const recipe of state?.extras.recipes ?? []) {
-      lab.append(
+      const row = div("garden-machine-row");
+      row.append(
         lineBlock(
           `${t("recipe.saved")}: ${recipe.inputs.join(" + ")} → ${recipe.output} · ${formatCompact(recipe.price)}c`,
         ),
       );
+      const cook = actionButton(t("recipe.cook"), "cookRecipe");
+      cook.dataset.id = recipe.id;
+      row.append(cook);
+      lab.append(row);
     }
     wrap.append(lab);
 
@@ -5528,6 +5533,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         return;
       case "claimCodex": {
         void runAction({ kind: "claimCodex" }, t("dynopedia.claimed"));
+        return;
+      }
+      case "cookRecipe": {
+        const id = target.dataset.id;
+        if (id !== undefined) void runAction({ kind: "cookRecipe", id }, t("recipe.cooked"));
         return;
       }
       case "recipeValidate": {

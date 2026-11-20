@@ -17,6 +17,7 @@ import {
   STARTING_SEEDS,
   TREES_PER_TAB,
   FARM_CYCLE_MS,
+  DAY_MS,
   SPECIAL_PATCHES,
   SPECIAL_PATCH_PRICE,
   SPECIAL_PLOTS_PER_PATCH,
@@ -333,6 +334,7 @@ export interface GardenLedger {
   timeline: TimelineEvent[];
   chainStep: number;
   recipes: CustomRecipe[];
+  recipeCookedAt: Record<string, number>;
   /** Wheel counters. */
   wheelSpins: number;
   wheelPity: number;
@@ -471,6 +473,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     timeline: [],
     chainStep: 0,
     recipes: [],
+    recipeCookedAt: {},
     wheelSpins: 0,
     wheelPity: 0,
     wheelLast: "",
@@ -534,6 +537,7 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
     collection: [...ledger.collection],
     chainStep: ledger.chainStep ?? 0,
     recipes: (ledger.recipes ?? []).map((recipe) => ({ ...recipe, inputs: [...recipe.inputs] })),
+    recipeCookedAt: { ...(ledger.recipeCookedAt ?? {}) },
     greenhouse: ledger.greenhouse,
     pet: ledger.pet,
     insuranceUntil: ledger.insuranceUntil,
@@ -677,6 +681,8 @@ export function applyGardenAction(
       return claimCodex(ledger, now);
     case "fulfillChain":
       return fulfillChain(ledger, now);
+    case "cookRecipe":
+      return cookRecipe(ledger, action.id, season, now);
     case "buyPrestigeSkill":
       return buyPrestigeSkill(ledger, action.skill, now);
     case "respecPrestige":
@@ -2753,6 +2759,39 @@ function respecPrestige(ledger: GardenLedger, now: number): RuleResult {
   const next = clone(ledger);
   next.prestigeCoins -= 1;
   next.prestigeSkills = { merchant: 0, farmer: 0, artisan: 0 };
+  return changed(next, now);
+}
+
+/** @brief Cooks one learned custom recipe, consuming one of each input. */
+function cookRecipe(ledger: GardenLedger, id: string, season: SeasonSnapshot, now: number): RuleResult {
+  const recipe = (ledger.recipes ?? []).find((entry) => entry.id === id);
+  if (recipe === undefined) return { ok: false, code: "BAD_REQUEST" };
+  if (now - (ledger.recipeCookedAt?.[id] ?? 0) < DAY_MS) return { ok: false, code: "TRY_LATER" };
+  const next = clone(ledger);
+  let inputValue = 0;
+  for (const ingredient of recipe.inputs) {
+    const crop = next.bag.crops.find((stack) => stack.item === ingredient && stack.qty > 0);
+    if (crop !== undefined) {
+      inputValue += cropSellPrice(crop, season);
+      next.bag.crops = next.bag.crops
+        .map((stack) => (stack === crop ? { ...stack, qty: stack.qty - 1 } : stack))
+        .filter((stack) => stack.qty > 0);
+      continue;
+    }
+    const product = (next.bag.products ?? []).find((stack) => stack.product === ingredient && stack.qty > 0);
+    if (product === undefined) return { ok: false, code: "NO_INPUT" };
+    inputValue += productPrice(product, season);
+    next.bag.products = (next.bag.products ?? [])
+      .map((stack) => (stack === product ? { ...stack, qty: stack.qty - 1 } : stack))
+      .filter((stack) => stack.qty > 0);
+  }
+  // LLM suggestion is advisory; payout is capped by the real ingredient value.
+  const payout = Math.max(1, Math.min(recipe.price, Math.round(inputValue * 1.5)));
+  next.coins += payout;
+  next.stats.earned += payout;
+  next.weekEarned += payout;
+  next.recipeCookedAt = { ...(next.recipeCookedAt ?? {}), [id]: now };
+  logTimeline(next, "craft", now, { item: recipe.output, coins: payout });
   return changed(next, now);
 }
 

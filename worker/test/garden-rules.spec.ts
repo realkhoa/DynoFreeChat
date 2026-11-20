@@ -188,6 +188,31 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.plots[0]?.effects).toEqual([]);
   });
 
+  it("cooks a learned recipe with a value-capped payout", () => {
+    const ledger = makeLedger();
+    ledger.coins = 0;
+    ledger.recipes = [
+      {
+        id: "roe+milk>dish",
+        inputs: ["roe", "milk"],
+        output: "Dish",
+        price: 500_000,
+        createdAt: NOW,
+      },
+    ];
+    ledger.bag.products = [
+      { product: "roe", star: 1, qty: 1 },
+      { product: "milk", star: 1, qty: 1 },
+    ];
+    const cooked = run(ledger, { kind: "cookRecipe", id: ledger.recipes[0]!.id });
+    expect(cooked.ok).toBe(true);
+    if (!cooked.ok) return;
+    expect(cooked.ledger.bag.products).toHaveLength(0);
+    expect(cooked.ledger.coins).toBeGreaterThan(0);
+    expect(cooked.ledger.recipeCookedAt["roe+milk>dish"]).toBe(NOW);
+    expect(run(cooked.ledger, { kind: "cookRecipe", id: ledger.recipes[0]!.id }).ok).toBe(false);
+  });
+
   it("advances the permanent NPC contract chain", () => {
     const ledger = makeLedger();
     ledger.coins = 0;

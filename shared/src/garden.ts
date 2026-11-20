@@ -2297,6 +2297,8 @@ export interface ExtrasSnapshot {
   readonly chainStep?: number;
   /** Recipes learned through the AI Recipe Lab. */
   readonly recipes?: readonly CustomRecipe[];
+  /** Last cook timestamp per custom recipe. */
+  readonly recipeCookedAt?: Readonly<Record<string, number>>;
   /** Greenhouse level, 0..3. */
   readonly greenhouse: number;
   /** Pet level (legacy field, unused by the gacha system). */
@@ -3178,6 +3180,7 @@ export type GardenAction =
   | { readonly kind: "buyPrestigeSkill"; readonly skill: PrestigeSkillId }
   | { readonly kind: "respecPrestige" }
   | { readonly kind: "fulfillChain" }
+  | { readonly kind: "cookRecipe"; readonly id: string }
   | { readonly kind: "plantFruitSeed"; readonly slot: number; readonly seed: SeedId }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
@@ -3785,6 +3788,9 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   if (kind === "claimCodex") return { kind };
   if (kind === "respecPrestige") return { kind };
   if (kind === "fulfillChain") return { kind };
+  if (kind === "cookRecipe") {
+    return typeof value.id === "string" && value.id.length > 0 ? { kind, id: value.id } : null;
+  }
   if (kind === "buyPrestigeSkill") {
     const skill = value.skill;
     if (skill !== "merchant" && skill !== "farmer" && skill !== "artisan") return null;
