@@ -464,6 +464,7 @@ export class Garden extends DurableObject<Env> {
     if (request.method === "POST" && url.pathname === "/profile") return this.profile(request);
     if (request.method === "POST" && url.pathname === "/recipe") return this.learnRecipe(request);
     if (request.method === "POST" && url.pathname === "/raid") return this.hitRaid(request);
+    if (request.method === "POST" && url.pathname === "/guild/donate") return this.donateGuild(request);
     if (request.method === "POST" && url.pathname === "/recovery") return this.rotateRecovery(request);
     if (request.method === "POST" && url.pathname === "/issue-token") return this.issueToken(request);
     if (request.method === "POST" && url.pathname === "/identity") return this.identity(request);
@@ -904,6 +905,29 @@ export class Garden extends DurableObject<Env> {
   }
 
   // ------------------------------------------------------------------- auth
+
+  /** @brief Moves coins from the garden into its guild bank. */
+  private async donateGuild(request: Request): Promise<Response> {
+    const ledger = await this.authorize(request);
+    if (ledger === null) return this.unauthorized();
+    const body = await readJson(request);
+    const amount =
+      typeof body.amount === "number" ? Math.max(1, Math.min(10_000_000, Math.floor(body.amount))) : 0;
+    if (amount < 1 || ledger.coins < amount) return json({ code: "NOT_ENOUGH_COINS" }, 400);
+    const hub = this.env.GARDEN_HUB.get(this.env.GARDEN_HUB.idFromName(HUB_NAME));
+    const response = await hub.fetch("https://hub/guild/donate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ playerId: ledger.playerId, amount }),
+    });
+    if (!response.ok) return json({ code: "BAD_REQUEST" }, 400);
+    const payload = (await response.json()) as { guild?: unknown };
+    const next = structuredClone(ledger);
+    next.coins -= amount;
+    next.stats.spent += amount;
+    this.write(next);
+    return json({ ok: true, guild: payload.guild, coins: next.coins });
+  }
 
   /** @brief Charges one raid hit and forwards damage to the hub boss. */
   private async hitRaid(request: Request): Promise<Response> {
@@ -1756,6 +1780,7 @@ export class GardenHub extends DurableObject<Env> {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         owner_id TEXT NOT NULL,
+        bank INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS guild_members (
@@ -1807,8 +1832,11 @@ export class GardenHub extends DurableObject<Env> {
     if (!columns.some((column) => column.name === "prestige")) {
       this.sql.exec("ALTER TABLE gardens ADD COLUMN prestige INTEGER NOT NULL DEFAULT 0");
     }
+    const guildColumns = this.sql.exec<{ name: string }>("PRAGMA table_info(guilds)").toArray();
+    if (!guildColumns.some((column) => column.name === "bank")) {
+      this.sql.exec("ALTER TABLE guilds ADD COLUMN bank INTEGER NOT NULL DEFAULT 0");
+    }
   }
-
   override async fetch(request: Request): Promise<Response> {
     this.ensureSchema();
     const url = new URL(request.url);
@@ -1822,6 +1850,7 @@ export class GardenHub extends DurableObject<Env> {
     if (request.method === "POST" && url.pathname === "/guild/create") return this.guildCreate(request);
     if (request.method === "POST" && url.pathname === "/guild/join") return this.guildJoin(request);
     if (request.method === "POST" && url.pathname === "/guild/leave") return this.guildLeave(request);
+    if (request.method === "POST" && url.pathname === "/guild/donate") return this.guildDonate(request);
     if (request.method === "GET" && url.pathname === "/guild/mine") return this.guildMine(url);
     if (request.method === "GET" && url.pathname === "/guild/list") return this.guildList();
     if (request.method === "POST" && url.pathname === "/raid/hit") return this.raidHit(request);
@@ -2042,6 +2071,18 @@ export class GardenHub extends DurableObject<Env> {
     return json({ ok: true });
   }
 
+  /** @brief Adds coins to a guild's shared bank (worker already charged them). */
+  private async guildDonate(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const playerId = typeof body.playerId === "string" ? body.playerId : "";
+    const amount =
+      typeof body.amount === "number" ? Math.max(1, Math.min(10_000_000, Math.floor(body.amount))) : 0;
+    const guildId = this.guildOf(playerId);
+    if (guildId === undefined || amount < 1) return json({ code: "BAD_REQUEST" }, 400);
+    this.sql.exec("UPDATE guilds SET bank = bank + ? WHERE id = ?", amount, guildId);
+    return json({ ok: true, guild: this.guildById(guildId) });
+  }
+
   /** @brief Guild of one player. */
   private guildMine(url: URL): Response {
     const playerId = url.searchParams.get("playerId") ?? "";
@@ -2052,8 +2093,17 @@ export class GardenHub extends DurableObject<Env> {
   /** @brief Public guild list by member count. */
   private guildList(): Response {
     const rows = this.sql
-      .exec<SqlRow<{ id: string; name: string; owner_id: string; created_at: number; members: number }>>(
-        "SELECT g.id, g.name, g.owner_id, g.created_at, COUNT(m.player_id) AS members FROM guilds g LEFT JOIN guild_members m ON m.guild_id = g.id GROUP BY g.id ORDER BY members DESC, g.created_at ASC LIMIT 30",
+      .exec<
+        SqlRow<{
+          id: string;
+          name: string;
+          owner_id: string;
+          bank: number;
+          created_at: number;
+          members: number;
+        }>
+      >(
+        "SELECT g.id, g.name, g.owner_id, g.bank, g.created_at, COUNT(m.player_id) AS members FROM guilds g LEFT JOIN guild_members m ON m.guild_id = g.id GROUP BY g.id ORDER BY members DESC, g.created_at ASC LIMIT 30",
       )
       .toArray();
     return json({
@@ -2062,6 +2112,7 @@ export class GardenHub extends DurableObject<Env> {
         name: row.name,
         ownerId: row.owner_id,
         members: row.members,
+        bank: row.bank,
         createdAt: row.created_at,
       })),
     });
@@ -2077,8 +2128,8 @@ export class GardenHub extends DurableObject<Env> {
   /** @brief Full guild snapshot with members. */
   private guildById(id: string): GuildSnapshot | null {
     const guild = this.sql
-      .exec<SqlRow<{ id: string; name: string; owner_id: string; created_at: number }>>(
-        "SELECT id, name, owner_id, created_at FROM guilds WHERE id = ?",
+      .exec<SqlRow<{ id: string; name: string; owner_id: string; bank: number; created_at: number }>>(
+        "SELECT id, name, owner_id, bank, created_at FROM guilds WHERE id = ?",
         id,
       )
       .toArray()[0];
@@ -2093,6 +2144,7 @@ export class GardenHub extends DurableObject<Env> {
       id: guild.id,
       name: guild.name,
       ownerId: guild.owner_id,
+      bank: guild.bank,
       createdAt: guild.created_at,
       members: members.map((member) => ({
         playerId: member.player_id,

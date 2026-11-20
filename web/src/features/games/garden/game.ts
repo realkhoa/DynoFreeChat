@@ -274,6 +274,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let guildSnapshot: GuildSnapshot | null = null;
   let guildBoard: Array<{ id: string; name: string; ownerId: string; members: number }> = [];
   let guildNameDraft = "";
+  let guildDonateDraft = "1000000";
   let globalSales: GlobalSaleEntry[] = [];
   let globalSalesStatus: "idle" | "loading" | "error" = "idle";
   let dynopediaCategory = "effects";
@@ -4241,6 +4242,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       for (const member of guildSnapshot.members) {
         wrap.append(lineBlock(`// [${member.code}] ${member.nick}`));
       }
+      wrap.append(lineBlock(t("guild.bank", { coins: formatCompact(guildSnapshot.bank) })));
+      const donateRow = div("garden-restore-row");
+      const donateInput = document.createElement("input");
+      donateInput.type = "number";
+      donateInput.min = "1";
+      donateInput.className = "stage-input";
+      donateInput.value = guildDonateDraft;
+      donateInput.dataset.role = "guildDonate";
+      donateInput.setAttribute("aria-label", t("guild.donate"));
+      donateRow.append(donateInput, actionButton(t("guild.donate"), "guildDonate"));
+      wrap.append(donateRow);
       wrap.append(actionButton(t("guild.leave"), "guildLeave"));
     } else {
       const nameInput = document.createElement("input");
@@ -5938,6 +5950,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }
         return;
       }
+      case "guildDonate": {
+        const amount = Number(guildDonateDraft);
+        if (Number.isInteger(amount) && amount > 0) {
+          void api
+            .guildDonate(amount)
+            .then((result) => {
+              guildSnapshot = result.guild;
+              message = { text: t("guild.donated"), kind: "info" };
+            })
+            .catch(() => {
+              message = { text: translateError("NOT_ENOUGH_COINS"), kind: "err" };
+            })
+            .finally(() => void loadGuilds());
+        }
+        return;
+      }
       case "guildLeave":
         void api.guildLeave().then(() => {
           guildSnapshot = null;
@@ -6285,6 +6313,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (target.dataset.role === "restore") restoreDraft = target.value;
     if (target.dataset.role === "uprootPrice") uprootPriceDraft = target.value;
     if (target.dataset.role === "machineLimit") machineLimitDraft = target.value;
+    if (target.dataset.role === "guildDonate") {
+      guildDonateDraft = target.value;
+      return;
+    }
     if (target.dataset.role === "guildName") {
       guildNameDraft = target.value;
       return;

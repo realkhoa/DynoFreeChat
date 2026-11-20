@@ -94,6 +94,9 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
     if (request.method === "GET" && action === "mine") {
       return hubStub(env).fetch(`https://hub/guild/mine?playerId=${encodeURIComponent(auth.playerId)}`);
     }
+    if (request.method === "POST" && action === "donate") {
+      return forwardOwner(env, auth, "/guild/donate", "POST", request);
+    }
     if (request.method === "POST" && (action === "create" || action === "join" || action === "leave")) {
       const body = (await readJson(request)) as Record<string, unknown>;
       const hubBody = JSON.stringify({

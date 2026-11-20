@@ -1816,6 +1816,8 @@ export interface GuildSnapshot {
   readonly name: string;
   readonly ownerId: string;
   readonly members: readonly GuildMember[];
+  /** Shared guild coin bank. */
+  readonly bank: number;
   readonly createdAt: number;
 }
 

@@ -230,6 +230,15 @@ export class GardenApi {
     });
   }
 
+  /** @brief Donates coins into the guild bank. */
+  async guildDonate(amount: number): Promise<{ guild: GuildSnapshot }> {
+    return this.request<{ guild: GuildSnapshot }>("/api/garden/guild/donate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ amount }),
+    });
+  }
+
   /** @brief Leaves the current guild. */
   async guildLeave(): Promise<{ ok: boolean }> {
     return this.request<{ ok: boolean }>("/api/garden/guild/leave", {
