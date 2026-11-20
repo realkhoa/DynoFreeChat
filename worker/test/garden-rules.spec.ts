@@ -188,6 +188,12 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.plots[0]?.effects).toEqual([]);
   });
 
+  it("records a garden timeline for plants and sales", () => {
+    const planted = run(makeLedger(), { kind: "plant", slot: 0, seed: "carrot" });
+    if (!planted.ok) throw new Error("plant failed");
+    expect(planted.ledger.timeline.at(-1)).toMatchObject({ kind: "plant", item: "carrot" });
+  });
+
   it("spends prestige skill points and respecs for one coin", () => {
     const ledger = makeLedger();
     ledger.prestige = 2;

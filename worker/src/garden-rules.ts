@@ -174,6 +174,7 @@ import {
   type FertilizerId,
   type SprayId,
   type GardenAction,
+  type TimelineEvent,
   type PrestigeSkillId,
   type GardenErrorCode,
   type GardenSnapshot,
@@ -322,6 +323,7 @@ export interface GardenLedger {
   /** Collection keys. */
   collection: string[];
   codexClaimed: string[];
+  timeline: TimelineEvent[];
   /** Wheel counters. */
   wheelSpins: number;
   wheelPity: number;
@@ -457,6 +459,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     achievements: [],
     collection: [],
     codexClaimed: [],
+    timeline: [],
     wheelSpins: 0,
     wheelPity: 0,
     wheelLast: "",
@@ -568,6 +571,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     codexUnclaimed: ledger.collection
       .filter((key) => !ledger.codexClaimed.includes(key))
       .reduce((sum, key) => sum + codexReward(key), 0),
+    timeline: (ledger.timeline ?? []).map((entry) => ({ ...entry })),
     plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
     trees: ledger.trees.map((tree) => (tree === null ? null : { ...tree })),
     bag: {
@@ -1101,6 +1105,7 @@ function plant(
     spray: null,
   };
   next.stats.planted += 1;
+  logTimeline(next, "plant", now, { item: seed.id });
   return changed(next, now);
 }
 
@@ -1138,6 +1143,7 @@ function plantTree(
     spray: null,
   };
   next.stats.planted += 1;
+  logTimeline(next, "plant", now, { item: tree.id });
   return changed(next, now);
 }
 
@@ -2285,6 +2291,16 @@ function grantXp(ledger: GardenLedger, skill: SkillId, amount: number): void {
   ledger.skills[skill] = addSkillXp(ledger.skills[skill], amount);
 }
 
+/** @brief Appends one owner-visible timeline event, capped at 100. */
+function logTimeline(
+  ledger: GardenLedger,
+  kind: TimelineEvent["kind"],
+  now: number,
+  extra: Omit<TimelineEvent, "ts" | "kind"> = {},
+): void {
+  ledger.timeline = [...(ledger.timeline ?? []), { ts: now, kind, ...extra }].slice(-100);
+}
+
 /** @brief Adds a collection key once. */
 function collect(ledger: GardenLedger, key: string): void {
   if (!ledger.collection.includes(key)) ledger.collection.push(key);
@@ -2623,6 +2639,7 @@ function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): Ru
   next.stats = { ...next.stats, planted: 0, harvested: 0, earned: 0 };
   next.prestige = ledger.prestige + 1;
   next.questDay = wheelDayAt(now);
+  logTimeline(next, "prestige", now, { qty: next.prestige });
   return changed(next, now);
 }
 
@@ -2653,6 +2670,7 @@ function plantFruitSeed(ledger: GardenLedger, slot: number, seedId: SeedId, now:
     spray: null,
   };
   next.stats.planted += 1;
+  logTimeline(next, "plant", now, { item: seed.id });
   return changed(next, now);
 }
 
@@ -2674,6 +2692,7 @@ function buyPrestigeSkill(ledger: GardenLedger, skill: PrestigeSkillId, now: num
   if (ledger.prestige - spent < 1) return { ok: false, code: "BAD_REQUEST" };
   const next = clone(ledger);
   next.prestigeSkills[skill] += 1;
+  logTimeline(next, "skill", now, { item: skill });
   return changed(next, now);
 }
 
@@ -2701,6 +2720,7 @@ function claimCodex(ledger: GardenLedger, now: number): RuleResult {
   next.coins += reward;
   next.stats.earned += reward;
   next.weekEarned += reward;
+  logTimeline(next, "codex", now, { qty: fresh.length, coins: reward });
   return changed(next, now);
 }
 
@@ -3993,6 +4013,11 @@ function changed(ledger: GardenLedger, now: number): RuleResult {
 /** @brief Appends one sale to the capped trace log. */
 function recordSale(ledger: GardenLedger, entry: Omit<SaleRecord, "ts">, now: number): void {
   ledger.sales = [...(ledger.sales ?? []), { ...entry, ts: now }].slice(-50);
+  logTimeline(ledger, "sale", now, {
+    item: entry.item,
+    qty: entry.qty,
+    coins: entry.net,
+  });
 }
 
 /** @brief Deep-copies the mutable parts of one ledger. */

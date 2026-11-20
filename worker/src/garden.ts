@@ -543,6 +543,7 @@ export class Garden extends DurableObject<Env> {
       achievements: raw.achievements ?? [],
       collection: raw.collection ?? [],
       codexClaimed: raw.codexClaimed ?? [],
+      timeline: raw.timeline ?? [],
       wheelSpins: raw.wheelSpins ?? 0,
       wheelPity: raw.wheelPity ?? 0,
       wheelLast: raw.wheelLast ?? "",

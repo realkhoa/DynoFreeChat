@@ -3785,6 +3785,24 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function buildLog(): HTMLElement {
     const wrap = div("garden-log garden-market");
     wrap.append(lineBlock(`// ${t("log.title")}`));
+    const timeline = state?.timeline ?? [];
+    if (timeline.length > 0) {
+      wrap.append(lineBlock(`// ${t("log.timeline")}`));
+      for (const entry of [...timeline].reverse().slice(0, 30)) {
+        const time = new Date(entry.ts).toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const target = entry.item === undefined ? "" : ` · ${itemName(entry.item as ItemId)}`;
+        const amount = entry.coins === undefined ? "" : ` · ${formatCompact(entry.coins)}c`;
+        wrap.append(
+          lineBlock(
+            `${time} ${t(`timeline.${entry.kind}`)}${target}${entry.qty === undefined ? "" : ` x${entry.qty}`}${amount}`,
+          ),
+        );
+      }
+      wrap.append(lineBlock(""));
+    }
     const actions = div("garden-tools");
     actions.append(actionButton(t("log.refresh"), "logRefresh", globalSalesStatus !== "loading"));
     wrap.append(actions);

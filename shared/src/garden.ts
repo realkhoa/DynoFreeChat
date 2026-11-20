@@ -1696,6 +1696,21 @@ export function codexReward(key: string): number {
   return 0;
 }
 
+/** One owner-visible garden timeline entry. */
+export interface TimelineEvent {
+  /** Server time. */
+  readonly ts: number;
+  /** Event family, used for the localized label. */
+  readonly kind:
+    "plant" | "harvest" | "sale" | "prestige" | "hazard" | "codex" | "skill" | "purchase" | "craft";
+  /** Item/product or short target id. */
+  readonly item?: string;
+  /** Quantity or secondary number. */
+  readonly qty?: number;
+  /** Coins moved by the event, when relevant. */
+  readonly coins?: number;
+}
+
 /** One public row in the global sale log. */
 export interface GlobalSaleEntry extends SaleRecord {
   /** Seller share code. */
@@ -2467,6 +2482,8 @@ export interface GardenSnapshot {
   readonly collection?: readonly string[];
   /** Total coins available from unclaimed codex discoveries. */
   readonly codexUnclaimed?: number;
+  /** Recent owner activity for the garden log. */
+  readonly timeline?: readonly TimelineEvent[];
   /** Crop cells burnt by fire and awaiting repurchase. */
   readonly damagedPlots?: readonly boolean[];
   /** Fruit tree slots for the owned tabs, `tabs * TREES_PER_TAB` entries. */
