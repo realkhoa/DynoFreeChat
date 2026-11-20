@@ -60,6 +60,7 @@ import {
   sprayById,
   TREES,
   cropSellPrice,
+  codexReward,
   effectById,
   gardenCounts,
   effectsMultiplier,
@@ -3802,6 +3803,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function buildDynopedia(): HTMLElement {
     const wrap = div("garden-dynopedia garden-market");
     wrap.append(lineBlock(`// ${t("dynopedia.title")}`));
+    const discovered = state?.collection?.length ?? 0;
+    wrap.append(
+      lineBlock(
+        t("dynopedia.discovered", { count: discovered, coins: formatCompact(state?.codexUnclaimed ?? 0) }),
+      ),
+    );
+    if ((state?.codexUnclaimed ?? 0) > 0) {
+      wrap.append(actionButton(t("dynopedia.claim"), "claimCodex"));
+    }
     const search = document.createElement("input");
     search.type = "search";
     search.className = "stage-input garden-dynopedia-search";
@@ -3987,8 +3997,20 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const query = dynopediaQuery.trim().toLowerCase();
     const list = div("garden-dynopedia-list");
     let shown = 0;
+    const codexKey = (id: string): string | null => {
+      if (dynopediaCategory === "effects") return `effect:${id}`;
+      if (dynopediaCategory === "seeds") return `seed:${id}`;
+      if (dynopediaCategory === "animals") return `animal:${id}`;
+      if (dynopediaCategory === "products") return `product:${id}`;
+      if (dynopediaCategory === "machines") return `machine:${id}`;
+      if (dynopediaCategory === "pets") return `pet:${id}`;
+      return null;
+    };
     for (const row of rows) {
-      const line = lineBlock(`// ${row.title} — ${row.detail}`);
+      const key = codexKey(row.id);
+      const known = key !== null && (state?.collection?.includes(key) ?? false);
+      const marker = key === null ? "" : known ? "✓ " : "· ";
+      const line = lineBlock(`// ${marker}${row.title} — ${row.detail}`);
       line.classList.add("garden-dynopedia-row");
       const haystack = `${row.id} ${row.title} ${row.detail}`.toLowerCase();
       if (query.length > 0 && !haystack.includes(query)) line.hidden = true;
@@ -5415,6 +5437,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           chartSort = sort;
           render();
         }
+        return;
+      }
+      case "claimCodex": {
+        void runAction({ kind: "claimCodex" }, t("dynopedia.claimed"));
         return;
       }
       case "recipeValidate": {

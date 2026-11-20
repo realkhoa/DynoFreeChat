@@ -188,6 +188,18 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.plots[0]?.effects).toEqual([]);
   });
 
+  it("claims codex rewards exactly once", () => {
+    const ledger = makeLedger();
+    ledger.coins = 0;
+    ledger.collection = ["seed:carrot", "effect:golden", "repair:0"];
+    const claimed = run(ledger, { kind: "claimCodex" });
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) return;
+    expect(claimed.ledger.coins).toBe(300_000);
+    expect(claimed.ledger.codexClaimed).toHaveLength(3);
+    expect(run(claimed.ledger, { kind: "claimCodex" }).ok).toBe(false);
+  });
+
   it("allows one pet per animal per cycle", () => {
     const ledger = makeLedger();
     ledger.animals.coop[0] = { kind: "chicken", bornAt: NOW, pats: 0, lastProduceAt: NOW };

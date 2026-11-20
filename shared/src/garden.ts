@@ -1663,6 +1663,19 @@ export interface SaleRecord {
   readonly net: number;
 }
 
+/** Coins awarded the first time a collection key is claimed. */
+export function codexReward(key: string): number {
+  if (key.startsWith("effect:")) return 250_000;
+  if (key.startsWith("seed:")) return 50_000;
+  if (key.startsWith("product:")) return 100_000;
+  if (key.startsWith("tool:")) return 100_000;
+  if (key.startsWith("pet:")) return 1_000_000;
+  if (key.startsWith("animal:")) return 150_000;
+  if (key.startsWith("machine:")) return 500_000;
+  if (key === "star:5") return 500_000;
+  return 0;
+}
+
 /** One public row in the global sale log. */
 export interface GlobalSaleEntry extends SaleRecord {
   /** Seller share code. */
@@ -2426,6 +2439,10 @@ export interface GardenSnapshot {
   readonly unlockedPatches: readonly number[];
   /** Crop slots for the owned tabs, `tabs * CROPS_PER_TAB` entries. */
   readonly plots: readonly (PlotState | null)[];
+  /** Discovery keys already found (Dynopedia codex). */
+  readonly collection?: readonly string[];
+  /** Total coins available from unclaimed codex discoveries. */
+  readonly codexUnclaimed?: number;
   /** Crop cells burnt by fire and awaiting repurchase. */
   readonly damagedPlots?: readonly boolean[];
   /** Fruit tree slots for the owned tabs, `tabs * TREES_PER_TAB` entries. */
@@ -3012,6 +3029,7 @@ export type GardenAction =
   | { readonly kind: "buyFinalSeed"; readonly seed: SeedId }
   | { readonly kind: "repairPlot"; readonly slot: number }
   | { readonly kind: "buyTree"; readonly tree: TreeId; readonly slot?: number }
+  | { readonly kind: "claimCodex" }
   | { readonly kind: "plantFruitSeed"; readonly slot: number; readonly seed: SeedId }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
@@ -3616,6 +3634,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     if (seed === undefined || seed.category !== "fruit") return null;
     return { kind, slot, seed: seed.id };
   }
+  if (kind === "claimCodex") return { kind };
   if (kind === "buyTree") {
     const tree = typeof value.tree === "string" ? treeById(value.tree) : undefined;
     if (tree === undefined) return null;

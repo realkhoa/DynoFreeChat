@@ -130,6 +130,7 @@ import {
   HARVEST_ALL_COST,
   createRng,
   cropSellPrice,
+  codexReward,
   effectById,
   dailyQuestsFor,
   prestigeSellBonus,
@@ -316,6 +317,7 @@ export interface GardenLedger {
   achievements: string[];
   /** Collection keys. */
   collection: string[];
+  codexClaimed: string[];
   /** Wheel counters. */
   wheelSpins: number;
   wheelPity: number;
@@ -449,6 +451,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     lastStreakDay: dayIndexAt(input.now),
     achievements: [],
     collection: [],
+    codexClaimed: [],
     wheelSpins: 0,
     wheelPity: 0,
     wheelLast: "",
@@ -552,6 +555,10 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     tabs: ledger.tabs,
     unlockedPatches: [...ledger.unlockedPatches],
     damagedPlots: [...(ledger.damagedPlots ?? [])],
+    collection: [...ledger.collection],
+    codexUnclaimed: ledger.collection
+      .filter((key) => !ledger.codexClaimed.includes(key))
+      .reduce((sum, key) => sum + codexReward(key), 0),
     plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
     trees: ledger.trees.map((tree) => (tree === null ? null : { ...tree })),
     bag: {
@@ -638,6 +645,8 @@ export function applyGardenAction(
       return buyFinalSeed(ledger, action.seed, now);
     case "repairPlot":
       return repairPlot(ledger, action.slot, now);
+    case "claimCodex":
+      return claimCodex(ledger, now);
     case "buyTree":
       return buyTree(ledger, action.tree, action.slot, now);
     case "plantFruitSeed":
@@ -1906,6 +1915,7 @@ function buyAnimal(
   next.coins -= definition.buy;
   next.stats.spent += definition.buy;
   next.animals[building][slot] = { kind: animalId, bornAt: now, pats: 0, lastProduceAt: now };
+  collect(next, `animal:${animalId}`);
   const anyAnimal = BUILDING_IDS.some((id) => next.animals[id].some((entry) => entry !== null));
   if (!anyAnimal) next.farmSettledAt = now;
   return changed(next, now);
@@ -2646,6 +2656,22 @@ function buyTree(
   return plantTree(ledger, slot, treeId, now, createRng(hash32(`tree:${ledger.playerId}:${treeId}:${now}`)));
 }
 
+/** @brief Claims coins for every newly discovered codex entry. */
+function claimCodex(ledger: GardenLedger, now: number): RuleResult {
+  const fresh = ledger.collection.filter((key) => !ledger.codexClaimed.includes(key));
+  if (fresh.length === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  const next = clone(ledger);
+  let reward = 0;
+  for (const key of fresh) {
+    reward += codexReward(key);
+    next.codexClaimed.push(key);
+  }
+  next.coins += reward;
+  next.stats.earned += reward;
+  next.weekEarned += reward;
+  return changed(next, now);
+}
+
 /** @brief Repurchases a crop cell burnt by fire. */
 function repairPlot(ledger: GardenLedger, slot: number, now: number): RuleResult {
   if (ledger.damagedPlots?.[slot] !== true) return { ok: false, code: "BAD_REQUEST" };
@@ -3375,6 +3401,7 @@ function buildMachine(ledger: GardenLedger, id: MachineId, now: number): RuleRes
   next.coins -= MACHINE_PRICE;
   next.stats.spent += MACHINE_PRICE;
   next.machines[id] = { level: 1, lastCraftAt: 0 };
+  collect(next, `machine:${id}`);
   return changed(next, now);
 }
 
