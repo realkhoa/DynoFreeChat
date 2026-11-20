@@ -40,6 +40,7 @@ import {
   wheelCost,
   petById,
   contractOffers,
+  CONTRACT_CHAIN,
   merchantOffers,
   soilRenovateCost,
   WATER_ALL_COST,
@@ -4270,6 +4271,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
     }
 
+    wrap.append(lineBlock(`// ${t("chain.title")}`));
+    const chainStep = extras.chainStep ?? 0;
+    const chain = CONTRACT_CHAIN[chainStep];
+    if (chain === undefined) {
+      wrap.append(lineBlock(t("chain.done")));
+    } else {
+      const label = `${t(`chain.${chain.id}`)} · ${t(`products.${chain.product}`)} ≥${chain.star}★ x${chain.qty} → ${formatCompact(chain.reward)}c`;
+      wrap.append(actionButton(label, "extrasChain"));
+      wrap.append(lineBlock(t("chain.progress", { step: chainStep + 1, total: CONTRACT_CHAIN.length })));
+    }
+
     wrap.append(lineBlock(`// ${t("extras.merchant")}`));
     for (const offer of merchantOffers(state.playerId, at)) {
       const claimed = extras.merchantClaims.includes(offer.id);
@@ -5886,6 +5898,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         return;
       case "extrasCompost":
         void runAction({ kind: "compostCrops" }, t("extras.composted"));
+        return;
+      case "extrasChain":
+        void runAction({ kind: "fulfillChain" }, t("chain.claimed"));
         return;
       case "extrasContract": {
         const id = target.dataset.id;

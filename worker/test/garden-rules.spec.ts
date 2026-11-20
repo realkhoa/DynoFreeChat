@@ -188,6 +188,19 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.plots[0]?.effects).toEqual([]);
   });
 
+  it("advances the permanent NPC contract chain", () => {
+    const ledger = makeLedger();
+    ledger.coins = 0;
+    ledger.bag.products = [{ product: "egg", star: 1, qty: 10 }];
+    const first = run(ledger, { kind: "fulfillChain" });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.ledger.chainStep).toBe(1);
+    expect(first.ledger.coins).toBe(15_000);
+    expect(first.ledger.bag.products).toHaveLength(0);
+    expect(run(first.ledger, { kind: "fulfillChain" }).ok).toBe(false);
+  });
+
   it("records a garden timeline for plants and sales", () => {
     const planted = run(makeLedger(), { kind: "plant", slot: 0, seed: "carrot" });
     if (!planted.ok) throw new Error("plant failed");

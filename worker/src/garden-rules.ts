@@ -65,6 +65,7 @@ import {
   type SkillId,
   type SkillState,
   contractOffers,
+  CONTRACT_CHAIN,
   equippedPetEffect,
   merchantOffers,
   petById,
@@ -325,6 +326,7 @@ export interface GardenLedger {
   collection: string[];
   codexClaimed: string[];
   timeline: TimelineEvent[];
+  chainStep: number;
   /** Wheel counters. */
   wheelSpins: number;
   wheelPity: number;
@@ -461,6 +463,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     collection: [],
     codexClaimed: [],
     timeline: [],
+    chainStep: 0,
     wheelSpins: 0,
     wheelPity: 0,
     wheelLast: "",
@@ -573,6 +576,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
       .filter((key) => !ledger.codexClaimed.includes(key))
       .reduce((sum, key) => sum + codexReward(key), 0),
     timeline: (ledger.timeline ?? []).map((entry) => ({ ...entry })),
+    chainStep: ledger.chainStep ?? 0,
     plots: ledger.plots.map((plot) => (plot === null ? null : { ...plot })),
     trees: ledger.trees.map((tree) => (tree === null ? null : { ...tree })),
     bag: {
@@ -661,6 +665,8 @@ export function applyGardenAction(
       return repairPlot(ledger, action.slot, now);
     case "claimCodex":
       return claimCodex(ledger, now);
+    case "fulfillChain":
+      return fulfillChain(ledger, now);
     case "buyPrestigeSkill":
       return buyPrestigeSkill(ledger, action.skill, now);
     case "respecPrestige":
@@ -2721,6 +2727,33 @@ function respecPrestige(ledger: GardenLedger, now: number): RuleResult {
   const next = clone(ledger);
   next.prestigeCoins -= 1;
   next.prestigeSkills = { merchant: 0, farmer: 0, artisan: 0 };
+  return changed(next, now);
+}
+
+/** @brief Delivers the next permanent NPC story contract. */
+function fulfillChain(ledger: GardenLedger, now: number): RuleResult {
+  const step = CONTRACT_CHAIN[ledger.chainStep ?? 0];
+  if (step === undefined) return { ok: false, code: "NOTHING_TO_DO" };
+  let available = 0;
+  for (const stack of ledger.bag.products ?? []) {
+    if (stack.product === step.product && stack.star >= step.star) available += stack.qty;
+  }
+  if (available < step.qty) return { ok: false, code: "NO_PRODUCT" };
+  const next = clone(ledger);
+  let left = step.qty;
+  next.bag.products = (next.bag.products ?? [])
+    .map((stack) => {
+      if (left <= 0 || stack.product !== step.product || stack.star < step.star) return stack;
+      const take = Math.min(left, stack.qty);
+      left -= take;
+      return { ...stack, qty: stack.qty - take };
+    })
+    .filter((stack) => stack.qty > 0);
+  next.coins += step.reward;
+  next.stats.earned += step.reward;
+  next.weekEarned += step.reward;
+  next.chainStep = (ledger.chainStep ?? 0) + 1;
+  logTimeline(next, "purchase", now, { item: step.id, coins: step.reward });
   return changed(next, now);
 }
 

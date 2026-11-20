@@ -1711,6 +1711,29 @@ export interface TimelineEvent {
   readonly coins?: number;
 }
 
+/** One step of the permanent NPC contract chain. */
+export interface ContractChainStep {
+  /** Stable step id. */
+  readonly id: string;
+  /** Product to deliver. */
+  readonly product: ProductId;
+  /** Units required. */
+  readonly qty: number;
+  /** Minimum star quality. */
+  readonly star: number;
+  /** Coin reward. */
+  readonly reward: number;
+}
+
+/** Permanent five-step NPC storyline chain. */
+export const CONTRACT_CHAIN: readonly ContractChainStep[] = [
+  { id: "farmhand", product: "egg", qty: 10, star: 1, reward: 15_000 },
+  { id: "dairy", product: "milk", qty: 15, star: 2, reward: 40_000 },
+  { id: "weaver", product: "wool", qty: 10, star: 3, reward: 100_000 },
+  { id: "cheesemonger", product: "cheese", qty: 5, star: 3, reward: 300_000 },
+  { id: "gourmet", product: "caviar", qty: 1, star: 4, reward: 1_000_000 },
+];
+
 /** One public row in the global sale log. */
 export interface GlobalSaleEntry extends SaleRecord {
   /** Seller share code. */
@@ -2229,6 +2252,8 @@ export interface ExtrasSnapshot {
   readonly achievements: readonly string[];
   /** Discovered collection keys, e.g. `seed:carrot`, `effect:golden`. */
   readonly collection: readonly string[];
+  /** Completed permanent NPC contract chain steps. */
+  readonly chainStep?: number;
   /** Greenhouse level, 0..3. */
   readonly greenhouse: number;
   /** Pet level (legacy field, unused by the gacha system). */
@@ -2516,6 +2541,8 @@ export interface GardenSnapshot {
   readonly codexUnclaimed?: number;
   /** Recent owner activity for the garden log. */
   readonly timeline?: readonly TimelineEvent[];
+  /** Completed steps in the permanent NPC contract chain. */
+  readonly chainStep?: number;
   /** Crop cells burnt by fire and awaiting repurchase. */
   readonly damagedPlots?: readonly boolean[];
   /** Fruit tree slots for the owned tabs, `tabs * TREES_PER_TAB` entries. */
@@ -3105,6 +3132,7 @@ export type GardenAction =
   | { readonly kind: "claimCodex" }
   | { readonly kind: "buyPrestigeSkill"; readonly skill: PrestigeSkillId }
   | { readonly kind: "respecPrestige" }
+  | { readonly kind: "fulfillChain" }
   | { readonly kind: "plantFruitSeed"; readonly slot: number; readonly seed: SeedId }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
@@ -3711,6 +3739,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   }
   if (kind === "claimCodex") return { kind };
   if (kind === "respecPrestige") return { kind };
+  if (kind === "fulfillChain") return { kind };
   if (kind === "buyPrestigeSkill") {
     const skill = value.skill;
     if (skill !== "merchant" && skill !== "farmer" && skill !== "artisan") return null;

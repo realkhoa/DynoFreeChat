@@ -544,6 +544,7 @@ export class Garden extends DurableObject<Env> {
       collection: raw.collection ?? [],
       codexClaimed: raw.codexClaimed ?? [],
       timeline: raw.timeline ?? [],
+      chainStep: typeof raw.chainStep === "number" ? raw.chainStep : 0,
       wheelSpins: raw.wheelSpins ?? 0,
       wheelPity: raw.wheelPity ?? 0,
       wheelLast: raw.wheelLast ?? "",
