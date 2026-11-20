@@ -2253,6 +2253,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         button.dataset.act = "buySpecialPlot";
         button.title = t("special.buyPlot", { cost });
       } else {
+        const line = button.children.item(0);
+        if (line instanceof HTMLElement) line.textContent = "· · ·";
         button.dataset.act = "specialNoop";
         button.disabled = true;
       }
