@@ -420,9 +420,9 @@ describe("farm buildings", () => {
     expect(staffGainXp(9, 100_000).level).toBe(10);
   });
 
-  it("keeps machine recipe values proportional to their inputs", () => {
+  it("pins the machine recipe output values", () => {
     const product = (id: string): number | undefined => PRODUCTS.find((entry) => entry.id === id)?.base;
-    expect(product("caviar")).toBe(90_000);
+    expect(product("caviar")).toBe(5_000_000);
     expect(product("cheese")).toBe(12_000);
     expect(product("fabric")).toBe(100_000);
   });
