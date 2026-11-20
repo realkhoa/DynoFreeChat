@@ -2643,6 +2643,8 @@ export interface LeaderboardEntry {
   readonly spent?: number;
   /** Coins currently in the wallet. */
   readonly coins?: number;
+  /** Permanent prestige level, shown before the nick in rankings. */
+  readonly prestige?: number;
   /** Crops harvested. */
   readonly harvested: number;
   /** Server time of the last update. */

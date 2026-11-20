@@ -2411,27 +2411,26 @@ function claimQuest(ledger: GardenLedger, id: string, now: number): RuleResult {
   return changed(next, now);
 }
 
-/** @brief Resets the garden for permanent prestige bonuses. */
+/** @brief Resets crops and animals for permanent prestige bonuses. */
 function prestige(ledger: GardenLedger, now: number): RuleResult {
   if (ledger.stats.earned < prestigeRequirement(ledger.prestige)) {
     return { ok: false, code: "BAD_REQUEST" };
   }
-  const fresh = createLedger({
-    playerId: ledger.playerId,
-    nick: ledger.nick,
-    color: ledger.color,
-    code: ledger.code,
-    tokenHash: ledger.tokenHash,
-    recoveryHash: ledger.recoveryHash,
-    now,
-  });
-  fresh.prestige = ledger.prestige + 1;
-  fresh.questDay = wheelDayAt(now);
-  fresh.taxDay = wheelDayAt(now);
-  fresh.rev = ledger.rev + 1;
-  fresh.updatedAt = now;
-  fresh.lastSeen = now;
-  return { ok: true, ledger: fresh, changed: true };
+  const next = clone(ledger);
+  // Only living things reset; machines, buildings, land, coins and staff stay.
+  next.plots = next.plots.map(() => null);
+  next.trees = next.trees.map(() => null);
+  next.specialPlots = next.specialPlots.map(() => null);
+  next.animals = {
+    coop: next.animals.coop.map(() => null),
+    barn: next.animals.barn.map(() => null),
+    pond: (next.animals.pond ?? []).map(() => null),
+  };
+  next.bag = { ...next.bag, seeds: {}, crops: [] };
+  next.stats = { ...next.stats, planted: 0, harvested: 0, earned: 0 };
+  next.prestige = ledger.prestige + 1;
+  next.questDay = wheelDayAt(now);
+  return changed(next, now);
 }
 
 /** @brief Buys one seed from the prestige shop. */

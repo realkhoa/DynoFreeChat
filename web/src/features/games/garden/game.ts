@@ -3838,7 +3838,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const row = div("garden-rank-row");
       row.append(
         span("garden-rank-cell", `#${index + 1}`),
-        span("garden-rank-cell is-name", `${entry.nick} · ${entry.code}`),
+        span("garden-rank-cell is-name", `[${entry.prestige ?? 0}] ${entry.nick} · ${entry.code}`),
         span("garden-rank-cell", `${formatCompact(entry.coins ?? 0)}c`),
         span("garden-rank-cell", `${formatCompact(entry.earned)}c`),
         span("garden-rank-cell", `${roi >= 0 ? "+" : ""}${roi}%`),

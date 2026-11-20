@@ -1162,7 +1162,12 @@ export class Garden extends DurableObject<Env> {
         "content-type": "application/json",
         [GIFT_HEADER]: this.env.BOT_SECRET ?? "",
       },
-      body: JSON.stringify({ ...payload, fromCode: ledger.code, fromNick: ledger.nick }),
+      body: JSON.stringify({
+        ...payload,
+        fromCode: ledger.code,
+        fromNick: ledger.nick,
+        fromPrestige: ledger.prestige,
+      }),
     });
     if (!delivered.ok) {
       const body = (await delivered.json()) as { code?: unknown };
@@ -1193,6 +1198,10 @@ export class Garden extends DurableObject<Env> {
 
     const body = await readJson(request);
     const kind = body.kind;
+    const fromPrestige = typeof body.fromPrestige === "number" ? body.fromPrestige : 0;
+    if (kind === "coins" && fromPrestige < ledger.prestige) {
+      return json({ code: "PRESTIGE_LOCKED" }, 400);
+    }
     const now = Date.now();
     const next = structuredClone(ledger);
     if (kind === "coins") {
@@ -1470,6 +1479,7 @@ export class Garden extends DurableObject<Env> {
           harvested: ledger.stats.harvested,
           coins: ledger.coins,
           spent: ledger.stats.spent,
+          prestige: ledger.prestige,
           weekKey: ledger.weekKey,
           weekEarned: ledger.weekEarned,
           weekHarvested: ledger.weekHarvested,
@@ -1535,6 +1545,7 @@ type GardenRow = SqlRow<{
   harvested: number;
   coins: number;
   spent: number;
+  prestige: number;
   updated_at: number;
   recovery_hash: string;
 }>;
@@ -1588,6 +1599,9 @@ export class GardenHub extends DurableObject<Env> {
     if (!columns.some((column) => column.name === "coins")) {
       this.sql.exec("ALTER TABLE gardens ADD COLUMN coins INTEGER NOT NULL DEFAULT 0");
       this.sql.exec("ALTER TABLE gardens ADD COLUMN spent INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!columns.some((column) => column.name === "prestige")) {
+      this.sql.exec("ALTER TABLE gardens ADD COLUMN prestige INTEGER NOT NULL DEFAULT 0");
     }
   }
 
@@ -1648,19 +1662,21 @@ export class GardenHub extends DurableObject<Env> {
     const harvested = typeof body.harvested === "number" ? Math.max(0, Math.floor(body.harvested)) : 0;
     const coins = typeof body.coins === "number" ? Math.max(0, Math.floor(body.coins)) : 0;
     const spent = typeof body.spent === "number" ? Math.max(0, Math.floor(body.spent)) : 0;
+    const prestige = typeof body.prestige === "number" ? Math.max(0, Math.floor(body.prestige)) : 0;
     const now = typeof body.now === "number" ? body.now : Date.now();
     const weekKey = typeof body.weekKey === "number" ? Math.floor(body.weekKey) : 0;
     const weekEarned = typeof body.weekEarned === "number" ? Math.max(0, Math.floor(body.weekEarned)) : 0;
     const weekHarvested =
       typeof body.weekHarvested === "number" ? Math.max(0, Math.floor(body.weekHarvested)) : 0;
     this.sql.exec(
-      "UPDATE gardens SET nick = ?, color = ?, earned = ?, harvested = ?, coins = ?, spent = ?, updated_at = ? WHERE player_id = ?",
+      "UPDATE gardens SET nick = ?, color = ?, earned = ?, harvested = ?, coins = ?, spent = ?, prestige = ?, updated_at = ? WHERE player_id = ?",
       nick.ok ? nick.nick : "",
       sanitizeColor(body.color),
       earned,
       harvested,
       coins,
       spent,
+      prestige,
       now,
       playerId,
     );
@@ -1747,7 +1763,7 @@ export class GardenHub extends DurableObject<Env> {
     const limit = Number.isInteger(raw) ? Math.min(200, Math.max(1, raw)) : 20;
     const rows = this.sql
       .exec<GardenRow>(
-        "SELECT code, nick, color, earned, harvested, coins, spent, updated_at FROM gardens WHERE bot = 0 ORDER BY earned DESC, harvested DESC, updated_at ASC LIMIT ?",
+        "SELECT code, nick, color, earned, harvested, coins, spent, prestige, updated_at FROM gardens WHERE bot = 0 ORDER BY earned DESC, harvested DESC, updated_at ASC LIMIT ?",
         limit,
       )
       .toArray();
@@ -1759,6 +1775,7 @@ export class GardenHub extends DurableObject<Env> {
       harvested: row.harvested,
       coins: row.coins,
       spent: row.spent,
+      prestige: row.prestige,
       updatedAt: row.updated_at,
     }));
     return json({ entries });

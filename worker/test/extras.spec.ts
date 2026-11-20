@@ -229,14 +229,35 @@ describe("extras", () => {
     expect(blocked.ok).toBe(false);
 
     ledger.coins = 5_000_000_000;
+    ledger.warehouse = 1;
+    ledger.machines = { seedMaker: { level: 2, lastCraftAt: 0 } };
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW,
+      readyAt: NOW + 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    ledger.animals.coop[0] = { kind: "chicken", bornAt: NOW, pats: 0, lastProduceAt: NOW };
     ledger.stats = { ...ledger.stats, earned: prestigeRequirement(0) };
     const prestiged = run(ledger, { kind: "prestige" });
     expect(prestiged.ok).toBe(true);
     if (!prestiged.ok) return;
     expect(prestiged.ledger.prestige).toBe(1);
     expect(prestiged.ledger.code).toBe(ledger.code);
-    expect(prestiged.ledger.coins).toBeLessThan(1_000_000);
+    // Only living things reset; money, machines and infrastructure stay.
+    expect(prestiged.ledger.coins).toBe(5_000_000_000);
+    expect(prestiged.ledger.warehouse).toBe(1);
+    expect(prestiged.ledger.machines.seedMaker?.level).toBe(2);
     expect(prestiged.ledger.plots.every((plot) => plot === null)).toBe(true);
+    expect(prestiged.ledger.animals.coop.every((animal) => animal === null)).toBe(true);
   });
 
   it("sells tiered prestige seeds including cocomelon", () => {
