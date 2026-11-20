@@ -510,8 +510,6 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
     prestige: ledger.prestige,
     prestigeCoins: ledger.prestigeCoins ?? 0,
     prestigeProgress: ledger.prestigeProgress ?? 0,
-    prestigeCoins: ledger.prestigeCoins,
-    prestigeProgress: ledger.prestigeProgress,
     quests: dailyQuestsFor(ledger.playerId, ledger.questDay).map((quest) => ({
       id: quest.id,
       kind: quest.kind,
