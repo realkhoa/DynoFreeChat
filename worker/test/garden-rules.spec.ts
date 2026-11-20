@@ -188,6 +188,23 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.plots[0]?.effects).toEqual([]);
   });
 
+  it("allows one pet per animal per cycle", () => {
+    const ledger = makeLedger();
+    ledger.animals.coop[0] = { kind: "chicken", bornAt: NOW, pats: 0, lastProduceAt: NOW };
+    const first = run(ledger, { kind: "patAnimal", building: "coop", slot: 0 }, NOW);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const again = run(first.ledger, { kind: "patAnimal", building: "coop", slot: 0 }, NOW + 1);
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.code).toBe("TRY_LATER");
+    const nextCycle = run(
+      first.ledger,
+      { kind: "patAnimal", building: "coop", slot: 0 },
+      NOW + FARM_CYCLE_MS,
+    );
+    expect(nextCycle.ok).toBe(true);
+  });
+
   it("protects crops with a fire system and scarecrow", () => {
     const ledger = makeLedger();
     ledger.bag.seeds.carrot = 1;

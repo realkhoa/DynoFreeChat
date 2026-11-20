@@ -1435,6 +1435,8 @@ export interface AnimalState {
   readonly bornAt: number;
   /** How many times it was petted. */
   readonly pats: number;
+  /** Server time of the last pet; petting is limited to once per cycle. */
+  readonly lastPatAt?: number;
   /** Server time of the last produced item. */
   readonly lastProduceAt: number;
   /** Server time the kept egg hatches; `0` or absent when nothing is incubating. */

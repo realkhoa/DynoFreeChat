@@ -1915,6 +1915,7 @@ function buyAnimal(
 function patAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now: number): RuleResult {
   const animal = ledger.animals[building]?.[slot] ?? null;
   if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
+  if (now - (animal.lastPatAt ?? 0) < FARM_CYCLE_MS) return { ok: false, code: "TRY_LATER" };
   const next = clone(ledger);
   const pats = animal.pats + 1;
   const effects = canonicalEffects(animal.effects ?? []);
@@ -1929,6 +1930,7 @@ function patAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now
   next.animals[building][slot] = {
     ...animal,
     pats,
+    lastPatAt: now,
     ...(effects.length === 0 ? {} : { effects: canonicalEffects(effects) }),
   };
   grantXp(next, "ranching", 15);
