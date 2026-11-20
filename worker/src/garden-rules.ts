@@ -128,6 +128,9 @@ import {
   prestigeMutationBonus,
   prestigeTierForSeed,
   PRESTIGE_SHOP,
+  PRESTIGE_COIN_VALUE,
+  FINAL_SHOP,
+  FINAL_SHOP_PRESTIGE,
   prestigeGrowScale,
   prestigeRequirement,
   eventsAt,
@@ -305,6 +308,10 @@ export interface GardenLedger {
   wheelDay: number;
   /** Permanent prestige level, each adding 5% sale value. */
   prestige: number;
+  /** Prestige coins earned per 1000b lifetime earnings. */
+  prestigeCoins: number;
+  /** Earnings progress toward the next prestige coin. */
+  prestigeProgress: number;
   /** Local day index of the daily quest board. */
   questDay: number;
   /** Progress per active quest id. */
@@ -428,6 +435,8 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     wheelLast: "",
     wheelDay: wheelDayAt(input.now),
     prestige: 0,
+    prestigeCoins: 0,
+    prestigeProgress: 0,
     questDay: wheelDayAt(input.now),
     questProgress: {},
     questClaims: [],
@@ -499,6 +508,10 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
     lastHatch: ledger.lastHatch,
     staff: ledger.staff.map((worker) => ({ ...worker, traits: [...worker.traits] })),
     prestige: ledger.prestige,
+    prestigeCoins: ledger.prestigeCoins ?? 0,
+    prestigeProgress: ledger.prestigeProgress ?? 0,
+    prestigeCoins: ledger.prestigeCoins,
+    prestigeProgress: ledger.prestigeProgress,
     quests: dailyQuestsFor(ledger.playerId, ledger.questDay).map((quest) => ({
       id: quest.id,
       kind: quest.kind,
@@ -600,9 +613,11 @@ export function applyGardenAction(
     case "claimQuest":
       return claimQuest(ledger, action.id, now);
     case "prestige":
-      return prestige(ledger, now);
+      return prestige(ledger, season, now);
     case "buyPrestigeSeed":
       return buyPrestigeSeed(ledger, action.seed, now);
+    case "buyFinalSeed":
+      return buyFinalSeed(ledger, action.seed, now);
     case "plantTree":
       return plantTree(ledger, action.slot, action.tree, now, rng);
     case "harvest":
@@ -2414,12 +2429,56 @@ function claimQuest(ledger: GardenLedger, id: string, now: number): RuleResult {
   return changed(next, now);
 }
 
+/** @brief Value of coins plus living crops and animals, for prestige coins. */
+function liquidationValue(ledger: GardenLedger, season: SeasonSnapshot, now: number): number {
+  let total = ledger.coins;
+  for (const plot of ledger.plots) {
+    if (plot === null) continue;
+    total += cropSellPrice(
+      { item: plot.seed, effects: resolvedCropEffects(plot, now), pest: plot.pest, star: 1, qty: 1 },
+      season,
+    );
+  }
+  for (const tree of ledger.trees) {
+    if (tree === null) continue;
+    total += cropSellPrice(
+      { item: tree.tree, effects: resolvedTreeEffects(tree, now), pest: tree.pest, star: 1, qty: 1 },
+      season,
+    );
+  }
+  for (const plot of ledger.specialPlots ?? []) {
+    if (plot === null) continue;
+    total += cropSellPrice(
+      {
+        item: plot.seed,
+        effects: resolvedCropEffects(plot, now, true),
+        pest: plot.pest,
+        star: 5,
+        qty: 1,
+      },
+      season,
+    );
+  }
+  for (const building of BUILDING_IDS) {
+    for (const animal of ledger.animals[building] ?? []) {
+      if (animal === null) continue;
+      total += animalMeatPrice(animal.kind, animalQuality(animal, now), ledger.pondGrowth ?? 0);
+    }
+  }
+  return total;
+}
+
 /** @brief Resets crops and animals for permanent prestige bonuses. */
-function prestige(ledger: GardenLedger, now: number): RuleResult {
+function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): RuleResult {
   if (ledger.stats.earned < prestigeRequirement(ledger.prestige)) {
     return { ok: false, code: "BAD_REQUEST" };
   }
   const next = clone(ledger);
+  // Prestige converts wallet + living garden value into prestige coins.
+  const earned = Math.floor(liquidationValue(ledger, season, now) / PRESTIGE_COIN_VALUE);
+  next.coins = 0;
+  next.prestigeCoins = (next.prestigeCoins ?? 0) + earned;
+  next.prestigeProgress = 0;
   // Only living things reset; machines, buildings, land, coins and staff stay.
   next.plots = next.plots.map(() => null);
   next.trees = next.trees.map(() => null);
@@ -2433,6 +2492,19 @@ function prestige(ledger: GardenLedger, now: number): RuleResult {
   next.stats = { ...next.stats, planted: 0, harvested: 0, earned: 0 };
   next.prestige = ledger.prestige + 1;
   next.questDay = wheelDayAt(now);
+  return changed(next, now);
+}
+
+/** @brief Buys one final-shop plant with prestige coins. */
+function buyFinalSeed(ledger: GardenLedger, seed: SeedId, now: number): RuleResult {
+  const offer = FINAL_SHOP.find((entry) => entry.seed === seed);
+  if (offer === undefined) return { ok: false, code: "BAD_REQUEST" };
+  if (ledger.prestige < FINAL_SHOP_PRESTIGE) return { ok: false, code: "PRESTIGE_LOCKED" };
+  if ((ledger.prestigeCoins ?? 0) < offer.coins) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.prestigeCoins -= offer.coins;
+  next.bag.seeds[seed] = (next.bag.seeds[seed] ?? 0) + 1;
+  collect(next, `seed:${seed}`);
   return changed(next, now);
 }
 

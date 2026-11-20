@@ -1101,6 +1101,15 @@ export interface PrestigeShopOffer {
 /** Prestige level that unlocks the final shop. */
 export const FINAL_SHOP_PRESTIGE = 5;
 
+/** One final-shop plant, priced in prestige coins. */
+export interface FinalShopOffer {
+  readonly seed: SeedId;
+  readonly coins: number;
+}
+
+/** Final shop stock; paid with prestige coins earned per 1000b. */
+export const FINAL_SHOP: readonly FinalShopOffer[] = [{ seed: "cocomelon", coins: 1 }];
+
 /** Seeds unlocked by prestige tiers. */
 export const PRESTIGE_SHOP: readonly PrestigeShopOffer[] = [
   { seed: "cocomelon", tier: 5, price: 1_000_000_000 },
@@ -1115,7 +1124,7 @@ export function prestigeTierForSeed(seed: SeedId): number {
 
 /** @brief Mutation-rate bonus per prestige level (absolute chance). */
 export function prestigeMutationBonus(level: number): number {
-  return Math.max(0, level) * 0.01;
+  return Math.max(0, level) * 0.05;
 }
 
 /** @brief Attachment definition by id. */
@@ -2015,6 +2024,10 @@ export interface ExtrasSnapshot {
   readonly quests?: readonly QuestSnapshot[];
   /** Coins taken by the last daily asset tax. */
   readonly taxLast?: number;
+  /** Prestige coins earned per 1000b lifetime earnings. */
+  readonly prestigeCoins?: number;
+  /** Progress toward the next prestige coin. */
+  readonly prestigeProgress?: number;
 }
 
 /** Kinds of daily quest progress the server tracks. */
@@ -2069,15 +2082,18 @@ export function prestigeRequirement(level: number): number {
   return PRESTIGE_BASE_EARNED * (Math.max(0, level) + 1);
 }
 
-/** @brief Sale multiplier granted by prestige levels. */
+/** @brief Sale multiplier granted by prestige levels (+50% per level). */
 export function prestigeSellBonus(level: number): number {
-  return 1 + Math.max(0, level) * 0.05;
+  return 1 + Math.max(0, level) * 0.5;
 }
 
-/** @brief Growth-time multiplier granted by prestige levels. */
+/** @brief Growth-time multiplier granted by prestige levels (-10% per level). */
 export function prestigeGrowScale(level: number): number {
-  return Math.max(0.5, 1 - Math.max(0, level) * 0.03);
+  return Math.max(0.2, 1 - Math.max(0, level) * 0.1);
 }
+
+/** Coin + garden value converted into one prestige coin on prestige. */
+export const PRESTIGE_COIN_VALUE = 100_000_000_000;
 
 /** @brief Day index since epoch. */
 export function dayIndexAt(now: number): number {
@@ -2763,6 +2779,7 @@ export type GardenAction =
   | { readonly kind: "claimQuest"; readonly id: string }
   | { readonly kind: "prestige" }
   | { readonly kind: "buyPrestigeSeed"; readonly seed: SeedId }
+  | { readonly kind: "buyFinalSeed"; readonly seed: SeedId }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
   | {
@@ -3340,6 +3357,12 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return typeof value.id === "string" && value.id.length > 0 ? { kind, id: value.id } : null;
   }
   if (kind === "prestige") return { kind };
+  if (kind === "buyFinalSeed") {
+    const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+    if (seed === undefined) return null;
+    if (!FINAL_SHOP.some((offer) => offer.seed === seed.id)) return null;
+    return { kind, seed: seed.id };
+  }
   if (kind === "buyPrestigeSeed") {
     const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
     if (seed === undefined) return null;

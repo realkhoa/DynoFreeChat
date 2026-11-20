@@ -44,6 +44,7 @@ import {
   PLOTS_PER_PATCH,
   TREES_PER_TAB,
   SEEDS,
+  FINAL_SHOP,
   FINAL_SHOP_PRESTIGE,
   PRESTIGE_SHOP,
   prestigeGrowScale,
@@ -3484,10 +3485,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     control.append(
       lineBlock(
         t("prestige.mutationBonus", {
-          percent: Math.round(prestigeLevel * 1),
+          percent: Math.round(prestigeLevel * 5),
         }),
       ),
     );
+    control.append(lineBlock(t("prestige.coins", { coins: formatCompact(extras.prestigeCoins ?? 0) })));
+    control.append(lineBlock(t("prestige.conversionHint")));
     if (state.stats.earned >= prestigeNeed) {
       control.append(
         actionButton(
@@ -3514,21 +3517,31 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     const shop = div("garden-market-panel");
     shop.append(lineBlock(`// ${t("prestige.shop")}`));
+    const grid = div("garden-buy-grid");
     for (const offer of PRESTIGE_SHOP) {
       const locked = prestigeLevel < offer.tier;
-      const button = actionButton(
-        locked
-          ? t("prestige.shopLocked", { name: seedName(offer.seed), tier: offer.tier })
-          : t("prestige.shopBuy", {
-              name: seedName(offer.seed),
-              cost: formatCompact(offer.price),
-            }),
-        "buyPrestigeSeed",
-        !locked && (state.coins ?? 0) >= offer.price,
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "garden-buy-card";
+      if (locked) card.classList.add("is-prestige-locked");
+      card.dataset.act = "buyPrestigeSeed";
+      card.dataset.seed = offer.seed;
+      card.disabled = locked || (state.coins ?? 0) < offer.price;
+      card.title = `${seedName(offer.seed)} · ${formatCompact(offer.price)}c · P${offer.tier}`;
+      card.append(
+        span("garden-buy-line is-name", seedName(offer.seed)),
+        span("garden-buy-line", `P${offer.tier}`),
+        span("garden-buy-line is-price", `${formatCompact(offer.price)}c`),
+        span(
+          "garden-buy-line is-stock",
+          locked
+            ? t("prestige.tierLocked", { tier: offer.tier })
+            : `${t("garden.bag")} ${state.bag.seeds[offer.seed] ?? 0}`,
+        ),
       );
-      button.dataset.seed = offer.seed;
-      shop.append(button);
+      grid.append(card);
     }
+    shop.append(grid);
     wrap.append(shop);
 
     const final = div("garden-market-panel");
@@ -3539,6 +3552,30 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         finalUnlocked ? t("finalShop.unlocked") : t("finalShop.locked", { tier: FINAL_SHOP_PRESTIGE }),
       ),
     );
+    const finalGrid = div("garden-buy-grid");
+    const prestigeCoins = extras.prestigeCoins ?? 0;
+    for (const offer of FINAL_SHOP) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "garden-buy-card";
+      if (!finalUnlocked) card.classList.add("is-prestige-locked");
+      card.dataset.act = "buyFinalSeed";
+      card.dataset.seed = offer.seed;
+      card.disabled = !finalUnlocked || prestigeCoins < offer.coins;
+      card.title = `${seedName(offer.seed)} · ${offer.coins} xu`;
+      card.append(
+        span("garden-buy-line is-name", seedName(offer.seed)),
+        span("garden-buy-line is-price", `${offer.coins} ✦`),
+        span(
+          "garden-buy-line is-stock",
+          finalUnlocked
+            ? `${t("prestige.coinsShort")} ${prestigeCoins}`
+            : t("finalShop.locked", { tier: FINAL_SHOP_PRESTIGE }),
+        ),
+      );
+      finalGrid.append(card);
+    }
+    final.append(finalGrid);
     if (finalUnlocked) final.append(lineBlock(t("finalShop.comingSoon")));
     wrap.append(final);
     return wrap;
@@ -4505,6 +4542,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "claimQuest": {
         const id = target.dataset.id;
         if (id !== undefined) void runAction({ kind: "claimQuest", id }, t("quests.claimedMsg"));
+        return;
+      }
+      case "buyFinalSeed": {
+        const seed = target.dataset.seed as SeedId | undefined;
+        if (seed !== undefined) {
+          void runAction({ kind: "buyFinalSeed", seed }, t("finalShop.bought"));
+        }
         return;
       }
       case "buyPrestigeSeed": {

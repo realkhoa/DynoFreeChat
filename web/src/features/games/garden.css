@@ -1550,3 +1550,9 @@
     transform: none !important;
   }
 }
+
+/* Prestige shop cards reuse the market card look, dimmed while locked. */
+.garden-buy-card.is-prestige-locked {
+  border-style: dashed;
+  color: #8a8a8a;
+}

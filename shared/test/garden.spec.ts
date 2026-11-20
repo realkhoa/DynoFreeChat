@@ -54,6 +54,8 @@ import {
   specialPlotCost,
   PRESTIGE_SHOP,
   prestigeMutationBonus,
+  prestigeSellBonus,
+  prestigeGrowScale,
   sprayBoostFor,
   SPRAY_MUTATION_BOOST,
   EFFECT_STACK_CHANCES,
@@ -391,7 +393,9 @@ describe("farm buildings", () => {
     expect(seed?.buy).toBe(1_000_000_000);
     expect(seed?.sell).toBe(50_000_000);
     expect(PRESTIGE_SHOP.some((offer) => offer.seed === "cocomelon" && offer.tier === 5)).toBe(true);
-    expect(prestigeMutationBonus(1)).toBe(0.01);
+    expect(prestigeMutationBonus(1)).toBe(0.05);
+    expect(prestigeSellBonus(1)).toBe(1.5);
+    expect(prestigeGrowScale(1)).toBe(0.9);
   });
 
   it("prices premium plots at one billion times two per bought plot", () => {

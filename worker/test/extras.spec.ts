@@ -228,7 +228,7 @@ describe("extras", () => {
     const blocked = run(ledger, { kind: "prestige" });
     expect(blocked.ok).toBe(false);
 
-    ledger.coins = 5_000_000_000;
+    ledger.coins = 250_000_000_000;
     ledger.warehouse = 1;
     ledger.machines = { seedMaker: { level: 2, lastCraftAt: 0 } };
     ledger.plots[0] = {
@@ -253,11 +253,24 @@ describe("extras", () => {
     expect(prestiged.ledger.prestige).toBe(1);
     expect(prestiged.ledger.code).toBe(ledger.code);
     // Only living things reset; money, machines and infrastructure stay.
-    expect(prestiged.ledger.coins).toBe(5_000_000_000);
+    expect(prestiged.ledger.coins).toBe(0);
+    expect(prestiged.ledger.prestigeCoins).toBe(2);
     expect(prestiged.ledger.warehouse).toBe(1);
     expect(prestiged.ledger.machines.seedMaker?.level).toBe(2);
     expect(prestiged.ledger.plots.every((plot) => plot === null)).toBe(true);
     expect(prestiged.ledger.animals.coop.every((animal) => animal === null)).toBe(true);
+  });
+
+  it("buys final-shop plants with prestige coins", () => {
+    const ledger = makeLedger();
+    ledger.prestige = 5;
+    ledger.prestigeCoins = 1;
+    const bought = run(ledger, { kind: "buyFinalSeed", seed: "cocomelon" });
+    expect(bought.ok).toBe(true);
+    if (!bought.ok) return;
+    expect(bought.ledger.prestigeCoins).toBe(0);
+    expect(bought.ledger.bag.seeds.cocomelon).toBe(1);
+    expect(run({ ...ledger, prestigeCoins: 0 }, { kind: "buyFinalSeed", seed: "cocomelon" }).ok).toBe(false);
   });
 
   it("sells tiered prestige seeds including cocomelon", () => {
