@@ -1644,8 +1644,9 @@ describe("warehouse tab", () => {
     const menu = host.querySelector(".garden-machine-menu");
     expect(menu?.textContent).toContain("Đang ủ Táo");
     expect(menu?.querySelector("[data-machine-until]")).not.toBeNull();
-    // While brewing, the craft rows and the collect row stay hidden.
-    expect(menu?.querySelector('[data-act="machineCraft"]')).toBeNull();
+    // While brewing, direct crafting is disabled but queueing stays open.
+    expect(menu?.querySelector<HTMLButtonElement>('[data-act="machineCraft"]')?.disabled).toBe(true);
+    expect(menu?.querySelector<HTMLButtonElement>('[data-act="machineQueue"]')?.disabled).toBe(false);
     expect(menu?.querySelector('[data-act="machineCollect"]')).toBeNull();
 
     // A ready keg offers collection.
@@ -1864,6 +1865,50 @@ describe("compact amounts", () => {
     const balance = host.querySelector(".garden-balance")?.textContent ?? "";
     expect(balance).toContain("2.23t");
     expect(balance).not.toContain("2.225.901.652.616");
+  });
+});
+
+describe("machine queue while busy", () => {
+  it("shows the active job and queues several input types", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        bag: {
+          seeds: {},
+          crops: [
+            { item: "carrot", effects: [], qty: 1 },
+            { item: "tomato", effects: [], qty: 1 },
+          ],
+          supplies: {},
+        },
+        warehouse: {
+          level: 1,
+          machines: {
+            seedMaker: {
+              level: 1,
+              lastCraftAt: CLOCK,
+              job: { item: "carrot", startedAt: CLOCK, readyAt: CLOCK + 600_000 },
+            },
+          },
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:warehouse"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>(".garden-warehouse-row")?.click();
+    await settle();
+
+    const info = host.querySelector(".garden-menu-info")?.textContent ?? "";
+    expect(info).toContain("Đang chế tạo");
+    expect(info).toContain("Cà rốt");
+    const queueButtons = host.querySelectorAll<HTMLButtonElement>('[data-act="machineQueue"]');
+    expect(queueButtons.length).toBeGreaterThanOrEqual(2);
+    expect(queueButtons[0]?.disabled).toBe(false);
+    queueButtons[0]?.click();
+    await settle();
+    expect(api.calls.find((call) => call.action?.kind === "queueMachine")).toBeTruthy();
   });
 });
 

@@ -375,6 +375,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return seedById(id) === undefined ? t(`trees.${id}`) : t(`seeds.${id}`);
   }
 
+  /** @brief Display name for a crop, fruit or product id. */
+  function materialName(id: string): string {
+    if (seedById(id) !== undefined || treeById(id) !== undefined) return itemName(id as ItemId);
+    return t(`products.${id}`);
+  }
+
   /** @brief Compact mutation badge: strongest name plus a `+n` counter. */
   function effectBadge(effects: readonly EffectId[]): string {
     const strongest = strongestEffect(effects);
@@ -2890,13 +2896,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       lines.push(
         labelValue(
           t("warehouse.status"),
-          job.readyAt <= at ? t("warehouse.jobReady") : t("warehouse.brewing", { item: itemName(job.item) }),
+          job.readyAt <= at
+            ? t("warehouse.jobReady")
+            : t("warehouse.brewing", { item: materialName(job.item) }),
         ),
       );
     } else if (remaining > 0) {
       lines.push(labelValue(t("warehouse.status"), t("warehouse.cooling")));
     } else {
       lines.push(labelValue(t("warehouse.status"), t("warehouse.ready")));
+    }
+    if (job !== undefined) {
+      lines.push(labelValue(t("warehouse.crafting"), materialName(job.item)));
     }
     if (definition.output.kind === "product") {
       lines.push(labelValue(t("warehouse.output"), t(`products.${definition.output.product}`)));
@@ -2906,11 +2917,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (let index = 0; index < Math.min(5, queue.length); index += 1) {
       const job = queue[index];
       if (job === undefined) continue;
-      const name =
-        seedById(job.item) !== undefined || treeById(job.item) !== undefined
-          ? itemName(job.item)
-          : t(`products.${job.item}`);
-      lines.push(`  ${index + 1}. ${name}`);
+      lines.push(`  ${index + 1}. ${materialName(job.item)}`);
     }
     if (queue.length > 5) lines.push(`  … +${queue.length - 5}`);
     info.textContent = lines.join("\n");
@@ -2935,17 +2942,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     );
     rows.append(upgrade);
 
-    if (job !== undefined) {
-      if (job.readyAt <= at) {
-        rows.append(menuRow(t("warehouse.collect"), "machineCollect", { data: { machine: definition.id } }));
-      } else {
-        rows.append(
-          menuRow(t("warehouse.brewing", { item: itemName(job.item) }), "machineNoop", { disabled: true }),
-        );
-      }
-    } else if (remaining > 0) {
-      rows.append(menuRow(t("warehouse.cooling"), "machineNoop", { disabled: true }));
-    } else if (definition.input.kind === "product") {
+    if (job !== undefined && job.readyAt <= at) {
+      rows.append(menuRow(t("warehouse.collect"), "machineCollect", { data: { machine: definition.id } }));
+    }
+
+    const busy = job !== undefined || remaining > 0;
+    if (definition.input.kind === "product") {
       const inputProduct = definition.input.product;
       const count =
         state.bag.products
@@ -2955,7 +2957,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       pair.append(
         menuRow(`${t(`products.${inputProduct}`)} ×${count}`, "machineCraft", {
           data: { machine: definition.id },
-          disabled: count < 1,
+          disabled: count < 1 || busy,
         }),
         menuRow("+Q", "machineQueue", {
           data: { machine: definition.id },
@@ -2977,6 +2979,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         pair.append(
           menuRow(`[ ${itemName(item)} ]`, "machineCraft", {
             data: { machine: definition.id, item },
+            disabled: busy,
           }),
           menuRow("+Q", "machineQueue", {
             data: { machine: definition.id, item },
@@ -2988,6 +2991,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         rows.append(menuRow(t("warehouse.noInput"), "machineNoop", { disabled: true }));
       }
     }
+
     if ((built.queue?.length ?? 0) > 0) {
       rows.append(
         menuRow(t("warehouse.clearQueue"), "machineClearQueue", {
@@ -3155,7 +3159,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           built.job !== undefined
             ? built.job.readyAt <= at
               ? t("warehouse.jobReady")
-              : t("warehouse.brewing", { item: itemName(built.job.item) })
+              : t("warehouse.brewing", { item: materialName(built.job.item) })
             : remaining > 0
               ? t("warehouse.cooling")
               : t("warehouse.ready");
