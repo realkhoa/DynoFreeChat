@@ -44,6 +44,25 @@ describe("chat room", () => {
     bob.close();
   });
 
+  it("opens the world channel and broadcasts announcements", async () => {
+    const client = await connect("world");
+    client.join("watcher");
+    await client.welcome();
+
+    const roomEnv = env as unknown as Env;
+    const room = roomEnv.CHAT_ROOM.get(roomEnv.CHAT_ROOM.idFromName("world"));
+    const response = await room.fetch("https://room/announce", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nick: "world", color: "#d7ba7d", text: "big sale!" }),
+    });
+    expect(response.status).toBe(200);
+
+    const frame = await client.waitFor((entry) => entry.t === "append");
+    expect(frame.t === "append" && frame.m.text).toBe("big sale!");
+    client.close();
+  });
+
   it("refuses a message before join", async () => {
     const slug = await makeRoom();
     const client = await connect(slug);

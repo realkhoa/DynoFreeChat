@@ -354,3 +354,21 @@
 .mention-item:hover {
   background: var(--hover-row);
 }
+
+/* Sale announcements: inline link to the seller's public sale trace. */
+.log-sale-link {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 4px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 2px;
+  color: #d7ba7d;
+  font: 10px var(--font-mono);
+  cursor: pointer;
+}
+
+.log-sale-link:hover {
+  border-color: #d7ba7d;
+  background: var(--hover-row);
+}

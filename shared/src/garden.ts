@@ -1406,6 +1406,26 @@ export interface GardenStats {
   readonly tax: number;
 }
 
+/** One line in the player's sale history. */
+export interface SaleRecord {
+  /** Server time of the sale. */
+  readonly ts: number;
+  /** What was sold. */
+  readonly kind: "crop" | "product" | "animal" | "contract";
+  /** Item id (crop/fruit/product/animal) or contract label. */
+  readonly item: string;
+  /** Units sold. */
+  readonly qty: number;
+  /** Quality stars when relevant. */
+  readonly star?: number;
+  /** Mutations carried by the sold stack. */
+  readonly effects?: readonly EffectId[];
+  /** Gross coins before tax. */
+  readonly gross: number;
+  /** Coins actually received. */
+  readonly net: number;
+}
+
 /** Warehouse and its machines. */
 export interface WarehouseState {
   /** 0 when not built, 1 when built. */
@@ -2171,6 +2191,8 @@ export interface GardenSnapshot {
   readonly skills: SkillsState;
   /** Lifetime counters. */
   readonly stats: GardenStats;
+  /** Most recent sales, newest last (capped by the server). */
+  readonly sales?: readonly SaleRecord[];
   /** Revision bumped on every write; actions echo it to reject stale tabs. */
   readonly rev: number;
   /** Server time of the last write. */
@@ -2223,6 +2245,8 @@ export interface VisitSnapshot {
   readonly skills: SkillsState;
   /** Lifetime counters. */
   readonly stats: GardenStats;
+  /** Recent sale trace shown to visitors. */
+  readonly sales?: readonly SaleRecord[];
   /** Server time of the last write. */
   readonly updatedAt: number;
   /** Server time of the last time the owner opened or changed the garden. */

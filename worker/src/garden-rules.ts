@@ -161,6 +161,7 @@ import {
   type ProductId,
   attachmentById,
   type AttachmentId,
+  type SaleRecord,
   type AttachmentSlot,
   type FutureLock,
   type PetId,
@@ -230,6 +231,8 @@ export interface GardenLedger {
   bag: LedgerBag;
   /** Lifetime counters, mutable while a rule runs. */
   stats: LedgerStats;
+  /** Recent sale log, newest last. */
+  sales: SaleRecord[];
   /** Building levels (0 = not built). */
   buildings: Record<BuildingId, number>;
   /** Animals per building slot. */
@@ -380,6 +383,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     trees: emptyTrees(STARTING_TABS),
     bag: { seeds: { carrot: STARTING_SEEDS }, crops: [], supplies: {}, products: [], tools: {} },
     stats: { planted: 0, harvested: 0, earned: 0, spent: 0, tax: 0 },
+    sales: [],
     buildings: { coop: 0, barn: 0, pond: 0 },
     animals: { coop: [], barn: [], pond: [] },
     farmSettledAt: input.now,
@@ -551,6 +555,7 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
       ) as Partial<Record<MachineId, MachineState>>,
     },
     stats: { ...ledger.stats },
+    sales: (ledger.sales ?? []).map((entry) => ({ ...entry })),
     rev: ledger.rev,
     updatedAt: ledger.updatedAt,
   };
@@ -1929,6 +1934,7 @@ function sellAnimal(ledger: GardenLedger, building: BuildingId, slot: number, no
   next.stats.earned += gross;
   next.stats.tax += tax;
   next.animals[building][slot] = null;
+  recordSale(next, { kind: "animal", item: animal.kind, qty: 1, gross, net: gross - tax }, now);
   grantXp(next, "ranching", 30 + Math.round(gross / 100));
   return changed(next, now);
 }
@@ -1962,6 +1968,7 @@ function sellProduct(
   next.coins += gross - tax;
   next.stats.earned += gross;
   next.stats.tax += tax;
+  recordSale(next, { kind: "product", item: product, qty, star, effects, gross, net: gross - tax }, now);
   grantXp(next, crafted ? "artisaning" : "ranching", 50 + Math.round(gross / 10));
   next.bag.products = (next.bag.products ?? [])
     .map((entry) =>
@@ -1996,6 +2003,22 @@ function sellAllProducts(ledger: GardenLedger, season: SeasonSnapshot, now: numb
   next.coins += total - tax;
   next.stats.earned += total;
   next.stats.tax += tax;
+  for (const stack of products) {
+    const unit = productPrice(stack, season);
+    recordSale(
+      next,
+      {
+        kind: "product",
+        item: stack.product,
+        qty: stack.qty,
+        star: stack.star,
+        effects: stack.effects ?? [],
+        gross: unit * stack.qty,
+        net: Math.round(unit * stack.qty * (1 - SELL_TAX_RATE)),
+      },
+      now,
+    );
+  }
   next.bag.products = [];
   return changed(next, now);
 }
@@ -2206,6 +2229,18 @@ function fulfillContract(ledger: GardenLedger, id: string, season: SeasonSnapsho
   next.stats.earned += offer.reward;
   next.weekEarned += offer.reward;
   next.contractClaims.push(offer.id);
+  recordSale(
+    next,
+    {
+      kind: "contract",
+      item: offer.product,
+      qty: offer.qty,
+      star: offer.star,
+      gross: offer.reward,
+      net: offer.reward,
+    },
+    now,
+  );
   return changed(next, now);
 }
 
@@ -3380,6 +3415,7 @@ function sellCrop(
       .filter((entry) => entry.qty > 0);
   }
   removeCrop(next.bag.crops, item, effects, pest, star, qty);
+  recordSale(next, { kind: "crop", item, qty, star, effects, gross, net: gross - tax }, now);
   return changed(next, now);
 }
 
@@ -3400,6 +3436,19 @@ function sellAll(ledger: GardenLedger, season: SeasonSnapshot, now: number): Rul
     );
     const unit = future !== undefined ? Math.max(base, future.price) : base;
     total += unit * stack.qty;
+    recordSale(
+      next,
+      {
+        kind: "crop",
+        item: stack.item,
+        qty: stack.qty,
+        star: stack.star ?? 1,
+        effects: stack.effects,
+        gross: unit * stack.qty,
+        net: Math.round(unit * stack.qty * (1 - SELL_TAX_RATE)),
+      },
+      now,
+    );
     if (future !== undefined) {
       const left = future.qty - stack.qty;
       next.futures = next.futures
@@ -3422,6 +3471,11 @@ function changed(ledger: GardenLedger, now: number): RuleResult {
   ledger.updatedAt = now;
   ledger.lastSeen = now;
   return { ok: true, ledger, changed: true };
+}
+
+/** @brief Appends one sale to the capped trace log. */
+function recordSale(ledger: GardenLedger, entry: Omit<SaleRecord, "ts">, now: number): void {
+  ledger.sales = [...(ledger.sales ?? []), { ...entry, ts: now }].slice(-50);
 }
 
 /** @brief Deep-copies the mutable parts of one ledger. */
@@ -3470,6 +3524,7 @@ function clone(ledger: GardenLedger): GardenLedger {
       ]),
     ) as Partial<Record<MachineId, MachineState>>,
     stats: { ...ledger.stats },
+    sales: (ledger.sales ?? []).map((entry) => ({ ...entry })),
     shopStock: { ...ledger.shopStock },
     questProgress: { ...ledger.questProgress },
     questClaims: [...ledger.questClaims],

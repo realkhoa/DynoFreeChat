@@ -12,6 +12,7 @@ interface Entry {
 export interface LogViewHandlers {
   onReply?: (row: Row) => void;
   onCopy?: (row: Row) => void;
+  onSaleHistory?: (code: string) => void;
 }
 
 /**
@@ -245,6 +246,17 @@ export class LogView {
     text.className = "log-text";
     this.fillRich(text, row.text);
     body.append(text);
+
+    // Sale announcements carry a #CODE tag: offer the trace for that garden.
+    const code = /#([0-9A-Z]{6})\b/.exec(row.text)?.[1];
+    if (row.kind === "chat" && code !== undefined && this.handlers.onSaleHistory !== undefined) {
+      const link = document.createElement("button");
+      link.type = "button";
+      link.className = "log-sale-link";
+      link.textContent = "xem lịch sử bán";
+      link.addEventListener("click", () => this.handlers.onSaleHistory?.(code));
+      body.append(link);
+    }
 
     el.append(gutter, body);
 

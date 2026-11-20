@@ -174,3 +174,16 @@ describe("replies and mentions", () => {
     expect(replies).toEqual(["a"]);
   });
 });
+
+it("links sale announcements to the seller's history", () => {
+  const store = new Store();
+  store.addMessage(message("s", "💥 #ABCDEF alice bán 2× carrot được 900c"));
+  const seen: string[] = [];
+  const saleView = new LogView(root, { onSaleHistory: (code) => seen.push(code) });
+  saleView.sync(store);
+
+  const link = root.querySelector<HTMLButtonElement>(".log-sale-link");
+  expect(link).not.toBeNull();
+  link?.click();
+  expect(seen).toEqual(["ABCDEF"]);
+});

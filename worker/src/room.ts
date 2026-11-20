@@ -26,7 +26,7 @@ import {
 } from "@dyno/shared/protocol";
 import { newBucket, take, type Bucket } from "@dyno/shared/ratelimit";
 import type { Env } from "./env";
-import { json } from "./http";
+import { json, readJson } from "./http";
 import type { SqlRow } from "./sql";
 
 interface Conn {
@@ -83,6 +83,7 @@ export class ChatRoom extends DurableObject<Env> {
 
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/announce") return this.announce(request);
     if (request.method !== "GET" || url.pathname !== "/ws") {
       return json({ code: "NOT_FOUND" }, 404);
     }
@@ -240,7 +241,10 @@ export class ChatRoom extends DurableObject<Env> {
       return;
     }
 
-    if (!conn.authed) {
+    if (!conn.authed && conn.slug === "world") {
+      conn.authed = true;
+      conn.locked = false;
+    } else if (!conn.authed) {
       const verified = await this.verify(conn.slug, frame.pass ?? "");
       if (!verified.ok) {
         conn.attempts += 1;
@@ -565,6 +569,36 @@ export class ChatRoom extends DurableObject<Env> {
 
   private sendError(ws: WebSocket, code: ErrorCode, cid?: string, detail?: string): void {
     this.send(ws, cid === undefined ? { t: "error", code, detail } : { t: "error", code, cid, detail });
+  }
+
+  /**
+   * @brief Posts a server announcement into this room.
+   * @details Used by the garden worker for big sales in `world`; the caller
+   * must present the bot secret when one is configured.
+   */
+  private async announce(request: Request): Promise<Response> {
+    const secret = this.env.BOT_SECRET;
+    if (secret !== undefined && secret.length > 0) {
+      if (request.headers.get("x-dyno-announce") !== secret) {
+        return json({ code: "UNAUTHORIZED" }, 401);
+      }
+    }
+    const body = await readJson(request);
+    const text = sanitizeText(typeof body.text === "string" ? body.text : "");
+    if (!text.ok) return json({ code: text.code }, 400);
+    const nick = sanitizeNick(typeof body.nick === "string" ? body.nick : "world");
+    const ts = Date.now();
+    this.seq = (this.seq + 1) % Number.MAX_SAFE_INTEGER;
+    const message: ChatMessage = {
+      id: makeMessageId(ts, this.seq),
+      ts,
+      nick: nick.ok ? nick.nick : "world",
+      color: sanitizeColor(body.color),
+      text: text.text,
+    };
+    this.persist(message);
+    for (const peer of this.authedSockets()) this.send(peer, { t: "append", m: message });
+    return json({ ok: true });
   }
 
   private broadcastPresence(excluded?: WebSocket): void {

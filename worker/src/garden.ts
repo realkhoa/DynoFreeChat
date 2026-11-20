@@ -48,6 +48,7 @@ import {
   type ActiveSpray,
   type EffectId,
   type SeasonSnapshot,
+  type SaleRecord,
   effectById,
   type SeedId,
   type SupplyId,
@@ -1060,6 +1061,13 @@ export class Garden extends DurableObject<Env> {
         : advanceQuests(settled, result.ledger, action, now);
     const finalLedger = settleMachines(advanced, now);
     this.write(finalLedger);
+
+    // Big sales echo into the world chat; one message per action at most.
+    const beforeCount = settled.sales?.length ?? 0;
+    const freshSales = (finalLedger.sales ?? []).slice(beforeCount);
+    for (const sale of freshSales.filter((entry) => entry.gross > 0)) {
+      await this.announceWorldSale(finalLedger, sale);
+    }
     // Leaderboard writes cost a row each: water/fertilize/spray never change the
     // published numbers, so only publish when coins, tabs or harvest stats move.
     if (
@@ -1077,6 +1085,29 @@ export class Garden extends DurableObject<Env> {
       sold: soldDiff(ledger.bag.crops, finalLedger.bag.crops),
       bought: boughtDiff(action),
     });
+  }
+
+  /** @brief Announces a big sale in the public world chat. */
+  private async announceWorldSale(ledger: GardenLedger, entry: SaleRecord): Promise<void> {
+    try {
+      const room = this.env.CHAT_ROOM.get(this.env.CHAT_ROOM.idFromName("world"));
+      const effects = (entry.effects ?? []).join("+");
+      const star = entry.star === undefined ? "" : ` ${entry.star}★`;
+      const bonus = effects.length > 0 ? ` [${effects}]` : "";
+      const text =
+        `💥 #${ledger.code} ${ledger.nick} vừa bán ${entry.qty}× ${entry.item}${star}${bonus}` +
+        ` được ${entry.net.toLocaleString("en-US")}c!`;
+      await room.fetch("https://room/announce", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-dyno-announce": this.env.BOT_SECRET ?? "",
+        },
+        body: JSON.stringify({ nick: "world", color: "#d7ba7d", text }),
+      });
+    } catch {
+      // Chat outages must never fail a sale.
+    }
   }
 
   /**
@@ -1308,6 +1339,7 @@ export class Garden extends DurableObject<Env> {
         artisaning: { ...ledger.skills.artisaning },
       },
       stats: { ...ledger.stats },
+      sales: (ledger.sales ?? []).map((entry) => ({ ...entry })),
       updatedAt: ledger.updatedAt,
       lastSeen: ledger.lastSeen,
       online: now - ledger.lastSeen < ONLINE_WINDOW_MS,

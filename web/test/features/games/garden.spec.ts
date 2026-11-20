@@ -1968,6 +1968,36 @@ describe("mounted machines", () => {
   });
 });
 
+describe("sale history", () => {
+  it("lists recent sales with amounts", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        sales: [
+          {
+            ts: CLOCK - 60_000,
+            kind: "crop",
+            item: "carrot",
+            qty: 2,
+            star: 3,
+            effects: ["golden"],
+            gross: 1_000,
+            net: 900,
+          },
+        ],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:market"]')?.click();
+    await settle();
+
+    const text = host.querySelector(".garden-market")?.textContent ?? "";
+    expect(text).toContain("Lịch sử bán");
+    expect(text).toContain("Cà rốt");
+    expect(text).toContain("900c");
+  });
+});
+
 describe("sell all dialog", () => {
   it("shows the amount before selling everything", async () => {
     const api = new FakeGardenApi(

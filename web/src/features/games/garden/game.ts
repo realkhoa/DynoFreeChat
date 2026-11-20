@@ -3361,6 +3361,29 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (stacks.length > 0) products.append(actionButton(t("farm.sellAllProducts"), "sellAllProducts"));
 
     wrap.append(exchange, products);
+
+    const history = div("garden-market-panel");
+    history.append(lineBlock(`// ${t("history.title")}`));
+    const sales = state.sales ?? [];
+    if (sales.length === 0) history.append(lineBlock(t("history.empty")));
+    for (const sale of sales.slice(-12).reverse()) {
+      const name =
+        sale.kind === "crop"
+          ? itemName(sale.item as ItemId)
+          : sale.kind === "animal"
+            ? t(`animals.${sale.item}`)
+            : t(`products.${sale.item}`);
+      const time = new Date(sale.ts).toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      history.append(
+        lineBlock(
+          `${time} ${name}${sale.star === undefined ? "" : ` ${sale.star}★`} ${effectBadge(sale.effects ?? [])} x${sale.qty} → ${formatCompact(sale.net)}c`,
+        ),
+      );
+    }
+    wrap.append(history);
     return wrap;
   }
 

@@ -315,6 +315,25 @@ describe("garden ledger rules", () => {
     });
   });
 
+  it("records every sale in the trace history", () => {
+    const ledger = makeLedger();
+    ledger.bag.crops = [{ item: "carrot", effects: ["golden"], star: 3, qty: 2 }];
+    const sold = run(ledger, {
+      kind: "sellCrop",
+      item: "carrot",
+      effects: ["golden"],
+      star: 3,
+      qty: 2,
+    });
+    expect(sold.ok).toBe(true);
+    if (!sold.ok) return;
+    const entry = sold.ledger.sales.at(-1);
+    expect(entry).toMatchObject({ kind: "crop", item: "carrot", qty: 2, star: 3 });
+    expect(entry?.effects).toEqual(["golden"]);
+    expect(entry?.gross).toBeGreaterThan(0);
+    expect(entry?.net).toBeLessThan(entry?.gross ?? 0);
+  });
+
   it("pulls root crops and leaves empty soil", () => {
     const planted = run(makeLedger(), { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.9);
     if (!planted.ok) throw new Error("plant failed");

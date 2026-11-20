@@ -197,7 +197,50 @@ let onlineStageGame: string | null = null;
 const logView = new LogView(logEl, {
   onReply: (row) => composer.setReply({ id: row.id, nick: row.nick, text: makeExcerpt(row.text) }),
   onCopy: (row) => void copyMessage(row.text),
+  onSaleHistory: (code) => void showSaleHistory(code),
 });
+
+/** Loads a garden's public sale trace and prints it into the log. */
+async function showSaleHistory(code: string): Promise<void> {
+  try {
+    const response = await fetch(`${apiBase}/api/garden/visit/${encodeURIComponent(code)}`);
+    if (!response.ok) throw new Error("history failed");
+    const body = (await response.json()) as {
+      garden?: {
+        nick?: string;
+        sales?: Array<{
+          ts: number;
+          item: string;
+          qty: number;
+          star?: number;
+          effects?: string[];
+          net: number;
+          kind: string;
+        }>;
+      };
+    };
+    const garden = body.garden;
+    store.addSystem(`Lịch sử bán của #${code}${garden?.nick === undefined ? "" : ` (${garden.nick})`}:`);
+    const sales = (garden?.sales ?? []).slice(-15).reverse();
+    if (sales.length === 0) store.addSystem("Chưa có giao dịch nào.");
+    for (const sale of sales) {
+      const time = new Date(sale.ts).toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const star = sale.star === undefined ? "" : ` ${sale.star}★`;
+      const effects =
+        sale.effects === undefined || sale.effects.length === 0 ? "" : ` [${sale.effects.join("+")}]`;
+      store.addSystem(
+        `${time} ${sale.item}${star}${effects} ×${sale.qty} → ${sale.net.toLocaleString("vi-VN")}c`,
+      );
+    }
+    render();
+  } catch {
+    store.addSystem("Không tải được lịch sử bán.");
+    render();
+  }
+}
 logView.selfNick = identity.nick;
 logView.setTheme(theme);
 
@@ -958,7 +1001,16 @@ async function refreshRooms(): Promise<void> {
   if (roomsInFlight) return;
   roomsInFlight = true;
   try {
-    rooms = await listRooms(apiBase, "chat");
+    const listed = await listRooms(apiBase, "chat");
+    // `world` is a built-in public channel; it is not a registry room.
+    const world: RoomInfo = {
+      slug: "world",
+      locked: false,
+      createdAt: 0,
+      lastSeen: Date.now(),
+      kind: "chat",
+    };
+    rooms = [world, ...listed.filter((room) => room.slug !== "world")];
     sidebar.render(rooms, current?.slug ?? null, pickRoom, (notice) => {
       store.addSystem(notice);
       render();
