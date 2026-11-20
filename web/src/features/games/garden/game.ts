@@ -125,7 +125,15 @@ import {
   type TreeState,
   type VisitSnapshot,
 } from "@dyno/shared/garden";
-import { formatCompact, formatDuration, onLocaleChange, t, tList, translateError } from "@/shared/i18n";
+import {
+  formatCompact,
+  formatDuration,
+  formatNumber,
+  onLocaleChange,
+  t,
+  tList,
+  translateError,
+} from "@/shared/i18n";
 import { loadIdentity, type Identity } from "@/shared/lib/identity";
 import type { GardenBot } from "@/features/games/garden/api";
 import { readParam, writeParams } from "@/shared/lib/urlstate";
@@ -1259,7 +1267,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       ),
     );
     const coins = state.coins;
-    head.append(span("garden-menu-balance", `$ ${formatCompact(coins)}c`));
+    const balanceChip = span("garden-menu-balance", `$ ${formatCompact(coins)}c`);
+    balanceChip.title = `${formatNumber(coins)} coins`;
+    head.append(balanceChip);
     const close = document.createElement("button");
     close.type = "button";
     close.className = "garden-menu-close";
@@ -1489,6 +1499,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const balance = mode === "visit" ? visiting?.coins : state?.coins;
     if (balance !== undefined) {
       const chip = span("garden-balance", `$ ${formatCompact(balance)}c`);
+      chip.title = `${formatNumber(balance)} coins`;
       chip.title = t("garden.balance");
       chip.setAttribute("aria-label", `${t("garden.balance")}: ${formatCompact(balance)} coins`);
       bar.append(chip);
@@ -2035,7 +2046,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       ),
     );
     const coins = mode === "visit" ? visiting?.coins : state?.coins;
-    if (coins !== undefined) head.append(span("garden-menu-balance", `$ ${formatCompact(coins)}c`));
+    if (coins !== undefined) {
+      const menuBalance = span("garden-menu-balance", `$ ${formatCompact(coins)}c`);
+      menuBalance.title = `${formatNumber(coins)} coins`;
+      head.append(menuBalance);
+    }
     const close = document.createElement("button");
     close.type = "button";
     close.className = "garden-menu-close";
@@ -3371,7 +3386,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       card.dataset.act = item.act;
       for (const [key, value] of Object.entries(item.data)) card.dataset[key] = value;
-      card.title = `${item.name} · ${formatCompact(item.price)}c × ${buyQty} = ${formatCompact(item.price * buyQty)}c`;
+      card.title = `${item.name} · ${formatNumber(item.price)}c × ${buyQty} = ${formatNumber(item.price * buyQty)}c`;
       card.append(
         span("garden-buy-line is-glyph", item.glyph),
         span("garden-buy-line is-name", item.name),
@@ -3471,6 +3486,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       row.dataset.effects = JSON.stringify(stack.effects);
       row.dataset.pest = stack.pest === true ? "1" : "0";
       row.dataset.star = String(stack.star ?? 1);
+      row.title = `${formatNumber(value)}c`;
       exchange.append(row);
     }
     if (state.bag.crops.length > 0) {
@@ -3496,6 +3512,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       row.dataset.product = stack.product;
       row.dataset.star = String(stack.star);
       row.dataset.effects = JSON.stringify(stack.effects ?? []);
+      row.title = `${formatNumber(unit)}c each · ${formatNumber(unit * stack.qty)}c total`;
       products.append(row);
     }
     if (stacks.length > 0) products.append(actionButton(t("farm.sellAllProducts"), "sellAllProducts"));
@@ -3517,11 +3534,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         hour: "2-digit",
         minute: "2-digit",
       });
-      history.append(
-        lineBlock(
-          `${time} ${name}${sale.star === undefined ? "" : ` ${sale.star}★`} ${effectBadge(sale.effects ?? [])} x${sale.qty} → ${formatCompact(sale.net)}c`,
-        ),
+      const historyLine = lineBlock(
+        `${time} ${name}${sale.star === undefined ? "" : ` ${sale.star}★`} ${effectBadge(sale.effects ?? [])} x${sale.qty} → ${formatCompact(sale.net)}c`,
       );
+      historyLine.title = `${formatNumber(sale.net)}c received · ${formatNumber(sale.gross)}c gross`;
+      history.append(historyLine);
     }
     wrap.append(history);
     return wrap;
@@ -3553,7 +3570,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }),
       ),
     );
-    control.append(lineBlock(t("prestige.coins", { coins: formatCompact(extras.prestigeCoins ?? 0) })));
+    const prestigeCoinLine = lineBlock(
+      t("prestige.coins", { coins: formatCompact(extras.prestigeCoins ?? 0) }),
+    );
+    prestigeCoinLine.title = `${formatNumber(extras.prestigeCoins ?? 0)} prestige coins`;
+    control.append(prestigeCoinLine);
     control.append(lineBlock(t("prestige.conversionHint")));
     if (state.stats.earned >= prestigeNeed) {
       control.append(
@@ -4213,7 +4234,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       row.className = "garden-rank-row";
       row.dataset.act = "rankVisit";
       row.dataset.code = entry.code;
-      row.title = t("rank.visitHint", { nick: entry.nick });
+      row.title = `${t("rank.visitHint", { nick: entry.nick })} · ${formatNumber(entry.coins ?? 0)}c / ${formatNumber(entry.earned)}c`;
       row.append(
         span("garden-rank-cell", `#${index + 1}`),
         span("garden-rank-cell is-name", `[${entry.prestige ?? 0}] ${entry.nick} · ${entry.code}`),
@@ -4337,10 +4358,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         span("garden-chart-income", `${formatCompact(item.income)}c`),
         span("garden-chart-sold", `${t("chart.sold")} ${item.sold}/${chartMarket.soldTarget}`),
       );
-      row.title = t("chart.simTooltip", {
-        cost: formatCompact(item.cost),
-        profit: formatCompact(item.profit),
-      });
+      row.title = `${t("chart.simTooltip", {
+        cost: formatNumber(item.cost),
+        profit: formatNumber(item.profit),
+      })} · ${formatNumber(item.income)}c`;
       wrap.append(row);
     }
     if (chartMarket.offers.length > 0) {

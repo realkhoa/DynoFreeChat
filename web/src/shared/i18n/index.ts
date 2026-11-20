@@ -171,8 +171,16 @@ export function formatNumber(value: number): string {
 export function formatCompact(value: number): string {
   const abs = Math.abs(value);
   if (abs < 1_000_000) return formatNumber(value);
+  // Descending so the first hit is the biggest fitted suffix, well past the
+  // trillion mark where idle incomes eventually land.
   const units: readonly [suffix: string, size: number][] = [
-    ["t", 1_000_000_000_000],
+    ["no", 1e30],
+    ["oc", 1e27],
+    ["sp", 1e24],
+    ["sx", 1e21],
+    ["Q", 1e18],
+    ["q", 1e15],
+    ["t", 1e12],
     ["b", 1_000_000_000],
     ["m", 1_000_000],
   ];

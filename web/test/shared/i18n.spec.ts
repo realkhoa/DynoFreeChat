@@ -175,6 +175,9 @@ describe("formatting", () => {
     expect(formatCompact(1_500_000_000)).toBe("1.5b");
     expect(formatCompact(2_225_901_652_616)).toBe("2.23t");
     expect(formatCompact(-2_000_000)).toBe("-2m");
+    expect(formatCompact(2_500_000_000_000_000)).toBe("2.5q");
+    expect(formatCompact(1_200_000_000_000_000_000)).toBe("1.2Q");
+    expect(formatCompact(3e21)).toBe("3sx");
   });
 });
 
