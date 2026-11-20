@@ -1029,7 +1029,8 @@ export const PRODUCTS: readonly ProductDefinition[] = [
   { id: "butter", base: 5_000 },
   { id: "goatCheese", base: 20_000 },
   { id: "duckMayo", base: 2_500 },
-  { id: "caviar", base: 50_000_000 },
+  // 500 roe × 900c input value × the press's 100x recipe value.
+  { id: "caviar", base: 90_000 },
 ];
 
 /** Warehouse machine ids. */

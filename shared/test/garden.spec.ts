@@ -22,6 +22,7 @@ import {
   TREES_PER_TAB,
   PLOTS_PER_PATCH,
   RECOVERY_RE,
+  PRODUCTS,
   SEEDS,
   SHOP_RESTOCK_MS,
   TOOLS,
@@ -417,6 +418,13 @@ describe("farm buildings", () => {
     expect(staffWorkInterval(veteran)).toBeLessThan(staffWorkInterval(cheap));
     expect(staffGainXp(1, 150)).toEqual({ level: 2, xp: 50 });
     expect(staffGainXp(9, 100_000).level).toBe(10);
+  });
+
+  it("keeps machine recipe values proportional to their inputs", () => {
+    const product = (id: string): number | undefined => PRODUCTS.find((entry) => entry.id === id)?.base;
+    expect(product("caviar")).toBe(90_000);
+    expect(product("cheese")).toBe(12_000);
+    expect(product("fabric")).toBe(100_000);
   });
 
   it("makes bad mutations more likely for rich wallets", () => {
