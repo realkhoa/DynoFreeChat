@@ -302,6 +302,28 @@ describe("garden ledger rules", () => {
     expect(settled.plots[1]).not.toBeNull();
   });
 
+  it("crafts goat cheese and duck mayo", () => {
+    const ledger = makeLedger();
+    ledger.coins = 20_000_000;
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const goat = run(built.ledger, { kind: "buildMachine", machine: "goatCheesePress" });
+    if (!goat.ok) throw new Error("goat cheese press failed");
+    goat.ledger.bag.products = [{ product: "goatMilk", star: 2, qty: 1 }];
+    const cheese = run(goat.ledger, { kind: "craftMachine", machine: "goatCheesePress" });
+    expect(cheese.ok).toBe(true);
+    if (!cheese.ok) return;
+    expect(cheese.ledger.bag.products?.find((s) => s.product === "goatCheese")?.star).toBe(2);
+
+    const duck = run(cheese.ledger, { kind: "buildMachine", machine: "duckMayoMaker" });
+    if (!duck.ok) throw new Error("duck mayo maker failed");
+    duck.ledger.bag.products = [{ product: "duckEgg", star: 1, qty: 1 }];
+    const mayo = run(duck.ledger, { kind: "craftMachine", machine: "duckMayoMaker" });
+    expect(mayo.ok).toBe(true);
+    if (!mayo.ok) return;
+    expect(mayo.ledger.bag.products?.some((s) => s.product === "duckMayo")).toBe(true);
+  });
+
   it("carries animal mutations into produce and through machines", () => {
     const ledger = makeLedger();
     ledger.buildings.coop = 1;

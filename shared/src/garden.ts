@@ -823,7 +823,9 @@ export type ProductId =
   | "fabric"
   | "juice"
   | "jam"
-  | "butter";
+  | "butter"
+  | "goatCheese"
+  | "duckMayo";
 
 /** One animal definition. */
 export interface AnimalDefinition {
@@ -914,6 +916,8 @@ export const PRODUCTS: readonly ProductDefinition[] = [
   { id: "juice", base: 800 },
   { id: "jam", base: 1_200 },
   { id: "butter", base: 5_000 },
+  { id: "goatCheese", base: 20_000 },
+  { id: "duckMayo", base: 2_500 },
 ];
 
 /** Warehouse machine ids. */
@@ -928,7 +932,9 @@ export type MachineId =
   | "keg"
   | "juicer"
   | "jamMaker"
-  | "butterChurn";
+  | "butterChurn"
+  | "goatCheesePress"
+  | "duckMayoMaker";
 
 /** One machine recipe. */
 export interface MachineDefinition {
@@ -1065,6 +1071,20 @@ export const MACHINES: readonly MachineDefinition[] = [
     input: { kind: "product", product: "milk" },
     output: { kind: "product", product: "butter" },
     multiplier: 20,
+    cooldownCycles: 2,
+  },
+  {
+    id: "goatCheesePress",
+    input: { kind: "product", product: "goatMilk" },
+    output: { kind: "product", product: "goatCheese" },
+    multiplier: 100,
+    cooldownCycles: 2,
+  },
+  {
+    id: "duckMayoMaker",
+    input: { kind: "product", product: "duckEgg" },
+    output: { kind: "product", product: "duckMayo" },
+    multiplier: 10,
     cooldownCycles: 2,
   },
 ];

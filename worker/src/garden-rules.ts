@@ -1963,7 +1963,7 @@ function sellProduct(
     (entry) => entry.product === product && entry.star === star && sameEffects(entry.effects ?? [], effects),
   );
   if (stack === undefined || stack.qty < qty) return { ok: false, code: "NO_PRODUCT" };
-  const crafted = ["mayo", "cheese", "pickles", "oil", "fabric"].includes(product);
+  const crafted = ["mayo", "cheese", "pickles", "oil", "fabric", "goatCheese", "duckMayo"].includes(product);
   const bonus = crafted
     ? artisaningOutputBonus(ledger.skills.artisaning.level)
     : ranchingSellBonus(ledger.skills.ranching.level);
@@ -1995,7 +1995,9 @@ function sellAllProducts(ledger: GardenLedger, season: SeasonSnapshot, now: numb
   if (products.length === 0) return { ok: false, code: "NO_PRODUCT" };
   let total = 0;
   for (const stack of products) {
-    const crafted = ["mayo", "cheese", "pickles", "oil", "fabric"].includes(stack.product);
+    const crafted = ["mayo", "cheese", "pickles", "oil", "fabric", "goatCheese", "duckMayo"].includes(
+      stack.product,
+    );
     const bonus = crafted
       ? artisaningOutputBonus(ledger.skills.artisaning.level)
       : ranchingSellBonus(ledger.skills.ranching.level);
