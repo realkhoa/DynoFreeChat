@@ -136,6 +136,44 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   return json({ code: "NOT_FOUND" }, 404);
 }
 
+/** @brief Calls the recipe model with a free fallback and strict JSON extraction. */
+async function askRecipeJson(prompt: string, key: string): Promise<Record<string, unknown> | null> {
+  for (const model of ["beam-free", "longcat-2.5-free"]) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await fetch("https://opencode.ai/inference/go/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${key}`,
+            "content-type": "application/json",
+            "x-opencode-session": `dynofreechat-recipe-${model}`,
+            "user-agent": "DynoFreeChat/1.0",
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: attempt === 0 ? 900 : 1200,
+          }),
+        });
+        if (!response.ok) continue;
+        const payload = (await response.json()) as {
+          choices?: Array<{
+            message?: { content?: string | null; reasoning_content?: string | null };
+          }>;
+        };
+        const raw =
+          payload.choices?.[0]?.message?.content ?? payload.choices?.[0]?.message?.reasoning_content ?? "";
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (match === null) continue;
+        return JSON.parse(match[0]) as Record<string, unknown>;
+      } catch {
+        // Try the next model/attempt.
+      }
+    }
+  }
+  return null;
+}
+
 /** @brief Asks Beam Free to invent a recipe from two ingredients. */
 async function suggestRecipeRoute(env: Env, auth: GardenCredentials, request: Request): Promise<Response> {
   const body = await readJson(request);
@@ -152,34 +190,8 @@ async function suggestRecipeRoute(env: Env, auth: GardenCredentials, request: Re
     `Ingredients: ${inputs.join(" + ")}`,
   ].join("\n");
   try {
-    const response = await fetch("https://opencode.ai/inference/go/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${key}`,
-        "content-type": "application/json",
-        "x-opencode-session": "dynofreechat-recipe-suggest",
-        "user-agent": "DynoFreeChat/1.0",
-      },
-      body: JSON.stringify({
-        model: "beam-free",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 900,
-      }),
-    });
-    if (!response.ok) return json({ code: "RECIPE_AI_ERROR" }, 502);
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string | null; reasoning_content?: string | null } }>;
-    };
-    const raw =
-      payload.choices?.[0]?.message?.content ?? payload.choices?.[0]?.message?.reasoning_content ?? "";
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (match === null) return json({ code: "RECIPE_AI_ERROR" }, 502);
-    const parsed = JSON.parse(match[0]) as {
-      valid?: unknown;
-      reason?: unknown;
-      output?: unknown;
-      suggestedPrice?: unknown;
-    };
+    const parsed = await askRecipeJson(prompt, key);
+    if (parsed === null) return json({ code: "RECIPE_AI_ERROR" }, 502);
     const valid = parsed.valid === true;
     const output = typeof parsed.output === "string" ? parsed.output.trim().slice(0, 40) : "";
     const ingredientFloor = inputs.reduce((sum, id) => {
