@@ -136,6 +136,7 @@ import {
   HARVEST_ALL_COST,
   createRng,
   cropSellPrice,
+  effectsMultiplier,
   codexReward,
   effectById,
   dailyQuestsFor,
@@ -2771,10 +2772,12 @@ function cookRecipe(ledger: GardenLedger, id: string, season: SeasonSnapshot, no
   if (now - (ledger.recipeCookedAt?.[id] ?? 0) < DAY_MS) return { ok: false, code: "TRY_LATER" };
   const next = clone(ledger);
   let inputValue = 0;
+  const inheritedEffects: EffectId[] = [];
   for (const ingredient of recipe.inputs) {
     const crop = next.bag.crops.find((stack) => stack.item === ingredient && stack.qty > 0);
     if (crop !== undefined) {
       inputValue += cropSellPrice(crop, season);
+      inheritedEffects.push(...(crop.effects ?? []));
       next.bag.crops = next.bag.crops
         .map((stack) => (stack === crop ? { ...stack, qty: stack.qty - 1 } : stack))
         .filter((stack) => stack.qty > 0);
@@ -2783,12 +2786,16 @@ function cookRecipe(ledger: GardenLedger, id: string, season: SeasonSnapshot, no
     const product = (next.bag.products ?? []).find((stack) => stack.product === ingredient && stack.qty > 0);
     if (product === undefined) return { ok: false, code: "NO_INPUT" };
     inputValue += productPrice(product, season);
+    inheritedEffects.push(...(product.effects ?? []));
     next.bag.products = (next.bag.products ?? [])
       .map((stack) => (stack === product ? { ...stack, qty: stack.qty - 1 } : stack))
       .filter((stack) => stack.qty > 0);
   }
-  // LLM suggestion is advisory; payout is capped by the real ingredient value.
-  const payout = Math.max(1, Math.min(recipe.price, Math.round(inputValue * 1.5)));
+  // The dish is always worth more than its ingredients, and it keeps every
+  // mutation from those ingredients via the combined effect multiplier.
+  const mutationMultiplier = effectsMultiplier(canonicalEffects(inheritedEffects));
+  const basePayout = Math.max(recipe.price, Math.ceil(inputValue * 1.1));
+  const payout = Math.max(1, Math.min(5_000_000_000, Math.round(basePayout * mutationMultiplier)));
   next.coins += payout;
   next.stats.earned += payout;
   next.weekEarned += payout;

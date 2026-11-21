@@ -16,6 +16,9 @@ import {
   isGardenCode,
   isRecoveryKey,
   parseGardenAuth,
+  productById,
+  seedById,
+  treeById,
   seasonAt,
   type GardenCredentials,
   type MarketSnapshot,
@@ -179,10 +182,20 @@ async function suggestRecipeRoute(env: Env, auth: GardenCredentials, request: Re
     };
     const valid = parsed.valid === true;
     const output = typeof parsed.output === "string" ? parsed.output.trim().slice(0, 40) : "";
-    const price =
+    const ingredientFloor = inputs.reduce((sum, id) => {
+      const product = productById(id);
+      if (product !== undefined) return sum + product.base;
+      const seed = seedById(id);
+      if (seed !== undefined) return sum + seed.sell;
+      const tree = treeById(id);
+      return sum + (tree?.sell ?? 0);
+    }, 0);
+    const suggested =
       typeof parsed.suggestedPrice === "number"
         ? Math.max(1, Math.min(5_000_000_000, Math.floor(parsed.suggestedPrice)))
         : 0;
+    // Finished dishes must be worth more than their ingredients.
+    const price = Math.max(suggested, Math.ceil(ingredientFloor * 1.5));
     if (!valid || output.length === 0) {
       return json({ valid: false, reason: typeof parsed.reason === "string" ? parsed.reason : "" });
     }

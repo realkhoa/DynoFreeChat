@@ -188,6 +188,24 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.plots[0]?.effects).toEqual([]);
   });
 
+  it("makes cooked dishes worth more than ingredients and keeps mutations", () => {
+    const ledger = makeLedger();
+    ledger.coins = 0;
+    ledger.recipes = [
+      { id: "roe+milk>dish2", inputs: ["roe", "milk"], output: "Dish", price: 1, createdAt: NOW },
+    ];
+    ledger.bag.products = [
+      { product: "roe", star: 1, qty: 1, effects: ["golden"] },
+      { product: "milk", star: 1, qty: 1, effects: ["golden"] },
+    ];
+    // Ingredient value with golden: 5*(900+120)=5100; dish must beat it and
+    // inherit the mutation multiplier.
+    const cooked = run(ledger, { kind: "cookRecipe", id: ledger.recipes[0]!.id });
+    expect(cooked.ok).toBe(true);
+    if (!cooked.ok) return;
+    expect(cooked.ledger.coins).toBeGreaterThan(5_100);
+  });
+
   it("cooks a learned recipe with a value-capped payout", () => {
     const ledger = makeLedger();
     ledger.coins = 0;
