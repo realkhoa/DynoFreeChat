@@ -1051,6 +1051,14 @@ describe("garden wire parsing", () => {
     );
   });
 
+  it("parses the fire-system attachment slot", () => {
+    expect(parseGardenAction({ kind: "attachMachine", slot: "fire", id: "fireSystem" })).toEqual({
+      kind: "attachMachine",
+      slot: "fire",
+      id: "fireSystem",
+    });
+  });
+
   it("parses tree actions and round-trips fruit bag keys", () => {
     expect(parseGardenAction({ kind: "plantTree", slot: 0, tree: "apple" })).toEqual({
       kind: "plantTree",

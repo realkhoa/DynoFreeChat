@@ -3903,13 +3903,17 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   if (kind === "attachMachine") {
     const slot = value.slot;
     const id = typeof value.id === "string" ? attachmentById(value.id) : undefined;
-    if (slot !== "garden" && slot !== "coop" && slot !== "barn" && slot !== "pond") return null;
+    if (slot !== "garden" && slot !== "fire" && slot !== "coop" && slot !== "barn" && slot !== "pond") {
+      return null;
+    }
     if (id === undefined || id.slot !== slot) return null;
     return { kind, slot, id: id.id };
   }
   if (kind === "detachMachine") {
     const slot = value.slot;
-    if (slot !== "garden" && slot !== "coop" && slot !== "barn" && slot !== "pond") return null;
+    if (slot !== "garden" && slot !== "fire" && slot !== "coop" && slot !== "barn" && slot !== "pond") {
+      return null;
+    }
     return { kind, slot };
   }
   if (kind === "setMachineLimit") {
