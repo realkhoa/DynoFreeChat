@@ -280,8 +280,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let dynopediaCategory = "effects";
   let recipeInputA = "roe";
   let recipeInputB = "milk";
-  let recipeOutput = "";
   let recipeResult = "";
+  let globalRecipes: Array<{
+    id: string;
+    inputs: string[];
+    output: string;
+    price: number;
+    createdAt: number;
+  }> = [];
   let dynopediaQuery = "";
   let machineLimitDraft = "";
   let specialSupplyPicker: { kind: "fertilize" | "spray"; slot: number } | null = null;
@@ -1095,6 +1101,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       void loadGuilds();
     }
     if (next === "log") void loadGlobalSales();
+    if (next === "dynopedia") void loadGlobalRecipes();
     if (next === "event") void loadRaid();
     syncGardenQuery();
     render();
@@ -3862,6 +3869,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /** @brief Loads the public AI-discovered recipe list. */
+  async function loadGlobalRecipes(): Promise<void> {
+    try {
+      globalRecipes = (await api.globalRecipes()).recipes;
+      render();
+    } catch {
+      // The list stays empty while offline.
+    }
+  }
+
   /** @brief Builds the Dynopedia wiki tab: catalogs and search. */
   function buildDynopedia(): HTMLElement {
     const wrap = div("garden-dynopedia garden-market");
@@ -3911,7 +3928,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (const [index, value, label] of [
       ["1", recipeInputA, t("recipe.input1")],
       ["2", recipeInputB, t("recipe.input2")],
-      ["out", recipeOutput, t("recipe.output")],
     ] as const) {
       const input = document.createElement("input");
       input.type = "text";
@@ -3920,11 +3936,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       input.placeholder = label;
       input.dataset.role = "recipeInput";
       input.dataset.index = index;
-      if (index !== "out") input.setAttribute("list", "recipe-ingredients");
+      input.setAttribute("list", "recipe-ingredients");
       input.setAttribute("aria-label", label);
       recipeRow.append(input);
     }
-    lab.append(recipeRow, actionButton(t("recipe.validate"), "recipeValidate"));
+    lab.append(recipeRow, actionButton(t("recipe.suggest"), "recipeSuggest"));
     if (recipeResult.length > 0) lab.append(lineBlock(recipeResult));
     for (const recipe of state?.extras.recipes ?? []) {
       const row = div("garden-machine-row");
@@ -3937,6 +3953,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       cook.dataset.id = recipe.id;
       row.append(cook);
       lab.append(row);
+    }
+    if (globalRecipes.length > 0) {
+      lab.append(lineBlock(`// ${t("recipe.global")}`));
+      for (const recipe of globalRecipes) {
+        const row = div("garden-machine-row");
+        row.append(
+          lineBlock(`${recipe.inputs.join(" + ")} → ${recipe.output} · ${formatCompact(recipe.price)}c`),
+        );
+        const learn = actionButton(t("recipe.learn"), "recipeLearn");
+        learn.dataset.id = recipe.id;
+        row.append(learn);
+        lab.append(row);
+      }
     }
     wrap.append(lab);
 
@@ -5664,9 +5693,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           });
         return;
       }
-      case "recipeValidate": {
+      case "recipeSuggest": {
         const inputs = [recipeInputA.trim(), recipeInputB.trim()].filter((entry) => entry.length > 0);
-        if (inputs.length < 2 || recipeOutput.trim().length === 0) {
+        if (inputs.length < 2) {
           message = { text: t("recipe.missing"), kind: "err" };
           render();
           return;
@@ -5674,17 +5703,37 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         recipeResult = t("recipe.checking");
         render();
         void api
-          .validateRecipe(inputs, recipeOutput.trim())
+          .suggestRecipe(inputs)
           .then((result) => {
             recipeResult = result.valid
-              ? t("recipe.valid", { price: formatCompact(result.suggestedPrice), reason: result.reason })
+              ? t("recipe.suggested", {
+                  name: result.recipe?.output ?? "",
+                  price: formatCompact(result.recipe?.price ?? 0),
+                })
               : t("recipe.invalid", { reason: result.reason });
             if (result.valid) void refresh();
+            void loadGlobalRecipes();
           })
           .catch(() => {
             recipeResult = t("recipe.offline");
           })
           .finally(() => render());
+        return;
+      }
+      case "recipeLearn": {
+        const id = target.dataset.id;
+        const recipe = globalRecipes.find((entry) => entry.id === id);
+        if (recipe !== undefined) {
+          void api
+            .learnRecipe({ inputs: recipe.inputs, output: recipe.output, price: recipe.price })
+            .then(() => {
+              message = { text: t("recipe.learned"), kind: "info" };
+              void refresh();
+            })
+            .catch(() => {
+              message = { text: t("recipe.offline"), kind: "err" };
+            });
+        }
         return;
       }
       case "logRefresh":
@@ -6360,7 +6409,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (target.dataset.role === "recipeInput") {
       if (target.dataset.index === "1") recipeInputA = target.value;
       else if (target.dataset.index === "2") recipeInputB = target.value;
-      else recipeOutput = target.value;
       return;
     }
     if (target.dataset.role === "dynopediaSearch") {

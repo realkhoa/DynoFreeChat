@@ -56,6 +56,7 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   if (name === "market" && request.method === "GET") return marketRoute(env);
   if (name === "leaderboard" && request.method === "GET") return leaderboard(env, url);
   if (name === "raid" && request.method === "GET") return hubStub(env).fetch("https://hub/raid");
+  if (name === "recipes" && request.method === "GET") return hubStub(env).fetch("https://hub/recipes");
   if (name === "guild" && request.method === "GET" && parts[3] === "list") {
     return hubStub(env).fetch("https://hub/guild/list");
   }
@@ -87,7 +88,14 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   const auth = parseGardenAuth(request.headers.get(GARDEN_AUTH_HEADER));
   if (auth === null) return json({ code: "UNAUTHORIZED" }, 401);
 
+  if (name === "recipe" && parts[3] === "suggest" && request.method === "POST") {
+    return suggestRecipeRoute(env, auth, request);
+  }
+  if (name === "recipe" && parts[3] === "learn" && request.method === "POST") {
+    return suggestLearnRoute(env, auth, request);
+  }
   if (name === "recipe" && request.method === "POST") return recipeRoute(env, auth, request);
+
   if (name === "raid" && request.method === "POST") return forwardOwner(env, auth, "/raid", "POST", request);
   if (name === "guild") {
     const action = parts[3];
@@ -123,6 +131,96 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
     return forwardOwner(env, auth, "/recovery", "POST", request);
 
   return json({ code: "NOT_FOUND" }, 404);
+}
+
+/** @brief Asks Beam Free to invent a recipe from two ingredients. */
+async function suggestRecipeRoute(env: Env, auth: GardenCredentials, request: Request): Promise<Response> {
+  const body = await readJson(request);
+  const inputs = Array.isArray(body.inputs)
+    ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 4)
+    : [];
+  if (inputs.length < 2) return json({ code: "BAD_REQUEST" }, 400);
+  const key = env.OPENCODE_API_KEY;
+  if (key === undefined || key.length === 0) return json({ code: "RECIPE_AI_OFFLINE" }, 503);
+  const prompt = [
+    "You invent one cozy farming-game dish from the given ingredients.",
+    'Reply with JSON only: {"valid":boolean,"reason":string,"output":string,"suggestedPrice":number}.',
+    "output must be a short dish name (max 3 words), valid only for edible/plausible combinations.",
+    `Ingredients: ${inputs.join(" + ")}`,
+  ].join("\n");
+  try {
+    const response = await fetch("https://opencode.ai/inference/go/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+        "x-opencode-session": "dynofreechat-recipe-suggest",
+        "user-agent": "DynoFreeChat/1.0",
+      },
+      body: JSON.stringify({
+        model: "beam-free",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 400,
+      }),
+    });
+    if (!response.ok) return json({ code: "RECIPE_AI_ERROR" }, 502);
+    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
+    const raw = payload.choices?.[0]?.message?.content ?? "";
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match === null) return json({ code: "RECIPE_AI_ERROR" }, 502);
+    const parsed = JSON.parse(match[0]) as {
+      valid?: unknown;
+      reason?: unknown;
+      output?: unknown;
+      suggestedPrice?: unknown;
+    };
+    const valid = parsed.valid === true;
+    const output = typeof parsed.output === "string" ? parsed.output.trim().slice(0, 40) : "";
+    const price =
+      typeof parsed.suggestedPrice === "number"
+        ? Math.max(1, Math.min(5_000_000_000, Math.floor(parsed.suggestedPrice)))
+        : 0;
+    if (!valid || output.length === 0) {
+      return json({ valid: false, reason: typeof parsed.reason === "string" ? parsed.reason : "" });
+    }
+    const saved = await hubStub(env).fetch("https://hub/recipes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inputs, output, price, createdBy: auth.playerId }),
+    });
+    const savedPayload = (await saved.json()) as { recipe?: unknown };
+    const recipe = savedPayload.recipe ?? {
+      id: `${inputs.join("+")}>${output}`.toLowerCase(),
+      inputs,
+      output,
+      price,
+    };
+    // Auto-learn for the discoverer; other players can learn it from the global list.
+    await gardenStub(env, auth.playerId).fetch("https://garden/recipe", {
+      method: "POST",
+      headers: ownerHeaders(auth.token),
+      body: JSON.stringify({ inputs, output, price }),
+    });
+    return json({ valid: true, reason: typeof parsed.reason === "string" ? parsed.reason : "", recipe });
+  } catch {
+    return json({ code: "RECIPE_AI_ERROR" }, 502);
+  }
+}
+
+/** @brief Copies a global recipe into the caller's garden. */
+async function suggestLearnRoute(env: Env, auth: GardenCredentials, request: Request): Promise<Response> {
+  const body = await readJson(request);
+  const inputs = Array.isArray(body.inputs)
+    ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 4)
+    : [];
+  const output = typeof body.output === "string" ? body.output.trim().slice(0, 40) : "";
+  const price = typeof body.price === "number" ? Math.max(1, Math.floor(body.price)) : 0;
+  if (inputs.length < 2 || output.length === 0) return json({ code: "BAD_REQUEST" }, 400);
+  return gardenStub(env, auth.playerId).fetch("https://garden/recipe", {
+    method: "POST",
+    headers: ownerHeaders(auth.token),
+    body: JSON.stringify({ inputs, output, price }),
+  });
 }
 
 /** @brief Validates a player-proposed cooking recipe with OpenCode Go Beam Free. */

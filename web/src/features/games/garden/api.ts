@@ -262,6 +262,41 @@ export class GardenApi {
     });
   }
 
+  /** @brief Asks Beam Free to invent a global recipe from ingredients. */
+  async suggestRecipe(inputs: string[]): Promise<{
+    valid: boolean;
+    reason: string;
+    recipe?: { id: string; inputs: string[]; output: string; price: number; createdAt?: number };
+  }> {
+    return this.request<{
+      valid: boolean;
+      reason: string;
+      recipe?: { id: string; inputs: string[]; output: string; price: number; createdAt?: number };
+    }>("/api/garden/recipe/suggest", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inputs }),
+    });
+  }
+
+  /** @brief Reads the public global recipe list. */
+  async globalRecipes(): Promise<{
+    recipes: Array<{ id: string; inputs: string[]; output: string; price: number; createdAt: number }>;
+  }> {
+    return this.request<{
+      recipes: Array<{ id: string; inputs: string[]; output: string; price: number; createdAt: number }>;
+    }>("/api/garden/recipes", { method: "GET" });
+  }
+
+  /** @brief Copies one global recipe into this garden. */
+  async learnRecipe(recipe: { inputs: string[]; output: string; price: number }): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>("/api/garden/recipe/learn", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(recipe),
+    });
+  }
+
   /** @brief Asks the recipe-lab model whether a combination makes sense. */
   async validateRecipe(
     inputs: string[],

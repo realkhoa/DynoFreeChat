@@ -1776,6 +1776,14 @@ export class GardenHub extends DurableObject<Env> {
         window_start INTEGER NOT NULL,
         count INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS global_recipes (
+        id TEXT PRIMARY KEY,
+        inputs TEXT NOT NULL,
+        output TEXT NOT NULL,
+        price INTEGER NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS guilds (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1847,6 +1855,8 @@ export class GardenHub extends DurableObject<Env> {
     if (request.method === "GET" && url.pathname === "/by-recovery") return this.byRecovery(url);
     if (request.method === "GET" && url.pathname === "/leaderboard") return this.leaderboard(url);
     if (request.method === "GET" && url.pathname === "/raid") return this.raid();
+    if (request.method === "GET" && url.pathname === "/recipes") return this.globalRecipes();
+    if (request.method === "POST" && url.pathname === "/recipes") return this.saveGlobalRecipe(request);
     if (request.method === "POST" && url.pathname === "/guild/create") return this.guildCreate(request);
     if (request.method === "POST" && url.pathname === "/guild/join") return this.guildJoin(request);
     if (request.method === "POST" && url.pathname === "/guild/leave") return this.guildLeave(request);
@@ -1996,6 +2006,51 @@ export class GardenHub extends DurableObject<Env> {
         harvested: row.harvested,
         updatedAt: row.updated_at,
       })),
+    });
+  }
+
+  /** @brief Public list of AI-discovered global recipes. */
+  private globalRecipes(): Response {
+    const rows = this.sql
+      .exec<SqlRow<{ id: string; inputs: string; output: string; price: number; created_at: number }>>(
+        "SELECT id, inputs, output, price, created_at FROM global_recipes ORDER BY created_at DESC LIMIT 60",
+      )
+      .toArray();
+    return json({
+      recipes: rows.map((row) => ({
+        id: row.id,
+        inputs: JSON.parse(row.inputs) as string[],
+        output: row.output,
+        price: row.price,
+        createdAt: row.created_at,
+      })),
+    });
+  }
+
+  /** @brief Stores one AI-discovered global recipe (worker already validated). */
+  private async saveGlobalRecipe(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const inputs = Array.isArray(body.inputs)
+      ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 4)
+      : [];
+    const output = typeof body.output === "string" ? body.output.trim().slice(0, 40) : "";
+    const price =
+      typeof body.price === "number" ? Math.max(1, Math.min(5_000_000_000, Math.floor(body.price))) : 0;
+    if (inputs.length < 2 || output.length === 0) return json({ code: "BAD_REQUEST" }, 400);
+    const id = `${inputs.join("+")}>${output}`.toLowerCase();
+    const createdBy = typeof body.createdBy === "string" ? body.createdBy : "";
+    this.sql.exec(
+      "INSERT OR IGNORE INTO global_recipes (id, inputs, output, price, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      id,
+      JSON.stringify(inputs),
+      output,
+      price,
+      createdBy,
+      Date.now(),
+    );
+    return json({
+      ok: true,
+      recipe: { id, inputs, output, price, createdAt: Date.now() },
     });
   }
 
