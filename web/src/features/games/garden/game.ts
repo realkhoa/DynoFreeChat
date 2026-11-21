@@ -51,6 +51,7 @@ import {
   FINAL_SHOP,
   FINAL_SHOP_PRESTIGE,
   PRESTIGE_SHOP,
+  KITCHEN_PRICE,
   prestigeGrowScale,
   weeklyModifier,
   weekEndsAt,
@@ -3353,6 +3354,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       );
       return wrap;
     }
+    wrap.append(lineBlock(`// ${t("kitchen.title")}`));
+    if (state.extras.kitchen === true) {
+      wrap.append(lineBlock(t("kitchen.built")));
+    } else {
+      wrap.append(
+        actionButton(
+          t("kitchen.build", { cost: formatCompact(KITCHEN_PRICE) }),
+          "buildKitchen",
+          (state.coins ?? 0) >= KITCHEN_PRICE,
+        ),
+      );
+      wrap.append(lineBlock(t("kitchen.hint")));
+    }
     for (const machine of MACHINES) {
       const built = state.warehouse.machines[machine.id];
       const panel = div("garden-warehouse-machine");
@@ -3949,7 +3963,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           `${t("recipe.saved")}: ${recipe.inputs.join(" + ")} → ${recipe.output} · ${formatCompact(recipe.price)}c`,
         ),
       );
-      const cook = actionButton(t("recipe.cook"), "cookRecipe");
+      const canCook = state?.extras.kitchen === true;
+      const cook = actionButton(t("recipe.cook"), "cookRecipe", canCook);
+      if (!canCook) lab.append(lineBlock(t("kitchen.required")));
       cook.dataset.id = recipe.id;
       row.append(cook);
       lab.append(row);
@@ -6002,6 +6018,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       case "staffMenuGardener":
       case "staffMenuWaterer":
+      case "buildKitchen":
+        void runAction({ kind: "buildKitchen" }, t("kitchen.builtToast"));
+        return;
       case "guildCreate": {
         if (state === null) return;
         const name = guildNameDraft.trim();

@@ -90,6 +90,7 @@ import {
   FIRE_CHANCE_PER_CYCLE,
   CROW_CHANCE_PER_CYCLE,
   PLOT_REPAIR_COST,
+  KITCHEN_PRICE,
   TREE_DISEASE_DEATH_CYCLES,
   PEST_GROWTH_PENALTY,
   PEST_PROTECTION_MS,
@@ -335,6 +336,7 @@ export interface GardenLedger {
   timeline: TimelineEvent[];
   raidLastAt: number;
   chainStep: number;
+  kitchen: boolean;
   recipes: CustomRecipe[];
   recipeCookedAt: Record<string, number>;
   /** Wheel counters. */
@@ -475,6 +477,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     timeline: [],
     raidLastAt: 0,
     chainStep: 0,
+    kitchen: false,
     recipes: [],
     recipeCookedAt: {},
     wheelSpins: 0,
@@ -539,6 +542,7 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
     achievements: [...ledger.achievements],
     collection: [...ledger.collection],
     chainStep: ledger.chainStep ?? 0,
+    kitchen: ledger.kitchen === true,
     recipes: (ledger.recipes ?? []).map((recipe) => ({ ...recipe, inputs: [...recipe.inputs] })),
     recipeCookedAt: { ...(ledger.recipeCookedAt ?? {}) },
     greenhouse: ledger.greenhouse,
@@ -686,6 +690,8 @@ export function applyGardenAction(
       return fulfillChain(ledger, now);
     case "cookRecipe":
       return cookRecipe(ledger, action.id, season, now);
+    case "buildKitchen":
+      return buildKitchen(ledger, now);
     case "buyPrestigeSkill":
       return buyPrestigeSkill(ledger, action.skill, now);
     case "respecPrestige":
@@ -2765,8 +2771,22 @@ function respecPrestige(ledger: GardenLedger, now: number): RuleResult {
   return changed(next, now);
 }
 
+/** @brief Builds the warehouse kitchen required for custom recipes. */
+function buildKitchen(ledger: GardenLedger, now: number): RuleResult {
+  if (ledger.warehouse < 1) return { ok: false, code: "WAREHOUSE_LOCKED" };
+  if (ledger.kitchen === true) return { ok: false, code: "ALREADY_CLAIMED" };
+  if (ledger.coins < KITCHEN_PRICE) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const next = clone(ledger);
+  next.coins -= KITCHEN_PRICE;
+  next.stats.spent += KITCHEN_PRICE;
+  next.kitchen = true;
+  logTimeline(next, "purchase", now, { item: "kitchen", coins: KITCHEN_PRICE });
+  return changed(next, now);
+}
+
 /** @brief Cooks one learned custom recipe, consuming one of each input. */
 function cookRecipe(ledger: GardenLedger, id: string, season: SeasonSnapshot, now: number): RuleResult {
+  if (ledger.kitchen !== true) return { ok: false, code: "KITCHEN_LOCKED" };
   const recipe = (ledger.recipes ?? []).find((entry) => entry.id === id);
   if (recipe === undefined) return { ok: false, code: "BAD_REQUEST" };
   if (now - (ledger.recipeCookedAt?.[id] ?? 0) < DAY_MS) return { ok: false, code: "TRY_LATER" };

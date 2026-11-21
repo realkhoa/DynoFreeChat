@@ -1828,6 +1828,9 @@ export interface GuildSnapshot {
   readonly createdAt: number;
 }
 
+/** Price of building the kitchen inside the warehouse. */
+export const KITCHEN_PRICE = 50_000_000;
+
 /** One public row in the global sale log. */
 export interface GlobalSaleEntry extends SaleRecord {
   /** Seller share code. */
@@ -2352,6 +2355,8 @@ export interface ExtrasSnapshot {
   readonly recipes?: readonly CustomRecipe[];
   /** Last cook timestamp per custom recipe. */
   readonly recipeCookedAt?: Readonly<Record<string, number>>;
+  /** Whether the warehouse kitchen has been built. */
+  readonly kitchen?: boolean;
   /** Greenhouse level, 0..3. */
   readonly greenhouse: number;
   /** Pet level (legacy field, unused by the gacha system). */
@@ -3234,6 +3239,7 @@ export type GardenAction =
   | { readonly kind: "respecPrestige" }
   | { readonly kind: "fulfillChain" }
   | { readonly kind: "cookRecipe"; readonly id: string }
+  | { readonly kind: "buildKitchen" }
   | { readonly kind: "plantFruitSeed"; readonly slot: number; readonly seed: SeedId }
   | { readonly kind: "giftCoins"; readonly code: string; readonly amount: number }
   | { readonly kind: "giftSeed"; readonly code: string; readonly seed: SeedId; readonly qty: number }
@@ -3301,7 +3307,8 @@ export type GardenErrorCode =
   | "GIFT_SELF"
   | "PRESTIGE_LOCKED"
   | "PLOT_DAMAGED"
-  | "WRONG_AREA";
+  | "WRONG_AREA"
+  | "KITCHEN_LOCKED";
 
 /** Successful response to a garden action. */
 export interface GardenActResponse {
@@ -3841,6 +3848,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   if (kind === "claimCodex") return { kind };
   if (kind === "respecPrestige") return { kind };
   if (kind === "fulfillChain") return { kind };
+  if (kind === "buildKitchen") return { kind };
   if (kind === "cookRecipe") {
     return typeof value.id === "string" && value.id.length > 0 ? { kind, id: value.id } : null;
   }

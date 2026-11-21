@@ -555,6 +555,7 @@ export class Garden extends DurableObject<Env> {
       recipes: raw.recipes ?? [],
       recipeCookedAt: raw.recipeCookedAt ?? {},
       chainStep: typeof raw.chainStep === "number" ? raw.chainStep : 0,
+      kitchen: raw.kitchen === true,
       wheelSpins: raw.wheelSpins ?? 0,
       wheelPity: raw.wheelPity ?? 0,
       wheelLast: raw.wheelLast ?? "",

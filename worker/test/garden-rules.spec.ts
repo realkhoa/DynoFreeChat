@@ -188,9 +188,24 @@ describe("garden ledger rules", () => {
     expect(planted.ledger.plots[0]?.effects).toEqual([]);
   });
 
+  it("requires a warehouse kitchen before cooking", () => {
+    const ledger = makeLedger();
+    ledger.recipes = [
+      { id: "roe+milk>gate", inputs: ["roe", "milk"], output: "Gate", price: 5_000, createdAt: NOW },
+    ];
+    ledger.bag.products = [
+      { product: "roe", star: 1, qty: 1 },
+      { product: "milk", star: 1, qty: 1 },
+    ];
+    const blocked = run(ledger, { kind: "cookRecipe", id: ledger.recipes[0]!.id });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.code).toBe("KITCHEN_LOCKED");
+  });
+
   it("makes cooked dishes worth more than ingredients and keeps mutations", () => {
     const ledger = makeLedger();
     ledger.coins = 0;
+    ledger.kitchen = true;
     ledger.recipes = [
       { id: "roe+milk>dish2", inputs: ["roe", "milk"], output: "Dish", price: 1, createdAt: NOW },
     ];
@@ -209,6 +224,7 @@ describe("garden ledger rules", () => {
   it("cooks a learned recipe with a value-capped payout", () => {
     const ledger = makeLedger();
     ledger.coins = 0;
+    ledger.kitchen = true;
     ledger.recipes = [
       {
         id: "roe+milk>dish",
