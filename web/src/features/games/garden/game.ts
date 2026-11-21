@@ -5714,8 +5714,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             if (result.valid) void refresh();
             void loadGlobalRecipes();
           })
-          .catch(() => {
-            recipeResult = t("recipe.offline");
+          .catch((error: unknown) => {
+            const code =
+              typeof error === "object" && error !== null && "code" in error
+                ? String((error as { code: unknown }).code)
+                : "NETWORK";
+            recipeResult = code === "RECIPE_AI_OFFLINE" ? t("recipe.offline") : t("recipe.aiError", { code });
           })
           .finally(() => render());
         return;

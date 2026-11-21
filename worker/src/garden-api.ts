@@ -160,12 +160,15 @@ async function suggestRecipeRoute(env: Env, auth: GardenCredentials, request: Re
       body: JSON.stringify({
         model: "beam-free",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 400,
+        max_tokens: 900,
       }),
     });
     if (!response.ok) return json({ code: "RECIPE_AI_ERROR" }, 502);
-    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-    const raw = payload.choices?.[0]?.message?.content ?? "";
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string | null; reasoning_content?: string | null } }>;
+    };
+    const raw =
+      payload.choices?.[0]?.message?.content ?? payload.choices?.[0]?.message?.reasoning_content ?? "";
     const match = raw.match(/\{[\s\S]*\}/);
     if (match === null) return json({ code: "RECIPE_AI_ERROR" }, 502);
     const parsed = JSON.parse(match[0]) as {
@@ -253,14 +256,15 @@ async function recipeRoute(env: Env, auth: GardenCredentials, request: Request):
       body: JSON.stringify({
         model: "beam-free",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 500,
+        max_tokens: 900,
       }),
     });
     if (!response.ok) return json({ code: "RECIPE_AI_ERROR" }, 502);
     const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string | null } }>;
+      choices?: Array<{ message?: { content?: string | null; reasoning_content?: string | null } }>;
     };
-    const raw = payload.choices?.[0]?.message?.content ?? "";
+    const raw =
+      payload.choices?.[0]?.message?.content ?? payload.choices?.[0]?.message?.reasoning_content ?? "";
     const match = raw.match(/\{[\s\S]*\}/);
     if (match === null) return json({ code: "RECIPE_AI_ERROR" }, 502);
     const parsed = JSON.parse(match[0]) as {
