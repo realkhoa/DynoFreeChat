@@ -800,6 +800,13 @@ export const EFFECTS: readonly EffectDefinition[] = [
  */
 export const GROWTH_MUTATION_SCALE = 0.15;
 
+/** Mutation polls run independently of the day/night phase clock. */
+export const MUTATION_POLL_MS = 30_000;
+/** Base chance scale applied to one 30s mutation poll. */
+export const MUTATION_POLL_SCALE = 0.015;
+/** Interval the prestige/wealth mutation bonuses were balanced against. */
+export const MUTATION_BONUS_INTERVAL_MS = 5 * 60_000;
+
 /** Effects every planting can roll even under a calm sky. */
 export const BASE_EFFECT_CHANCES: Readonly<Partial<Record<EffectId, number>>> = {
   golden: 0.03,
@@ -4229,9 +4236,10 @@ function rollOneMutation(
     if (goodOnly && effect.multiplier <= 1) continue;
     let weight = BASE_EFFECT_CHANCES[effect.id] ?? 0;
     for (const event of events) weight += event.effectChances[effect.id] ?? 0;
-    weight = weight * GROWTH_MUTATION_SCALE * (boost[effect.id] ?? 1);
-    weight += mutationBoost;
-    if (effect.multiplier < 1) weight += badLuck;
+    weight = weight * MUTATION_POLL_SCALE * (boost[effect.id] ?? 1);
+    const bonusScale = MUTATION_POLL_MS / MUTATION_BONUS_INTERVAL_MS;
+    weight += mutationBoost * bonusScale;
+    if (effect.multiplier < 1) weight += badLuck * bonusScale;
     if (weight <= 0) continue;
     weights.push({ id: effect.id, weight });
     total += weight;
@@ -4270,16 +4278,16 @@ export function weatherEffects(
 ): EffectId[] {
   const end = Math.max(plantedAt, until);
   const effects: EffectId[] = [];
-  // One periodic check per day phase; at most one mutation per check, never a
-  // planting-time jackpot.
-  let window = dayPhaseAt(dayPhaseAt(plantedAt).endsAt);
-  for (let guard = 0; window.startsAt <= end && guard < 200; guard += 1) {
-    const events = phaseEvents(window);
-    const rng = createRng(hash32(`${kindId}:${slot}:${window.index}`));
+  // Independent 30s mutation polls; the day/night phase only decides which
+  // weather is active for that poll. At most one mutation per poll.
+  let at = plantedAt + MUTATION_POLL_MS;
+  for (let guard = 0; at <= end && guard < 2000; guard += 1) {
+    const events = phaseEvents(dayPhaseAt(at));
+    const poll = Math.floor(at / MUTATION_POLL_MS);
+    const rng = createRng(hash32(`${kindId}:${slot}:poll:${poll}`));
     const rolled = rollOneMutation(events, rng, sprayBoostFor(spray), goodOnly, mutationBoost, badLuck);
     if (rolled !== undefined) effects.push(rolled);
-    if (window.endsAt > end) break;
-    window = dayPhaseAt(window.endsAt);
+    at += MUTATION_POLL_MS;
   }
   return canonicalEffects(effects);
 }

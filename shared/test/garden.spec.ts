@@ -43,6 +43,8 @@ import {
   effectById,
   EFFECTS,
   GROWTH_MUTATION_SCALE,
+  MUTATION_POLL_MS,
+  weatherEffects,
   MAX_EFFECT_STACK,
   eventAt,
   formatGardenAuth,
@@ -119,7 +121,6 @@ import {
   nextTabPrice,
   rollEffectsFor,
   resolvedCropEffects,
-  weatherEffects,
   sprayById,
   supplyById,
   seasonAt,
@@ -447,6 +448,11 @@ describe("farm buildings", () => {
     expect(seedMakerChance(2)).toBeCloseTo(0.7);
     expect(seedMakerChance(5)).toBe(1);
     expect(seedMakerChance(9)).toBe(1);
+  });
+
+  it("polls mutations on an independent 30s clock", () => {
+    expect(MUTATION_POLL_MS).toBe(30_000);
+    expect(weatherEffects("carrot", 0, NOW, NOW + MUTATION_POLL_MS - 1)).toEqual([]);
   });
 
   it("derives animal stat effects from genes", () => {
