@@ -965,7 +965,7 @@ export class Garden extends DurableObject<Env> {
     if (ledger === null) return this.unauthorized();
     const body = await readJson(request);
     const inputs = Array.isArray(body.inputs)
-      ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 4)
+      ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 6)
       : [];
     const output = typeof body.output === "string" ? body.output.trim().slice(0, 40) : "";
     const price =
@@ -2032,7 +2032,7 @@ export class GardenHub extends DurableObject<Env> {
   private async saveGlobalRecipe(request: Request): Promise<Response> {
     const body = await readJson(request);
     const inputs = Array.isArray(body.inputs)
-      ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 4)
+      ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 6)
       : [];
     const output = typeof body.output === "string" ? body.output.trim().slice(0, 40) : "";
     const price =

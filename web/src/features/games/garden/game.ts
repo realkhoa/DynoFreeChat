@@ -279,8 +279,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let globalSales: GlobalSaleEntry[] = [];
   let globalSalesStatus: "idle" | "loading" | "error" = "idle";
   let dynopediaCategory = "effects";
-  let recipeInputA = "roe";
-  let recipeInputB = "milk";
+  let recipeInputs: string[] = ["roe", "milk"];
   let recipeResult = "";
   let globalRecipes: Array<{
     id: string;
@@ -3939,20 +3938,25 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     lab.append(ingredientList);
     lab.append(lineBlock(`// ${t("recipe.title")}`));
     const recipeRow = div("garden-restore-row");
-    for (const [index, value, label] of [
-      ["1", recipeInputA, t("recipe.input1")],
-      ["2", recipeInputB, t("recipe.input2")],
-    ] as const) {
+    recipeInputs.forEach((value, index) => {
       const input = document.createElement("input");
       input.type = "text";
       input.className = "stage-input";
       input.value = value;
-      input.placeholder = label;
+      input.placeholder = t("recipe.ingredient", { index: index + 1 });
       input.dataset.role = "recipeInput";
-      input.dataset.index = index;
+      input.dataset.index = String(index);
       input.setAttribute("list", "recipe-ingredients");
-      input.setAttribute("aria-label", label);
+      input.setAttribute("aria-label", t("recipe.ingredient", { index: index + 1 }));
       recipeRow.append(input);
+      if (recipeInputs.length > 2) {
+        const remove = actionButton("×", "recipeRemoveInput");
+        remove.dataset.index = String(index);
+        recipeRow.append(remove);
+      }
+    });
+    if (recipeInputs.length < 6) {
+      recipeRow.append(actionButton(t("recipe.addIngredient"), "recipeAddInput"));
     }
     lab.append(recipeRow, actionButton(t("recipe.suggest"), "recipeSuggest"));
     if (recipeResult.length > 0) lab.append(lineBlock(recipeResult));
@@ -5709,8 +5713,20 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           });
         return;
       }
+      case "recipeAddInput":
+        if (recipeInputs.length < 6) recipeInputs.push("");
+        render();
+        return;
+      case "recipeRemoveInput": {
+        const index = Number(target.dataset.index);
+        if (recipeInputs.length > 2 && Number.isInteger(index)) {
+          recipeInputs.splice(index, 1);
+          render();
+        }
+        return;
+      }
       case "recipeSuggest": {
-        const inputs = [recipeInputA.trim(), recipeInputB.trim()].filter((entry) => entry.length > 0);
+        const inputs = recipeInputs.map((entry) => entry.trim()).filter((entry) => entry.length > 0);
         if (inputs.length < 2) {
           message = { text: t("recipe.missing"), kind: "err" };
           render();
@@ -6430,8 +6446,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return;
     }
     if (target.dataset.role === "recipeInput") {
-      if (target.dataset.index === "1") recipeInputA = target.value;
-      else if (target.dataset.index === "2") recipeInputB = target.value;
+      const index = Number(target.dataset.index);
+      if (Number.isInteger(index) && index >= 0 && index < recipeInputs.length) {
+        recipeInputs[index] = target.value;
+      }
       return;
     }
     if (target.dataset.role === "dynopediaSearch") {

@@ -140,7 +140,7 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
 async function suggestRecipeRoute(env: Env, auth: GardenCredentials, request: Request): Promise<Response> {
   const body = await readJson(request);
   const inputs = Array.isArray(body.inputs)
-    ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 4)
+    ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 6)
     : [];
   if (inputs.length < 2) return json({ code: "BAD_REQUEST" }, 400);
   const key = env.OPENCODE_API_KEY;
@@ -227,7 +227,7 @@ async function suggestRecipeRoute(env: Env, auth: GardenCredentials, request: Re
 async function suggestLearnRoute(env: Env, auth: GardenCredentials, request: Request): Promise<Response> {
   const body = await readJson(request);
   const inputs = Array.isArray(body.inputs)
-    ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 4)
+    ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 6)
     : [];
   const output = typeof body.output === "string" ? body.output.trim().slice(0, 40) : "";
   const price = typeof body.price === "number" ? Math.max(1, Math.floor(body.price)) : 0;
@@ -243,7 +243,7 @@ async function suggestLearnRoute(env: Env, auth: GardenCredentials, request: Req
 async function recipeRoute(env: Env, auth: GardenCredentials, request: Request): Promise<Response> {
   const body = await readJson(request);
   const inputs = Array.isArray(body.inputs)
-    ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 4)
+    ? body.inputs.filter((entry): entry is string => typeof entry === "string").slice(0, 6)
     : [];
   const output = typeof body.output === "string" ? body.output.trim().slice(0, 40) : "";
   if (inputs.length < 2 || output.length === 0) return json({ code: "BAD_REQUEST" }, 400);
