@@ -3704,7 +3704,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       button.dataset.skill = skill;
       skillPanel.append(button);
     }
-    if (skillPoints === 0 && prestigeLevel > 0) {
+    const spentPoints = Object.values(extras.prestigeSkills ?? {}).reduce((sum, points) => sum + points, 0);
+    if (prestigeLevel > 0 && spentPoints > 0) {
       skillPanel.append(
         actionButton(t("prestige.respec"), "respecPrestige", (extras.prestigeCoins ?? 0) >= 1),
       );
@@ -3815,7 +3816,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           hour: "2-digit",
           minute: "2-digit",
         });
-        const target = entry.item === undefined ? "" : ` · ${itemName(entry.item as ItemId)}`;
+        const target =
+          entry.item === undefined || entry.kind === "skill" ? "" : ` · ${itemName(entry.item as ItemId)}`;
         const amount = entry.coins === undefined ? "" : ` · ${formatCompact(entry.coins)}c`;
         wrap.append(
           lineBlock(
@@ -3883,6 +3885,27 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(search);
 
     const lab = div("garden-market-panel");
+    const ingredientList = document.createElement("datalist");
+    ingredientList.id = "recipe-ingredients";
+    for (const seed of SEEDS) {
+      const option = document.createElement("option");
+      option.value = seed.id;
+      option.label = t(`seeds.${seed.id}`);
+      ingredientList.append(option);
+    }
+    for (const tree of TREES) {
+      const option = document.createElement("option");
+      option.value = tree.id;
+      option.label = t(`trees.${tree.id}`);
+      ingredientList.append(option);
+    }
+    for (const product of PRODUCTS) {
+      const option = document.createElement("option");
+      option.value = product.id;
+      option.label = t(`products.${product.id}`);
+      ingredientList.append(option);
+    }
+    lab.append(ingredientList);
     lab.append(lineBlock(`// ${t("recipe.title")}`));
     const recipeRow = div("garden-restore-row");
     for (const [index, value, label] of [
@@ -3897,6 +3920,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       input.placeholder = label;
       input.dataset.role = "recipeInput";
       input.dataset.index = index;
+      if (index !== "out") input.setAttribute("list", "recipe-ingredients");
       input.setAttribute("aria-label", label);
       recipeRow.append(input);
     }
@@ -5928,12 +5952,20 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "guildCreate": {
         if (state === null) return;
         const name = guildNameDraft.trim();
-        if (name.length < 2) return;
+        if (name.length < 2) {
+          message = { text: t("guild.nameTooShort"), kind: "err" };
+          render();
+          return;
+        }
         void api
           .guildCreate(name, state.nick, state.code)
           .then((result) => {
             guildSnapshot = result.guild;
             guildNameDraft = "";
+            message = { text: t("guild.created"), kind: "info" };
+          })
+          .catch(() => {
+            message = { text: t("guild.failed"), kind: "err" };
           })
           .finally(() => void loadGuilds());
         return;
@@ -5945,6 +5977,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             .guildJoin(id, state.nick, state.code)
             .then((result) => {
               guildSnapshot = result.guild;
+              message = { text: t("guild.joined"), kind: "info" };
+            })
+            .catch(() => {
+              message = { text: t("guild.failed"), kind: "err" };
             })
             .finally(() => void loadGuilds());
         }
