@@ -3276,6 +3276,7 @@ export type GardenAction =
   | { readonly kind: "uprootSpecial"; readonly slot: number }
   | { readonly kind: "waterAll" }
   | { readonly kind: "harvestAll" }
+  | { readonly kind: "quickPlan" }
   | { readonly kind: "buildBuilding"; readonly building: BuildingId }
   | { readonly kind: "upgradeBuilding"; readonly building: BuildingId }
   | {
@@ -4142,6 +4143,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return { kind, tab };
   }
   if (kind === "sellAll") return { kind };
+  if (kind === "quickPlan") return { kind };
   return null;
 }
 

@@ -79,6 +79,8 @@ import {
   FERTILIZERS,
   SPRAYS,
   SEEDS,
+  TREES,
+  MUSHROOMS,
   dayIndexAt,
   dayPhaseAt,
   wheelDayAt,
@@ -844,6 +846,8 @@ export function applyGardenAction(
       return collectMachine(ledger, action.machine, now);
     case "harvestAll":
       return harvestAll(ledger, now, rng);
+    case "quickPlan":
+      return quickPlan(ledger, season, now, rng);
     case "buySeed":
       return buySeed(ledger, action.seed, action.qty, season, now);
     case "buySupply":
@@ -2373,6 +2377,119 @@ export function settleAttachments(ledger: GardenLedger, now: number): GardenLedg
   return next;
 }
 
+/** @brief First free, unlocked and undamaged crop cell, if any. */
+function firstEmptyCropSlot(ledger: GardenLedger): number | null {
+  for (let slot = 0; slot < ledger.plots.length; slot += 1) {
+    if ((ledger.plots[slot] ?? null) !== null) continue;
+    if (!isCropPatchOpen(ledger, slot)) continue;
+    if (ledger.damagedPlots?.[slot] === true) continue;
+    return slot;
+  }
+  return null;
+}
+
+/** @brief Highest-ROI seed currently affordable and in stock at the shop. */
+function bestPlanSeed(ledger: GardenLedger, season: SeasonSnapshot): SeedId | null {
+  let best: { seed: SeedId; score: number; sell: number } | null = null;
+  for (const offer of season.shop.offers) {
+    if (offer.stock < 1 || offer.price > ledger.coins) continue;
+    const seed = seedById(offer.seed);
+    if (seed === undefined || seed.category === "fruit") continue;
+    if (prestigeTierForSeed(seed.id) > ledger.prestige) continue;
+    if (seed.sell <= offer.price) continue;
+    // ROI first, then raw sale price: "best ROI and highest price".
+    const score = seed.sell / Math.max(1, offer.price);
+    if (best === null || score > best.score || (score === best.score && seed.sell > best.sell)) {
+      best = { seed: seed.id, score, sell: seed.sell };
+    }
+  }
+  return best?.seed ?? null;
+}
+
+/** @brief Highest-ROI fruit tree the wallet can afford right now. */
+function bestPlanTree(ledger: GardenLedger): TreeId | null {
+  let best: { id: TreeId; score: number } | null = null;
+  for (const tree of TREES) {
+    if (tree.buy > ledger.coins) continue;
+    if (tree.sell <= tree.buy) continue;
+    const score = tree.sell / Math.max(1, tree.buy);
+    if (best === null || score > best.score) best = { id: tree.id, score };
+  }
+  return best?.id ?? null;
+}
+
+/** @brief Highest-ROI mushroom spawn the wallet can afford right now. */
+function bestPlanMushroom(ledger: GardenLedger): MushroomId | null {
+  let best: { id: MushroomId; score: number } | null = null;
+  for (const mushroom of MUSHROOMS) {
+    if (mushroom.spawn > ledger.coins) continue;
+    const product = productById(mushroom.product);
+    if (product === undefined) continue;
+    const revenue = product.base * mushroom.batch;
+    if (revenue <= mushroom.spawn) continue;
+    const score = revenue / Math.max(1, mushroom.spawn);
+    if (best === null || score > best.score) best = { id: mushroom.id, score };
+  }
+  return best?.id ?? null;
+}
+
+/**
+ * @brief Quick Plan: buys the best-ROI seeds and fills every empty slot.
+ * @details Works across the whole property in one action: crops go into free
+ * unlocked cells, one sapling into every free tree slot, and one spawn batch
+ * into every free mushroom tray. Buys stop when coins run out.
+ */
+function quickPlan(ledger: GardenLedger, season: SeasonSnapshot, now: number, rng: () => number): RuleResult {
+  let current = ledger;
+  let planted = 0;
+
+  // Crops: best shop seed into each free cell, buying one seed at a time.
+  for (let guard = 0; guard < 500; guard += 1) {
+    const slot = firstEmptyCropSlot(current);
+    if (slot === null) break;
+    const seed = bestPlanSeed(current, season);
+    if (seed === null) break;
+    const bought = buySeed(current, seed, 1, season, now);
+    if (!bought.ok) break;
+    const result = plant(bought.ledger, slot, seed, now, rng);
+    if (!result.ok) break;
+    current = result.ledger;
+    planted += 1;
+  }
+
+  // Fruit trees: saplings cost coins directly, no shop stock.
+  for (let guard = 0; guard < 200; guard += 1) {
+    const slot = current.trees.findIndex((tree) => tree === null);
+    if (slot < 0) break;
+    const tree = bestPlanTree(current);
+    if (tree === null) break;
+    const result = plantTree(current, slot, tree, now, rng);
+    if (!result.ok) break;
+    current = result.ledger;
+    planted += 1;
+  }
+
+  // Mushroom trays: buy the spawn batch first when it is not owned yet.
+  for (let guard = 0; guard < 200; guard += 1) {
+    const slot = (current.mushroomTrays ?? []).findIndex((tray) => tray === null);
+    if (slot < 0) break;
+    const mushroom = bestPlanMushroom(current);
+    if (mushroom === null) break;
+    let base = current;
+    if ((base.mushroomSpawn?.[mushroom] ?? 0) < 1) {
+      const bought = buyMushroomSpawn(base, mushroom, 1, now);
+      if (!bought.ok) break;
+      base = bought.ledger;
+    }
+    const result = plantMushroom(base, slot, mushroom, now);
+    if (!result.ok) break;
+    current = result.ledger;
+    planted += 1;
+  }
+
+  if (planted === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  return changed(current, now);
+}
 /**
  * @brief Kills plants left unwatered for an in-game day.
  * @details Dead plants stay in the ground (nothing is lost) so the owner can

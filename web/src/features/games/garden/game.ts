@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file game.ts
  * @brief ASCII Garden document: three tabs, an ASCII plot board and live sync.
  * @details The document stays a source file: the tabs are drawn in the code
@@ -2649,6 +2649,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const renovateCost = (state?.soil ?? []).reduce((sum, fertility) => sum + soilRenovateCost(fertility), 0);
     const fertilizerTargets = supplyTargetCount("fertilize", at);
     const seedKinds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0).length;
+    // Quick Plan fills every empty slot it can afford across crops, trees and trays.
+    const planSlots =
+      (state?.plots ?? []).filter((plot, slot) => plot === null && !cropSlotLocked(slot)).length +
+      (state?.trees ?? []).filter((tree) => tree === null).length +
+      (state?.mushroomTrays ?? []).filter((tray) => tray === null).length;
     const note = (count: number, cost: number): string =>
       count > 0 ? `${count}·${formatCompact(cost)}c` : "";
 
@@ -2718,11 +2723,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           id: "quickPlan",
           label: t("reborn.action.plan"),
           glyph: ">",
-          note: seedKinds > 0 ? String(seedKinds) : "",
+          note: planSlots > 0 ? String(planSlots) : "",
           tone: "plant",
-          act: "pickPlantTool",
-          disabled: seedKinds === 0,
-          active: toolPicker === "plant" || tool?.kind === "plant",
+          act: "quickPlan",
+          disabled: planSlots === 0,
         },
         {
           id: "quickSpray",
@@ -6561,6 +6565,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         toolPicker = null;
         message = tool === null ? null : { text: t("garden.harvestToolActive"), kind: "info" };
         render();
+        return;
+      case "quickPlan":
+        toolPicker = null;
+        bulkPanel = null;
+        tool = null;
+        void runAction({ kind: "quickPlan" }, t("quick.planDone"));
         return;
       case "pickPlantTool":
         toolPicker = toolPicker === "plant" ? null : "plant";

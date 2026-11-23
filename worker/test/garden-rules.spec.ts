@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file garden-rules.spec.ts
  * @brief Economy rules for ASCII Garden, exercised with a controlled clock.
  * @details Harvesting normally takes minutes; the pure rule set lets the tests
@@ -11,6 +11,7 @@ import {
   BREED_CYCLES,
   MUSHROOM_TRAYS,
   EPOCH_MS,
+  SEEDS,
   EFFECTS,
   EVENT_WAVE_MS,
   FARM_CYCLE_MS,
@@ -2075,5 +2076,43 @@ describe("thirst rules", () => {
     if (!watered.ok) throw new Error("water failed");
     const settled = settleThirst(watered.ledger, NOW + 10 * PLANT_THIRST_MS);
     expect(settled.plots[0]?.dead ?? false).toBe(false);
+  });
+});
+
+describe("quick plan", () => {
+  it("buys the best-ROI seed and fills empty crop cells", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000_000;
+    const season = seasonFor(NOW);
+    const best = [...season.shop.offers]
+      .filter((offer) => {
+        const seed = SEEDS.find((entry) => entry.id === offer.seed);
+        return seed !== undefined && seed.category !== "fruit" && seed.sell > offer.price;
+      })
+      .sort((left, right) => {
+        const leftSeed = SEEDS.find((entry) => entry.id === left.seed)!;
+        const rightSeed = SEEDS.find((entry) => entry.id === right.seed)!;
+        const score = rightSeed.sell / Math.max(1, right.price) - leftSeed.sell / Math.max(1, left.price);
+        return score !== 0 ? score : rightSeed.sell - leftSeed.sell;
+      })[0];
+    if (best === undefined) throw new Error("no affordable offer");
+
+    const result = run(ledger, { kind: "quickPlan" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ledger.coins).toBeLessThan(ledger.coins);
+    const emptyLeft = result.ledger.plots.filter((plot) => plot === null).length;
+    expect(emptyLeft).toBeLessThan(ledger.plots.length);
+    // The first planted crop uses the top-ROI seed of this shop rotation.
+    expect(result.ledger.plots[0]?.seed).toBe(best.seed);
+    // Trays and trees are part of the same plan.
+    expect(result.ledger.trees.some((tree) => tree !== null)).toBe(true);
+    expect(result.ledger.mushroomTrays?.some((tray) => tray !== null)).toBe(true);
+  });
+
+  it("stops buying when the wallet cannot afford anything", () => {
+    const ledger = makeLedger();
+    ledger.coins = 0;
+    expect(run(ledger, { kind: "quickPlan" })).toMatchObject({ ok: false, code: "NOTHING_TO_DO" });
   });
 });
