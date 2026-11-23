@@ -2055,3 +2055,28 @@ button.garden-rank-row:hover {
 .garden-reborn-action:hover:not(:disabled) {
   filter: brightness(1.3);
 }
+
+/* Normal garden below the VIP row: the legacy crop and fruit boards keep their
+   exact plot cells, with the 3x3 patches separated horizontally as well. */
+.garden-reborn-garden {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.garden-reborn-garden .garden-boards {
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.garden-reborn-garden .garden-crop-grid .garden-mini-row .garden-cell:nth-child(3n) {
+  margin-right: 5px;
+}
+
+.garden-reborn-garden .garden-crop-grid,
+.garden-reborn-garden .garden-tree-grid {
+  width: max-content;
+}

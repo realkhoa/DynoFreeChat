@@ -5126,6 +5126,32 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       appendToolPickers(wrap);
       appendUprootPanel(wrap);
     }
+    wrap.append(buildRebornGarden(at));
+    return wrap;
+  }
+
+  /**
+   * @brief Builds the normal garden boards under the VIP row.
+   * @param at Server-clock time.
+   * @details Reuses the legacy pager, crop board and fruit board, so every plot
+   * keeps the exact same cell render, locked look and click handlers as before.
+   */
+  function buildRebornGarden(at: number): HTMLElement {
+    const wrap = div("garden-reborn-garden");
+    const counts = gardenSummary(at);
+    wrap.append(
+      lineBlock(
+        `// ${t("reborn.gardenTitle")} · ${t("garden.page", { page: page + 1, total: pageCount() })} · ${t("garden.ready")} ${counts.ready} · ${t("garden.growing")} ${counts.growing} · ${t("garden.free")} ${counts.free}`,
+      ),
+    );
+    wrap.append(buildPager());
+    const boards = div("garden-boards");
+    const cropPanel = div("garden-board-panel");
+    cropPanel.append(span("garden-board-title", t("garden.crops")), buildCropBoard());
+    const treePanel = div("garden-board-panel");
+    treePanel.append(span("garden-board-title", t("garden.trees")), buildTreeBoard());
+    boards.append(cropPanel, treePanel);
+    wrap.append(boards);
     return wrap;
   }
 

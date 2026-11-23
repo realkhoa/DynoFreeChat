@@ -521,6 +521,41 @@ describe("legacy view", () => {
     expect(actions[2]?.disabled).toBe(false);
   });
 
+  it("builds the normal crops and fruit boards under the VIP row", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    const garden = host.querySelector(".garden-reborn-garden");
+    expect(garden).not.toBeNull();
+    expect(garden?.querySelectorAll(".garden-crop-grid .garden-cell")).toHaveLength(CROPS_PER_TAB);
+    expect(garden?.querySelectorAll(".garden-tree-grid .garden-cell")).toHaveLength(TREES_PER_TAB);
+    // One owned crop patch: the other eight patches read as locked normal soil.
+    expect(garden?.querySelectorAll(".garden-crop-grid .garden-cell.is-locked")).toHaveLength(72);
+    // The normal pager survives in the rebuilt view.
+    expect(garden?.querySelector('[data-act="buyTab"]')).not.toBeNull();
+
+    // Clicking a plot opens the legacy action menu.
+    garden?.querySelector<HTMLButtonElement>('[data-act="plot"][data-area="crop"][data-slot="0"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-menu")).not.toBeNull();
+
+    // The next page is the tab for sale: every plot previews as locked.
+    host.querySelector<HTMLButtonElement>('[data-act="nextPage"]')?.click();
+    await settle();
+    expect(
+      host
+        .querySelector(".garden-reborn-garden .garden-crop-grid")
+        ?.querySelectorAll(".garden-cell.is-locked"),
+    ).toHaveLength(CROPS_PER_TAB);
+  });
+
   it("runs the quick actions through the legacy handlers", async () => {
     const api = new FakeGardenApi(
       makeState({
