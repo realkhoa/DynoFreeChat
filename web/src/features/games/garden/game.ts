@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file game.ts
  * @brief ASCII Garden document: three tabs, an ASCII plot board and live sync.
  * @details The document stays a source file: the tabs are drawn in the code
@@ -216,14 +216,15 @@ const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string 
 ];
 
 /** One tab inside the garden tab of the rebuilt view. */
-type GardenTab = "main" | "mushroom" | "greenhouse" | "nursery";
+type GardenTab = "main" | "mushroom" | "greenhouse" | "nursery" | "shipping";
 
-/** @brief Garden tabs, in strip order; only `main` is rebuilt so far. */
+/** @brief Garden tabs, in strip order. */
 const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string }[] = [
   { id: "main", labelKey: "gardenTab.main" },
   { id: "mushroom", labelKey: "gardenTab.mushroom" },
   { id: "greenhouse", labelKey: "gardenTab.greenhouse" },
   { id: "nursery", labelKey: "gardenTab.nursery" },
+  { id: "shipping", labelKey: "gardenTab.shipping" },
 ];
 
 /**
@@ -1243,7 +1244,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (savedView === "reborn" || savedView === "townhall") view = "reborn";
     if (readParam("grtab") === "townhall") rebornTab = "townhall";
     const savedGardenTab = readParam("gstab");
-    if (savedGardenTab === "mushroom" || savedGardenTab === "greenhouse" || savedGardenTab === "nursery") {
+    if (
+      savedGardenTab === "mushroom" ||
+      savedGardenTab === "greenhouse" ||
+      savedGardenTab === "nursery" ||
+      savedGardenTab === "shipping"
+    ) {
       gardenTab = savedGardenTab;
     }
     const savedTab = readParam("gtab");
@@ -5189,7 +5195,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     wrap.append(buildGardenTabStrip());
     if (gardenTab !== "main") {
-      wrap.append(gardenTab === "mushroom" ? buildMushroomHouse(at) : buildGardenTabPlaceholder());
+      wrap.append(buildGardenTabBody(at));
       return wrap;
     }
     const row = div("garden-reborn-row");
@@ -5530,10 +5536,167 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /**
-   * @brief Builds a garden tab whose UI has not been rebuilt yet.
-   * @details Keeping the tab in the strip from day one fixes the shell; the body
-   * fills in on later passes.
+   * @brief Dispatches the body of a non-main garden tab.
+   * @details Extension point: add one branch here next to its builder.
    */
+  function buildGardenTabBody(at: number): HTMLElement {
+    if (gardenTab === "mushroom") return buildMushroomHouse(at);
+    if (gardenTab === "shipping") return buildShippingBin();
+    return buildGardenTabPlaceholder();
+  }
+
+  /** @brief One clickable inventory row that sells a whole stack. */
+  function shippingRow(text: string, act: string, data: Readonly<Record<string, string>>): HTMLButtonElement {
+    const row = rowButton("garden-shipping-row", text, act);
+    for (const [key, value] of Object.entries(data)) row.dataset[key] = value;
+    return row;
+  }
+
+  /**
+   * @brief Builds the shipping bin tab: quick sell cells plus the whole bag.
+   * @details Quick cells sell every crop or product in one press; each inventory
+   * row sells that exact stack at the live market price.
+   */
+  function buildShippingBin(): HTMLElement {
+    const wrap = div("garden-shipping");
+    wrap.append(lineBlock(`// ${t("shipping.title")} · ${t("shipping.hint")}`));
+    if (mode !== "owner") {
+      wrap.append(lineBlock(t("mushroomHouse.visitHint")));
+      return wrap;
+    }
+    const bag = state?.bag;
+    const nowSeason = season;
+    const cropStacks = (bag?.crops ?? []).filter((stack) => stack.qty > 0);
+    const productStacks = (bag?.products ?? []).filter((stack) => stack.qty > 0);
+    const cropValue =
+      nowSeason === null
+        ? 0
+        : cropStacks.reduce((sum, stack) => sum + cropSellPrice(stack, nowSeason) * stack.qty, 0);
+    const productValue =
+      nowSeason === null
+        ? 0
+        : productStacks.reduce((sum, stack) => sum + productPrice(stack, nowSeason) * stack.qty, 0);
+
+    const quick = div("garden-shipping-quick");
+    quick.append(
+      buildRebornAction({
+        id: "ship:crops",
+        label: t("shipping.sellCrops"),
+        glyph: "$",
+        note: `${cropStacks.length}·${formatCompact(cropValue)}c`,
+        tone: "harvest",
+        act: "shipSellAllCrops",
+        disabled: cropStacks.length === 0,
+      }),
+      buildRebornAction({
+        id: "ship:products",
+        label: t("shipping.sellProducts"),
+        glyph: "$",
+        note: `${productStacks.length}·${formatCompact(productValue)}c`,
+        tone: "money",
+        act: "shipSellAllProducts",
+        disabled: productStacks.length === 0,
+      }),
+    );
+    wrap.append(quick);
+
+    const inventory = div("garden-shipping-inv");
+    inventory.append(lineBlock(`// ${t("shipping.invTitle")}`));
+
+    if (cropStacks.length > 0) {
+      inventory.append(lineBlock(`// ${t("shipping.cropsTitle")}`));
+      for (const stack of cropStacks) {
+        const unit = nowSeason === null ? 0 : cropSellPrice(stack, nowSeason);
+        const effects = stack.effects.map((effect) => t(`effects.${effect}`)).join(", ");
+        const quality = (stack.star ?? 1) > 1 ? ` · ${stack.star}★` : "";
+        inventory.append(
+          shippingRow(
+            `${itemName(stack.item)} ×${stack.qty}${quality}${effects.length > 0 ? ` · ${effects}` : ""} → ${formatCompact(unit * stack.qty)}c`,
+            "shipSellCrop",
+            {
+              item: stack.item,
+              effects: JSON.stringify(stack.effects),
+              star: String(stack.star ?? 1),
+              pest: stack.pest === true ? "1" : "0",
+              qty: String(stack.qty),
+            },
+          ),
+        );
+      }
+    }
+    if (productStacks.length > 0) {
+      inventory.append(lineBlock(`// ${t("shipping.productsTitle")}`));
+      for (const stack of productStacks) {
+        const unit = nowSeason === null ? 0 : productPrice(stack, nowSeason);
+        const effects = (stack.effects ?? []).map((effect) => t(`effects.${effect}`)).join(", ");
+        inventory.append(
+          shippingRow(
+            `${t(`products.${stack.product}`)} ×${stack.qty} · ${stack.star}★${effects.length > 0 ? ` · ${effects}` : ""} → ${formatCompact(unit * stack.qty)}c`,
+            "shipSellProduct",
+            {
+              product: stack.product,
+              star: String(stack.star),
+              effects: JSON.stringify(stack.effects ?? []),
+              qty: String(stack.qty),
+            },
+          ),
+        );
+      }
+    }
+
+    const seedCounts = Object.entries(bag?.seeds ?? {}).filter(([, count]) => (count ?? 0) > 0);
+    if (seedCounts.length > 0) {
+      inventory.append(
+        lineBlock(
+          `// ${t("shipping.seedsTitle")}: ${seedCounts
+            .map(([seed, count]) => `${t(`seeds.${seed as SeedId}`)} ×${count}`)
+            .join(" · ")}`,
+        ),
+      );
+    }
+    const supplyCounts = Object.entries(bag?.supplies ?? {}).filter(([, count]) => (count ?? 0) > 0);
+    if (supplyCounts.length > 0) {
+      inventory.append(
+        lineBlock(
+          `// ${t("shipping.suppliesTitle")}: ${supplyCounts
+            .map(([supply, count]) => `${t(`supplies.${supply}`)} ×${count}`)
+            .join(" · ")}`,
+        ),
+      );
+    }
+    const toolCounts = Object.entries(bag?.tools ?? {}).filter(([, count]) => (count ?? 0) > 0);
+    if (toolCounts.length > 0) {
+      inventory.append(
+        lineBlock(
+          `// ${t("shipping.toolsTitle")}: ${toolCounts
+            .map(([tool, count]) => `${t(`tools.${tool}`)} ×${count}`)
+            .join(" · ")}`,
+        ),
+      );
+    }
+    const spawnCounts = Object.entries(state?.mushroomSpawn ?? {}).filter(([, count]) => (count ?? 0) > 0);
+    if (spawnCounts.length > 0) {
+      inventory.append(
+        lineBlock(
+          `// ${t("shipping.spawnTitle")}: ${spawnCounts
+            .map(([spawn, count]) => `${t(`mushrooms.${spawn}`)} ×${count}`)
+            .join(" · ")}`,
+        ),
+      );
+    }
+    if (
+      cropStacks.length === 0 &&
+      productStacks.length === 0 &&
+      seedCounts.length === 0 &&
+      supplyCounts.length === 0 &&
+      toolCounts.length === 0 &&
+      spawnCounts.length === 0
+    ) {
+      inventory.append(lineBlock(t("shipping.empty")));
+    }
+    wrap.append(inventory);
+    return wrap;
+  }
   function buildGardenTabPlaceholder(): HTMLElement {
     const wrap = div("garden-garden-empty");
     wrap.append(lineBlock(`// ${t(`gardenTab.${gardenTab}`)} · ${t("gardenTab.empty")}`));
@@ -7176,6 +7339,73 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "staffPanelClose":
         staffPanel = null;
         render();
+        return;
+      case "shipSellCrop": {
+        const item = target.dataset.item as ItemId | undefined;
+        const qty = Number(target.dataset.qty);
+        if (item === undefined || season === null || !Number.isInteger(qty) || qty < 1) return;
+        let effects: EffectId[] = [];
+        try {
+          const parsed = JSON.parse(target.dataset.effects ?? "[]") as unknown;
+          if (Array.isArray(parsed))
+            effects = parsed.filter((entry): entry is EffectId => typeof entry === "string");
+        } catch {
+          effects = [];
+        }
+        const unit = cropSellPrice(
+          {
+            item,
+            effects,
+            pest: target.dataset.pest === "1",
+            star: Number(target.dataset.star) || 1,
+            qty: 1,
+          },
+          season,
+        );
+        void runAction(
+          {
+            kind: "sellCrop",
+            item,
+            effects,
+            pest: target.dataset.pest === "1",
+            star: Number(target.dataset.star) || 1,
+            qty,
+          },
+          t("shipping.soldCrop", { name: itemName(item), qty, coins: formatCompact(unit * qty) }),
+        );
+        return;
+      }
+      case "shipSellAllCrops":
+        void runAction({ kind: "sellAll" }, t("shipping.soldAll"));
+        return;
+      case "shipSellProduct": {
+        const product = target.dataset.product as ProductId | undefined;
+        const qty = Number(target.dataset.qty);
+        if (product === undefined || !Number.isInteger(qty) || qty < 1) return;
+        let effects: EffectId[] = [];
+        try {
+          const parsed = JSON.parse(target.dataset.effects ?? "[]") as unknown;
+          if (Array.isArray(parsed))
+            effects = parsed.filter((entry): entry is EffectId => typeof entry === "string");
+        } catch {
+          effects = [];
+        }
+        const unit =
+          season === null
+            ? 0
+            : productPrice({ product, star: Number(target.dataset.star) || 1, effects, qty: 1 }, season);
+        void runAction(
+          { kind: "sellProduct", product, star: Number(target.dataset.star) || 1, effects, qty },
+          t("shipping.soldProduct", {
+            name: t(`products.${product}`),
+            qty,
+            coins: formatCompact(unit * qty),
+          }),
+        );
+        return;
+      }
+      case "shipSellAllProducts":
+        void runAction({ kind: "sellAllProducts" }, t("shipping.soldAll"));
         return;
       case "staffTask": {
         const index = Number(target.dataset.index);

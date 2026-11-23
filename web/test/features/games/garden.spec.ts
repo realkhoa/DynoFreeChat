@@ -2769,6 +2769,7 @@ describe("reborn sub-tabs", () => {
       "gardenTab:mushroom",
       "gardenTab:greenhouse",
       "gardenTab:nursery",
+      "gardenTab:shipping",
     ]);
     expect(host.querySelector(".garden-section-tab.is-active")?.textContent).toContain("vườn chính");
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
@@ -3093,5 +3094,87 @@ describe("reborn staff cells", () => {
     expect(
       api.calls.some((call) => call.action?.kind === "setStaffRole" && call.action.role === "saleHunt"),
     ).toBe(true);
+  });
+});
+
+describe("shipping bin tab", () => {
+  /** Opens the reborn garden and switches to the shipping bin tab. */
+  async function openShipping(host: HTMLElement): Promise<void> {
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:shipping"]')?.click();
+    await settle();
+  }
+
+  it("lists the whole bag and sells a stack on click", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 1_000,
+        bag: {
+          seeds: { carrot: 4 },
+          crops: [{ item: "carrot", effects: ["golden"], qty: 3, star: 2 }],
+          supplies: { compost: 2 },
+          products: [{ product: "egg", star: 1, qty: 5 }],
+          tools: { shovel: 1 },
+        },
+        mushroomSpawn: { straw: 2 },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openShipping(host);
+
+    const inv = host.querySelector(".garden-shipping-inv");
+    expect(inv?.textContent).toContain("Nông sản");
+    expect(inv?.textContent).toContain("Sản phẩm");
+    expect(inv?.textContent).toContain("Hạt giống");
+    expect(inv?.textContent).toContain("Vật tư");
+    expect(inv?.textContent).toContain("Công cụ");
+    expect(inv?.textContent).toContain("Phôi nấm");
+    expect(host.querySelector('[data-act="shipSellAllCrops"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="shipSellAllProducts"]')).not.toBeNull();
+
+    // Clicking one inventory row sells that exact stack with its mutations.
+    const cropRow = host.querySelector<HTMLButtonElement>('[data-act="shipSellCrop"]');
+    expect(cropRow?.textContent).toContain("Cà rốt");
+    cropRow?.click();
+    await settle();
+    const sold = api.calls.find((call) => call.action?.kind === "sellCrop")?.action;
+    expect(sold).toMatchObject({ kind: "sellCrop", item: "carrot", qty: 3, star: 2 });
+    expect((sold as { effects?: string[] }).effects).toEqual(["golden"]);
+  });
+
+  it("sells every crop or product from the quick cells", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        bag: {
+          seeds: {},
+          crops: [{ item: "potato", effects: [], qty: 2 }],
+          supplies: {},
+          products: [{ product: "milk", star: 1, qty: 3 }],
+          tools: {},
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openShipping(host);
+
+    host.querySelector<HTMLButtonElement>('[data-act="shipSellAllCrops"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "sellAll")).toBe(true);
+
+    host.querySelector<HTMLButtonElement>('[data-act="shipSellAllProducts"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "sellAllProducts")).toBe(true);
+  });
+
+  it("is read-only while visiting", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api, "ABCDEF");
+    mounted.push(game);
+    await openShipping(host);
+    expect(host.querySelector(".garden-shipping-inv")).toBeNull();
+    expect(host.textContent).toContain("chỉ xem");
   });
 });

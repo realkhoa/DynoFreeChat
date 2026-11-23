@@ -2126,3 +2126,33 @@ button.garden-rank-row:hover {
   flex-direction: column;
   gap: 2px;
 }
+
+/* Shipping bin tab: quick sell cells on top, then the whole bag as sell rows. */
+.garden-shipping {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.garden-shipping-quick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.garden-shipping-inv {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  max-width: 100%;
+}
+
+.garden-shipping-row {
+  width: auto;
+  text-align: left;
+}
