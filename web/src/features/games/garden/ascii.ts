@@ -93,6 +93,31 @@ function border(slot?: number): string {
 }
 
 /**
+ * @brief Renders one unbought plot as a framed lock cell.
+ * @param priceText Price line, or `null` for a plain locked cell.
+ * @param slot Zero-based slot printed on the top border; omitted to leave it blank.
+ * @details Shared by crops, fruit trees and the rebuilt VIP board so every locked
+ * plot reads the same, whatever board it sits on.
+ */
+export function lockedCellRender(priceText: string | null, slot?: number): CellRender {
+  return {
+    lines: [
+      slot === undefined ? border() : border(slot),
+      row("#", "center"),
+      row(t("garden.locked")),
+      row(""),
+      row(priceText ?? "--"),
+      border(),
+    ],
+    ready: false,
+    growing: false,
+    empty: false,
+    locked: true,
+    progress: 0,
+  };
+}
+
+/**
  * @brief Renders one plot cell.
  * @param plot Plot state, or `null` for empty soil.
  * @param now Server-clock time.
@@ -107,21 +132,7 @@ export function cellRender(
   const top = border(slot);
   const bottom = border();
   if (lockedCost !== null) {
-    return {
-      lines: [
-        border(),
-        row("#", "center"),
-        row(t("garden.locked")),
-        row(""),
-        row(lockedCost > 0 ? `${lockedCost}c` : "--"),
-        border(),
-      ],
-      ready: false,
-      growing: false,
-      empty: false,
-      locked: true,
-      progress: 0,
-    };
+    return lockedCellRender(lockedCost > 0 ? `${lockedCost}c` : null);
   }
 
   if (plot === null) {
@@ -167,14 +178,7 @@ export function treeCellRender(
   const top = border(slot);
   const bottom = border();
   if (lockedCost !== null) {
-    return {
-      lines: [top, row("#", "center"), row(t("garden.locked")), row(""), row("--"), bottom],
-      ready: false,
-      growing: false,
-      empty: false,
-      locked: true,
-      progress: 0,
-    };
+    return lockedCellRender(null, slot);
   }
   if (tree === null) {
     return {

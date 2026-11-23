@@ -71,10 +71,39 @@
   opacity: 0.85;
 }
 
-/* The rebuilt view starts from a blank document; keep the editor area usable. */
+/* Rebuilt garden: the 27 VIP plots read as normal soil, nine per row. Every cell
+   uses the same fixed-width six-line frame, so all plots keep the same size. */
 .garden-reborn {
   flex: 1;
   min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+  overflow: auto;
+}
+
+.garden-reborn-board {
+  display: grid;
+  grid-template-columns: repeat(9, max-content);
+  grid-auto-rows: max-content;
+  gap: 5px;
+  width: max-content;
+  max-width: 100%;
+}
+
+.garden-reborn-cell {
+  width: 10ch;
+}
+
+.garden-reborn-cell.is-locked {
+  cursor: default;
+}
+
+/* The next plot in the sequence is the only one for sale. */
+.garden-reborn-cell.is-locked.is-buyable {
+  color: #d7ba7d;
+  cursor: pointer;
 }
 
 .garden-tabs-spacer {

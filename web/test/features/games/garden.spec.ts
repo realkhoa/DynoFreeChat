@@ -395,7 +395,7 @@ describe("legacy view", () => {
     expect(host.querySelector(".garden-code")?.textContent).toBe("#ABCDEF");
   });
 
-  it("switches to the blank reborn view and back to legacy", async () => {
+  it("switches to the reborn VIP board and back to legacy", async () => {
     const api = new FakeGardenApi(makeState());
     const { host, game } = await mountGame(api);
     mounted.push(game);
@@ -405,7 +405,7 @@ describe("legacy view", () => {
 
     expect(host.querySelector(".garden-view-tab.is-active")?.textContent).toContain("reborn");
     expect(host.querySelector(".garden-reborn")).not.toBeNull();
-    expect(host.querySelector(".garden-reborn")?.childElementCount).toBe(0);
+    expect(host.querySelectorAll(".garden-reborn-cell")).toHaveLength(27);
     expect(host.querySelectorAll(".garden-tabs-legacy")).toHaveLength(0);
     expect(host.querySelectorAll(".garden-tab")).toHaveLength(0);
     expect(window.location.search).toContain("gview=reborn");
@@ -417,6 +417,47 @@ describe("legacy view", () => {
     expect(host.querySelectorAll(".garden-tabs-legacy .garden-tab")).toHaveLength(13);
     expect(host.querySelector(".garden-reborn")).toBeNull();
     expect(window.location.search).not.toContain("gview=");
+  });
+
+  it("draws the 27 VIP plots as normal locked-or-empty plot cells", async () => {
+    const api = new FakeGardenApi(makeState({ specialOwned: 2, specialPlots: [] }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    const cells = Array.from(host.querySelectorAll<HTMLButtonElement>(".garden-reborn-cell"));
+    expect(cells).toHaveLength(27);
+    // Every plot uses the same six-line frame, so all 27 are the same size.
+    for (const cell of cells) expect(cell.querySelectorAll(".garden-cell-line")).toHaveLength(6);
+    for (const cell of cells) expect(cell.classList.contains("garden-cell")).toBe(true);
+    // Two bought plots render as empty soil, the other 25 read as normal locked soil.
+    expect(host.querySelectorAll(".garden-reborn-cell.is-empty")).toHaveLength(2);
+    expect(host.querySelectorAll(".garden-reborn-cell.is-locked")).toHaveLength(25);
+    expect(cells[0]?.textContent).toContain("Trống");
+    expect(cells[1]?.textContent).toContain("Trống");
+    expect(cells[2]?.textContent).toContain("khoá");
+    // Only the next plot in the sequence is for sale, with its compact price.
+    const next = host.querySelector<HTMLButtonElement>('.garden-reborn-cell[data-slot="2"]');
+    expect(next?.dataset.act).toBe("buySpecialPlot");
+    expect(next?.disabled).toBe(false);
+    expect(next?.textContent).toContain("4bc");
+    // Plots deeper in the queue stay locked and inert.
+    expect(cells[3]?.dataset.act).toBe("specialNoop");
+    expect(cells[3]?.disabled).toBe(true);
+  });
+
+  it("buys the next VIP plot from the reborn board", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 5_000_000_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    host.querySelector<HTMLButtonElement>('.garden-reborn-cell[data-slot="0"]')?.click();
+    await settle();
+
+    expect(api.calls.some((call) => call.action?.kind === "buySpecialPlot")).toBe(true);
   });
 
   it("shows the bag, upgrades and field status in the right rail", async () => {

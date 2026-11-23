@@ -150,6 +150,7 @@ import { readParam, writeParams } from "@/shared/lib/urlstate";
 import type { GameContext, GameMount } from "../mount";
 import { animalCellRender, cellRender, fitText, growthColor, labelValue, treeCellRender } from "./ascii";
 import { GardenApi, GardenApiError } from "./api";
+import { buildRebornBoard, paintRebornCell, type RebornPlot } from "./reborn";
 
 /** Repaint interval while the document is open. */
 const TICK_MS = 1_000;
@@ -2486,6 +2487,26 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     };
   }
 
+  /**
+   * @brief The 27 premium plots as plain plot cells for the rebuilt board.
+   * @details Unbought plots stay locked like normal soil; only the next plot in the
+   * sequence is buyable and carries its price.
+   */
+  function rebornPlots(): RebornPlot[] {
+    const view = specialView();
+    const plots: RebornPlot[] = [];
+    for (let slot = 0; slot < SPECIAL_SLOTS; slot += 1) {
+      plots.push({
+        slot,
+        owned: view !== null && slot < view.owned,
+        buyable: view !== null && mode === "owner" && slot === view.owned,
+        plot: view?.plots[slot] ?? null,
+        price: specialPlotCost(slot),
+      });
+    }
+    return plots;
+  }
+
   /** @brief Repaints one premium plot cell as a full ASCII crop cell. */
   function syncSpecialCell(button: HTMLButtonElement, slot: number, at: number): void {
     const view = specialView();
@@ -2554,6 +2575,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       wrap.append(row);
     }
+    appendSpecialPickers(wrap);
+    return wrap;
+  }
+
+  /**
+   * @brief Appends the seed and supply pickers opened from a premium plot menu.
+   * @param wrap Board wrapper that receives the pickers.
+   * @details Shared by the legacy premium board and the rebuilt VIP board so both
+   * views keep the same menu flow.
+   */
+  function appendSpecialPickers(wrap: HTMLElement): void {
     if (specialPicker !== null) {
       const picker = div("garden-tools");
       picker.append(span("garden-hint", t("special.pickSeed")));
@@ -2590,7 +2622,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       picker.append(span("garden-hint", t("special.buySupplyHint")));
       wrap.append(picker);
     }
-    return wrap;
   }
 
   /** @brief Crops and fruit trees the pending bulk-uproot filter would remove. */
@@ -4928,10 +4959,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
   /**
    * @brief Builds the rebuilt UI.
-   * @details Intentionally blank: the new garden UI starts from an empty document.
+   * @details Starts with the 27 premium plots drawn exactly like normal soil, so
+   * the rest of the garden can move onto the same board next.
    */
   function buildRebornView(): HTMLElement {
-    return div("garden-reborn");
+    const wrap = div("garden-reborn");
+    const owned = specialView()?.owned ?? 0;
+    wrap.append(
+      lineBlock(`// ${t("reborn.vipTitle")} · ${t("reborn.vipProgress", { owned, total: SPECIAL_SLOTS })}`),
+    );
+    wrap.append(buildRebornBoard(rebornPlots(), now()));
+    appendSpecialPickers(wrap);
+    return wrap;
   }
 
   /** @brief Builds the content of the active legacy tab. */
@@ -5059,6 +5098,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (const cell of root.querySelectorAll<HTMLElement>(".garden-special-cell[data-slot]")) {
       const slot = Number(cell.dataset.slot);
       if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncSpecialCell(cell, slot, at);
+    }
+    const reborn = rebornPlots();
+    for (const cell of root.querySelectorAll<HTMLElement>(".garden-reborn-cell[data-slot]")) {
+      const slot = Number(cell.dataset.slot);
+      const plot = Number.isInteger(slot) ? reborn[slot] : undefined;
+      if (plot !== undefined && cell instanceof HTMLButtonElement) paintRebornCell(cell, plot, at);
     }
     for (const element of root.querySelectorAll<HTMLElement>(".garden-side-time[data-side-until]")) {
       const until = Number(element.dataset.sideUntil);
@@ -6559,7 +6604,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (
       specialMenu !== null &&
       target.closest(".garden-menu") === null &&
-      target.closest(".garden-special-cell") === null
+      target.closest(".garden-special-cell") === null &&
+      target.closest(".garden-reborn-cell") === null
     ) {
       specialMenu = null;
       render();
