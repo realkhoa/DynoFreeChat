@@ -150,7 +150,13 @@ import { readParam, writeParams } from "@/shared/lib/urlstate";
 import type { GameContext, GameMount } from "../mount";
 import { animalCellRender, cellRender, fitText, growthColor, labelValue, treeCellRender } from "./ascii";
 import { GardenApi, GardenApiError } from "./api";
-import { buildRebornBoard, paintRebornCell, type RebornPlot } from "./reborn";
+import {
+  buildRebornActionColumns,
+  buildRebornBoard,
+  paintRebornCell,
+  type RebornAction,
+  type RebornPlot,
+} from "./reborn";
 
 /** Repaint interval while the document is open. */
 const TICK_MS = 1_000;
@@ -2507,6 +2513,125 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return plots;
   }
 
+  /**
+   * @brief Quick actions grouped in three columns beside the VIP board.
+   * @param at Server-clock time.
+   * @return One array per column; each entry reuses a legacy data-act handler.
+   * @details Column 1 holds the field-wide actions, column 2 the bulk supplies and
+   * soil work, column 3 the quick tools plus the bulk uproot panel.
+   */
+  function rebornActionColumns(at: number): RebornAction[][] {
+    const coins = state?.coins ?? 0;
+    const counts = bulkCounts(at);
+    const waterCost = counts.water * WATER_ALL_COST;
+    const harvestCost = counts.harvest * HARVEST_ALL_COST;
+    const bagQty = (state?.bag.crops ?? []).reduce((sum, stack) => sum + stack.qty, 0);
+    const pestTargets =
+      (state?.plots ?? []).filter(
+        (plot, slot) => plot !== null && !cropSlotLocked(slot) && plot.protectedUntil <= at,
+      ).length + (state?.trees ?? []).filter((tree) => tree !== null && tree.protectedUntil <= at).length;
+    const pestCost = pestTargets * PEST_SPRAY_COST;
+    const renovateCost = (state?.soil ?? []).reduce((sum, fertility) => sum + soilRenovateCost(fertility), 0);
+    const fertilizerTargets = supplyTargetCount("fertilize", at);
+    const seedKinds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0).length;
+    const note = (count: number, cost: number): string =>
+      count > 0 ? `${count}·${formatCompact(cost)}c` : "";
+
+    return [
+      [
+        {
+          id: "water",
+          label: t("reborn.action.water"),
+          glyph: "~",
+          note: note(counts.water, waterCost),
+          act: "waterAll",
+          disabled: counts.water === 0 || coins < waterCost,
+        },
+        {
+          id: "harvest",
+          label: t("reborn.action.harvest"),
+          glyph: "*",
+          note: note(counts.harvest, harvestCost),
+          act: "harvestAll",
+          disabled: counts.harvest === 0 || coins < harvestCost,
+        },
+        {
+          id: "sell",
+          label: t("reborn.action.sell"),
+          glyph: "$",
+          note: bagQty > 0 ? String(bagQty) : "",
+          act: "sellAll",
+          disabled: bagQty === 0,
+        },
+      ],
+      [
+        {
+          id: "sprayPests",
+          label: t("reborn.action.spray"),
+          glyph: "!",
+          note: note(pestTargets, pestCost),
+          act: "sprayPestAll",
+          disabled: pestTargets === 0 || coins < pestCost,
+        },
+        {
+          id: "renovate",
+          label: t("reborn.action.renovate"),
+          glyph: "^",
+          note: renovateCost > 0 ? `${formatCompact(renovateCost)}c` : "",
+          act: "renovateSoil",
+          disabled: renovateCost === 0 || coins < renovateCost,
+        },
+        {
+          id: "bulkFertilize",
+          label: t("reborn.action.bulkFertilize"),
+          glyph: "+",
+          note: fertilizerTargets > 0 ? String(fertilizerTargets) : "",
+          act: "pickAllSupply",
+          kind: "fertilize",
+          disabled: fertilizerTargets === 0,
+          active: toolPicker === "fertilizeAll",
+        },
+      ],
+      [
+        {
+          id: "quickPlan",
+          label: t("reborn.action.plan"),
+          glyph: ">",
+          note: seedKinds > 0 ? String(seedKinds) : "",
+          act: "pickPlantTool",
+          disabled: seedKinds === 0,
+          active: toolPicker === "plant" || tool?.kind === "plant",
+        },
+        {
+          id: "quickSpray",
+          label: t("reborn.action.sprayTool"),
+          glyph: "z",
+          note: "",
+          act: "pickTool",
+          kind: "spray",
+          active: toolPicker === "spray" || tool?.kind === "spray",
+        },
+        {
+          id: "quickFertilize",
+          label: t("reborn.action.fertilizeTool"),
+          glyph: "o",
+          note: "",
+          act: "pickTool",
+          kind: "fertilize",
+          active: toolPicker === "fertilize" || tool?.kind === "fertilize",
+        },
+        {
+          id: "quickUproot",
+          label: t("reborn.action.uproot"),
+          glyph: "x",
+          note: "",
+          act: "bulkUproot",
+          active: bulkPanel === "uproot",
+        },
+      ],
+    ];
+  }
+
   /** @brief Repaints one premium plot cell as a full ASCII crop cell. */
   function syncSpecialCell(button: HTMLButtonElement, slot: number, at: number): void {
     const view = specialView();
@@ -2677,6 +2802,135 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return { summary: [...counts].map(([name, count]) => `${name} ×${count}`).join(", "), count: total };
   }
 
+  /**
+   * @brief Appends the tool and bulk-supply pickers opened by the quick actions.
+   * @param wrap Panel that receives the pickers.
+   * @details Shared by the legacy garden tab and the rebuilt board so both views
+   * keep the same picker flow.
+   */
+  function appendToolPickers(wrap: HTMLElement): void {
+    if (toolPicker === "plant") {
+      const picker = div("garden-tools");
+      const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
+      if (ownedSeeds.length === 0) picker.append(span("garden-hint", t("garden.plantNoSeeds")));
+      for (const seed of ownedSeeds) {
+        const locked = seedLocked(seed.id);
+        const button = actionButton(
+          `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})${locked ? ` · P${seedPrestigeTier(seed.id)}` : ""}`,
+          "pickPlantSeed",
+          !locked,
+        );
+        button.dataset.seed = seed.id;
+        picker.append(button);
+      }
+      wrap.append(picker);
+    }
+    if (toolPicker === "fertilize" || toolPicker === "spray") {
+      const picker = div("garden-tools");
+      const catalog = toolPicker === "fertilize" ? FERTILIZERS : SPRAYS;
+      for (const supply of catalog) {
+        const owned = state?.bag.supplies[supply.id] ?? 0;
+        const button = actionButton(`${t(`supplies.${supply.id}`)} (${owned})`, "pickToolSupply", owned > 0);
+        button.dataset.kind = toolPicker;
+        button.dataset.supply = supply.id;
+        picker.append(button);
+      }
+      wrap.append(picker);
+    }
+    if (bulkPanel === "plan") {
+      const picker = div("garden-tools");
+      const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
+      if (ownedSeeds.length === 0) picker.append(span("garden-hint", t("garden.plantNoSeeds")));
+      for (const seed of ownedSeeds) {
+        const locked = seedLocked(seed.id);
+        const button = actionButton(
+          `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})${locked ? ` · P${seedPrestigeTier(seed.id)}` : ""}`,
+          "plantAllSeed",
+          !locked,
+        );
+        button.dataset.seed = seed.id;
+        picker.append(button);
+      }
+      wrap.append(picker);
+    }
+    if (toolPicker === "fertilizeAll" || toolPicker === "sprayAll") {
+      const picker = div("garden-tools");
+      const bulkKind = toolPicker === "fertilizeAll" ? "fertilize" : "spray";
+      const catalog = bulkKind === "fertilize" ? FERTILIZERS : SPRAYS;
+      const targets = supplyTargetCount(bulkKind, now());
+      picker.append(
+        span("garden-hint", t("garden.pickAllSupply", { count: targets, plants: t("garden.plants") })),
+      );
+      const coins = state?.coins ?? 0;
+      for (const supply of catalog) {
+        const unit = buyPriceOf(supply.id, supply.price);
+        const affordable = unit <= 0 ? targets : Math.min(targets, Math.floor(coins / unit));
+        const button = actionButton(
+          `${t(`supplies.${supply.id}`)} · ${formatCompact(unit)}c × ${affordable}`,
+          "quickSupplyAll",
+          targets > 0 && affordable > 0,
+        );
+        button.dataset.kind = bulkKind;
+        button.dataset.supply = supply.id;
+        picker.append(button);
+      }
+      wrap.append(picker);
+    }
+  }
+
+  /**
+   * @brief Appends the bulk-uproot filter panel.
+   * @param wrap Panel that receives the filter controls.
+   */
+  function appendUprootPanel(wrap: HTMLElement): void {
+    if (bulkPanel !== "uproot") return;
+    const panel = div("garden-tools");
+    if (uprootPending !== null) {
+      const targets = uprootTargets(uprootPending);
+      panel.append(
+        lineBlock(targets.count > 0 ? t("auto.preview", { crops: targets.summary }) : t("auto.previewEmpty")),
+      );
+      panel.append(
+        actionButton(t("auto.confirmUproot"), "uprootConfirm", targets.count > 0),
+        actionButton(t("auto.cancelUproot"), "uprootCancel"),
+      );
+      wrap.append(panel);
+      return;
+    }
+    const planted = new Map<SeedId, number>();
+    for (const plot of state?.plots ?? []) {
+      if (plot === null) continue;
+      planted.set(plot.seed, (planted.get(plot.seed) ?? 0) + 1);
+    }
+    for (const [seed, count] of planted) {
+      const button = actionButton(`${t("auto.byPlant", { seed: seedName(seed) })} ×${count}`, "uprootSeed");
+      button.dataset.seed = seed;
+      panel.append(button);
+    }
+    const plantedTrees = new Map<TreeId, number>();
+    for (const tree of state?.trees ?? []) {
+      if (tree === null) continue;
+      plantedTrees.set(tree.tree, (plantedTrees.get(tree.tree) ?? 0) + 1);
+    }
+    for (const [tree, count] of plantedTrees) {
+      const button = actionButton(`${t("auto.byPlant", { seed: treeName(tree) })} ×${count}`, "uprootTree");
+      button.dataset.tree = tree;
+      panel.append(button);
+    }
+    panel.append(actionButton(t("auto.loss"), "uprootLoss"), actionButton(t("auto.win"), "uprootWin"));
+    const priceInput = document.createElement("input");
+    priceInput.type = "number";
+    priceInput.min = "0";
+    priceInput.className = "stage-input garden-uproot-price";
+    priceInput.placeholder = t("auto.price");
+    priceInput.value = uprootPriceDraft;
+    priceInput.dataset.role = "uprootPrice";
+    priceInput.setAttribute("aria-label", t("auto.price"));
+    panel.append(priceInput, actionButton(t("auto.uprootPrice"), "uprootPrice"));
+    panel.append(span("garden-hint", t("auto.hint")));
+    wrap.append(panel);
+  }
+
   /** @brief Builds the garden tab: pager plus the crop grid and fruit stack. */
   function buildGarden(): HTMLElement {
     const wrap = div("garden-garden");
@@ -2779,137 +3033,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       wrap.append(tools);
 
-      if (toolPicker === "plant") {
-        const picker = div("garden-tools");
-        const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
-        if (ownedSeeds.length === 0) picker.append(span("garden-hint", t("garden.plantNoSeeds")));
-        for (const seed of ownedSeeds) {
-          const locked = seedLocked(seed.id);
-          const button = actionButton(
-            `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})${locked ? ` · P${seedPrestigeTier(seed.id)}` : ""}`,
-            "pickPlantSeed",
-            !locked,
-          );
-          button.dataset.seed = seed.id;
-          picker.append(button);
-        }
-        wrap.append(picker);
-      }
-      if (toolPicker === "fertilize" || toolPicker === "spray") {
-        const picker = div("garden-tools");
-        const catalog = toolPicker === "fertilize" ? FERTILIZERS : SPRAYS;
-        for (const supply of catalog) {
-          const owned = state?.bag.supplies[supply.id] ?? 0;
-          const button = actionButton(
-            `${t(`supplies.${supply.id}`)} (${owned})`,
-            "pickToolSupply",
-            owned > 0,
-          );
-          button.dataset.kind = toolPicker;
-          button.dataset.supply = supply.id;
-          picker.append(button);
-        }
-        wrap.append(picker);
-      }
-      if (bulkPanel === "plan") {
-        const picker = div("garden-tools");
-        const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
-        if (ownedSeeds.length === 0) picker.append(span("garden-hint", t("garden.plantNoSeeds")));
-        for (const seed of ownedSeeds) {
-          const locked = seedLocked(seed.id);
-          const button = actionButton(
-            `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})${locked ? ` · P${seedPrestigeTier(seed.id)}` : ""}`,
-            "plantAllSeed",
-            !locked,
-          );
-          button.dataset.seed = seed.id;
-          picker.append(button);
-        }
-        wrap.append(picker);
-      }
-      if (toolPicker === "fertilizeAll" || toolPicker === "sprayAll") {
-        const picker = div("garden-tools");
-        const bulkKind = toolPicker === "fertilizeAll" ? "fertilize" : "spray";
-        const catalog = bulkKind === "fertilize" ? FERTILIZERS : SPRAYS;
-        const targets = supplyTargetCount(bulkKind, now());
-        picker.append(
-          span("garden-hint", t("garden.pickAllSupply", { count: targets, plants: t("garden.plants") })),
-        );
-        for (const supply of catalog) {
-          const unit = buyPriceOf(supply.id, supply.price);
-          const affordable = unit <= 0 ? targets : Math.min(targets, Math.floor(coins / unit));
-          const button = actionButton(
-            `${t(`supplies.${supply.id}`)} · ${formatCompact(unit)}c × ${affordable}`,
-            "quickSupplyAll",
-            targets > 0 && affordable > 0,
-          );
-          button.dataset.kind = bulkKind;
-          button.dataset.supply = supply.id;
-          picker.append(button);
-        }
-        wrap.append(picker);
-      }
+      appendToolPickers(wrap);
 
       wrap.append(lineBlock(`// ${t("auto.title")}`));
       const auto = div("garden-tools");
       auto.append(actionButton(t("auto.uproot"), "bulkUproot", true));
       wrap.append(auto);
 
-      if (bulkPanel === "uproot") {
-        const panel = div("garden-tools");
-        if (uprootPending !== null) {
-          const targets = uprootTargets(uprootPending);
-          panel.append(
-            lineBlock(
-              targets.count > 0 ? t("auto.preview", { crops: targets.summary }) : t("auto.previewEmpty"),
-            ),
-          );
-          panel.append(
-            actionButton(t("auto.confirmUproot"), "uprootConfirm", targets.count > 0),
-            actionButton(t("auto.cancelUproot"), "uprootCancel"),
-          );
-          wrap.append(panel);
-        } else {
-          const planted = new Map<SeedId, number>();
-          for (const plot of state?.plots ?? []) {
-            if (plot === null) continue;
-            planted.set(plot.seed, (planted.get(plot.seed) ?? 0) + 1);
-          }
-          for (const [seed, count] of planted) {
-            const button = actionButton(
-              `${t("auto.byPlant", { seed: seedName(seed) })} ×${count}`,
-              "uprootSeed",
-            );
-            button.dataset.seed = seed;
-            panel.append(button);
-          }
-          const plantedTrees = new Map<TreeId, number>();
-          for (const tree of state?.trees ?? []) {
-            if (tree === null) continue;
-            plantedTrees.set(tree.tree, (plantedTrees.get(tree.tree) ?? 0) + 1);
-          }
-          for (const [tree, count] of plantedTrees) {
-            const button = actionButton(
-              `${t("auto.byPlant", { seed: treeName(tree) })} ×${count}`,
-              "uprootTree",
-            );
-            button.dataset.tree = tree;
-            panel.append(button);
-          }
-          panel.append(actionButton(t("auto.loss"), "uprootLoss"), actionButton(t("auto.win"), "uprootWin"));
-          const priceInput = document.createElement("input");
-          priceInput.type = "number";
-          priceInput.min = "0";
-          priceInput.className = "stage-input garden-uproot-price";
-          priceInput.placeholder = t("auto.price");
-          priceInput.value = uprootPriceDraft;
-          priceInput.dataset.role = "uprootPrice";
-          priceInput.setAttribute("aria-label", t("auto.price"));
-          panel.append(priceInput, actionButton(t("auto.uprootPrice"), "uprootPrice"));
-          panel.append(span("garden-hint", t("auto.hint")));
-          wrap.append(panel);
-        }
-      }
+      appendUprootPanel(wrap);
 
       wrap.append(lineBlock(`// ${t("staff.title")}`));
       wrap.append(buildStaffBar());
@@ -4959,17 +5090,32 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
   /**
    * @brief Builds the rebuilt UI.
-   * @details Starts with the 27 premium plots drawn exactly like normal soil, so
-   * the rest of the garden can move onto the same board next.
+   * @details The VIP board sits first, with the quick actions grouped in columns
+   * beside it; both reuse the legacy data-act handlers underneath.
    */
   function buildRebornView(): HTMLElement {
+    const at = now();
     const wrap = div("garden-reborn");
+    const row = div("garden-reborn-row");
+    const vip = div("garden-reborn-vip");
     const owned = specialView()?.owned ?? 0;
-    wrap.append(
+    vip.append(
       lineBlock(`// ${t("reborn.vipTitle")} · ${t("reborn.vipProgress", { owned, total: SPECIAL_SLOTS })}`),
+      buildRebornBoard(rebornPlots(), at),
     );
-    wrap.append(buildRebornBoard(rebornPlots(), now()));
+    row.append(vip);
+    if (mode === "owner") {
+      row.append(div("garden-reborn-sep"));
+      const quick = div("garden-reborn-quick");
+      quick.append(lineBlock(`// ${t("quick.title")}`), buildRebornActionColumns(rebornActionColumns(at)));
+      row.append(quick);
+    }
+    wrap.append(row);
     appendSpecialPickers(wrap);
+    if (mode === "owner") {
+      appendToolPickers(wrap);
+      appendUprootPanel(wrap);
+    }
     return wrap;
   }
 

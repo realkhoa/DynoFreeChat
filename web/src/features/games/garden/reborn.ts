@@ -9,7 +9,7 @@
 
 import type { PlotState } from "@dyno/shared/garden";
 import { formatCompact, t } from "@/shared/i18n";
-import { cellRender, growthColor, lockedCellRender, type CellRender } from "./ascii";
+import { CELL_INNER, cellRender, fitText, growthColor, lockedCellRender, type CellRender } from "./ascii";
 
 /** One plot on the rebuilt VIP board. */
 export interface RebornPlot {
@@ -109,4 +109,108 @@ export function buildRebornBoard(plots: readonly RebornPlot[], now: number): HTM
     board.append(cell);
   }
   return board;
+}
+
+/** One quick action on the rebuilt board. */
+export interface RebornAction {
+  /** Stable id, also mirrored onto the button for tests and diagnostics. */
+  readonly id: string;
+  /** Full label; the cell wraps it over at most two lines. */
+  readonly label: string;
+  /** One glyph shown above the label, matching the plot cells. */
+  readonly glyph: string;
+  /** Short live value printed under the label, e.g. `12·30c`. */
+  readonly note: string;
+  /** Legacy `data-act` the click delegates to. */
+  readonly act: string;
+  /** Optional `data-kind` used by the picker handlers. */
+  readonly kind?: string;
+  /** Whether the action is currently unavailable. */
+  readonly disabled?: boolean;
+  /** Whether the action's picker or tool is already open/active. */
+  readonly active?: boolean;
+}
+
+/**
+ * @brief Wraps a quick-action label into the two centred cell lines.
+ * @param label Full label.
+ * @param width Inner cell width in code points.
+ * @return Exactly two padded lines, truncated when a word is too long.
+ */
+export function wrapCellLabel(label: string, width = CELL_INNER): string[] {
+  const words = label.split(/\s+/).filter((word) => word.length > 0);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    if (current.length === 0) {
+      current = word;
+      continue;
+    }
+    if (current.length + 1 + word.length <= width) {
+      current = `${current} ${word}`;
+      continue;
+    }
+    lines.push(current);
+    current = word;
+    if (lines.length === 2) break;
+  }
+  if (lines.length < 2) lines.push(current);
+  return [0, 1].map((index) => fitText(lines[index] ?? "", width, "center"));
+}
+
+/**
+ * @brief Renders one quick action as a plot-sized cell.
+ * @param action Action data to paint.
+ * @return The button, framed exactly like a plot cell.
+ */
+export function buildRebornAction(action: RebornAction): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "garden-cell garden-reborn-action";
+  button.dataset.act = action.act;
+  button.dataset.actionId = action.id;
+  if (action.kind !== undefined) button.dataset.kind = action.kind;
+  button.disabled = action.disabled === true;
+  if (action.active === true) button.classList.add("is-active");
+  button.title = action.note.length > 0 ? `${action.label} · ${action.note}` : action.label;
+  button.setAttribute("aria-label", button.title);
+  const [first, second] = wrapCellLabel(action.label);
+  const lines = [
+    `+${"-".repeat(CELL_INNER)}+`,
+    `|${fitText(action.glyph, CELL_INNER, "center")}|`,
+    `|${first}|`,
+    `|${second}|`,
+    `|${fitText(action.note, CELL_INNER)}|`,
+    `+${"-".repeat(CELL_INNER)}+`,
+  ];
+  for (const line of lines) {
+    const span = document.createElement("span");
+    span.className = "garden-cell-line";
+    span.textContent = line;
+    button.append(span);
+  }
+  return button;
+}
+
+/**
+ * @brief Builds the quick action columns beside the VIP board.
+ * @param columns Action groups; one vertical column and separator each.
+ * @return The columns container.
+ */
+export function buildRebornActionColumns(columns: readonly (readonly RebornAction[])[]): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "garden-reborn-actions";
+  columns.forEach((column, index) => {
+    if (index > 0) {
+      const separator = document.createElement("span");
+      separator.className = "garden-reborn-sep";
+      separator.setAttribute("aria-hidden", "true");
+      wrap.append(separator);
+    }
+    const group = document.createElement("div");
+    group.className = "garden-reborn-action-col";
+    for (const action of column) group.append(buildRebornAction(action));
+    wrap.append(group);
+  });
+  return wrap;
 }

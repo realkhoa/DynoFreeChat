@@ -106,6 +106,56 @@
   cursor: pointer;
 }
 
+/* Layout: the VIP board first, then the quick action columns beside it. */
+.garden-reborn-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.garden-reborn-vip,
+.garden-reborn-quick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Vertical rule between the board and the quick actions, and between groups. */
+.garden-reborn-sep {
+  align-self: stretch;
+  width: 1px;
+  min-height: 60px;
+  background: var(--border-subtle);
+}
+
+.garden-reborn-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.garden-reborn-action-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.garden-reborn-action {
+  width: 10ch;
+}
+
+.garden-reborn-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.garden-reborn-action.is-active {
+  color: #d7ba7d;
+  outline: 1px dashed #d7ba7d80;
+  outline-offset: 1px;
+}
+
 .garden-tabs-spacer {
   flex: 1;
 }

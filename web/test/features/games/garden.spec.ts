@@ -30,6 +30,7 @@ import {
 } from "@dyno/shared/garden";
 import { createAsciiGardenGame } from "@/features/games/garden/game";
 import type { GardenApi } from "@/features/games/garden/api";
+import { wrapCellLabel } from "@/features/games/garden/reborn";
 import { setLocale } from "@/shared/i18n";
 import { readParam } from "@/shared/lib/urlstate";
 
@@ -458,6 +459,85 @@ describe("legacy view", () => {
     await settle();
 
     expect(api.calls.some((call) => call.action?.kind === "buySpecialPlot")).toBe(true);
+  });
+
+  it("shows the quick actions in columns beside the VIP board", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 5_000_000_000,
+        plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)],
+        bag: { seeds: { carrot: 2 }, crops: [{ item: "carrot", effects: [], qty: 3 }], supplies: {} },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    const actions = Array.from(host.querySelectorAll<HTMLButtonElement>(".garden-reborn-action"));
+    expect(actions).toHaveLength(10);
+    // Same six-line frame as the plot cells, so the buttons read as plots too.
+    for (const action of actions) expect(action.querySelectorAll(".garden-cell-line")).toHaveLength(6);
+    // Three groups with a vertical rule between them, plus one before the group.
+    expect(host.querySelectorAll(".garden-reborn-action-col")).toHaveLength(3);
+    expect(host.querySelectorAll(".garden-reborn-actions .garden-reborn-sep")).toHaveLength(2);
+    expect(host.querySelectorAll(".garden-reborn-row > .garden-reborn-sep")).toHaveLength(1);
+    // Requested order: field actions, bulk supplies, quick tools, then uproot.
+    expect(actions.map((action) => action.dataset.actionId)).toEqual([
+      "water",
+      "harvest",
+      "sell",
+      "sprayPests",
+      "renovate",
+      "bulkFertilize",
+      "quickPlan",
+      "quickSpray",
+      "quickFertilize",
+      "quickUproot",
+    ]);
+    // Labels wrap inside the frame instead of spilling out.
+    expect(actions[0]?.textContent).toContain("Tưới");
+    expect(actions[0]?.textContent).toContain("nước");
+    expect(actions[9]?.textContent).toContain("Nhổ");
+    expect(actions[9]?.textContent).toContain("nhanh");
+    // A ripe crop makes harvest and quick sell usable; nothing needs water.
+    expect(actions[0]?.disabled).toBe(true);
+    expect(actions[1]?.disabled).toBe(false);
+    expect(actions[2]?.disabled).toBe(false);
+  });
+
+  it("runs the quick actions through the legacy handlers", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 5_000_000_000,
+        plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)],
+        bag: { seeds: { carrot: 2 }, crops: [{ item: "carrot", effects: [], qty: 3 }], supplies: {} },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // Quick uproot opens the bulk filter panel.
+    host.querySelector<HTMLButtonElement>('[data-action-id="quickUproot"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-uproot-price")).not.toBeNull();
+
+    // Quick plan opens the owned-seed picker.
+    host.querySelector<HTMLButtonElement>('[data-action-id="quickPlan"]')?.click();
+    await settle();
+    expect(host.querySelector('[data-act="pickPlantSeed"]')).not.toBeNull();
+
+    // Harvest all runs the legacy bulk action.
+    host.querySelector<HTMLButtonElement>('[data-action-id="harvest"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "harvestAll")).toBe(true);
+
+    // Quick sell opens the legacy sell-all dialog.
+    host.querySelector<HTMLButtonElement>('[data-action-id="sell"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-sell-all-dialog")).not.toBeNull();
   });
 
   it("shows the bag, upgrades and field status in the right rail", async () => {
@@ -2544,5 +2624,13 @@ describe("visit mode", () => {
     await settle();
     expect(host.querySelector(".garden-code")?.textContent).toBe("#ABCDEF");
     expect(host.querySelector(".stage-status")?.textContent).not.toContain("Chế độ xem");
+  });
+});
+
+describe("reborn action cells", () => {
+  it("wraps labels into the two plot-cell lines", () => {
+    expect(wrapCellLabel("Tưới nước")).toEqual(["  Tưới  ", "  nước  "]);
+    expect(wrapCellLabel("Bón phân loạt")).toEqual(["Bón phân", "  loạt  "]);
+    expect(wrapCellLabel("Quick uproot")).toEqual([" Quick  ", " uproot "]);
   });
 });
