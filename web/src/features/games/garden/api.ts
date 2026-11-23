@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file api.ts
  * @brief Browser client for the ASCII Garden Worker API.
  * @details Owns the player credentials kept in `localStorage`, the server clock
@@ -38,6 +38,8 @@ export interface GardenBot {
   readonly online: boolean;
   /** Carrot specialist marker. */
   readonly focus?: string;
+  /** True for the five LLM-driven bots. */
+  readonly ai?: boolean;
 }
 
 /** Credentials the browser keeps for this player. */

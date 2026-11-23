@@ -139,7 +139,7 @@ describe("market self-heal", () => {
 });
 
 describe("bots", () => {
-  it("creates fifty bots plus the carrot specialist and keeps them out of the human leaderboard", async () => {
+  it("creates fifty bots, the carrot specialist plus five AI bots and keeps them out of the human leaderboard", async () => {
     for (let round = 0; round < 6; round += 1) {
       const tick = await SELF.fetch(`${BASE}/api/garden/bots/tick`, { method: "POST" });
       expect(tick.status).toBe(200);
@@ -147,12 +147,15 @@ describe("bots", () => {
 
     const list = await SELF.fetch(`${BASE}/api/garden/bots`);
     const listed = (await list.json()) as {
-      bots: Array<{ code: string; nick: string; focus?: string }>;
+      bots: Array<{ code: string; nick: string; focus?: string; ai?: boolean }>;
     };
-    expect(listed.bots).toHaveLength(51);
+    expect(listed.bots).toHaveLength(56);
     expect(listed.bots.some((bot) => bot.nick === "Bot Cà Rốt" && bot.focus === "carrot")).toBe(true);
+    const aiBots = listed.bots.filter((bot) => bot.ai === true);
+    expect(aiBots).toHaveLength(5);
     for (const bot of listed.bots) {
       if (bot.focus === "carrot") expect(bot.nick).toBe("Bot Cà Rốt");
+      else if (bot.ai === true) expect(bot.nick).toMatch(/^Bot AI \d\d$/);
       else expect(bot.nick).toMatch(/^Bot \d\d$/);
     }
 

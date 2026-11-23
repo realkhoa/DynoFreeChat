@@ -14,6 +14,7 @@ import type { Env } from "./env";
 import { BOT_HEADER, GARDEN_TOKEN_HEADER, HUB_NAME, MARKET_HEADER } from "./garden";
 import { json } from "./http";
 import type { SqlRow } from "./sql";
+import { AI_BOT_COUNT, AI_BOT_NICKS } from "./bot-ai";
 import { MARKET_BOARD_NAME } from "./market-board";
 import { randomCode, randomRecoveryKey, sha256Hex } from "./secrets";
 
@@ -42,6 +43,8 @@ interface BotRecord {
   bag?: number;
   /** Set on the specialist: it only plants this crop. */
   focus?: "carrot";
+  /** True for the five LLM-driven bots. */
+  ai?: boolean;
 }
 
 type MetaRow = SqlRow<{ value: string }>;
@@ -56,6 +59,8 @@ export interface BotSummary {
   harvested: number;
   bag: number;
   focus?: string;
+  /** True for the five LLM-driven bots. */
+  ai?: boolean;
   online: boolean;
 }
 
@@ -144,6 +149,7 @@ export class BotManager extends DurableObject<Env> {
       harvested: bot.harvested,
       bag: bot.bag ?? 0,
       focus: bot.focus,
+      ai: bot.ai === true,
       online: true,
     }));
   }
@@ -152,7 +158,7 @@ export class BotManager extends DurableObject<Env> {
   private async ensureBots(bots: BotRecord[]): Promise<BotRecord[]> {
     const colors = ["#4ec9b0", "#d7ba7d", "#9cdcfe", "#ce9178", "#c586c0", "#6fe3b5"];
     let created = 0;
-    let generic = bots.filter((bot) => bot.focus === undefined).length;
+    let generic = bots.filter((bot) => bot.focus === undefined && bot.ai !== true).length;
     while (generic < BOT_COUNT && created < BOT_CREATE_BATCH) {
       created += 1;
       generic += 1;
@@ -266,7 +272,79 @@ export class BotManager extends DurableObject<Env> {
         }
       }
     }
+
+    // Five AI bots: same garden pipeline, but their plans come from an LLM.
+    let aiBots = bots.filter((bot) => bot.ai === true).length;
+    while (aiBots < AI_BOT_COUNT && created < BOT_CREATE_BATCH) {
+      created += 1;
+      const index = aiBots;
+      const nick = AI_BOT_NICKS[index] ?? `Bot AI ${String(index + 1).padStart(2, "0")}`;
+      const createdBot = await this.createBot(
+        nick,
+        colors[(BOT_COUNT + index + 1) % colors.length] ?? "#4ec9b0",
+        {
+          ai: true,
+        },
+      );
+      if (createdBot === null) break;
+      bots.push(createdBot);
+      aiBots += 1;
+      this.writeBots(bots);
+    }
     return bots;
+  }
+
+  /**
+   * @brief Registers one bot garden through the hub.
+   * @param nick Display name.
+   * @param color Avatar colour.
+   * @param extra Extra record fields (focus/ai).
+   * @return The stored record, or `null` when registration failed.
+   */
+  private async createBot(
+    nick: string,
+    color: string,
+    extra: Pick<BotRecord, "focus" | "ai"> = {},
+  ): Promise<BotRecord | null> {
+    const playerId = crypto.randomUUID();
+    const code = randomCode(GARDEN_CODE_LENGTH).toUpperCase();
+    const recoveryHash = await sha256Hex(randomRecoveryKey());
+    const hub = this.env.GARDEN_HUB.get(this.env.GARDEN_HUB.idFromName(HUB_NAME));
+    const registered = await hub.fetch("https://hub/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        playerId,
+        code,
+        recoveryHash,
+        nick,
+        color,
+        bot: true,
+        ip: `bot-${nick.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        now: Date.now(),
+      }),
+    });
+    if (!registered.ok) return null;
+    const garden = this.env.GARDEN.get(this.env.GARDEN.idFromName(playerId));
+    const registeredGarden = await garden.fetch("https://garden/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ playerId, code, recoveryHash, nick, color }),
+    });
+    if (!registeredGarden.ok) return null;
+    const payload = (await registeredGarden.json()) as { token?: string };
+    if (typeof payload.token !== "string") return null;
+    return {
+      playerId,
+      token: payload.token,
+      code,
+      nick,
+      color,
+      coins: 0,
+      earned: 0,
+      harvested: 0,
+      ...extra,
+    };
   }
 
   /** @brief Loads the market board once per tick. */
@@ -315,7 +393,7 @@ export class BotManager extends DurableObject<Env> {
         const response = await garden.fetch("https://garden/bot-tick", {
           method: "POST",
           headers,
-          body: JSON.stringify({ focus: bot.focus, survey }),
+          body: JSON.stringify({ focus: bot.focus, survey, ai: bot.ai === true }),
         });
         if (!response.ok) continue;
         const result = (await response.json()) as {

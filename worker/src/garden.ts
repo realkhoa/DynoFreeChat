@@ -66,6 +66,7 @@ import { DEFAULT_COLOR, sanitizeColor, sanitizeNick } from "@dyno/shared/protoco
 import type { Env } from "./env";
 import { json, readJson } from "./http";
 import { BOT_ACTION_LIMIT, planBotActions } from "./bot-brain";
+import { planAiActions } from "./bot-ai";
 import {
   applyGardenAction,
   advanceQuests,
@@ -1114,9 +1115,20 @@ export class Garden extends DurableObject<Env> {
       return counts;
     };
     const rng = createRng(hash32(`bot:${ledger.playerId}:${Math.floor(now / 60_000)}`));
-    const actions = planBotActions(ledger, season, now, rng, BOT_ACTION_LIMIT, focus, survey);
+    // The five AI bots ask an LLM for a plan first; invalid plans fall back to
+    // the deterministic heuristic so a bad model day never stalls the market.
+    let aiMeta: { used: boolean; model?: string; error?: string } = { used: false };
+    let planned: GardenAction[] | null = null;
+    if (body.ai === true) {
+      const aiPlan = await planAiActions(this.env, ledger, season, now, survey);
+      aiMeta = { used: aiPlan.actions.length > 0, model: aiPlan.model };
+      if (aiPlan.error !== null) aiMeta.error = aiPlan.error;
+      if (aiPlan.actions.length > 0) planned = aiPlan.actions;
+    }
+    const heuristic = planBotActions(ledger, season, now, rng, BOT_ACTION_LIMIT, focus, survey);
+    const actions = planned ?? heuristic;
     if (actions.length === 0) {
-      return json({ ok: true, actions: 0, coins: ledger.coins, planted: plantedNow(ledger) });
+      return json({ ok: true, actions: 0, coins: ledger.coins, planted: plantedNow(ledger), ai: aiMeta });
     }
 
     let current = ledger;
@@ -1152,6 +1164,7 @@ export class Garden extends DurableObject<Env> {
       sold,
       bought,
       planted: plantedNow(current),
+      ai: aiMeta,
     });
   }
 

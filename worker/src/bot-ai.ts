@@ -1,0 +1,324 @@
+/**
+ * @file bot-ai.ts
+ * @brief LLM brain for the five AI bot gardens.
+ * @details The model only proposes decisions; the worker validates every action
+ * through the normal rule set, so a bad or hallucinated plan is rejected piece by
+ * piece and the deterministic heuristic takes over when the model fails.
+ */
+
+import {
+  CROPS_PER_TAB,
+  PLOTS_PER_PATCH,
+  SEEDS,
+  parseGardenAction,
+  type GardenAction,
+  type SeasonSnapshot,
+  type SeedId,
+} from "@dyno/shared/garden";
+import type { Env } from "./env";
+import type { GardenLedger } from "./garden-rules";
+
+/** How many AI-run bot gardens exist. */
+export const AI_BOT_COUNT = 5;
+
+/** Nicks used by the AI bots, in creation order. */
+export const AI_BOT_NICKS: readonly string[] = [
+  "Bot AI 01",
+  "Bot AI 02",
+  "Bot AI 03",
+  "Bot AI 04",
+  "Bot AI 05",
+];
+
+/** Default OpenAI-compatible endpoint: OpenRouter's free tier. */
+export const DEFAULT_AI_BASE = "https://openrouter.ai/api/v1";
+
+/** Default model; any free OpenAI-compatible chat model works. */
+export const DEFAULT_AI_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+
+/** Actions the model may choose. Gifts, prestige and insurance are excluded. */
+export const AI_ALLOWED_ACTIONS: ReadonlySet<string> = new Set([
+  "water",
+  "waterAll",
+  "harvest",
+  "harvestAll",
+  "harvestMushroom",
+  "plant",
+  "plantAll",
+  "buySeed",
+  "plantTree",
+  "buyTree",
+  "plantFruitSeed",
+  "uproot",
+  "uprootBulk",
+  "sellAll",
+  "sellAllProducts",
+  "sellCrop",
+  "sellProduct",
+  "plantMushroom",
+  "buyMushroomSpawn",
+  "quickPlan",
+  "fertilize",
+  "fertilizeAll",
+  "spray",
+  "sprayAll",
+  "sprayPest",
+  "sprayPestAll",
+  "buySupply",
+  "buyPatch",
+  "buyTab",
+  "buyTool",
+  "hireStaff",
+  "fireStaff",
+  "setStaffRole",
+  "collectMachine",
+  "craftMachine",
+  "queueMachine",
+  "clearMachineQueue",
+  "setMachineLimit",
+  "patAnimal",
+  "feedAnimal",
+  "breedAnimal",
+  "buyAnimal",
+  "sellAnimal",
+  "buyMerchant",
+  "claimQuest",
+  "claimCodex",
+  "spinWheel",
+  "cookRecipe",
+  "compostCrops",
+]);
+
+/** Result of one AI planning round. */
+export interface AiPlan {
+  /** Validated actions to run, in order. */
+  readonly actions: GardenAction[];
+  /** Model id used, for the bot tick response. */
+  readonly model: string;
+  /** Why an empty plan happened, if it did. */
+  readonly error: string | null;
+}
+
+/** Compact, model-friendly context for one prompt. */
+export interface AiGardenContext {
+  readonly coins: number;
+  readonly prestige: number;
+  readonly plots: readonly {
+    slot: number;
+    seed: SeedId;
+    readyInSec: number;
+    watered: boolean;
+    dead: boolean;
+    pest: boolean;
+  }[];
+  readonly trees: readonly {
+    slot: number;
+    tree: string;
+    readyInSec: number;
+    watered: boolean;
+    dead: boolean;
+  }[];
+  readonly bag: { seeds: Record<string, number>; crops: number; products: number };
+  readonly trays: { empty: number; ripe: number; growing: number };
+  readonly staff: readonly { role: string; level: number }[];
+  readonly shop: readonly { seed: string; price: number; stock: number }[];
+  readonly neighbourhood: Record<string, number>;
+  readonly planted: Record<string, number>;
+}
+
+/** @brief Reads the AI model configuration, or `null` when unconfigured. */
+export function aiConfig(env: Env): { base: string; model: string; key: string } | null {
+  const raw = typeof env.AI_BOT_API_KEY === "string" ? env.AI_BOT_API_KEY.trim() : "";
+  if (raw.length === 0) return null;
+  const base =
+    typeof env.AI_BOT_API_BASE === "string" && env.AI_BOT_API_BASE.trim().length > 0
+      ? env.AI_BOT_API_BASE.trim()
+      : DEFAULT_AI_BASE;
+  const model =
+    typeof env.AI_BOT_MODEL === "string" && env.AI_BOT_MODEL.trim().length > 0
+      ? env.AI_BOT_MODEL.trim()
+      : DEFAULT_AI_MODEL;
+  return { base: base.replace(/\/+$/, ""), model, key: raw };
+}
+
+/** @brief Builds the lean context the model reasons over. */
+export function summarizeGarden(
+  ledger: GardenLedger,
+  season: SeasonSnapshot,
+  now: number,
+  neighbourhood: Readonly<Record<string, number>>,
+): AiGardenContext {
+  const plots: AiGardenContext["plots"][number][] = [];
+  const planted: Record<string, number> = {};
+  for (let slot = 0; slot < ledger.plots.length; slot += 1) {
+    const plot = ledger.plots[slot] ?? null;
+    if (plot === null) continue;
+    planted[plot.seed] = (planted[plot.seed] ?? 0) + 1;
+    plots.push({
+      slot,
+      seed: plot.seed,
+      readyInSec: Math.max(0, Math.ceil((plot.readyAt - now) / 1_000)),
+      watered: plot.watered,
+      dead: plot.dead === true,
+      pest: plot.pest,
+    });
+  }
+  const trees: AiGardenContext["trees"][number][] = [];
+  for (let slot = 0; slot < ledger.trees.length; slot += 1) {
+    const tree = ledger.trees[slot] ?? null;
+    if (tree === null) continue;
+    planted[tree.tree] = (planted[tree.tree] ?? 0) + 1;
+    trees.push({
+      slot,
+      tree: tree.tree,
+      readyInSec: Math.max(0, Math.ceil((tree.readyAt - now) / 1_000)),
+      watered: tree.watered,
+      dead: tree.dead === true,
+    });
+  }
+  let traysEmpty = 0;
+  let traysRipe = 0;
+  let traysGrowing = 0;
+  for (const tray of ledger.mushroomTrays ?? []) {
+    if (tray === null) traysEmpty += 1;
+    else if (now >= tray.readyAt) traysRipe += 1;
+    else traysGrowing += 1;
+  }
+  return {
+    coins: ledger.coins,
+    prestige: ledger.prestige,
+    plots,
+    trees,
+    bag: {
+      seeds: Object.fromEntries(
+        Object.entries(ledger.bag.seeds).filter((entry): entry is [string, number] => (entry[1] ?? 0) > 0),
+      ),
+      crops: ledger.bag.crops.reduce((sum, stack) => sum + stack.qty, 0),
+      products: (ledger.bag.products ?? []).reduce((sum, stack) => sum + stack.qty, 0),
+    },
+    trays: { empty: traysEmpty, ripe: traysRipe, growing: traysGrowing },
+    staff: ledger.staff.map((worker) => ({ role: worker.role, level: worker.level })),
+    shop: season.shop.offers.map((offer) => ({
+      seed: offer.seed,
+      price: offer.price,
+      stock: offer.stock,
+    })),
+    neighbourhood,
+    planted,
+  };
+}
+
+/** @brief Builds the system and user messages for one planning call. */
+export function buildAiMessages(context: AiGardenContext): { role: "system" | "user"; content: string }[] {
+  const system = [
+    "You are an expert player of a farming game. Reply with STRICT JSON only:",
+    '{"actions":[{"kind":"...", ...fields}]} — at most 8 actions, in execution order.',
+    "Allowed action kinds and fields:",
+    "water {slot,tree}, waterAll {}, harvest {slot,tree}, harvestAll {},",
+    "harvestMushroom {slot}, plant {slot,seed}, plantAll {seed}, buySeed {seed,qty},",
+    "plantTree {slot,tree}, buyTree {tree}, uproot {slot,tree}, uprootBulk {dead?,priceBelow?,profit?},",
+    "sellAll {}, sellCrop {item,effects,star,qty}, plantMushroom {slot,mushroom},",
+    "buyMushroomSpawn {mushroom,qty}, quickPlan {}, fertilize {slot,supply,tree},",
+    "spray {slot,supply,tree}, buySupply {supply,qty}, buyPatch {tab}, buyTab {},",
+    "buyTool {tool,qty}, hireStaff {id}, setStaffRole {index,role},",
+    "collectMachine {machine}, queueMachine {machine,item?,qty?}, patAnimal {building,slot},",
+    "buyAnimal {building,slot,animal}, sellAnimal {building,slot}, claimQuest {id}, spinWheel {}.",
+    "Priorities: 1) uproot every dead or loss-making plant, 2) harvest ripe plants,",
+    "3) sell the finished bag, 4) water dry plants, 5) plant every empty cell with",
+    "profitable seeds while diversifying away from the neighbourhood survey,",
+    "6) open land when coins pile up. Never uproot a ripe or healthy profitable plant.",
+  ].join("\n");
+  const user = ["Current garden state:", JSON.stringify(context), "Return only the JSON object."].join("\n");
+  return [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ];
+}
+
+/** @brief Extracts the first JSON object from a model reply, tolerating fences. */
+export function extractJson(raw: string): unknown {
+  const cleaned = raw
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/** @brief Validates model decisions into real garden actions. */
+export function parseAiDecisions(raw: string, limit = 8): GardenAction[] {
+  const parsed = extractJson(raw);
+  if (parsed === null || typeof parsed !== "object") return [];
+  const list = (parsed as { actions?: unknown }).actions;
+  if (!Array.isArray(list)) return [];
+  const actions: GardenAction[] = [];
+  for (const entry of list) {
+    if (actions.length >= limit) break;
+    if (entry === null || typeof entry !== "object") continue;
+    const kind = (entry as { kind?: unknown }).kind;
+    if (typeof kind !== "string" || !AI_ALLOWED_ACTIONS.has(kind)) continue;
+    const action = parseGardenAction(entry);
+    if (action !== null) actions.push(action);
+  }
+  return actions;
+}
+
+/** @brief Asks the model to plan one round; never throws. */
+export async function planAiActions(
+  env: Env,
+  ledger: GardenLedger,
+  season: SeasonSnapshot,
+  now: number,
+  neighbourhood: Readonly<Record<string, number>>,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AiPlan> {
+  const config = aiConfig(env);
+  if (config === null) return { actions: [], model: "none", error: "AI_BOT_API_KEY is not configured" };
+  const context = summarizeGarden(ledger, season, now, neighbourhood);
+  const messages = buildAiMessages(context);
+  try {
+    const response = await fetchImpl(`${config.base}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${config.key}`,
+        "http-referer": "https://realkhoa.github.io/DynoFreeChat/",
+        "x-title": "DynoFreeChat AI bots",
+      },
+      body: JSON.stringify({ model: config.model, messages, temperature: 0.4, max_tokens: 700 }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) {
+      return { actions: [], model: config.model, error: `model HTTP ${response.status}` };
+    }
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: unknown } }>;
+    };
+    const content = payload.choices?.[0]?.message?.content;
+    if (typeof content !== "string") {
+      return { actions: [], model: config.model, error: "model returned no content" };
+    }
+    const actions = parseAiDecisions(content);
+    return {
+      actions,
+      model: config.model,
+      error: actions.length === 0 ? "model returned no usable actions" : null,
+    };
+  } catch (error) {
+    return { actions: [], model: config.model, error: (error as Error).message };
+  }
+}
+
+/** @brief Seeds suggested to the model as a cheap fallback hint. */
+export function seedHints(): string[] {
+  return SEEDS.filter((seed) => seed.regrow).map((seed) => seed.id);
+}
+
+/** @brief Unused helpers kept for the bot tests. */
+export const BOT_LAYOUT = { CROPS_PER_TAB, PLOTS_PER_PATCH } as const;

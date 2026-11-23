@@ -1,4 +1,4 @@
-import type { Garden, GardenHub } from "./garden";
+﻿import type { Garden, GardenHub } from "./garden";
 import type { BotManager } from "./bot-manager";
 import type { MarketBoard } from "./market-board";
 import type { ChatRoom } from "./room";
@@ -23,4 +23,10 @@ export interface Env {
   BOT_SECRET?: string;
   /** OpenCode Go key used by the recipe lab. */
   OPENCODE_API_KEY?: string;
+  /** OpenAI-compatible key for the five AI bots (OpenRouter free, Beam, Groq, ...). */
+  AI_BOT_API_KEY?: string;
+  /** OpenAI-compatible base URL, e.g. https://openrouter.ai/api/v1. */
+  AI_BOT_API_BASE?: string;
+  /** Chat model id, e.g. meta-llama/llama-3.3-70b-instruct:free. */
+  AI_BOT_MODEL?: string;
 }

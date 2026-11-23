@@ -235,3 +235,23 @@ npm run deploy:worker  # deploy Cloudflare Worker
 ## Giấy phép
 
 MIT.
+
+## Bot thị trường & 5 bot AI
+
+Ngoài 50 bot thị trường + 1 bot "Cà Rốt", hệ thống tạo thêm **5 bot AI** (`Bot AI 01`…`Bot AI 05`) được đánh dấu `ai: true` trong tab Bots. Mỗi tick, bot AI gửi bối cảnh vườn gọn (cây, cây ăn quả, khay nấm, túi đồ, shop, survey hàng xóm) cho một model chat OpenAI-compatible và nhận về tối đa 8 action dạng JSON; worker validate từng action bằng rule thật rồi mới chạy. Nếu model lỗi/không có key, bot tự fallback về heuristic cũ nên thị trường không bị đứng.
+
+Cấu hình (đều là env của worker):
+
+| Biến | Mặc định | Ý nghĩa |
+| --- | --- | --- |
+| `AI_BOT_API_KEY` | chưa set | bật AI; key của OpenRouter/Beam/Groq/Ollama… |
+| `AI_BOT_API_BASE` | `https://openrouter.ai/api/v1` | base URL OpenAI-compatible |
+| `AI_BOT_MODEL` | `meta-llama/llama-3.3-70b-instruct:free` | model chat (free tier cũng được) |
+
+```bash
+cd worker
+npx wrangler secret put AI_BOT_API_KEY     # dán key free (OpenRouter/Beam/...)
+npx wrangler deploy                        # vars AI_BOT_API_BASE / AI_BOT_MODEL đã có trong wrangler.jsonc
+```
+
+Đổi sang model free khác (Beam, Groq, Ollama local) chỉ cần sửa `AI_BOT_API_BASE` + `AI_BOT_MODEL` trong `worker/wrangler.jsonc` rồi deploy lại.

@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "dynofreechat-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
@@ -58,5 +58,7 @@
   },
   "vars": {
     "ALLOWED_ORIGINS": "localhost,https://realkhoa.github.io",
+    "AI_BOT_API_BASE": "https://openrouter.ai/api/v1",
+    "AI_BOT_MODEL": "meta-llama/llama-3.3-70b-instruct:free",
   },
 }
