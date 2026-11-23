@@ -151,9 +151,9 @@
 }
 
 .garden-reborn-action.is-active {
-  color: #d7ba7d;
-  outline: 1px dashed #d7ba7d80;
+  outline: 1px dashed currentColor;
   outline-offset: 1px;
+  filter: brightness(1.25);
 }
 
 .garden-tabs-spacer {
@@ -2007,4 +2007,51 @@ button.garden-rank-row:hover {
 .garden-buy-card.is-unaffordable {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Quick action tones keep the legacy palette: water blue, harvest green, coins
+   yellow, chemicals orange, renovated soil gold, fertiliser mint, plants green
+   and the destructive bulk uproot red. Painted last so the tone survives hover. */
+.garden-reborn-action.tone-water {
+  color: #9cdcfe;
+  background: #1b3a4d66;
+}
+
+.garden-reborn-action.tone-harvest {
+  color: #a9e08f;
+  background: #1f3a1f66;
+}
+
+.garden-reborn-action.tone-money {
+  color: #dcdcaa;
+  background: #33331f66;
+}
+
+.garden-reborn-action.tone-chemical {
+  color: #ce9178;
+  background: #33241a66;
+}
+
+.garden-reborn-action.tone-soil {
+  color: #d7ba7d;
+  background: #332f1f66;
+}
+
+.garden-reborn-action.tone-fertilizer {
+  color: #6fe3b5;
+  background: #1f332a66;
+}
+
+.garden-reborn-action.tone-plant {
+  color: #a9e08f;
+  background: #1f332a66;
+}
+
+.garden-reborn-action.tone-danger {
+  color: #f48771;
+  background: #331f1f66;
+}
+
+.garden-reborn-action:hover:not(:disabled) {
+  filter: brightness(1.3);
 }

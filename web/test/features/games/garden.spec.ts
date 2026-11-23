@@ -495,6 +495,21 @@ describe("legacy view", () => {
       "quickFertilize",
       "quickUproot",
     ]);
+    // Every action keeps its legacy palette tone.
+    expect(
+      actions.map((action) => Array.from(action.classList).find((name) => name.startsWith("tone-"))),
+    ).toEqual([
+      "tone-water",
+      "tone-harvest",
+      "tone-money",
+      "tone-chemical",
+      "tone-soil",
+      "tone-fertilizer",
+      "tone-plant",
+      "tone-chemical",
+      "tone-fertilizer",
+      "tone-danger",
+    ]);
     // Labels wrap inside the frame instead of spilling out.
     expect(actions[0]?.textContent).toContain("Tưới");
     expect(actions[0]?.textContent).toContain("nước");
@@ -2632,5 +2647,15 @@ describe("reborn action cells", () => {
     expect(wrapCellLabel("Tưới nước")).toEqual(["  Tưới  ", "  nước  "]);
     expect(wrapCellLabel("Bón phân loạt")).toEqual(["Bón phân", "  loạt  "]);
     expect(wrapCellLabel("Quick uproot")).toEqual([" Quick  ", " uproot "]);
+  });
+
+  it("paints every quick action with a legacy palette tone", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/features/games/garden.css"), "utf8");
+    for (const tone of ["water", "harvest", "money", "chemical", "soil", "fertilizer", "plant", "danger"]) {
+      expect(css).toContain(`.garden-reborn-action.tone-${tone} {`);
+    }
+    // Water keeps the old quick-bar blue, harvest the old green.
+    expect(css).toMatch(/\.garden-reborn-action\.tone-water \{\s*color: #9cdcfe;/);
+    expect(css).toMatch(/\.garden-reborn-action\.tone-harvest \{\s*color: #a9e08f;/);
   });
 });

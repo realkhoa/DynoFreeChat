@@ -121,6 +121,8 @@ export interface RebornAction {
   readonly glyph: string;
   /** Short live value printed under the label, e.g. `12·30c`. */
   readonly note: string;
+  /** Legacy palette tone, painted like the old quick action buttons. */
+  readonly tone?: string;
   /** Legacy `data-act` the click delegates to. */
   readonly act: string;
   /** Optional `data-kind` used by the picker handlers. */
@@ -167,6 +169,7 @@ export function buildRebornAction(action: RebornAction): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "garden-cell garden-reborn-action";
+  if (action.tone !== undefined) button.classList.add(`tone-${action.tone}`);
   button.dataset.act = action.act;
   button.dataset.actionId = action.id;
   if (action.kind !== undefined) button.dataset.kind = action.kind;
