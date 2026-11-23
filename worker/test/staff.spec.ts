@@ -105,29 +105,28 @@ describe("staff", () => {
     });
   });
 
-  it("finishes exactly one task per due turn, not a jobs count", () => {
+  it("harvests the whole field in one run", () => {
     const ledger = hireWorker(makeLedger(), "harvest");
     for (let slot = 0; slot < 6; slot += 1) {
       ledger.plots[slot] = { ...growingPlot(slot), readyAt: NOW - 1_000, watered: true };
     }
+    ledger.plots[0] = { ...ledger.plots[0]!, favorite: true };
     ledger.staff[0] = { ...ledger.staff[0]!, lastWorkAt: NOW - 10 * FARM_CYCLE_MS };
 
     const settled = settleStaff(ledger, NOW + FARM_CYCLE_MS);
     const harvested = settled.bag.crops.reduce((sum, stack) => sum + stack.qty, 0);
-    expect(harvested).toBe(1);
+    expect(harvested).toBe(5);
   });
 
-  it("waits longer for better quality, and traits shift the wait", () => {
+  it("runs every ten minutes at the best tier, slower for rookies", () => {
     const cheap = staffWorkIntervalMs({ speed: 1, skill: 1, level: 1, traits: [] });
-    const strong = staffWorkIntervalMs({ speed: 5, skill: 5, level: 6, traits: [] });
-    // Cheap hands need minutes, the best ones only seconds per task.
-    expect(cheap).toBeGreaterThan(60_000);
-    expect(strong).toBeLessThan(30_000);
-    expect(staffWorkIntervalMs({ speed: 3, skill: 3, level: 1, traits: ["slow"] })).toBe(
-      staffWorkIntervalMs({ speed: 3, skill: 3, level: 1, traits: [] }) + 15_000,
-    );
+    const strong = staffWorkIntervalMs({ speed: 5, skill: 5, level: 10, traits: [] });
+    expect(strong).toBe(10 * 60_000);
+    expect(cheap).toBeGreaterThan(30 * 60_000);
+    const normal = staffWorkIntervalMs({ speed: 3, skill: 3, level: 1, traits: [] });
+    expect(staffWorkIntervalMs({ speed: 3, skill: 3, level: 1, traits: ["slow"] })).toBe(normal + 8 * 60_000);
     expect(staffWorkIntervalMs({ speed: 3, skill: 3, level: 1, traits: ["diligent"] })).toBe(
-      staffWorkIntervalMs({ speed: 3, skill: 3, level: 1, traits: [] }) - 15_000,
+      normal - 8 * 60_000,
     );
   });
 
@@ -164,26 +163,37 @@ describe("staff", () => {
       plantedAt: NOW - 20 * 60_000,
       readyAt: NOW - 1_000,
     };
+    ledger.mushroomTrays[1] = { ...ledger.mushroomTrays[0]!, slot: 1 };
+    ledger.mushroomTrays[2] = {
+      slot: 2,
+      mushroom: "oyster",
+      plantedAt: NOW - 60_000,
+      readyAt: NOW + 20 * 60_000,
+    };
     ledger.staff[0] = { ...ledger.staff[0]!, lastWorkAt: NOW - 10 * FARM_CYCLE_MS };
 
     const settled = settleStaff(ledger, NOW + FARM_CYCLE_MS);
     expect(settled.mushroomTrays?.[0] ?? null).toBeNull();
+    expect(settled.mushroomTrays?.[1] ?? null).toBeNull();
+    expect(settled.mushroomTrays?.[2] ?? null).not.toBeNull();
     const stack = (settled.bag.products ?? []).find((entry) => entry.product === "mushStraw");
-    expect(stack?.qty).toBe(30);
+    expect(stack?.qty).toBe(60);
   });
 
   it("hunts sales for crops priced well above base", () => {
     const ledger = hireWorker(makeLedger(), "saleHunt");
     ledger.bag.crops = [
       { item: "carrot", effects: ["golden"], qty: 5, star: 1 },
-      { item: "potato", effects: [], qty: 5, star: 1 },
+      { item: "potato", effects: ["golden"], qty: 4, star: 1 },
+      { item: "parsnip", effects: [], qty: 5, star: 1 },
     ];
     const before = ledger.coins;
     ledger.staff[0] = { ...ledger.staff[0]!, lastWorkAt: NOW - 10 * FARM_CYCLE_MS };
 
     const settled = settleStaff(ledger, NOW + FARM_CYCLE_MS);
     expect(settled.bag.crops.some((stack) => stack.item === "carrot")).toBe(false);
-    expect(settled.bag.crops.some((stack) => stack.item === "potato")).toBe(true);
+    expect(settled.bag.crops.some((stack) => stack.item === "potato")).toBe(false);
+    expect(settled.bag.crops.some((stack) => stack.item === "parsnip")).toBe(true);
     expect(settled.coins).toBeGreaterThan(before - 1_000_000);
   });
 

@@ -3285,43 +3285,53 @@ function setStaffRole(ledger: GardenLedger, index: number, role: StaffRole, now:
   return changed(next, now);
 }
 
-/** @brief Harvests one ripe crop or fruit for a worker. */
+/** @brief Harvests every ripe crop and fruit for a worker in one run. */
 function staffHarvest(ledger: GardenLedger, now: number, rng: () => number): GardenLedger | null {
+  let current = ledger;
+  let worked = false;
   for (let slot = 0; slot < ledger.plots.length; slot += 1) {
-    const plot = ledger.plots[slot] ?? null;
+    const plot = current.plots[slot] ?? null;
     if (plot === null || plot.favorite === true || now < plot.readyAt) continue;
     const result = applyGardenAction(
-      ledger,
+      current,
       { kind: "harvest", slot, tree: false, auto: true },
       seasonAt(now),
       now,
       rng,
     );
-    if (result.ok) return result.ledger;
+    if (result.ok) {
+      current = result.ledger;
+      worked = true;
+    }
   }
   for (let slot = 0; slot < ledger.trees.length; slot += 1) {
-    const tree = ledger.trees[slot] ?? null;
+    const tree = current.trees[slot] ?? null;
     if (tree === null || tree.favorite === true || now < tree.readyAt) continue;
     const result = applyGardenAction(
-      ledger,
+      current,
       { kind: "harvest", slot, tree: true, auto: true },
       seasonAt(now),
       now,
       rng,
     );
-    if (result.ok) return result.ledger;
+    if (result.ok) {
+      current = result.ledger;
+      worked = true;
+    }
   }
-  return null;
+  return worked ? current : null;
 }
 
-/** @brief Harvests one ripe mushroom tray for a worker. */
+/** @brief Harvests every ripe mushroom tray for a worker in one run. */
 function staffMushroomHarvest(ledger: GardenLedger, now: number, rng: () => number): GardenLedger | null {
+  let current = ledger;
+  let worked = false;
   for (let slot = 0; slot < MUSHROOM_TRAYS; slot += 1) {
-    const tray = ledger.mushroomTrays?.[slot] ?? null;
+    const tray = current.mushroomTrays?.[slot] ?? null;
     if (tray === null || now < tray.readyAt) continue;
     const definition = mushroomById(tray.mushroom);
     if (definition === undefined) continue;
-    const next = clone(ledger);
+    const next = clone(current);
     const calm: EventDefinition = { id: "calm", growScale: 1, sellBonus: 1, effectChances: {} };
     const effects = rollEffects(calm, rng, {});
     addProduct(next.bag.products, definition.product, 1, definition.batch, effects);
@@ -3330,26 +3340,31 @@ function staffMushroomHarvest(ledger: GardenLedger, now: number, rng: () => numb
     next.mushroomTrays = (next.mushroomTrays ?? []).map((entry, entrySlot) =>
       entrySlot === slot ? null : entry,
     );
-    return next;
+    current = next;
+    worked = true;
   }
-  return null;
+  return worked ? current : null;
 }
 
-/** @brief Sells one crop stack whose price is well above its base price. */
+/** @brief Sells every crop stack priced well above base in one run. */
 function staffSaleHunt(ledger: GardenLedger, now: number, _rng: () => number): GardenLedger | null {
   const season = seasonAt(now);
-  for (const stack of ledger.bag.crops) {
-    if (stack.qty <= 0) continue;
-    const base = basePriceOf(stack.item, season);
-    if (base <= 0) continue;
-    const unit = cropSellPrice(
-      { item: stack.item, effects: stack.effects, pest: stack.pest, star: stack.star ?? 1, qty: 1 },
-      season,
-    );
-    // Only bite when the market pays at least 25% over the base price.
-    if (unit < base * 1.25) continue;
+  let current = ledger;
+  let worked = false;
+  for (let guard = 0; guard < 200; guard += 1) {
+    const stack = current.bag.crops.find((entry) => {
+      if (entry.qty <= 0) return false;
+      const base = basePriceOf(entry.item, season);
+      if (base <= 0) return false;
+      const unit = cropSellPrice(
+        { item: entry.item, effects: entry.effects, pest: entry.pest, star: entry.star ?? 1, qty: 1 },
+        season,
+      );
+      return unit >= base * 1.25;
+    });
+    if (stack === undefined) break;
     const result = sellCrop(
-      ledger,
+      current,
       stack.item,
       stack.effects,
       stack.star ?? 1,
@@ -3358,43 +3373,61 @@ function staffSaleHunt(ledger: GardenLedger, now: number, _rng: () => number): G
       season,
       now,
     );
-    if (result.ok) return result.ledger;
+    if (!result.ok) break;
+    current = result.ledger;
+    worked = true;
   }
-  return null;
-}
-/** @brief Plants an owned seed in the first free crop cell for a worker. */
-function staffPlant(ledger: GardenLedger, now: number, rng: () => number): GardenLedger | null {
-  const seed = SEEDS.find((entry) => (ledger.bag.seeds[entry.id] ?? 0) > 0);
-  if (seed === undefined) return null;
-  for (let slot = 0; slot < ledger.plots.length; slot += 1) {
-    if ((ledger.plots[slot] ?? null) !== null) continue;
-    const tab = Math.floor(slot / CROPS_PER_TAB);
-    const local = slot % CROPS_PER_TAB;
-    const patch = Math.floor(local / PLOTS_PER_PATCH);
-    if ((ledger.unlockedPatches[tab] ?? 0) <= patch) continue;
-    const result = applyGardenAction(ledger, { kind: "plant", slot, seed: seed.id }, seasonAt(now), now, rng);
-    return result.ok ? result.ledger : null;
-  }
-  return null;
+  return worked ? current : null;
 }
 
-/** @brief Waters one growing, unwatered plant for a worker. */
-function staffWater(ledger: GardenLedger, now: number, rng: () => number): GardenLedger | null {
+/** @brief Plants every owned seed into every free crop cell in one run. */
+function staffPlant(ledger: GardenLedger, now: number, rng: () => number): GardenLedger | null {
+  let current = ledger;
+  let worked = false;
   for (let slot = 0; slot < ledger.plots.length; slot += 1) {
-    const plot = ledger.plots[slot] ?? null;
-    if (plot === null || plot.watered || now >= plot.readyAt) continue;
-    const result = applyGardenAction(ledger, { kind: "water", slot, tree: false }, seasonAt(now), now, rng);
-    if (result.ok) return result.ledger;
+    if ((current.plots[slot] ?? null) !== null) continue;
+    if (!isCropPatchOpen(current, slot)) continue;
+    if (current.damagedPlots?.[slot] === true) continue;
+    const seed = SEEDS.find((entry) => (current.bag.seeds[entry.id] ?? 0) > 0);
+    if (seed === undefined) break;
+    const result = applyGardenAction(
+      current,
+      { kind: "plant", slot, seed: seed.id },
+      seasonAt(now),
+      now,
+      rng,
+    );
+    if (!result.ok) continue;
+    current = result.ledger;
+    worked = true;
+  }
+  return worked ? current : null;
+}
+
+/** @brief Waters every dry plant for a worker in one run. */
+function staffWater(ledger: GardenLedger, now: number, rng: () => number): GardenLedger | null {
+  let current = ledger;
+  let worked = false;
+  for (let slot = 0; slot < ledger.plots.length; slot += 1) {
+    const plot = current.plots[slot] ?? null;
+    if (plot === null || plot.watered || plot.dead === true) continue;
+    const result = applyGardenAction(current, { kind: "water", slot, tree: false }, seasonAt(now), now, rng);
+    if (result.ok) {
+      current = result.ledger;
+      worked = true;
+    }
   }
   for (let slot = 0; slot < ledger.trees.length; slot += 1) {
-    const tree = ledger.trees[slot] ?? null;
-    if (tree === null || tree.watered || now >= tree.readyAt) continue;
-    const result = applyGardenAction(ledger, { kind: "water", slot, tree: true }, seasonAt(now), now, rng);
-    if (result.ok) return result.ledger;
+    const tree = current.trees[slot] ?? null;
+    if (tree === null || tree.watered || tree.dead === true) continue;
+    const result = applyGardenAction(current, { kind: "water", slot, tree: true }, seasonAt(now), now, rng);
+    if (result.ok) {
+      current = result.ledger;
+      worked = true;
+    }
   }
-  return null;
+  return worked ? current : null;
 }
-
 /**
  * @brief Settles staff wages and slow automated work.
  * @details Workers act at most once per settlement, so they never outpace the

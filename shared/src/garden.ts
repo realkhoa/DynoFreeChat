@@ -2268,18 +2268,18 @@ export function staffHireCost(candidate: StaffDefinition): number {
 }
 
 /**
- * @brief Milliseconds between two finished tasks.
- * @details Staff no longer finish a number of jobs per cycle: their quality
- * (speed + skill + half the level) decides how long one task takes instead.
- * Cheap hands need ~2.5 minutes, the best ones ~15 seconds (a few tasks/min).
+ * @brief Minutes between two full work runs.
+ * @details One run finishes the whole task (waters everything, harvests
+ * everything, ...). Quality shortens the wait: the best tier runs every ten
+ * minutes, rookies take about an hour.
  */
 export function staffWorkIntervalMs(
   worker: Pick<StaffState, "speed" | "skill" | "level" | "traits">,
 ): number {
   const quality = worker.speed + worker.skill + Math.floor(worker.level / 2);
-  const seconds = Math.max(15, 180 - quality * 12);
-  const traits = (worker.traits.includes("slow") ? 15 : 0) - (worker.traits.includes("diligent") ? 15 : 0);
-  return Math.max(10_000, (seconds + traits) * 1_000);
+  const traits = (worker.traits.includes("slow") ? 8 : 0) - (worker.traits.includes("diligent") ? 8 : 0);
+  const minutes = Math.max(10, 70 - quality * 4 + traits);
+  return minutes * 60_000;
 }
 
 /** @brief Experience needed to leave one level. */

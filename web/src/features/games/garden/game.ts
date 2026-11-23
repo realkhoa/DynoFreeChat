@@ -1378,8 +1378,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     readonly traits: readonly StaffTrait[];
   }): string {
     const intervalMs = staffWorkIntervalMs(worker);
-    const rate = (60_000 / intervalMs).toFixed(1);
-    return t("staff.interval", { rate, time: formatDuration(intervalMs, "short") });
+    return t("staff.interval", { minutes: Math.round(intervalMs / 60_000) });
   }
 
   /** @brief Builds the staff popover with role actions or hire candidates. */
