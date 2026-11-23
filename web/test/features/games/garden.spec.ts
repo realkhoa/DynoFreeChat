@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 /**
  * @file garden.spec.ts
  * @brief ASCII Garden document: tabs, plot interaction, market and visits.
@@ -478,9 +478,9 @@ describe("legacy view", () => {
     expect(actions).toHaveLength(10);
     // Same six-line frame as the plot cells, so the buttons read as plots too.
     for (const action of actions) expect(action.querySelectorAll(".garden-cell-line")).toHaveLength(6);
-    // Three groups with a vertical rule between them, plus one before the group.
-    expect(host.querySelectorAll(".garden-reborn-action-col")).toHaveLength(3);
-    expect(host.querySelectorAll(".garden-reborn-actions .garden-reborn-sep")).toHaveLength(2);
+    // Four groups with a vertical rule between them, plus one before the group.
+    expect(host.querySelectorAll(".garden-reborn-action-col")).toHaveLength(4);
+    expect(host.querySelectorAll(".garden-reborn-actions .garden-reborn-sep")).toHaveLength(3);
     expect(host.querySelectorAll(".garden-reborn-row > .garden-reborn-sep")).toHaveLength(1);
     // Requested order: field actions, bulk supplies, quick tools, then uproot.
     expect(actions.map((action) => action.dataset.actionId)).toEqual([

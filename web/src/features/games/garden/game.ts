@@ -2629,6 +2629,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           kind: "fertilize",
           active: toolPicker === "fertilize" || tool?.kind === "fertilize",
         },
+      ],
+      [
         {
           id: "quickUproot",
           label: t("reborn.action.uproot"),
