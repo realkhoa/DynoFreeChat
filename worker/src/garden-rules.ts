@@ -56,7 +56,7 @@ import {
   staffGainXp,
   staffHireCost,
   staffMarketAt,
-  staffWorkInterval,
+  staffWorkIntervalMs,
   STAFF_XP_PER_TASK,
   type StaffRole,
   type StaffState,
@@ -3434,7 +3434,7 @@ export function settleStaff(ledger: GardenLedger, now: number): GardenLedger {
       if (worker === undefined) continue;
     }
 
-    if (now - worker.lastWorkAt < staffWorkInterval(worker) * FARM_CYCLE_MS) continue;
+    if (now - worker.lastWorkAt < staffWorkIntervalMs(worker)) continue;
 
     // One finished task per due turn: the wait between turns is decided by the
     // worker's quality, not by a jobs-per-cycle count.

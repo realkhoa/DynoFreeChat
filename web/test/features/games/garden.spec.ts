@@ -1762,7 +1762,7 @@ describe("staff", () => {
     await settle();
     const menu = host.querySelector(".garden-staff-menu");
     expect(menu?.textContent).toContain("Cấp 1");
-    expect(menu?.textContent).toContain("chu kỳ/việc");
+    expect(menu?.textContent).toContain("việc/phút");
   });
 
   it("gifts coins and items from the extras tab", async () => {

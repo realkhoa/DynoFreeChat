@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file staff.spec.ts
  * @brief Hired staff: four slots, per-task chores, quality-based timing and wages.
  * @details Staff no longer finish a number of jobs per cycle: their quality
@@ -14,7 +14,7 @@ import {
   STAFF_SLOTS,
   staffHireCost,
   staffMarketAt,
-  staffWorkInterval,
+  staffWorkIntervalMs,
   type GardenAction,
   type StaffRole,
 } from "@dyno/shared/garden";
@@ -118,15 +118,16 @@ describe("staff", () => {
   });
 
   it("waits longer for better quality, and traits shift the wait", () => {
-    const cheap = staffWorkInterval({ speed: 1, skill: 1, level: 1, traits: [] });
-    const strong = staffWorkInterval({ speed: 5, skill: 5, level: 6, traits: [] });
-    expect(cheap).toBe(6);
-    expect(strong).toBe(1);
-    expect(staffWorkInterval({ speed: 3, skill: 3, level: 1, traits: ["slow"] })).toBe(
-      staffWorkInterval({ speed: 3, skill: 3, level: 1, traits: [] }) + 1,
+    const cheap = staffWorkIntervalMs({ speed: 1, skill: 1, level: 1, traits: [] });
+    const strong = staffWorkIntervalMs({ speed: 5, skill: 5, level: 6, traits: [] });
+    // Cheap hands need minutes, the best ones only seconds per task.
+    expect(cheap).toBeGreaterThan(60_000);
+    expect(strong).toBeLessThan(30_000);
+    expect(staffWorkIntervalMs({ speed: 3, skill: 3, level: 1, traits: ["slow"] })).toBe(
+      staffWorkIntervalMs({ speed: 3, skill: 3, level: 1, traits: [] }) + 15_000,
     );
-    expect(staffWorkInterval({ speed: 3, skill: 3, level: 1, traits: ["diligent"] })).toBe(
-      staffWorkInterval({ speed: 3, skill: 3, level: 1, traits: [] }) - 1,
+    expect(staffWorkIntervalMs({ speed: 3, skill: 3, level: 1, traits: ["diligent"] })).toBe(
+      staffWorkIntervalMs({ speed: 3, skill: 3, level: 1, traits: [] }) - 15_000,
     );
   });
 
@@ -191,14 +192,14 @@ describe("staff", () => {
     const worker = ledger.staff[0];
     if (worker === undefined) throw new Error("worker missing");
     let current = ledger;
-    const interval = staffWorkInterval(worker);
+    const interval = staffWorkIntervalMs(worker);
     for (let turn = 0; turn < 20; turn += 1) {
       current.plots[0] = growingPlot(0);
-      current = settleStaff(current, NOW + (turn + 1) * interval * FARM_CYCLE_MS + 1);
+      current = settleStaff(current, NOW + (turn + 1) * interval + 1);
     }
     const grown = current.staff[0];
     expect(grown?.level ?? 1).toBeGreaterThan(1);
-    expect(staffWorkInterval(grown ?? worker)).toBeLessThanOrEqual(interval);
+    expect(staffWorkIntervalMs(grown ?? worker)).toBeLessThanOrEqual(interval);
   });
 
   it("pays wages every cycle and quits after three unpaid settles", () => {

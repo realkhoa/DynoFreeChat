@@ -106,7 +106,7 @@ import {
   rollPet,
   staffHireCost,
   staffGainXp,
-  staffWorkInterval,
+  staffWorkIntervalMs,
   planQuickPlan,
   type StaffTrait,
   skillThreshold,
@@ -424,7 +424,7 @@ describe("farm buildings", () => {
     // Quality decides the wait between tasks: veterans work much faster.
     const cheap = { speed: 1, skill: 1, level: 1, traits: [] as StaffTrait[] };
     const veteran = { speed: 5, skill: 5, level: 7, traits: [] as StaffTrait[] };
-    expect(staffWorkInterval(cheap)).toBeGreaterThan(staffWorkInterval(veteran));
+    expect(staffWorkIntervalMs(cheap)).toBeGreaterThan(staffWorkIntervalMs(veteran));
     expect(staffGainXp(1, 150)).toEqual({ level: 2, xp: 50 });
     expect(staffGainXp(9, 100_000).level).toBe(10);
   });

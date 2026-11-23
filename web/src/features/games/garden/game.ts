@@ -39,7 +39,7 @@ import {
   staffHireCost,
   staffXpToLevel,
   staffMarketAt,
-  staffWorkInterval,
+  staffWorkIntervalMs,
   type StaffTrait,
   planQuickPlan,
   type QuickPlanPreview,
@@ -1377,8 +1377,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     readonly level: number;
     readonly traits: readonly StaffTrait[];
   }): string {
-    const cycles = staffWorkInterval(worker);
-    return t("staff.interval", { cycles, time: formatDuration(cycles * FARM_CYCLE_MS, "short") });
+    const intervalMs = staffWorkIntervalMs(worker);
+    const rate = (60_000 / intervalMs).toFixed(1);
+    return t("staff.interval", { rate, time: formatDuration(intervalMs, "short") });
   }
 
   /** @brief Builds the staff popover with role actions or hire candidates. */
