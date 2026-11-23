@@ -1056,11 +1056,14 @@ function uprootBulk(
       const plot = next.plots[slot] ?? null;
       if (plot === null || plot.favorite === true) continue;
       if (filter.seed !== undefined && plot.seed !== filter.seed) continue;
-      const value = cropSellPrice(
-        { item: plot.seed, effects: resolvedCropEffects(plot, now), pest: plot.pest, star: 1, qty: 1 },
-        season,
-      );
-      if (!matchesValue(value, seedById(plot.seed)?.buy ?? 0)) continue;
+      // Dead plants are always cleared by Quick Uproot: they cannot be saved.
+      if (plot.dead !== true) {
+        const value = cropSellPrice(
+          { item: plot.seed, effects: resolvedCropEffects(plot, now), pest: plot.pest, star: 1, qty: 1 },
+          season,
+        );
+        if (!matchesValue(value, seedById(plot.seed)?.buy ?? 0)) continue;
+      }
       next.plots[slot] = null;
       removed += 1;
     }
@@ -1071,11 +1074,14 @@ function uprootBulk(
       const tree = next.trees[slot] ?? null;
       if (tree === null || tree.favorite === true) continue;
       if (filter.tree !== undefined && tree.tree !== filter.tree) continue;
-      const value = cropSellPrice(
-        { item: tree.tree, effects: resolvedTreeEffects(tree, now), pest: tree.pest, star: 1, qty: 1 },
-        season,
-      );
-      if (!matchesValue(value, treeById(tree.tree)?.buy ?? 0)) continue;
+      // Dead trees are cleared too, whatever the value filter says.
+      if (tree.dead !== true) {
+        const value = cropSellPrice(
+          { item: tree.tree, effects: resolvedTreeEffects(tree, now), pest: tree.pest, star: 1, qty: 1 },
+          season,
+        );
+        if (!matchesValue(value, treeById(tree.tree)?.buy ?? 0)) continue;
+      }
       next.trees[slot] = null;
       removed += 1;
     }

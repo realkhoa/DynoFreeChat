@@ -2115,3 +2115,31 @@ describe("quick plan", () => {
     expect(run(ledger, { kind: "quickPlan" })).toMatchObject({ ok: false, code: "NOTHING_TO_DO" });
   });
 });
+
+describe("quick uproot clears dead plants", () => {
+  it("removes dead crops even when the value filter would keep them", () => {
+    const ledger = makeLedger();
+    const base = {
+      plantedAt: NOW - 60_000,
+      readyAt: NOW - 1_000,
+      effects: [],
+      watered: true,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    ledger.plots[0] = { ...base, slot: 0, seed: "carrot", dead: true };
+    ledger.plots[1] = { ...base, slot: 1, seed: "carrot" };
+
+    // profit "loss" would normally keep both profitable crops...
+    const onlyDead = run(ledger, { kind: "uprootBulk", profit: "loss" });
+    expect(onlyDead.ok).toBe(true);
+    if (!onlyDead.ok) return;
+    // ...but the dead plant is always cleared, the healthy one stays.
+    expect(onlyDead.ledger.plots[0]).toBeNull();
+    expect(onlyDead.ledger.plots[1]).not.toBeNull();
+  });
+});

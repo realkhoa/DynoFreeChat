@@ -3259,3 +3259,36 @@ describe("shipping bin tab", () => {
     expect(host.textContent).toContain("chỉ xem");
   });
 });
+
+describe("quick uproot clears dead plants", () => {
+  it("includes dead plants in the preview and the bulk action", async () => {
+    const dead: PlotState = {
+      ...RIPE_PLOT,
+      slot: 0,
+      plantedAt: CLOCK - 40 * 60_000,
+      watered: false,
+      dead: true,
+    };
+    const healthy: PlotState = { ...RIPE_PLOT, slot: 1 };
+    const api = new FakeGardenApi(
+      makeState({ plots: [dead, healthy, ...new Array(CROPS_PER_TAB - 2).fill(null)] }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    host.querySelector<HTMLButtonElement>('[data-action-id="quickUproot"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="uprootLoss"]')?.click();
+    await settle();
+    const preview = host.querySelector(".garden-tools")?.textContent ?? "";
+    expect(preview).toContain("Cà rốt ×1");
+
+    host.querySelector<HTMLButtonElement>('[data-act="uprootConfirm"]')?.click();
+    await settle();
+    expect(
+      api.calls.some((call) => call.action?.kind === "uprootBulk" && call.action.profit === "loss"),
+    ).toBe(true);
+  });
+});

@@ -2913,11 +2913,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       for (const plot of state.plots) {
         if (plot === null || plot.favorite === true) continue;
         if (filter.seed !== undefined && plot.seed !== filter.seed) continue;
-        const value = cropSellPrice(
-          { item: plot.seed, effects: resolvedCropEffects(plot, at), pest: plot.pest, star: 1, qty: 1 },
-          season,
-        );
-        if (!matches(value, seedById(plot.seed)?.buy ?? 0)) continue;
+        if (plot.dead !== true) {
+          const value = cropSellPrice(
+            { item: plot.seed, effects: resolvedCropEffects(plot, at), pest: plot.pest, star: 1, qty: 1 },
+            season,
+          );
+          if (!matches(value, seedById(plot.seed)?.buy ?? 0)) continue;
+        }
         add(seedName(plot.seed));
       }
     }
@@ -2926,11 +2928,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       for (const tree of state.trees) {
         if (tree === null || tree.favorite === true) continue;
         if (filter.tree !== undefined && tree.tree !== filter.tree) continue;
-        const value = cropSellPrice(
-          { item: tree.tree, effects: resolvedTreeEffects(tree, at), pest: tree.pest, star: 1, qty: 1 },
-          season,
-        );
-        if (!matches(value, treeById(tree.tree)?.buy ?? 0)) continue;
+        if (tree.dead !== true) {
+          const value = cropSellPrice(
+            { item: tree.tree, effects: resolvedTreeEffects(tree, at), pest: tree.pest, star: 1, qty: 1 },
+            season,
+          );
+          if (!matches(value, treeById(tree.tree)?.buy ?? 0)) continue;
+        }
         add(treeName(tree.tree));
       }
     }
