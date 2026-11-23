@@ -2700,6 +2700,17 @@ describe("reborn action cells", () => {
     expect(css).toMatch(/\.garden-reborn-action\.tone-water \{\s*color: #9cdcfe;/);
     expect(css).toMatch(/\.garden-reborn-action\.tone-harvest \{\s*color: #a9e08f;/);
   });
+
+  it("centres the plot boards inside the rebuilt view", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/features/games/garden.css"), "utf8");
+    const block = (selector: string): string => {
+      const start = css.indexOf(selector);
+      return start < 0 ? "" : css.slice(start, css.indexOf("}", start));
+    };
+    expect(block(".garden-reborn-row {")).toContain("justify-content: center");
+    expect(block(".garden-reborn-garden {")).toContain("align-items: center");
+    expect(block(".garden-town-npcs {")).toContain("justify-content: center");
+  });
 });
 
 describe("stealth mode", () => {
