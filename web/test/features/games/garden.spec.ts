@@ -2753,6 +2753,45 @@ describe("reborn sub-tabs", () => {
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
     expect(window.location.search).not.toContain("grtab=");
   });
+
+  it("splits the garden tab into main garden, mushroom house, greenhouse and nursery", async () => {
+    const api = new FakeGardenApi(makeState());
+    api.seasonValue = { ...SEASON, wave: 0, shop: { ...SEASON.shop, tools: [] } };
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    const tabs = Array.from(host.querySelectorAll<HTMLButtonElement>(".garden-section-tab"));
+    expect(tabs.map((tab) => tab.dataset.act)).toEqual([
+      "gardenTab:main",
+      "gardenTab:mushroom",
+      "gardenTab:greenhouse",
+      "gardenTab:nursery",
+    ]);
+    expect(host.querySelector(".garden-section-tab.is-active")?.textContent).toContain("vườn chính");
+    expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
+    expect(window.location.search).not.toContain("gstab=");
+
+    // The three future rooms exist now and read as empty placeholders.
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:mushroom"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-section-tab.is-active")?.textContent).toContain("nhà nấm");
+    expect(host.querySelector(".garden-reborn-row")).toBeNull();
+    expect(host.querySelector(".garden-garden-empty")?.textContent).toContain("chưa có gì");
+    expect(window.location.search).toContain("gstab=mushroom");
+
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:nursery"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-garden-empty")?.textContent).toContain("vườn ươm");
+    expect(window.location.search).toContain("gstab=nursery");
+
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:main"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
+    expect(host.querySelector(".garden-garden-empty")).toBeNull();
+    expect(window.location.search).not.toContain("gstab=");
+  });
 });
 
 describe("townhall tab", () => {

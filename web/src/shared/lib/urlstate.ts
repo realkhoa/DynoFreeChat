@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file urlstate.ts
  * @brief URL query state so a browser reload restores the open documents.
  * @details The app is a single page: document tabs, the active document and the
@@ -8,7 +8,7 @@
  */
 
 /** Keys owned by this module; everything else in the query is preserved. */
-const OWNED_PREFIX = ["docs", "doc", "game", "gtab", "gview", "grtab", "gpage", "garea", "gslot"];
+const OWNED_PREFIX = ["docs", "doc", "game", "gtab", "gview", "grtab", "gstab", "gpage", "garea", "gslot"];
 
 /** @brief Reads one query parameter, or `null`. */
 export function readParam(key: string): string | null {

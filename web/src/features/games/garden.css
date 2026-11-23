@@ -2022,3 +2022,39 @@ button.garden-rank-row:hover {
   align-items: flex-start;
   gap: 6px;
 }
+
+/* Second-level garden tabs: main garden, mushroom house, greenhouse, nursery.
+   Indented one step so the three tab levels stay legible. */
+.garden-tabs-section {
+  padding-left: 10px;
+}
+
+.garden-section-tab {
+  padding: 0 3px;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  color: #6a9955;
+  font: inherit;
+  white-space: pre;
+  cursor: pointer;
+}
+
+.garden-section-tab:hover {
+  background: var(--hover-row);
+  color: #dcdcaa;
+}
+
+.garden-section-tab.is-active {
+  color: #ffffff;
+  background: var(--sel);
+}
+
+.garden-section-tab:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.garden-garden-empty {
+  padding: 4px 0;
+}

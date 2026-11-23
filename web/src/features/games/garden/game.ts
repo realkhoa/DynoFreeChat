@@ -205,6 +205,17 @@ const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string 
   { id: "townhall", labelKey: "reborn.tabTownhall" },
 ];
 
+/** One tab inside the garden tab of the rebuilt view. */
+type GardenTab = "main" | "mushroom" | "greenhouse" | "nursery";
+
+/** @brief Garden tabs, in strip order; only `main` is rebuilt so far. */
+const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string }[] = [
+  { id: "main", labelKey: "gardenTab.main" },
+  { id: "mushroom", labelKey: "gardenTab.mushroom" },
+  { id: "greenhouse", labelKey: "gardenTab.greenhouse" },
+  { id: "nursery", labelKey: "gardenTab.nursery" },
+];
+
 /**
  * @brief Tabs preserved inside the collapsed legacy view.
  * @details Order drives the legacy strip; every id must stay in sync with {@link Tab}.
@@ -304,6 +315,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let tab: Tab = "garden";
   /** Active tab inside the rebuilt view: the garden or the town. */
   let rebornTab: RebornTab = "garden";
+  /** Active tab inside the garden: main garden, mushroom house, greenhouse, nursery. */
+  let gardenTab: GardenTab = "main";
   /** Which townhall NPC has its shop open, if any. */
   let townNpc: string | null = null;
   let visitCode: string | null = null;
@@ -1197,6 +1210,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       gtab: tab,
       gview: view === "legacy" ? null : view,
       grtab: view === "reborn" && rebornTab === "townhall" ? "townhall" : null,
+      gstab: view === "reborn" && rebornTab === "garden" && gardenTab !== "main" ? gardenTab : null,
       gpage: page > 0 ? String(page) : null,
       garea: selectedSlot === null ? null : selectedArea,
       gslot: selectedSlot === null ? null : String(selectedSlot),
@@ -1209,6 +1223,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     // An old ?gview=townhall bookmark now lands on reborn, which hosts the town.
     if (savedView === "reborn" || savedView === "townhall") view = "reborn";
     if (readParam("grtab") === "townhall") rebornTab = "townhall";
+    const savedGardenTab = readParam("gstab");
+    if (savedGardenTab === "mushroom" || savedGardenTab === "greenhouse" || savedGardenTab === "nursery") {
+      gardenTab = savedGardenTab;
+    }
     const savedTab = readParam("gtab");
     if (
       savedTab === "garden" ||
@@ -5125,9 +5143,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /**
-   * @brief Builds the rebuilt UI: one sub-tab strip, then the active tab body.
-   * @details Tab 1 is the garden (VIP board, quick actions, normal boards), tab 2
-   * is the townhall. Both reuse the legacy data-act handlers underneath.
+   * @brief Builds the rebuilt UI: sub-tab strip, then the active tab body.
+   * @details The garden tab carries a second strip (main garden, mushroom house,
+   * greenhouse, nursery); the town tab is the townhall. Only the main garden is
+   * rebuilt so far, the other garden tabs are placeholders for the next UI passes.
    */
   function buildRebornView(): HTMLElement {
     const at = now();
@@ -5135,6 +5154,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(buildRebornTabStrip());
     if (rebornTab === "townhall") {
       wrap.append(buildTownhallSection());
+      return wrap;
+    }
+    wrap.append(buildGardenTabStrip());
+    if (gardenTab !== "main") {
+      wrap.append(buildGardenTabPlaceholder());
       return wrap;
     }
     const row = div("garden-reborn-row");
@@ -5184,6 +5208,43 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     townNpc = null;
     syncGardenQuery();
     render();
+  }
+
+  /** @brief Builds the second-level tab strip inside the garden tab. */
+  function buildGardenTabStrip(): HTMLElement {
+    const bar = div("garden-tabs garden-tabs-section");
+    for (const entry of GARDEN_TABS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "garden-section-tab";
+      button.dataset.act = `gardenTab:${entry.id}`;
+      const label = t(entry.labelKey);
+      button.textContent = gardenTab === entry.id ? `[ ${label} ]` : ` ${label} `;
+      if (gardenTab === entry.id) button.classList.add("is-active");
+      bar.append(button);
+    }
+    return bar;
+  }
+
+  /** @brief Switches the garden tab between main garden, mushroom house, … */
+  function switchGardenTab(next: GardenTab): void {
+    if (gardenTab === next) return;
+    gardenTab = next;
+    selectedSlot = null;
+    menu = null;
+    syncGardenQuery();
+    render();
+  }
+
+  /**
+   * @brief Builds a garden tab whose UI has not been rebuilt yet.
+   * @details Keeping the tab in the strip from day one fixes the shell; the body
+   * fills in on later passes.
+   */
+  function buildGardenTabPlaceholder(): HTMLElement {
+    const wrap = div("garden-garden-empty");
+    wrap.append(lineBlock(`// ${t(`gardenTab.${gardenTab}`)} · ${t("gardenTab.empty")}`));
+    return wrap;
   }
 
   /**
@@ -5569,6 +5630,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return;
     }
     const action = target.dataset.act ?? "";
+    if (action.startsWith("gardenTab:")) {
+      closeMenu();
+      switchGardenTab(action.slice(10) as GardenTab);
+      return;
+    }
     if (action.startsWith("rebornTab:")) {
       closeMenu();
       switchRebornTab(action.slice(10) as RebornTab);
