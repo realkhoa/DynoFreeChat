@@ -1,4 +1,4 @@
-/* ASCII Garden: the tabs and the plot board are drawn in the code document.
+﻿/* ASCII Garden: the tabs and the plot board are drawn in the code document.
    Tabs live outside `stage-bar` so the Focus toggle keeps them reachable while
    it hides comment lines. Cells are flat monospace blocks; the only colour that
    changes at runtime is the white-to-green growth tint, applied inline. */
@@ -1395,127 +1395,17 @@
   font-size: 8.5px;
 }
 
-/* Stealth mode: the garden should read like ordinary source code on a shared
-   screen. Every game colour collapses to editor greys/comment green, pills and
-   borders disappear, and blinking stops. */
-.game-stage-host[data-stealth="on"] * {
+/* Stealth ("kín"): the garden keeps its layout and hues, but every colour loses
+   70% of its saturation and all animation stops, so a shared screen only shows a
+   quiet editor tab. The filter goes on each top-level child so fixed popovers
+   keep their viewport coordinates. */
+.garden-root[data-stealth="on"] > * {
+  filter: saturate(0.3);
+}
+
+.garden-root[data-stealth="on"] * {
   animation: none !important;
-}
-
-.game-stage-host[data-stealth="on"] .garden-balance {
-  padding: 0 2px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: #6a9955;
-  font: 10px/16px var(--font-mono);
-}
-
-.game-stage-host[data-stealth="on"] .garden-tab,
-.game-stage-host[data-stealth="on"] .garden-code,
-.game-stage-host[data-stealth="on"] .garden-page,
-.game-stage-host[data-stealth="on"] .garden-page-hint,
-.game-stage-host[data-stealth="on"] .garden-hint,
-.game-stage-host[data-stealth="on"] .garden-tool-active,
-.game-stage-host[data-stealth="on"] .garden-chart-cycle,
-.game-stage-host[data-stealth="on"] .garden-chart-timer,
-.game-stage-host[data-stealth="on"] .garden-chart-head {
-  color: #6a9955;
-}
-
-.game-stage-host[data-stealth="on"] .garden-cell,
-.game-stage-host[data-stealth="on"] .garden-cell.is-ready,
-.game-stage-host[data-stealth="on"] .garden-cell.is-pest,
-.game-stage-host[data-stealth="on"] .garden-cell.is-golden,
-.game-stage-host[data-stealth="on"] .garden-cell.is-frozen,
-.game-stage-host[data-stealth="on"] .garden-cell.is-wet,
-.game-stage-host[data-stealth="on"] .garden-cell.is-snow,
-.game-stage-host[data-stealth="on"] .garden-cell.is-chill,
-.game-stage-host[data-stealth="on"] .garden-cell.is-sunray,
-.game-stage-host[data-stealth="on"] .garden-cell.is-smoked,
-.game-stage-host[data-stealth="on"] .garden-cell.is-cracked,
-.game-stage-host[data-stealth="on"] .garden-cell.is-onfire,
-.game-stage-host[data-stealth="on"] .garden-cell.is-shocked,
-.game-stage-host[data-stealth="on"] .garden-cell.is-bloodlit,
-.game-stage-host[data-stealth="on"] .garden-cell.is-radioactive,
-.game-stage-host[data-stealth="on"] .garden-cell.is-disco,
-.game-stage-host[data-stealth="on"] .garden-cell.is-cosmic,
-.game-stage-host[data-stealth="on"] .garden-cell.is-metallic,
-.game-stage-host[data-stealth="on"] .garden-cell.is-glimmering,
-.game-stage-host[data-stealth="on"] .garden-cell.is-twisted,
-.game-stage-host[data-stealth="on"] .garden-cell.is-diamond,
-.game-stage-host[data-stealth="on"] .garden-cell.is-burnt,
-.game-stage-host[data-stealth="on"] .garden-special-cell {
-  color: #bdbdbd !important;
-  text-shadow: none;
-}
-
-.game-stage-host[data-stealth="on"] .garden-cell.is-ready {
-  color: #9cdcfe !important;
-}
-
-.game-stage-host[data-stealth="on"] .garden-side-label,
-.game-stage-host[data-stealth="on"] .garden-side-value {
-  color: #bdbdbd;
-}
-
-.game-stage-host[data-stealth="on"] .garden-cell.is-selected {
-  outline: 1px dotted #6a9955;
-  background: transparent;
-}
-
-.game-stage-host[data-stealth="on"] .garden-buy-card,
-.game-stage-host[data-stealth="on"] .garden-buy-card:hover {
-  border-color: transparent;
-  background: transparent;
-  color: #bdbdbd;
-}
-
-.game-stage-host[data-stealth="on"] .garden-buy-line.is-glyph,
-.game-stage-host[data-stealth="on"] .garden-buy-line.is-price {
-  color: #bdbdbd;
-  font-weight: 400;
-}
-
-.game-stage-host[data-stealth="on"] .garden-buy-line.is-stock {
-  color: #6a9955;
-}
-
-.game-stage-host[data-stealth="on"] .garden-row,
-.game-stage-host[data-stealth="on"] .garden-market-row,
-.game-stage-host[data-stealth="on"] .garden-menu-row,
-.game-stage-host[data-stealth="on"] .garden-bot-row,
-.game-stage-host[data-stealth="on"] .garden-chart-row,
-.game-stage-host[data-stealth="on"] .garden-rank-row,
-.game-stage-host[data-stealth="on"] .garden-chart-mult,
-.game-stage-host[data-stealth="on"] .garden-chart-price,
-.game-stage-host[data-stealth="on"] .garden-chart-trend {
-  color: #bdbdbd;
-}
-
-.game-stage-host[data-stealth="on"] .garden-row:hover,
-.game-stage-host[data-stealth="on"] .garden-buy-card:hover,
-.game-stage-host[data-stealth="on"] .garden-menu-row:hover:not(:disabled) {
-  color: #ffffff;
-  background: #ffffff10;
-}
-
-.game-stage-host[data-stealth="on"] .garden-menu {
-  background: var(--editor);
-  border-color: var(--border-subtle);
-  box-shadow: none;
-}
-
-.game-stage-host[data-stealth="on"] .garden-menu-balance,
-.game-stage-host[data-stealth="on"] .garden-menu-title {
-  color: #6a9955;
-}
-
-.game-stage-host[data-stealth="on"] .stage-btn,
-.game-stage-host[data-stealth="on"] .stage-btn.is-active {
-  background: transparent;
-  border-color: var(--border-subtle);
-  color: #9cdcfe;
+  transition: none !important;
 }
 
 /* Extras tab: compact stacked sections like the rest of the document. */

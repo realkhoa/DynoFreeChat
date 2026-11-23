@@ -6316,7 +6316,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "toggleStealth":
         stealth = !stealth;
         localStorage.setItem("dyno.garden.stealth", stealth ? "1" : "0");
-        render();
+        // Painted in place: rebuilding the document would flash the whole board.
+        if (root !== null) root.dataset.stealth = stealth ? "on" : "off";
+        target.classList.toggle("is-active", stealth);
         return;
       case "staffSlot": {
         const rect = target?.getBoundingClientRect();

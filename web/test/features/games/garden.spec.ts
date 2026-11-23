@@ -934,16 +934,21 @@ describe("legacy view", () => {
     expect(api.calls.some((call) => call.action?.kind === "renovateSoil")).toBe(true);
   });
 
-  it("starts in stealth mode and remembers when toggled off", async () => {
+  it("starts in stealth mode and toggles it without rebuilding the document", async () => {
     const api = new FakeGardenApi(makeState());
     const { host, game } = await mountGame(api);
     mounted.push(game);
-    const root = host.querySelector<HTMLElement>("[data-stealth]");
+    const root = host.querySelector<HTMLElement>(".garden-root");
     expect(root?.dataset.stealth).toBe("on");
+    const strip = host.querySelector(".garden-tabs");
     host.querySelector<HTMLButtonElement>('[data-act="toggleStealth"]')?.click();
     await settle();
-    expect(host.querySelector<HTMLElement>("[data-stealth]")?.dataset.stealth).toBe("off");
+    expect(host.querySelector<HTMLElement>(".garden-root")?.dataset.stealth).toBe("off");
     expect(localStorage.getItem("dyno.garden.stealth")).toBe("0");
+    // Painted in place, so the board does not flash or jump on toggle.
+    expect(host.querySelector(".garden-root")).toBe(root);
+    expect(host.querySelector(".garden-tabs")).toBe(strip);
+    expect(host.querySelector('[data-act="toggleStealth"]')?.classList.contains("is-active")).toBe(false);
   });
 
   it("offers bulk water and harvest with per-plant prices", async () => {
@@ -2692,5 +2697,14 @@ describe("reborn action cells", () => {
     // Water keeps the old quick-bar blue, harvest the old green.
     expect(css).toMatch(/\.garden-reborn-action\.tone-water \{\s*color: #9cdcfe;/);
     expect(css).toMatch(/\.garden-reborn-action\.tone-harvest \{\s*color: #a9e08f;/);
+  });
+});
+
+describe("stealth mode", () => {
+  it("drops colour saturation and stops animation in CSS", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/features/games/garden.css"), "utf8");
+    expect(css).toContain('.garden-root[data-stealth="on"] > * {');
+    expect(css).toContain("filter: saturate(0.3)");
+    expect(css).toContain("animation: none !important");
   });
 });
