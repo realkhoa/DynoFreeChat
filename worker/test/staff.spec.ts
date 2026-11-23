@@ -1,8 +1,8 @@
 /**
  * @file staff.spec.ts
- * @brief Hired staff: four slots, per-task chores, wages and quitting.
- * @details Every worker does only the chore they are assigned to; better paid
- * candidates work faster and finish more jobs per cycle.
+ * @brief Hired staff: four slots, per-task chores, quality-based timing and wages.
+ * @details Staff no longer finish a number of jobs per cycle: their quality
+ * (speed + skill + level) decides how long one task takes instead.
  */
 
 import { describe, expect, it } from "vitest";
@@ -39,11 +39,7 @@ function run(ledger: GardenLedger, action: GardenAction, at = NOW) {
 }
 
 /** Hires the first market candidate and assigns one task. */
-function hireWorker(
-  ledger: GardenLedger,
-  task: StaffRole,
-  candidateIndex = 0,
-): { ledger: GardenLedger; jobs: number } {
+function hireWorker(ledger: GardenLedger, task: StaffRole, candidateIndex = 0): GardenLedger {
   ledger.coins = 10_000_000;
   const candidate = staffMarketAt(ledger.playerId, NOW)[candidateIndex];
   if (candidate === undefined) throw new Error("no candidate");
@@ -51,10 +47,10 @@ function hireWorker(
   if (!hired.ok) throw new Error("hire failed");
   const assigned = run(hired.ledger, { kind: "setStaffRole", index: 0, role: task });
   if (!assigned.ok) throw new Error("task assign failed");
-  return { ledger: assigned.ledger, jobs: assigned.ledger.staff[0]?.jobs ?? 1 };
+  return assigned.ledger;
 }
 
-/** Builds one growing, unwatered crop. */
+/** One growing, unwatered crop. */
 function growingPlot(slot: number) {
   return {
     slot,
@@ -83,12 +79,7 @@ describe("staff", () => {
     expect(hired.ok).toBe(true);
     if (!hired.ok) return;
     expect(hired.ledger.staff).toHaveLength(1);
-    expect(hired.ledger.staff[0]).toMatchObject({
-      level: 1,
-      xp: 0,
-      jobs: first.jobs,
-      role: "harvest",
-    });
+    expect(hired.ledger.staff[0]).toMatchObject({ level: 1, xp: 0, role: "harvest" });
     expect(hired.ledger.coins).toBe(10_000_000 - staffHireCost(first));
 
     const full: GardenLedger = {
@@ -100,7 +91,6 @@ describe("staff", () => {
         skill: 1,
         wage: 100,
         traits: [],
-        jobs: 1,
         role: "water" as const,
         level: 1,
         xp: 0,
@@ -115,8 +105,33 @@ describe("staff", () => {
     });
   });
 
+  it("finishes exactly one task per due turn, not a jobs count", () => {
+    const ledger = hireWorker(makeLedger(), "harvest");
+    for (let slot = 0; slot < 6; slot += 1) {
+      ledger.plots[slot] = { ...growingPlot(slot), readyAt: NOW - 1_000, watered: true };
+    }
+    ledger.staff[0] = { ...ledger.staff[0]!, lastWorkAt: NOW - 10 * FARM_CYCLE_MS };
+
+    const settled = settleStaff(ledger, NOW + FARM_CYCLE_MS);
+    const harvested = settled.bag.crops.reduce((sum, stack) => sum + stack.qty, 0);
+    expect(harvested).toBe(1);
+  });
+
+  it("waits longer for better quality, and traits shift the wait", () => {
+    const cheap = staffWorkInterval({ speed: 1, skill: 1, level: 1, traits: [] });
+    const strong = staffWorkInterval({ speed: 5, skill: 5, level: 6, traits: [] });
+    expect(cheap).toBe(6);
+    expect(strong).toBe(1);
+    expect(staffWorkInterval({ speed: 3, skill: 3, level: 1, traits: ["slow"] })).toBe(
+      staffWorkInterval({ speed: 3, skill: 3, level: 1, traits: [] }) + 1,
+    );
+    expect(staffWorkInterval({ speed: 3, skill: 3, level: 1, traits: ["diligent"] })).toBe(
+      staffWorkInterval({ speed: 3, skill: 3, level: 1, traits: [] }) - 1,
+    );
+  });
+
   it("only does the assigned task", () => {
-    const { ledger } = hireWorker(makeLedger(), "water");
+    const ledger = hireWorker(makeLedger(), "water");
     ledger.plots[0] = growingPlot(0);
     ledger.staff[0] = { ...ledger.staff[0]!, lastWorkAt: NOW - 10 * FARM_CYCLE_MS };
 
@@ -127,22 +142,20 @@ describe("staff", () => {
     expect(settled.plots[1] ?? null).toBeNull();
   });
 
-  it("harvests ripe crops up to its job count and never touches pinned plants", () => {
-    const { ledger, jobs } = hireWorker(makeLedger(), "harvest");
-    for (let slot = 0; slot < 6; slot += 1) {
+  it("keeps pinned plants safe and harvests crops without a task", () => {
+    const ledger = hireWorker(makeLedger(), "harvest");
+    for (let slot = 0; slot < 5; slot += 1) {
       ledger.plots[slot] = { ...growingPlot(slot), readyAt: NOW - 1_000, watered: true };
     }
     ledger.plots[0] = { ...ledger.plots[0]!, favorite: true };
     ledger.staff[0] = { ...ledger.staff[0]!, lastWorkAt: NOW - 10 * FARM_CYCLE_MS };
 
     const settled = settleStaff(ledger, NOW + FARM_CYCLE_MS);
-    const harvested = settled.bag.crops.reduce((sum, stack) => sum + stack.qty, 0);
-    expect(harvested).toBe(Math.min(jobs, 5));
     expect(settled.plots[0]?.favorite).toBe(true);
   });
 
   it("picks ripe mushroom trays into the product bag", () => {
-    const { ledger } = hireWorker(makeLedger(), "harvestMushroom");
+    const ledger = hireWorker(makeLedger(), "harvestMushroom");
     ledger.mushroomTrays = new Array(27).fill(null);
     ledger.mushroomTrays[0] = {
       slot: 0,
@@ -159,7 +172,7 @@ describe("staff", () => {
   });
 
   it("hunts sales for crops priced well above base", () => {
-    const { ledger } = hireWorker(makeLedger(), "saleHunt");
+    const ledger = hireWorker(makeLedger(), "saleHunt");
     ledger.bag.crops = [
       { item: "carrot", effects: ["golden"], qty: 5, star: 1 },
       { item: "potato", effects: [], qty: 5, star: 1 },
@@ -168,15 +181,13 @@ describe("staff", () => {
     ledger.staff[0] = { ...ledger.staff[0]!, lastWorkAt: NOW - 10 * FARM_CYCLE_MS };
 
     const settled = settleStaff(ledger, NOW + FARM_CYCLE_MS);
-    // The mutated carrot is worth far more than base, so it sells; the plain
-    // potato stack waits for a better price.
     expect(settled.bag.crops.some((stack) => stack.item === "carrot")).toBe(false);
     expect(settled.bag.crops.some((stack) => stack.item === "potato")).toBe(true);
     expect(settled.coins).toBeGreaterThan(before - 1_000_000);
   });
 
-  it("levels hands up as they finish jobs", () => {
-    const { ledger } = hireWorker(makeLedger(), "water");
+  it("levels hands up as they finish tasks", () => {
+    const ledger = hireWorker(makeLedger(), "water");
     const worker = ledger.staff[0];
     if (worker === undefined) throw new Error("worker missing");
     let current = ledger;
@@ -191,7 +202,7 @@ describe("staff", () => {
   });
 
   it("pays wages every cycle and quits after three unpaid settles", () => {
-    const { ledger } = hireWorker(makeLedger(), "water");
+    const ledger = hireWorker(makeLedger(), "water");
     ledger.coins = 1_000_000;
     const paid = settleStaff(ledger, NOW + FARM_CYCLE_MS);
     expect(paid.coins).toBeLessThan(1_000_000);

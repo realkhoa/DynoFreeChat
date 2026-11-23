@@ -39,6 +39,8 @@ import {
   staffHireCost,
   staffXpToLevel,
   staffMarketAt,
+  staffWorkInterval,
+  type StaffTrait,
   wheelCost,
   petById,
   contractOffers,
@@ -1339,6 +1341,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     render();
   }
 
+  /** @brief Localized wait between two finished tasks for one worker. */
+  function staffIntervalText(worker: {
+    readonly speed: number;
+    readonly skill: number;
+    readonly level: number;
+    readonly traits: readonly StaffTrait[];
+  }): string {
+    const cycles = staffWorkInterval(worker);
+    return t("staff.interval", { cycles, time: formatDuration(cycles * FARM_CYCLE_MS, "short") });
+  }
+
   /** @brief Builds the staff popover with role actions or hire candidates. */
   function buildStaffMenu(): HTMLElement | null {
     if (staffMenu === null || state === null) return null;
@@ -1350,7 +1363,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       state.extras.staff.forEach((entry, index) => {
         wrap.append(
           menuRow(
-            `${entry.name} · ${t("staff.level")} ${entry.level} · ${t(`staffRole.${entry.role}`)} · ${t("staff.jobs", { count: entry.jobs })}`,
+            `${entry.name} · ${t("staff.level")} ${entry.level} · ${t(`staffRole.${entry.role}`)}`,
             "staffMenuSelect",
             { data: { index: String(index) } },
           ),
@@ -1363,7 +1376,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       for (const candidate of staffMarketAt(state.playerId, now())) {
         const traits = candidate.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
         const row = menuRow(
-          `${candidate.name} · ${candidate.speed}⚡ · ${t("staff.jobs", { count: candidate.jobs })} · ${candidate.wage}c · ${traits} · ${formatCompact(staffHireCost(candidate))}c`,
+          `${candidate.name} · ${candidate.speed}⚡ · ${candidate.skill}✦ · ${candidate.wage}c · ${traits} · ${formatCompact(staffHireCost(candidate))}c`,
           "staffMenuHire",
           { data: { id: candidate.id } },
         );
@@ -1377,7 +1390,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       wrap.append(lineBlock(`${worker.name} · ${worker.wage}c`));
       wrap.append(
         lineBlock(
-          `// ${t("staff.level")} ${worker.level} · ${worker.xp}/${staffXpToLevel(worker.level)} XP · ${t("staff.jobs", { count: worker.jobs })}`,
+          `// ${t("staff.level")} ${worker.level} · ${worker.xp}/${staffXpToLevel(worker.level)} XP · ${staffIntervalText(worker)}`,
         ),
       );
       wrap.append(lineBlock(`// ${traits}`));
@@ -1827,10 +1840,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     bar.append(lineBlock(`// ${t("staff.title")} ${staff.length}/${STAFF_SLOTS}`));
     const shown = staff.slice(0, 8);
     shown.forEach((worker, index) => {
-      const button = actionButton(
-        `[ ${worker.name} · ${t("staff.level")} ${worker.level} · ${t("staff.jobs", { count: worker.jobs })} ]`,
-        "staffSlot",
-      );
+      const button = actionButton(`[ ${worker.name} · ${t("staff.level")} ${worker.level} ]`, "staffSlot");
       button.dataset.index = String(index);
       button.classList.add("is-filled");
       bar.append(button);
@@ -4699,7 +4709,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const traits = worker.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
       wrap.append(
         lineBlock(
-          `// ${worker.name} · ${t("staff.level")} ${worker.level} (${worker.xp} XP) · ${t("staff.jobs", { count: worker.jobs })} · ${worker.wage}c · ${traits}`,
+          `// ${worker.name} · ${t("staff.level")} ${worker.level} (${worker.xp} XP) · ${staffIntervalText(worker)} · ${worker.wage}c · ${traits}`,
         ),
       );
       const taskButtons: HTMLButtonElement[] = [];
@@ -5268,7 +5278,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       for (const candidate of staffMarketAt(state.playerId, at)) {
         const traits = candidate.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
         const hire = actionButton(
-          `${candidate.name} · ${candidate.speed}⚡ · ${t("staff.jobs", { count: candidate.jobs })} · ${t("staff.wage", { wage: candidate.wage })} · ${traits} · ${formatCompact(staffHireCost(candidate))}c`,
+          `${candidate.name} · ${candidate.speed}⚡ · ${candidate.skill}✦ · ${staffIntervalText({ ...candidate, level: 1 })} · ${t("staff.wage", { wage: candidate.wage })} · ${traits} · ${formatCompact(staffHireCost(candidate))}c`,
           "staffHire",
           staff.length < STAFF_SLOTS,
         );
@@ -5282,7 +5292,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       info.className = "garden-menu-info";
       info.textContent = [
         `// ${worker.name} · ${t("staff.level")} ${worker.level} (${worker.xp}/${staffXpToLevel(worker.level)} XP) · ${worker.wage}c`,
-        `${t("staff.jobs", { count: worker.jobs })} · ${traits}`,
+        `${staffIntervalText(worker)} · ${traits}`,
         `${t("staff.currentTask")}: ${t(`staffRole.${worker.role}`)}`,
       ].join("\n");
       wrap.append(info, lineBlock(t("staff.assignHint")));

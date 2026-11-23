@@ -1722,7 +1722,7 @@ describe("staff", () => {
     expect(api.calls.some((call) => call.action?.kind === "hireStaff")).toBe(true);
   });
 
-  it("lists every hired hand with levels and jobs", async () => {
+  it("lists every hired hand with levels and task timing", async () => {
     const workers = Array.from({ length: 12 }, (_unused, index) => ({
       id: `w${index}`,
       name: `W${index}`,
@@ -1730,7 +1730,6 @@ describe("staff", () => {
       skill: 3,
       wage: 900,
       traits: [],
-      jobs: index % 2 === 0 ? 2 : 1,
       role: "harvest" as const,
       level: 1 + (index % 4),
       xp: 30,
@@ -1753,7 +1752,7 @@ describe("staff", () => {
     await settle();
     const menu = host.querySelector(".garden-staff-menu");
     expect(menu?.textContent).toContain("Cấp 1");
-    expect(menu?.textContent).toContain("việc/chu kỳ");
+    expect(menu?.textContent).toContain("chu kỳ/việc");
   });
 
   it("gifts coins and items from the extras tab", async () => {
@@ -3032,7 +3031,6 @@ describe("reborn staff cells", () => {
       skill: 3,
       wage: 700,
       traits: [],
-      jobs: 2,
       role: "water" as const,
       level: 2,
       xp: 10,

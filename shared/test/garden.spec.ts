@@ -415,15 +415,15 @@ describe("farm buildings", () => {
     expect(driedStarForSell(800)).toBe(5);
   });
 
-  it("pays better staff to juggle more jobs and levels them up", () => {
+  it("charges more for higher-quality hands and levels them up", () => {
     const candidates = staffMarketAt("staff-test", EPOCH_MS + 4 * 60 * 60_000);
-    expect(candidates.every((candidate) => candidate.jobs >= 1 && candidate.jobs <= 3)).toBe(true);
     const byCost = [...candidates].sort((left, right) => staffHireCost(left) - staffHireCost(right));
-    expect(byCost.at(-1)?.jobs ?? 0).toBeGreaterThanOrEqual(byCost[0]?.jobs ?? 0);
+    expect(staffHireCost(byCost.at(-1)!)).toBeGreaterThan(staffHireCost(byCost[0]!));
 
-    const cheap = { speed: 3, level: 1, traits: [] as StaffTrait[] };
-    const veteran = { speed: 3, level: 7, traits: [] as StaffTrait[] };
-    expect(staffWorkInterval(veteran)).toBeLessThan(staffWorkInterval(cheap));
+    // Quality decides the wait between tasks: veterans work much faster.
+    const cheap = { speed: 1, skill: 1, level: 1, traits: [] as StaffTrait[] };
+    const veteran = { speed: 5, skill: 5, level: 7, traits: [] as StaffTrait[] };
+    expect(staffWorkInterval(cheap)).toBeGreaterThan(staffWorkInterval(veteran));
     expect(staffGainXp(1, 150)).toEqual({ level: 2, xp: 50 });
     expect(staffGainXp(9, 100_000).level).toBe(10);
   });

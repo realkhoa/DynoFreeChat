@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file garden-rules.ts
  * @brief Pure ASCII Garden action rules, shared by the Durable Object and tests.
  * @details The Durable Object owns storage and authentication; this module owns
@@ -3066,7 +3066,6 @@ function hireStaff(ledger: GardenLedger, id: string, now: number): RuleResult {
     skill: candidate.skill,
     wage: candidate.wage,
     traits: [...candidate.traits],
-    jobs: candidate.jobs,
     role: "harvest",
     level: 1,
     xp: 0,
@@ -3245,39 +3244,32 @@ export function settleStaff(ledger: GardenLedger, now: number): GardenLedger {
 
     if (now - worker.lastWorkAt < staffWorkInterval(worker) * FARM_CYCLE_MS) continue;
 
-    // One pass over every kind of chore: water, plant, pat animals, feed a
-    // machine. Better-paid hands repeat each chore up to `jobs` times.
+    // One finished task per due turn: the wait between turns is decided by the
+    // worker's quality, not by a jobs-per-cycle count.
+    const rng = createRng(hash32(`staffwork:${worker.id}:${worker.lastWorkAt}:${now}`));
     let worked: GardenLedger = current;
     let tasks = 0;
-    let seedCounter = 0;
-    const jobs = Math.max(1, Math.min(3, worker.jobs));
-    const attempt = (chore: (base: GardenLedger, rng: () => number) => GardenLedger | null): void => {
-      for (let repeat = 0; repeat < jobs; repeat += 1) {
-        const rng = createRng(hash32(`staffwork:${worker.id}:${worker.lastWorkAt}:${now}:${seedCounter}`));
-        seedCounter += 1;
-        if (worker.traits.includes("lazy") && rng() < 0.2) continue;
-        const next = chore(worked, rng);
-        if (next === null) break;
+    const lazy = worker.traits.includes("lazy") && rng() < 0.2;
+    if (!lazy) {
+      const chore = (base: GardenLedger): GardenLedger | null => {
+        switch (worker.role) {
+          case "water":
+            return staffWater(base, now, rng);
+          case "plant":
+            return staffPlant(base, now, rng);
+          case "harvest":
+            return staffHarvest(base, now, rng);
+          case "harvestMushroom":
+            return staffMushroomHarvest(base, now, rng);
+          case "saleHunt":
+            return staffSaleHunt(base, now, rng);
+        }
+      };
+      const next = chore(worked);
+      if (next !== null) {
         worked = next;
-        tasks += 1;
+        tasks = 1;
       }
-    };
-    switch (worker.role) {
-      case "water":
-        attempt((base, rng) => staffWater(base, now, rng));
-        break;
-      case "plant":
-        attempt((base, rng) => staffPlant(base, now, rng));
-        break;
-      case "harvest":
-        attempt((base, rng) => staffHarvest(base, now, rng));
-        break;
-      case "harvestMushroom":
-        attempt((base, rng) => staffMushroomHarvest(base, now, rng));
-        break;
-      case "saleHunt":
-        attempt((base, rng) => staffSaleHunt(base, now, rng));
-        break;
     }
 
     const after = clone(worked);

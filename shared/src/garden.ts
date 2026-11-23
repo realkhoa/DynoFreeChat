@@ -2166,8 +2166,6 @@ export interface StaffDefinition {
   readonly wage: number;
   /** Personality traits. */
   readonly traits: readonly StaffTrait[];
-  /** Jobs this worker finishes in one work cycle (paid staff do more). */
-  readonly jobs: number;
 }
 
 /** One hired worker. */
@@ -2191,8 +2189,6 @@ export interface StaffState {
   readonly level: number;
   /** Experience inside the current level. */
   readonly xp: number;
-  /** Jobs finished per work cycle. */
-  readonly jobs: number;
 }
 
 /** Labour market rotation and slot rules. */
@@ -2238,8 +2234,6 @@ export function staffMarketAt(playerId: string, now: number): StaffDefinition[] 
     const speed = 1 + Math.floor(rng() * 5);
     const skill = 1 + Math.floor(rng() * 5);
     const wage = 400 + speed * 80 + skill * 80;
-    // Better-paid candidates juggle more jobs per cycle.
-    const jobs = wage >= 1_000 ? 3 : wage >= 800 ? 2 : 1;
     const traits: StaffTrait[] = [];
     for (let pick = 0; pick < 2; pick += 1) {
       const trait = badTraits[Math.floor(rng() * badTraits.length)];
@@ -2249,25 +2243,27 @@ export function staffMarketAt(playerId: string, now: number): StaffDefinition[] 
       const good = goodTraits[Math.floor(rng() * goodTraits.length)];
       if (good !== undefined) traits.push(good);
     }
-    candidates.push({ id: `s${window}-${index}`, name, speed, skill, wage, traits, jobs });
+    candidates.push({ id: `s${window}-${index}`, name, speed, skill, wage, traits });
   }
   return candidates;
 }
 
-/** @brief One-off hiring fee for a candidate. */
+/** @brief One-off hiring fee for a candidate; better hands cost more. */
 export function staffHireCost(candidate: StaffDefinition): number {
-  return 50_000 + candidate.speed * 10_000 + candidate.skill * 15_000 + candidate.jobs * 20_000;
+  return 50_000 + candidate.speed * 25_000 + candidate.skill * 30_000;
 }
 
-/** @brief Cycles between two work turns; level and traits speed it up. */
-export function staffWorkInterval(worker: Pick<StaffState, "speed" | "level" | "traits">): number {
-  const base =
-    6 -
-    worker.speed +
-    (worker.traits.includes("slow") ? 1 : 0) -
-    (worker.traits.includes("diligent") ? 1 : 0) -
-    Math.floor(worker.level / 2);
-  return Math.max(1, base);
+/**
+ * @brief Cycles between two finished tasks.
+ * @details Staff no longer finish a number of jobs per cycle: their quality
+ * (speed + skill + half the level) decides how long one task takes instead.
+ * Cheap hands need six cycles, the best ones a single cycle.
+ */
+export function staffWorkInterval(worker: Pick<StaffState, "speed" | "skill" | "level" | "traits">): number {
+  const quality = worker.speed + worker.skill + Math.floor(worker.level / 2);
+  const base = 7 - Math.floor(quality / 2);
+  const traits = (worker.traits.includes("slow") ? 1 : 0) - (worker.traits.includes("diligent") ? 1 : 0);
+  return Math.max(1, base + traits);
 }
 
 /** @brief Experience needed to leave one level. */

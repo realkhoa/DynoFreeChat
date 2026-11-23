@@ -541,12 +541,11 @@ export class Garden extends DurableObject<Env> {
       eggCount: raw.eggCount ?? 0,
       eggPity: raw.eggPity ?? 0,
       skills: raw.skills ?? { ...DEFAULT_SKILLS },
-      // Saves written before staff levels/jobs existed default to a rookie.
+      // Saves written before staff levels existed default to a rookie.
       staff: (raw.staff ?? []).map((worker) => ({
         ...worker,
         level: typeof worker.level === "number" ? worker.level : 1,
         xp: typeof worker.xp === "number" ? worker.xp : 0,
-        jobs: typeof worker.jobs === "number" ? worker.jobs : 1,
       })),
       staffClaims: raw.staffClaims ?? [],
       insuranceUntil: raw.insuranceUntil ?? 0,
