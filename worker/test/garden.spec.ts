@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file garden.spec.ts
  * @brief End-to-end API for ASCII Garden: identity, play, rename, visit, restore.
  * @details The durable objects keep the garden; these tests drive the public HTTP
@@ -346,7 +346,10 @@ describe("garden play", () => {
     const bindings = env as unknown as import("../src/env").Env;
     const garden = bindings.GARDEN.get(bindings.GARDEN.idFromName(registered.playerId));
     await runInDurableObject(garden, (_instance, state) => {
-      state.storage.sql.exec("UPDATE plots SET ready_at = ?, pest = 1 WHERE slot = 0", Date.now() - 1_000);
+      state.storage.sql.exec(
+        "UPDATE plots SET ready_at = ?, pest = 1, watered = 1 WHERE slot = 0",
+        Date.now() - 1_000,
+      );
     });
 
     const harvested = await act(registered, afterPlant.rev, { kind: "harvest", slot: 0, tree: false });

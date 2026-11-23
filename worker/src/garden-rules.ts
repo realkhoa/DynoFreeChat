@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file garden-rules.ts
  * @brief Pure ASCII Garden action rules, shared by the Durable Object and tests.
  * @details The Durable Object owns storage and authentication; this module owns
@@ -18,6 +18,7 @@ import {
   TREES_PER_TAB,
   FARM_CYCLE_MS,
   DAY_MS,
+  PLANT_THIRST_MS,
   SPECIAL_PATCHES,
   SPECIAL_PATCH_PRICE,
   SPECIAL_PLOTS_PER_PATCH,
@@ -973,12 +974,16 @@ function specializePlot(ledger: GardenLedger, slot: number, now: number, halve: 
   const next = clone(ledger);
   const plot = next.specialPlots?.[slot] ?? null;
   if (plot === null) return next;
+  const readyAt = halve
+    ? now + Math.max(5_000, Math.round((plot.readyAt - now) * SPECIAL_GROW_SCALE))
+    : plot.readyAt;
   next.specialPlots[slot] = {
     ...plot,
     effects: canonicalEffects([...plot.effects, SPECIAL_MUTATION]),
-    readyAt: halve
-      ? now + Math.max(5_000, Math.round((plot.readyAt - now) * SPECIAL_GROW_SCALE))
-      : plot.readyAt,
+    readyAt,
+    // Watering restarts growth from this effective duration, so premium speed
+    // survives the first watering instead of falling back to the base seed.
+    growMs: halve ? Math.max(5_000, readyAt - now) : (plot.growMs ?? readyAt - plot.plantedAt),
   };
   return next;
 }
@@ -1145,16 +1150,18 @@ function plant(
   const next = clone(ledger);
   next.bag.seeds[seed.id] = owned - 1;
   const events = eventsAt(now);
+  const readyAt =
+    now +
+    Math.round(
+      growTimeForEvents(seed, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger, now)) *
+        soilGrowthFactor(ledger.soil[slot] ?? SOIL_START),
+    );
   next.plots[slot] = {
     slot,
     seed: seed.id,
     plantedAt: now,
-    readyAt:
-      now +
-      Math.round(
-        growTimeForEvents(seed, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger, now)) *
-          soilGrowthFactor(ledger.soil[slot] ?? SOIL_START),
-      ),
+    readyAt,
+    growMs: readyAt - now,
     effects: [],
     pest: false,
     protectedUntil: 0,
@@ -1187,12 +1194,14 @@ function plantTree(
   next.coins -= tree.buy;
   next.stats.spent += tree.buy;
   const events = eventsAt(now);
+  const readyAt =
+    now + growTimeForEvents(tree, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger, now));
   next.trees[slot] = {
     slot,
     tree: tree.id,
     plantedAt: now,
-    readyAt:
-      now + growTimeForEvents(tree, events, null, dayPhaseAt(now).phase.growScale * growthScale(ledger, now)),
+    readyAt,
+    growMs: readyAt - now,
     effects: [],
     pest: false,
     protectedUntil: 0,
@@ -1251,7 +1260,9 @@ function harvest(
   const plot = ledger.plots[slot] ?? null;
   if (plot === null) return { ok: false, code: "PLOT_EMPTY" };
   if (plot.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
+  if (plot.dead === true) return { ok: false, code: "PLANT_DEAD" };
   if (now < plot.readyAt) return { ok: false, code: "NOT_READY" };
+  if (plot.growMs !== undefined && plot.watered !== true) return { ok: false, code: "NEEDS_WATER" };
 
   const next = clone(ledger);
   const harvestedEffects = resolvedCropEffects(plot, now, goodOnly);
@@ -1292,20 +1303,22 @@ function harvest(
     for (const [id, bonus] of Object.entries(mutationChances(ledger))) {
       if (bonus !== undefined) mutationBonus[id as EffectId] = (mutationBonus[id as EffectId] ?? 0) + bonus;
     }
+    const regrowAt =
+      now +
+      Math.round(
+        growTimeForEvents(
+          seed,
+          events,
+          plot.fertilizer,
+          dayPhaseAt(now).phase.growScale * growthScale(ledger, now),
+        ) * soilGrowthFactor(fertility),
+      );
     next.plots[slot] = {
       slot,
       seed: plot.seed,
       plantedAt: now,
-      readyAt:
-        now +
-        Math.round(
-          growTimeForEvents(
-            seed,
-            events,
-            plot.fertilizer,
-            dayPhaseAt(now).phase.growScale * growthScale(ledger, now),
-          ) * soilGrowthFactor(fertility),
-        ),
+      readyAt: regrowAt,
+      growMs: regrowAt - now,
       effects: [],
       mutationBoost: mutationSkillBonus(ledger) + weeklyModifier(now).mutationBonus,
       badLuck: wealthBadLuck(ledger.coins),
@@ -1335,7 +1348,9 @@ function harvestTree(
   const tree = ledger.trees[slot] ?? null;
   if (tree === null) return { ok: false, code: "PLOT_EMPTY" };
   if (tree.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
+  if (tree.dead === true) return { ok: false, code: "PLANT_DEAD" };
   if (now < tree.readyAt) return { ok: false, code: "NOT_READY" };
+  if (tree.growMs !== undefined && tree.watered !== true) return { ok: false, code: "NEEDS_WATER" };
   const definition = treeLikeById(tree.tree);
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
 
@@ -1352,18 +1367,20 @@ function harvestTree(
   addCrop(next.bag.crops, tree.tree, resolvedTreeEffects(tree, now), 1, tree.pest, star);
   next.stats.harvested += 1;
   const events = eventsAt(now);
+  const regrowAt =
+    now +
+    growTimeForEvents(
+      definition,
+      events,
+      tree.fertilizer,
+      dayPhaseAt(now).phase.growScale * growthScale(ledger, now),
+    );
   next.trees[slot] = {
     slot,
     tree: tree.tree,
     plantedAt: now,
-    readyAt:
-      now +
-      growTimeForEvents(
-        definition,
-        events,
-        tree.fertilizer,
-        dayPhaseAt(now).phase.growScale * growthScale(ledger, now),
-      ),
+    readyAt: regrowAt,
+    growMs: regrowAt - now,
     effects: [],
     pest: false,
     protectedUntil: tree.protectedUntil,
@@ -1377,36 +1394,40 @@ function harvestTree(
   return changed(next, now);
 }
 
-/** @brief Waters one growing crop: shortens growth and adds the wet effect. */
+/**
+ * @brief Waters one crop: growth only starts now, and the plant stops dying.
+ * @details Unwatered plants never grow, so watering restarts the growth clock
+ * from the full duration (minus the usual watering speed-up).
+ */
 function water(ledger: GardenLedger, slot: number, now: number): RuleResult {
   const plot = ledger.plots[slot] ?? null;
   if (plot === null) return { ok: false, code: "PLOT_EMPTY" };
-  if (now >= plot.readyAt) return { ok: false, code: "NOT_READY" };
+  if (plot.dead === true) return { ok: false, code: "PLANT_DEAD" };
   if (plot.watered) return { ok: false, code: "ALREADY_WATERED" };
 
   const next = clone(ledger);
-  const remaining = plot.readyAt - now;
+  const growMs = plot.growMs ?? Math.max(1_000, plot.readyAt - plot.plantedAt);
   next.plots[slot] = {
     ...plot,
-    readyAt: Math.max(now + 1_000, plot.readyAt - Math.round(remaining * WATER_CUT_RATIO)),
+    readyAt: now + Math.max(1_000, Math.round(growMs * (1 - WATER_CUT_RATIO))),
     watered: true,
     effects: canonicalEffects([...plot.effects, "wet"]),
   };
   return changed(next, now);
 }
 
-/** @brief Waters one growing tree until its next fruit. */
+/** @brief Waters one tree: growth only starts now, and the tree stops dying. */
 function waterTree(ledger: GardenLedger, slot: number, now: number): RuleResult {
   const tree = ledger.trees[slot] ?? null;
   if (tree === null) return { ok: false, code: "PLOT_EMPTY" };
-  if (now >= tree.readyAt) return { ok: false, code: "NOT_READY" };
+  if (tree.dead === true) return { ok: false, code: "PLANT_DEAD" };
   if (tree.watered) return { ok: false, code: "ALREADY_WATERED" };
 
   const next = clone(ledger);
-  const remaining = tree.readyAt - now;
+  const growMs = tree.growMs ?? Math.max(1_000, tree.readyAt - tree.plantedAt);
   next.trees[slot] = {
     ...tree,
-    readyAt: Math.max(now + 1_000, tree.readyAt - Math.round(remaining * WATER_CUT_RATIO)),
+    readyAt: now + Math.max(1_000, Math.round(growMs * (1 - WATER_CUT_RATIO))),
     watered: true,
     effects: canonicalEffects([...tree.effects, "wet"]),
   };
@@ -1429,6 +1450,7 @@ function fertilize(
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
   const plant = tree ? (ledger.trees[slot] ?? null) : (ledger.plots[slot] ?? null);
   if (plant === null) return { ok: false, code: "PLOT_EMPTY" };
+  if (plant.dead === true) return { ok: false, code: "PLANT_DEAD" };
   const owned = ledger.bag.supplies[supply] ?? 0;
   if (owned < 1) return { ok: false, code: "NO_SUPPLY" };
 
@@ -1463,6 +1485,7 @@ function spray(
   if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
   const plant = tree ? (ledger.trees[slot] ?? null) : (ledger.plots[slot] ?? null);
   if (plant === null) return { ok: false, code: "PLOT_EMPTY" };
+  if (plant.dead === true) return { ok: false, code: "PLANT_DEAD" };
   const owned = ledger.bag.supplies[supply] ?? 0;
   if (owned < 1) return { ok: false, code: "NO_SUPPLY" };
 
@@ -1717,6 +1740,8 @@ function uprootTree(ledger: GardenLedger, slot: number, now: number): RuleResult
   const tree = ledger.trees[slot] ?? null;
   if (tree === null) return { ok: false, code: "PLOT_EMPTY" };
   if (tree.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
+  if (tree.dead === true) return { ok: false, code: "PLANT_DEAD" };
+  if (tree.growMs !== undefined && tree.watered !== true) return { ok: false, code: "NEEDS_WATER" };
   const next = clone(ledger);
   next.trees[slot] = null;
   return changed(next, now);
@@ -1813,14 +1838,14 @@ function waterAll(ledger: GardenLedger, now: number): RuleResult {
       for (let plot = 0; plot < PLOTS_PER_PATCH; plot += 1) {
         const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
         const entry = ledger.plots[slot] ?? null;
-        if (entry !== null && now < entry.readyAt && !entry.watered) crops.push(slot);
+        if (entry !== null && !entry.watered && entry.dead !== true) crops.push(slot);
       }
     }
   }
   const trees: number[] = [];
   for (let slot = 0; slot < ledger.trees.length; slot += 1) {
     const entry = ledger.trees[slot] ?? null;
-    if (entry !== null && now < entry.readyAt && !entry.watered) trees.push(slot);
+    if (entry !== null && !entry.watered && entry.dead !== true) trees.push(slot);
   }
   const count = crops.length + trees.length;
   if (count === 0) return { ok: false, code: "NOTHING_TO_DO" };
@@ -1851,14 +1876,28 @@ function harvestAll(ledger: GardenLedger, now: number, rng: () => number): RuleR
       for (let plot = 0; plot < PLOTS_PER_PATCH; plot += 1) {
         const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
         const entry = ledger.plots[slot] ?? null;
-        if (entry !== null && entry.favorite !== true && now >= entry.readyAt) crops.push(slot);
+        if (
+          entry !== null &&
+          entry.favorite !== true &&
+          entry.watered === true &&
+          entry.dead !== true &&
+          now >= entry.readyAt
+        )
+          crops.push(slot);
       }
     }
   }
   const trees: number[] = [];
   for (let slot = 0; slot < ledger.trees.length; slot += 1) {
     const entry = ledger.trees[slot] ?? null;
-    if (entry !== null && entry.favorite !== true && now >= entry.readyAt) trees.push(slot);
+    if (
+      entry !== null &&
+      entry.favorite !== true &&
+      entry.watered === true &&
+      entry.dead !== true &&
+      now >= entry.readyAt
+    )
+      trees.push(slot);
   }
   // Bulk harvest also clears ripe mushroom trays: the quick action works across
   // the whole garden, not only the crop board.
@@ -2334,6 +2373,36 @@ export function settleAttachments(ledger: GardenLedger, now: number): GardenLedg
   return next;
 }
 
+/**
+ * @brief Kills plants left unwatered for an in-game day.
+ * @details Dead plants stay in the ground (nothing is lost) so the owner can
+ * uproot them; they never grow and can never be harvested.
+ */
+export function settleThirst(ledger: GardenLedger, now: number): GardenLedger {
+  const thirsty = (entry: {
+    plantedAt: number;
+    watered: boolean;
+    dead?: boolean;
+    growMs?: number;
+  }): boolean =>
+    entry.dead !== true &&
+    entry.growMs !== undefined &&
+    entry.watered !== true &&
+    now - entry.plantedAt >= PLANT_THIRST_MS;
+  let changedAny = false;
+  const next = clone(ledger);
+  next.plots = next.plots.map((plot) => {
+    if (plot === null || !thirsty(plot)) return plot;
+    changedAny = true;
+    return { ...plot, dead: true };
+  });
+  next.trees = next.trees.map((tree) => {
+    if (tree === null || !thirsty(tree)) return tree;
+    changedAny = true;
+    return { ...tree, dead: true };
+  });
+  return changedAny ? next : ledger;
+}
 export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
   const animals = BUILDING_IDS.flatMap((building) => ledger.animals[building] ?? []).filter(
     (animal): animal is AnimalState => animal !== null,

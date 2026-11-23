@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file ascii.ts
  * @brief Fixed-width ASCII helpers for the garden document.
  * @details Every plot cell is ten columns wide, so the frame stays aligned in a
@@ -9,6 +9,7 @@
 import {
   animalIntervalMs,
   animalIsIncubating,
+  PLANT_THIRST_MS,
   animalQuality,
   plotView,
   resolvedTreeEffects,
@@ -42,6 +43,10 @@ export interface CellRender {
   readonly locked: boolean;
   /** Growth progress in `0..1`. */
   readonly progress: number;
+  /** Plant died from thirst: only uprooting helps. */
+  readonly dead?: boolean;
+  /** Plant needs water before it grows at all. */
+  readonly needsWater?: boolean;
 }
 
 /** @brief Number of code points in a string. */
@@ -147,18 +152,44 @@ export function cellRender(
   }
 
   const view = plotView(plot, now);
-  const glyph = view.seed.art[view.stage] ?? ".";
   const name = t(`seeds.${view.seed.id}.short`);
+  if (plot.dead === true) {
+    return {
+      lines: [
+        top,
+        row("x", "center"),
+        row(name),
+        row(t("garden.deadShort")),
+        row(t("garden.deadUproot")),
+        bottom,
+      ],
+      ready: false,
+      growing: false,
+      empty: false,
+      locked: false,
+      progress: 0,
+      dead: true,
+    };
+  }
+  const thirsty = plot.watered !== true;
+  const glyph = thirsty ? (view.seed.art[0] ?? ".") : (view.seed.art[view.stage] ?? ".");
   const strongest = strongestEffect(view.effects.map((effect) => effect.id));
   const effect = strongest === null ? "" : t(`effects.${strongest.id}`);
-  const tail = view.ready ? t("garden.ready") : formatDuration(view.remainingMs, "short");
+  const tail = thirsty
+    ? t("garden.needsWater", {
+        time: formatDuration(Math.max(0, PLANT_THIRST_MS - (now - plot.plantedAt)), "short"),
+      })
+    : view.ready
+      ? t("garden.ready")
+      : formatDuration(view.remainingMs, "short");
   return {
     lines: [top, row(glyph, "center"), row(name), row(effect), row(tail), bottom],
-    ready: view.ready,
-    growing: !view.ready,
+    ready: !thirsty && view.ready,
+    growing: thirsty || !view.ready,
     empty: false,
     locked: false,
-    progress: view.progress,
+    progress: thirsty ? 0 : view.progress,
+    needsWater: thirsty,
   };
 }
 
@@ -202,24 +233,51 @@ export function treeCellRender(
     ] ?? ".";
   const total = Math.max(1, tree.readyAt - tree.plantedAt);
   const progress = Math.min(1, Math.max(0, now - tree.plantedAt) / total);
+  const treeName = t(`trees.${tree.tree}.short`);
+  if (tree.dead === true) {
+    return {
+      lines: [
+        top,
+        row("x", "center"),
+        row(treeName),
+        row(t("garden.dead")),
+        row(t("garden.deadHint")),
+        bottom,
+      ],
+      ready: false,
+      growing: false,
+      empty: false,
+      locked: false,
+      progress: 0,
+      dead: true,
+    };
+  }
   const ready = now >= tree.readyAt;
+  const thirsty = tree.watered !== true;
   const treeStrongest = strongestEffect(resolvedTreeEffects(tree, now));
   const effect = treeStrongest === null ? null : t(`effects.${treeStrongest.id}`);
-  const tail = ready ? t("garden.ready") : formatDuration(Math.max(0, tree.readyAt - now), "short");
+  const tail = thirsty
+    ? t("garden.needsWater", {
+        time: formatDuration(Math.max(0, PLANT_THIRST_MS - (now - tree.plantedAt)), "short"),
+      })
+    : ready
+      ? t("garden.ready")
+      : formatDuration(Math.max(0, tree.readyAt - now), "short");
   return {
     lines: [
       top,
-      row(glyph, "center"),
-      row(t(`trees.${tree.tree}.short`)),
+      row(thirsty ? (definition?.art[0] ?? glyph) : glyph, "center"),
+      row(treeName),
       row(effect ?? ""),
       row(tail),
       bottom,
     ],
-    ready,
-    growing: !ready,
+    ready: !thirsty && ready,
+    growing: thirsty || !ready,
     empty: false,
     locked: false,
-    progress,
+    progress: thirsty ? 0 : progress,
+    needsWater: thirsty,
   };
 }
 

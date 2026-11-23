@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file garden.ts
  * @brief Wire types and deterministic season rules for ASCII Garden.
  * @details The browser and the Worker both import this module, so the seed
@@ -1713,6 +1713,10 @@ export interface PlotState {
   readonly protectedUntil: number;
   /** Whether the owner already watered this planting. */
   readonly watered: boolean;
+  /** Full growth duration at planting; watered plants restart from here. */
+  readonly growMs?: number;
+  /** Unwatered for a whole day: dead, cannot be harvested, must be uprooted. */
+  readonly dead?: boolean;
   /** Whether the owner already fertilized this planting. */
   readonly fertilized: boolean;
   /** Fruits already harvested from this plant; `0` for single-harvest crops. */
@@ -1745,6 +1749,10 @@ export interface TreeState {
   readonly protectedUntil: number;
   /** Whether the owner already watered this cycle. */
   readonly watered: boolean;
+  /** Full growth duration at planting; watered plants restart from here. */
+  readonly growMs?: number;
+  /** Unwatered for a whole day: dead, cannot be picked, must be uprooted. */
+  readonly dead?: boolean;
   /** Whether the owner already fertilized this cycle. */
   readonly fertilized: boolean;
   /** Prestige mutation bonus stored at planting for periodic rolls. */
@@ -1963,6 +1971,9 @@ export interface WarehouseState {
 
 /** Milliseconds in one day. */
 export const DAY_MS = 24 * 60 * 60_000;
+
+/** One in-game day without water kills a plant (but leaves it for uprooting). */
+export const PLANT_THIRST_MS = DAY_CYCLE_MS;
 
 /** Contract board rotation. */
 export const CONTRACT_WINDOW_MS = 2 * 60 * 60_000;
@@ -3386,6 +3397,8 @@ export type GardenErrorCode =
   | "NO_SPAWN"
   | "TRAY_EMPTY"
   | "TRAY_OCCUPIED"
+  | "NEEDS_WATER"
+  | "PLANT_DEAD"
   | "SHOP_SOLD_OUT"
   | "NO_CROP"
   | "NOTHING_TO_SELL"

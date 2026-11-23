@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file garden.ts
  * @brief Durable Objects that own ASCII Garden state and its public directory.
  * @details `Garden` is one player's authoritative database row set: plots, bag,
@@ -73,6 +73,7 @@ import {
   emptyCrops,
   emptyTrees,
   settleFarm,
+  settleThirst,
   settleMachines,
   settleTools,
   settlePest,
@@ -211,6 +212,8 @@ type PlotRow = SqlRow<{
   disease: number;
   mutation_boost: number;
   bad_luck: number;
+  dead: number;
+  grow_ms: number;
 }>;
 
 type TreeRow = SqlRow<{
@@ -230,6 +233,8 @@ type TreeRow = SqlRow<{
   disease: number;
   mutation_boost: number;
   bad_luck: number;
+  dead: number;
+  grow_ms: number;
 }>;
 
 type BagRow = SqlRow<{ kind: string; item: string; qty: number }>;
@@ -252,6 +257,8 @@ function plotStateKey(plot: PlotState): string {
     plot.diseasedAt ?? 0,
     plot.mutationBoost ?? 0,
     plot.badLuck ?? 0,
+    plot.dead === true ? 1 : 0,
+    plot.growMs ?? 0,
   ].join("|");
 }
 
@@ -273,6 +280,8 @@ function plotRowKey(row: PlotRow): string {
     row.disease,
     row.mutation_boost,
     row.bad_luck,
+    row.dead,
+    row.grow_ms,
   ].join("|");
 }
 
@@ -294,6 +303,8 @@ function treeStateKey(tree: TreeState): string {
     tree.diseasedAt ?? 0,
     tree.mutationBoost ?? 0,
     tree.badLuck ?? 0,
+    tree.dead === true ? 1 : 0,
+    tree.growMs ?? 0,
   ].join("|");
 }
 
@@ -315,6 +326,8 @@ function treeRowKey(row: TreeRow): string {
     row.disease,
     row.mutation_boost,
     row.bad_luck,
+    row.dead,
+    row.grow_ms,
   ].join("|");
 }
 
@@ -361,7 +374,9 @@ export class Garden extends DurableObject<Env> {
         protected_until INTEGER NOT NULL DEFAULT 0,
         disease INTEGER NOT NULL DEFAULT 0,
         mutation_boost REAL NOT NULL DEFAULT 0,
-        bad_luck REAL NOT NULL DEFAULT 0
+        bad_luck REAL NOT NULL DEFAULT 0,
+        dead INTEGER NOT NULL DEFAULT 0,
+        grow_ms INTEGER NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS trees (
         slot INTEGER PRIMARY KEY,
@@ -378,7 +393,9 @@ export class Garden extends DurableObject<Env> {
         protected_until INTEGER NOT NULL DEFAULT 0,
         disease INTEGER NOT NULL DEFAULT 0,
         mutation_boost REAL NOT NULL DEFAULT 0,
-        bad_luck REAL NOT NULL DEFAULT 0
+        bad_luck REAL NOT NULL DEFAULT 0,
+        dead INTEGER NOT NULL DEFAULT 0,
+        grow_ms INTEGER NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS bag (
         kind TEXT NOT NULL,
@@ -421,6 +438,12 @@ export class Garden extends DurableObject<Env> {
       this.sql.exec("ALTER TABLE plots ADD COLUMN mutation_boost REAL NOT NULL DEFAULT 0");
       this.sql.exec("ALTER TABLE plots ADD COLUMN bad_luck REAL NOT NULL DEFAULT 0");
     }
+    if (!columns.some((column) => column.name === "dead")) {
+      this.sql.exec("ALTER TABLE plots ADD COLUMN dead INTEGER NOT NULL DEFAULT 0");
+      this.sql.exec("ALTER TABLE plots ADD COLUMN grow_ms INTEGER NOT NULL DEFAULT 0");
+      // Plants that predate the thirst rule must not die on the first read.
+      this.sql.exec("UPDATE plots SET watered = 1");
+    }
     const treeColumns = this.sql.exec<{ name: string }>("PRAGMA table_info(trees)").toArray();
     if (!treeColumns.some((column) => column.name === "fertilizer")) {
       this.sql.exec("ALTER TABLE trees ADD COLUMN fertilizer TEXT");
@@ -441,6 +464,11 @@ export class Garden extends DurableObject<Env> {
     if (!treeColumns.some((column) => column.name === "mutation_boost")) {
       this.sql.exec("ALTER TABLE trees ADD COLUMN mutation_boost REAL NOT NULL DEFAULT 0");
       this.sql.exec("ALTER TABLE trees ADD COLUMN bad_luck REAL NOT NULL DEFAULT 0");
+    }
+    if (!treeColumns.some((column) => column.name === "dead")) {
+      this.sql.exec("ALTER TABLE trees ADD COLUMN dead INTEGER NOT NULL DEFAULT 0");
+      this.sql.exec("ALTER TABLE trees ADD COLUMN grow_ms INTEGER NOT NULL DEFAULT 0");
+      this.sql.exec("UPDATE trees SET watered = 1");
     }
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS help (
@@ -627,7 +655,7 @@ export class Garden extends DurableObject<Env> {
     const plots = emptyCrops(tabs);
     const rows = this.sql
       .exec<PlotRow>(
-        "SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck FROM plots",
+        "SELECT slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck, dead, grow_ms FROM plots",
       )
       .toArray();
     for (const row of rows) {
@@ -648,6 +676,8 @@ export class Garden extends DurableObject<Env> {
         fertilizer: parseFertilizer(row.fertilizer),
         spray: parseSpray(row.spray),
         favorite: row.favorite === 1,
+        dead: row.dead === 1,
+        ...(row.grow_ms > 0 ? { growMs: row.grow_ms } : {}),
       };
     }
     return plots;
@@ -661,7 +691,7 @@ export class Garden extends DurableObject<Env> {
     const trees = emptyTrees(tabs);
     const rows = this.sql
       .exec<TreeRow>(
-        "SELECT slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck FROM trees",
+        "SELECT slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck, dead, grow_ms FROM trees",
       )
       .toArray();
     for (const row of rows) {
@@ -682,6 +712,8 @@ export class Garden extends DurableObject<Env> {
         fertilizer: parseFertilizer(row.fertilizer),
         spray: parseSpray(row.spray),
         favorite: row.favorite === 1,
+        dead: row.dead === 1,
+        ...(row.grow_ms > 0 ? { growMs: row.grow_ms } : {}),
       };
     }
     return trees;
@@ -782,15 +814,15 @@ export class Garden extends DurableObject<Env> {
       const key = plotStateKey(plot);
       if (stored.get(slot) === key) continue;
       this.sql.exec(
-        `INSERT INTO plots (slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO plots (slot, seed, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck, dead, grow_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(slot) DO UPDATE SET seed = excluded.seed, planted_at = excluded.planted_at,
            ready_at = excluded.ready_at, effect = excluded.effect, watered = excluded.watered,
            fertilized = excluded.fertilized, harvests = excluded.harvests,
            fertilizer = excluded.fertilizer, spray = excluded.spray,
            pest = excluded.pest, protected_until = excluded.protected_until,
            favorite = excluded.favorite, disease = excluded.disease,
-           mutation_boost = excluded.mutation_boost, bad_luck = excluded.bad_luck`,
+           mutation_boost = excluded.mutation_boost, bad_luck = excluded.bad_luck, dead = excluded.dead, grow_ms = excluded.grow_ms`,
         plot.slot,
         plot.seed,
         plot.plantedAt,
@@ -807,6 +839,8 @@ export class Garden extends DurableObject<Env> {
         plot.diseasedAt ?? 0,
         plot.mutationBoost ?? 0,
         plot.badLuck ?? 0,
+        plot.dead === true ? 1 : 0,
+        plot.growMs ?? 0,
       );
     }
   }
@@ -828,15 +862,15 @@ export class Garden extends DurableObject<Env> {
       const key = treeStateKey(tree);
       if (stored.get(slot) === key) continue;
       this.sql.exec(
-        `INSERT INTO trees (slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO trees (slot, tree, planted_at, ready_at, effect, watered, fertilized, harvests, fertilizer, spray, pest, protected_until, favorite, disease, mutation_boost, bad_luck, dead, grow_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(slot) DO UPDATE SET tree = excluded.tree, planted_at = excluded.planted_at,
            ready_at = excluded.ready_at, effect = excluded.effect, watered = excluded.watered,
            fertilized = excluded.fertilized, harvests = excluded.harvests,
            fertilizer = excluded.fertilizer, spray = excluded.spray,
            pest = excluded.pest, protected_until = excluded.protected_until,
            favorite = excluded.favorite, disease = excluded.disease,
-           mutation_boost = excluded.mutation_boost, bad_luck = excluded.bad_luck`,
+           mutation_boost = excluded.mutation_boost, bad_luck = excluded.bad_luck, dead = excluded.dead, grow_ms = excluded.grow_ms`,
         tree.slot,
         tree.tree,
         tree.plantedAt,
@@ -853,6 +887,8 @@ export class Garden extends DurableObject<Env> {
         tree.diseasedAt ?? 0,
         tree.mutationBoost ?? 0,
         tree.badLuck ?? 0,
+        tree.dead === true ? 1 : 0,
+        tree.growMs ?? 0,
       );
     }
   }
@@ -1151,7 +1187,10 @@ export class Garden extends DurableObject<Env> {
       settleExtras(
         settleSpecialReset(
           settlePest(
-            settleTools(settleAttachments(settleFarm(settleMachines(ledger, now), now), now), now),
+            settleTools(
+              settleAttachments(settleFarm(settleMachines(settleThirst(ledger, now), now), now), now),
+              now,
+            ),
             now,
           ),
           now,
@@ -1208,7 +1247,10 @@ export class Garden extends DurableObject<Env> {
     const settled = settleStaff(
       settleExtras(
         settleSpecialReset(
-          settlePest(settleTools(settleAttachments(settleFarm(ledger, now), now), now), now),
+          settlePest(
+            settleTools(settleAttachments(settleFarm(settleThirst(ledger, now), now), now), now),
+            now,
+          ),
           now,
         ),
         now,

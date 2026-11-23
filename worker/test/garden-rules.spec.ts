@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file garden-rules.spec.ts
  * @brief Economy rules for ASCII Garden, exercised with a controlled clock.
  * @details Harvesting normally takes minutes; the pure rule set lets the tests
@@ -14,6 +14,7 @@ import {
   EFFECTS,
   EVENT_WAVE_MS,
   FARM_CYCLE_MS,
+  PLANT_THIRST_MS,
   SPECIAL_PATCH_PRICE,
   SPECIAL_PLOT_PRICE,
   cropSellPrice,
@@ -39,6 +40,7 @@ import {
   settleAttachments,
   settleDisease,
   settleHazards,
+  settleThirst,
 } from "../src/garden-rules";
 
 /** Server time inside the golden-hour wave, so growth is unmodified by rain. */
@@ -68,6 +70,18 @@ function run(
   return applyGardenAction(ledger, action, season, at, () => roll);
 }
 
+/** Marks a freshly planted crop or tree as watered without touching its clock. */
+function quench(ledger: GardenLedger, slot: number, tree = false): GardenLedger {
+  if (tree) {
+    const entry = ledger.trees[slot];
+    if (entry !== undefined && entry !== null) ledger.trees[slot] = { ...entry, watered: true };
+  } else {
+    const entry = ledger.plots[slot];
+    if (entry !== undefined && entry !== null) ledger.plots[slot] = { ...entry, watered: true };
+  }
+  return ledger;
+}
+
 describe("garden ledger rules", () => {
   it("starts with coins, seeds and four open plots", () => {
     const ledger = makeLedger();
@@ -88,7 +102,7 @@ describe("garden ledger rules", () => {
     const plot = planted.ledger.plots[0];
     if (plot === null || plot === undefined) throw new Error("plot missing");
 
-    const manual = run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt);
+    const manual = run(quench(planted.ledger, 0), { kind: "harvest", slot: 0, tree: false }, plot.readyAt);
     if (!manual.ok) throw new Error("manual harvest failed");
     const manualXp = manual.ledger.skills.farming.xp;
     expect(manual.ledger.skills.farming.level).toBe(0);
@@ -99,7 +113,7 @@ describe("garden ledger rules", () => {
     const nextPlot = replanted.ledger.plots[0];
     if (nextPlot === null || nextPlot === undefined) throw new Error("plot missing");
     const auto = run(
-      replanted.ledger,
+      quench(replanted.ledger, 0),
       { kind: "harvest", slot: 0, tree: false, auto: true },
       nextPlot.readyAt,
     );
@@ -423,7 +437,12 @@ describe("garden ledger rules", () => {
 
     const tree = planted.ledger.trees[0];
     if (tree === null || tree === undefined) throw new Error("tree missing");
-    const picked = run(planted.ledger, { kind: "harvest", slot: 0, tree: true }, tree.readyAt, 0.9);
+    const picked = run(
+      quench(planted.ledger, 0, true),
+      { kind: "harvest", slot: 0, tree: true },
+      tree.readyAt,
+      0.9,
+    );
     expect(picked.ok).toBe(true);
     if (!picked.ok) return;
     expect(picked.ledger.trees[0]?.harvests).toBe(1);
@@ -465,7 +484,7 @@ describe("garden ledger rules", () => {
       code: "NOT_READY",
     });
 
-    const harvested = run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt);
+    const harvested = run(quench(planted.ledger, 0), { kind: "harvest", slot: 0, tree: false }, plot.readyAt);
     expect(harvested.ok).toBe(true);
     if (!harvested.ok) return;
     expect(harvested.ledger.plots[0]).toBeNull();
@@ -580,7 +599,12 @@ describe("garden ledger rules", () => {
     const plot = planted.ledger.plots[0];
     if (plot === null || plot === undefined) throw new Error("plot empty");
 
-    const first = run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt, 0.1);
+    const first = run(
+      quench(planted.ledger, 0),
+      { kind: "harvest", slot: 0, tree: false },
+      plot.readyAt,
+      0.1,
+    );
     expect(first.ok).toBe(true);
     if (!first.ok) return;
     expect(first.ledger.plots[0]).not.toBeNull();
@@ -623,7 +647,7 @@ describe("garden ledger rules", () => {
     if (!planted.ok) throw new Error("plant failed");
     const plot = planted.ledger.plots[0];
     if (plot === null || plot === undefined) throw new Error("plot empty");
-    const harvested = run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt);
+    const harvested = run(quench(planted.ledger, 0), { kind: "harvest", slot: 0, tree: false }, plot.readyAt);
     expect(harvested.ok).toBe(true);
     if (!harvested.ok) return;
     expect(harvested.ledger.plots[0]).toBeNull();
@@ -696,7 +720,12 @@ describe("garden ledger rules", () => {
     // Spraying alone never adds a mutation.
     expect(sprayed.ledger.plots[0]?.effects).toEqual(planted.ledger.plots[0]?.effects);
 
-    const picked = run(sprayed.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt, 0.1);
+    const picked = run(
+      quench(sprayed.ledger, 0),
+      { kind: "harvest", slot: 0, tree: false },
+      plot.readyAt,
+      0.1,
+    );
     expect(picked.ok).toBe(true);
     if (!picked.ok) return;
     expect(picked.ledger.plots[0]?.effects).toEqual([]);
@@ -751,7 +780,7 @@ describe("garden ledger rules", () => {
       plantedAt: NOW - 5 * 60_000,
       readyAt: NOW - 1_000,
       effects: [],
-      watered: false,
+      watered: true,
       fertilized: false,
       harvests: 0,
       fertilizer: null,
@@ -923,7 +952,9 @@ describe("garden ledger rules", () => {
     if (!normal.ok) throw new Error("normal plant failed");
     expect(plot.readyAt - NOW).toBeLessThan((normal.ledger.plots[0]?.readyAt ?? 0) - NOW);
 
-    const harvested = run(planted.ledger, { kind: "harvestSpecial", slot: 0 }, plot.readyAt);
+    const wateredSpecial = run(planted.ledger, { kind: "waterSpecial", slot: 0 });
+    if (!wateredSpecial.ok) throw new Error("water special failed");
+    const harvested = run(wateredSpecial.ledger, { kind: "harvestSpecial", slot: 0 }, plot.readyAt);
     expect(harvested.ok).toBe(true);
     if (!harvested.ok) return;
     const stack = harvested.ledger.bag.crops.find((entry) => entry.item === "carrot");
@@ -1375,7 +1406,7 @@ describe("garden ledger rules", () => {
       plantedAt: NOW - 5 * 60_000,
       readyAt: NOW - 1_000,
       effects: [],
-      watered: false,
+      watered: true,
       fertilized: false,
       harvests: 0,
       fertilizer: null,
@@ -1781,7 +1812,11 @@ describe("garden ledger rules", () => {
     if (richPlot === null || richPlot === undefined) throw new Error("plot missing");
     expect(poorPlot.readyAt - NOW).toBeGreaterThan(richPlot.readyAt - NOW);
 
-    const harvested = run(poor.ledger, { kind: "harvest", slot: 0, tree: false }, poorPlot.readyAt);
+    const harvested = run(
+      quench(poor.ledger, 0),
+      { kind: "harvest", slot: 0, tree: false },
+      poorPlot.readyAt,
+    );
     expect(harvested.ok).toBe(true);
     if (!harvested.ok) return;
     expect(harvested.ledger.soil[0]).toBe(45);
@@ -1985,5 +2020,60 @@ describe("bulk harvest across the garden", () => {
     expect(harvested.ledger.mushroomTrays?.[1] ?? null).not.toBeNull();
     const stack = (harvested.ledger.bag.products ?? []).find((entry) => entry.product === "mushStraw");
     expect(stack?.qty).toBe(30);
+  });
+});
+
+describe("thirst rules", () => {
+  it("never grows or harvests a plant that was never watered", () => {
+    const planted = run(makeLedger(), { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.9);
+    if (!planted.ok) throw new Error("plant failed");
+    const plot = planted.ledger.plots[0];
+    if (plot === null || plot === undefined) throw new Error("plot missing");
+
+    expect(run(planted.ledger, { kind: "harvest", slot: 0, tree: false }, plot.readyAt)).toMatchObject({
+      ok: false,
+      code: "NEEDS_WATER",
+    });
+
+    const watered = run(planted.ledger, { kind: "water", slot: 0, tree: false }, NOW + 60_000);
+    expect(watered.ok).toBe(true);
+    if (!watered.ok) return;
+    const next = watered.ledger.plots[0];
+    if (next === null || next === undefined) throw new Error("plot missing");
+    // Watering starts the clock from the full duration minus the wet bonus.
+    expect(next.readyAt).toBeGreaterThan(NOW + 60_000);
+    expect(run(watered.ledger, { kind: "harvest", slot: 0, tree: false }, next.readyAt).ok).toBe(true);
+  });
+
+  it("dies after a full day without water but stays for uprooting", () => {
+    const planted = run(makeLedger(), { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.9);
+    if (!planted.ok) throw new Error("plant failed");
+
+    const early = settleThirst(planted.ledger, NOW + PLANT_THIRST_MS - 1_000);
+    expect(early.plots[0]?.dead ?? false).toBe(false);
+
+    const dead = settleThirst(planted.ledger, NOW + PLANT_THIRST_MS + 1_000);
+    expect(dead.plots[0]?.dead).toBe(true);
+    const plot = dead.plots[0];
+    if (plot === null || plot === undefined) throw new Error("plot missing");
+    expect(run(dead, { kind: "harvest", slot: 0, tree: false }, plot.readyAt)).toMatchObject({
+      ok: false,
+      code: "PLANT_DEAD",
+    });
+    expect(run(dead, { kind: "water", slot: 0, tree: false })).toMatchObject({
+      ok: false,
+      code: "PLANT_DEAD",
+    });
+    // Nothing disappears: the owner must uproot the dead plant.
+    expect(run(dead, { kind: "uproot", slot: 0, tree: false }).ok).toBe(true);
+  });
+
+  it("keeps a watered plant alive regardless of later time", () => {
+    const planted = run(makeLedger(), { kind: "plant", slot: 0, seed: "carrot" }, NOW, 0.9);
+    if (!planted.ok) throw new Error("plant failed");
+    const watered = run(planted.ledger, { kind: "water", slot: 0, tree: false });
+    if (!watered.ok) throw new Error("water failed");
+    const settled = settleThirst(watered.ledger, NOW + 10 * PLANT_THIRST_MS);
+    expect(settled.plots[0]?.dead ?? false).toBe(false);
   });
 });

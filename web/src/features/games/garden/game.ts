@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file game.ts
  * @brief ASCII Garden document: three tabs, an ASCII plot board and live sync.
  * @details The document stays a source file: the tabs are drawn in the code
@@ -83,6 +83,7 @@ import {
   BUILDINGS,
   BREED_CYCLES,
   FARM_CYCLE_MS,
+  PLANT_THIRST_MS,
   animalById,
   animalIntervalMs,
   animalIsIncubating,
@@ -1746,14 +1747,20 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (let slot = 0; slot < plots.length; slot += 1) {
       if (cropSlotLocked(slot)) continue;
       const plot = plots[slot] ?? null;
-      if (plot === null) continue;
+      if (plot === null || plot.dead === true) continue;
+      if (!plot.watered) {
+        water += 1;
+        continue;
+      }
       if (at >= plot.readyAt) harvest += 1;
-      else if (!plot.watered) water += 1;
     }
     for (const tree of trees) {
-      if (tree === null) continue;
+      if (tree === null || tree.dead === true) continue;
+      if (!tree.watered) {
+        water += 1;
+        continue;
+      }
       if (at >= tree.readyAt) harvest += 1;
-      else if (!tree.watered) water += 1;
     }
     // The quick harvest action reaches the mushroom house too.
     for (const tray of state?.mushroomTrays ?? []) {
@@ -1818,6 +1825,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       "is-move-source",
       moveSource !== null && moveSource.slot === slot && moveSource.area === area,
     );
+    cell.classList.toggle("is-dead", render.dead === true);
+    cell.classList.toggle("is-thirsty", render.needsWater === true);
     cell.classList.toggle("is-pest", area === "crop" ? plot?.pest === true : tree?.pest === true);
     cell.classList.toggle(
       "is-diseased",
@@ -1834,7 +1843,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           : resolvedCropEffects(plot, at);
     for (const definition of EFFECTS)
       cell.classList.toggle(`is-${definition.id}`, effects.includes(definition.id));
-    cell.style.color = render.growing ? growthColor(render.progress) : "";
+    cell.style.color =
+      render.dead === true
+        ? "#f48771"
+        : render.needsWater === true
+          ? "#dcdcaa"
+          : render.growing
+            ? growthColor(render.progress)
+            : "";
     const label = plotLabel(slot, area);
     cell.setAttribute(
       "aria-label",
@@ -1964,6 +1980,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             ),
           );
         }
+        if (tree.dead === true) {
+          lines.push("", t("garden.dead"), t("garden.deadHint"));
+        } else if (tree.watered !== true) {
+          lines.push(
+            labelValue(
+              t("garden.water"),
+              formatDuration(Math.max(0, PLANT_THIRST_MS - (at - tree.plantedAt))),
+            ),
+            t("garden.waterHint"),
+          );
+        }
         lines.push(
           labelValue(
             t("garden.readyIn"),
@@ -2065,6 +2092,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             t("garden.sprayActive"),
             `${t(`supplies.${plot.spray.id}`)} (${t("garden.supplyLeft", { left: plot.spray.left })})`,
           ),
+        );
+      }
+      if (plot.dead === true) {
+        lines.push("", t("garden.dead"), t("garden.deadHint"));
+      } else if (plot.watered !== true) {
+        lines.push(
+          labelValue(t("garden.water"), formatDuration(Math.max(0, PLANT_THIRST_MS - (at - plot.plantedAt)))),
+          t("garden.waterHint"),
         );
       }
       lines.push(
@@ -2358,14 +2393,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const reclaimer = tools.reclaimer ?? 0;
       const shovel = tools.shovel ?? 0;
       const favoriteLock = tools.favoriteLock ?? 0;
+      const dead = plant.dead === true;
       // Still under pesticide cover: no re-spray row until it lapses.
-      if (plant.protectedUntil <= at) {
+      if (!dead && plant.protectedUntil <= at) {
         rows.append(menuRow(t("garden.sprayPest", { cost: PEST_SPRAY_COST }), "sprayPest"));
       }
-      rows.append(menuRow(t("garden.harvest"), "harvest", { disabled: !ready || favorite }));
-      rows.append(menuRow(t("garden.water"), "water", { disabled: ready || plant.watered }));
-      rows.append(menuRow(t("garden.menuFertilize"), "menuViewFertilize", { disabled: ready }));
-      rows.append(menuRow(t("garden.menuSpray"), "menuViewSpray"));
+      rows.append(menuRow(t("garden.harvest"), "harvest", { disabled: !ready || favorite || dead }));
+      rows.append(menuRow(t("garden.water"), "water", { disabled: ready || plant.watered || dead }));
+      rows.append(menuRow(t("garden.menuFertilize"), "menuViewFertilize", { disabled: ready || dead }));
+      rows.append(menuRow(t("garden.menuSpray"), "menuViewSpray", { disabled: dead }));
       if (menuState.area === "crop") {
         rows.append(
           menuRow(t("garden.reclaim", { left: reclaimer }), "menuReclaim", {

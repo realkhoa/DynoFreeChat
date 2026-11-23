@@ -2322,6 +2322,50 @@ describe("crop disease", () => {
     await settle();
     expect(host.querySelector(".garden-menu-info")?.textContent).toContain("Dịch bệnh");
   });
+
+  it("shows a dry plant as needing water and blocks the harvest row", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        plots: [
+          { ...GROWING_PLOT, plantedAt: CLOCK - 60_000, readyAt: CLOCK + 120_000, watered: false },
+          ...new Array(CROPS_PER_TAB - 1).fill(null),
+        ],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const cell = host.querySelector<HTMLButtonElement>('.garden-cell[data-area="crop"]');
+    expect(cell?.classList.contains("is-thirsty")).toBe(true);
+    expect(cell?.textContent).toContain("cần tưới");
+    cell?.click();
+    await settle();
+    expect(host.querySelector<HTMLButtonElement>('.garden-menu [data-act="harvest"]')?.disabled).toBe(true);
+    expect(host.querySelector<HTMLButtonElement>('.garden-menu [data-act="water"]')?.disabled).toBe(false);
+  });
+
+  it("shows a dead plant and only lets the owner uproot it", async () => {
+    const dead: PlotState = {
+      ...RIPE_PLOT,
+      plantedAt: CLOCK - 40 * 60_000,
+      readyAt: CLOCK - 1_000,
+      watered: false,
+      dead: true,
+    };
+    const api = new FakeGardenApi(makeState({ plots: [dead, ...new Array(CROPS_PER_TAB - 1).fill(null)] }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const cell = host.querySelector<HTMLButtonElement>('.garden-cell[data-area="crop"]');
+    expect(cell?.classList.contains("is-dead")).toBe(true);
+    expect(cell?.textContent).toContain("đã chết");
+    cell?.click();
+    await settle();
+    expect(host.querySelector(".garden-menu-info")?.textContent).toContain("cây đã chết");
+    expect(host.querySelector<HTMLButtonElement>('.garden-menu [data-act="harvest"]')?.disabled).toBe(true);
+    expect(host.querySelector<HTMLButtonElement>('.garden-menu [data-act="water"]')?.disabled).toBe(true);
+    expect(host.querySelector<HTMLButtonElement>('.garden-menu [data-act="uproot"]')?.disabled).toBe(false);
+  });
 });
 
 describe("global sale log", () => {
