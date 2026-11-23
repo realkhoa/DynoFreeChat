@@ -485,7 +485,10 @@ describe("legacy view", () => {
     // Four groups with a vertical rule between them, plus one before the group.
     expect(host.querySelectorAll(".garden-reborn-action-col")).toHaveLength(4);
     expect(host.querySelectorAll(".garden-reborn-actions .garden-reborn-sep")).toHaveLength(3);
-    expect(host.querySelectorAll(".garden-reborn-row > .garden-reborn-sep")).toHaveLength(2);
+    expect(host.querySelectorAll(".garden-reborn-row > .garden-reborn-sep")).toHaveLength(1);
+    // Quick actions and the four staff cells live in one cluster on the same row.
+    expect(host.querySelectorAll(".garden-reborn-side .garden-reborn-quick")).toHaveLength(1);
+    expect(host.querySelectorAll(".garden-reborn-side .garden-reborn-staff")).toHaveLength(1);
     // Requested order: field actions, bulk supplies, quick tools, then uproot.
     expect(actions.map((action) => action.dataset.actionId)).toEqual([
       "water",

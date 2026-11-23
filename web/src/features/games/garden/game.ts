@@ -5316,7 +5316,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const content = div("garden-tab-body");
       content.append(buildGardenTabBody(at));
       row.append(content);
-      if (mode === "owner") row.append(div("garden-reborn-sep"), buildQuickColumn(at));
+      if (mode === "owner") row.append(div("garden-reborn-sep"), buildRebornSide(at));
       wrap.append(row);
       if (mode === "owner") {
         const popover = buildQuickPopover(at);
@@ -5332,13 +5332,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       buildRebornBoard(rebornPlots(), at),
     );
     row.append(vip);
-    if (mode === "owner") {
-      row.append(div("garden-reborn-sep"), buildQuickColumn(at));
-      row.append(div("garden-reborn-sep"));
-      const staff = div("garden-reborn-staff");
-      staff.append(lineBlock(`// ${t("staff.rebornTitle")}`), buildRebornStaffCells());
-      row.append(staff);
-    }
+    if (mode === "owner") row.append(div("garden-reborn-sep"), buildRebornSide(at));
     wrap.append(row);
     if (mode === "owner" && staffPanel !== null) {
       const panel = buildStaffPanel(at);
@@ -5504,6 +5498,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     wrap.append(actionButton(t("common.close"), "staffPanelClose"));
     return wrap;
+  }
+
+  /**
+   * @brief Quick actions plus the four staff cells, kept on one row.
+   * @param at Server-clock time.
+   * @details They share a single flex cluster so the staff block never wraps
+   * away from the quick actions on narrower screens.
+   */
+  function buildRebornSide(at: number): HTMLElement {
+    const side = div("garden-reborn-side");
+    side.append(buildQuickColumn(at), div("garden-reborn-sep"));
+    const staff = div("garden-reborn-staff");
+    staff.append(lineBlock(`// ${t("staff.rebornTitle")}`), buildRebornStaffCells());
+    side.append(staff);
+    return side;
   }
 
   /** @brief The quick action column shared by every garden tab. */
