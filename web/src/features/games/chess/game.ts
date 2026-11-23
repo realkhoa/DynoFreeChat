@@ -945,7 +945,7 @@ export function createChessGame(): GameMount {
       const cell = document.createElement("button");
       cell.type = "button";
       cell.className = "stage-cell";
-      cell.style.fontSize = "22px";
+      cell.style.fontSize = "28px";
       if (piece !== null) cell.dataset.piece = colorOf(piece);
       let glyph = piece === null ? "" : GLYPHS[piece];
       if (isCheckedKing) cell.classList.add("is-warn");

@@ -12,12 +12,12 @@
 }
 
 .game-stage-host {
-  --stage-cell-size: 20px;
+  --stage-cell-size: 32px;
   display: flex;
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  padding: 2px 6px;
+  padding: 4px 10px;
   background: var(--editor);
   overflow: auto;
 }
@@ -29,9 +29,9 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   margin: 0 auto;
-  width: min(100%, 900px);
+  width: min(100%, 960px);
 }
 
 /* Real code lines above and below the board literal. */
@@ -39,12 +39,12 @@
   display: block;
   flex: none;
   color: #d4d4d4;
-  font: 9px/11.5px var(--font-mono);
+  font: 12px/17px var(--font-mono);
 }
 
 .stage-code-line {
   white-space: pre;
-  min-height: 11.5px;
+  min-height: 17px;
 }
 
 .stage-code-line.is-comment {
@@ -60,7 +60,7 @@
 .stage-game-host {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 /* The bar, HUD and status are printed as file comments: quiet, monospace, and
@@ -69,10 +69,11 @@
 .stage-hud {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
   flex-wrap: wrap;
   color: #6a9955;
-  font: 9.5px/1.25 var(--font-mono);
+  font: 12px/1.4 var(--font-mono);
+  margin: 2px 0;
 }
 
 .stage-bar::before,
@@ -87,14 +88,18 @@
 }
 
 .stage-btn {
-  height: 16px;
-  padding: 0 4px;
+  height: 22px;
+  padding: 0 8px;
   background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: 2px;
   color: var(--fg-muted);
-  font: 9px/1 var(--font-mono);
+  font: 11.5px/1 var(--font-mono);
   cursor: pointer;
+  transition:
+    background 0.1s,
+    border-color 0.1s,
+    color 0.1s;
 }
 
 .stage-btn:hover {
@@ -111,21 +116,27 @@
 
 .stage-status {
   color: #6a9955;
-  font: 9px/11.5px var(--font-mono);
+  font: 12px/17px var(--font-mono);
   min-height: var(--code-line-height);
+  margin: 3px 0;
   white-space: pre-wrap;
 }
 
+.stage-status::before {
+  content: "// ";
+  color: #6a9955;
+}
+
 /* Grid boards (caro, battleship, chess, minesweeper, sudoku, 2048, sokoban, …).
-   Cells share hairlines so the board reads as one literal, and stay 44px so they
-   remain easy to press. */
+   Cells share hairlines so the board reads as one literal, and stay comfortable
+   so they remain easy to press. */
 /* The board is a generated data literal: no card, no grid lines, no centred game
    screen. Cells flow on the editor grid as comma separated glyphs, exactly the
    way an initializer list would print. */
 .stage-board {
   display: grid;
   gap: 0;
-  margin: 0 0 1px 6px;
+  margin: 2px 0 3px 6px;
   width: max-content;
   max-width: 100%;
   background: transparent;
@@ -135,9 +146,9 @@
 .stage-cell {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  width: var(--stage-cell-size, 20px);
-  height: var(--stage-cell-size, 20px);
+  justify-content: center;
+  width: var(--stage-cell-size, 32px);
+  height: var(--stage-cell-size, 32px);
   min-width: 0;
   min-height: 0;
   padding: 0;
@@ -145,17 +156,18 @@
   border: 0;
   border-radius: 0;
   color: #d4d4d4;
-  font: 500 8px/1 var(--font-mono);
+  font: 500 15px/1 var(--font-mono);
   letter-spacing: -0.4px;
-  text-align: left;
+  text-align: center;
   cursor: pointer;
   user-select: none;
+  box-sizing: border-box;
 }
 
 /* Every token ends with a comma so the board parses as a literal list. */
 .stage-cell::after {
   content: ",";
-  margin-left: -1px;
+  margin-left: 0;
   color: #4b4b4b;
 }
 
@@ -212,9 +224,9 @@
 /* Row based layouts (card hands, queue lists, word grids). */
 .stage-rows {
   display: block;
-  margin: 0 0 1px 6px;
+  margin: 3px 0 3px 6px;
   max-width: 100%;
-  font: 9px/1.25 var(--font-mono);
+  font: 13px/1.8 var(--font-mono);
 }
 
 .stage-row {
@@ -225,19 +237,29 @@
   display: inline-block;
   min-width: 0;
   min-height: 0;
-  padding: 0 1px;
-  background: transparent;
-  border: 0;
-  border-radius: 2px;
+  padding: 2px 6px;
+  margin: 1px 2px;
+  background: rgba(206, 145, 120, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
   color: #ce9178;
   font: inherit;
+  font-size: 13px;
   cursor: pointer;
   user-select: none;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
 }
 
 .stage-card::after {
   content: ",";
   color: #4b4b4b;
+}
+
+.stage-card:hover {
+  background: var(--hover-row);
+  border-color: var(--border);
 }
 
 .stage-card.is-selected {
@@ -249,21 +271,23 @@
 .stage-card.is-playable {
   border-color: #3a5a52;
   color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.08);
 }
 
 .stage-canvas {
   display: block;
   width: 100%;
-  max-width: 300px;
-  margin: 0 auto;
+  max-width: 720px;
+  margin: 6px 0;
   background: #181818;
   border: 1px solid var(--border-subtle);
+  border-radius: 2px;
   touch-action: none;
 }
 
 .stage-input {
-  width: 130px;
-  height: 22px;
+  width: 80px;
+  height: 24px;
   padding: 0 8px;
   background: transparent;
   border: 1px solid var(--border-subtle);
@@ -288,33 +312,124 @@
   display: none;
 }
 
-/* Chess prints its glyphs inline at 22px; the document keeps them readable. */
+/* Base font size for all mounted cells inside the stage host. */
 .stage-game-host .stage-cell {
-  font-size: 12px !important;
+  font-size: 15px !important;
 }
 
-/* Chess is the one board read as figurines instead of letters: hollow vs solid
+/* Caro: 15x15 board -> 30px cells = 450px grid */
+.stage-game-host[data-game="caro"] {
+  --stage-cell-size: 30px;
+}
+.stage-game-host[data-game="caro"] .stage-cell {
+  font-size: 15px !important;
+}
+
+/* Battleship: 10x10 -> 34px cells = 340px grid */
+.stage-game-host[data-game="battleship"] {
+  --stage-cell-size: 34px;
+}
+.stage-game-host[data-game="battleship"] .stage-cell {
+  font-size: 15px !important;
+}
+
+/* Minesweeper: 9x9 -> 38px cells = 342px grid */
+.stage-game-host[data-game="minesweeper"] {
+  --stage-cell-size: 38px;
+}
+.stage-game-host[data-game="minesweeper"] .stage-cell {
+  font-size: 17px !important;
+}
+
+/* Sudoku: 9x9 -> 38px cells = 342px grid */
+.stage-game-host[data-game="sudoku"] {
+  --stage-cell-size: 38px;
+}
+.stage-game-host[data-game="sudoku"] .stage-cell {
+  font-size: 17px !important;
+}
+
+/* Sokoban: 7..10 cols -> 38px cells */
+.stage-game-host[data-game="sokoban"] {
+  --stage-cell-size: 38px;
+}
+.stage-game-host[data-game="sokoban"] .stage-cell {
+  font-size: 19px !important;
+}
+
+/* Queens: 4..8 cols -> 42px cells */
+.stage-game-host[data-game="queens"] {
+  --stage-cell-size: 42px;
+}
+.stage-game-host[data-game="queens"] .stage-cell {
+  font-size: 20px !important;
+}
+
+/* Tango: 11 tracks -> 32px slots = 352px grid */
+.stage-game-host[data-game="tango"] {
+  --stage-cell-size: 32px;
+}
+.stage-game-host[data-game="tango"] .stage-cell {
+  font-size: 16px !important;
+}
+
+/* Pinpoint: 5x6 wordle -> 52px cells = 260px grid */
+.stage-game-host[data-game="pinpoint"] {
+  --stage-cell-size: 52px;
+}
+.stage-game-host[data-game="pinpoint"] .stage-cell {
+  font-size: 22px !important;
+}
+.stage-game-host[data-game="pinpoint"] .stage-rows .stage-btn {
+  height: 28px;
+  min-width: 24px;
+  padding: 0 7px;
+  font-size: 12px;
+}
+
+/* 2048: 4x4 board -> 64px cells = 256px grid */
+.stage-game-host[data-game="2048"] {
+  --stage-cell-size: 64px;
+}
+.stage-game-host[data-game="2048"] .stage-cell {
+  font-size: 18px !important;
+  font-weight: 600;
+}
+
+/* Gunny & Shooter: enlarged canvases that scale with the editor window */
+.stage-game-host[data-game="gunny"] .stage-canvas {
+  max-width: 800px;
+}
+.stage-game-host[data-game="shooter"] .stage-canvas {
+  max-width: 640px;
+}
+
+/* Chess is read as figurines instead of letters: hollow vs solid
    Unicode pieces need a few more pixels than a character, or the two sides stop
    being distinguishable. */
-.stage-game-host .chess-board {
-  --stage-cell-size: 24px;
+.stage-game-host .chess-board,
+.stage-game-host[data-game="chess"] {
+  --stage-cell-size: 44px;
 }
 
-.stage-game-host .chess-board .stage-cell {
-  font-size: 20px !important;
+.stage-game-host .chess-board .stage-cell,
+.stage-game-host[data-game="chess"] .stage-cell {
+  font-size: 28px !important;
 }
 
 /* Both sides print the same font colour by default, which makes White and
    Black pieces nearly identical. Give each side its own ink plus a contrasting
    halo, so the board reads the same on the dark and light themes. */
-.stage-game-host .chess-board .stage-cell[data-piece="w"] {
+.stage-game-host .chess-board .stage-cell[data-piece="w"],
+.stage-game-host[data-game="chess"] .stage-cell[data-piece="w"] {
   color: #f4f4f4;
   text-shadow:
     0 0 1px #2b2b2b,
     0 0 2px #2b2b2b;
 }
 
-.stage-game-host .chess-board .stage-cell[data-piece="b"] {
+.stage-game-host .chess-board .stage-cell[data-piece="b"],
+.stage-game-host[data-game="chess"] .stage-cell[data-piece="b"] {
   color: #151515;
   text-shadow:
     0 0 1px #d0d0d0,
@@ -323,11 +438,13 @@
 
 /* The piece ink outranks the shared highlight colours, so selection and the
    last move need a background instead of a text colour. */
-.stage-game-host .chess-board .stage-cell.is-primary {
+.stage-game-host .chess-board .stage-cell.is-primary,
+.stage-game-host[data-game="chess"] .stage-cell.is-primary {
   background: rgba(78, 201, 176, 0.25);
 }
 
-.stage-game-host .chess-board .stage-cell.is-good {
+.stage-game-host .chess-board .stage-cell.is-good,
+.stage-game-host[data-game="chess"] .stage-cell.is-good {
   background: rgba(220, 220, 170, 0.14);
 }
 

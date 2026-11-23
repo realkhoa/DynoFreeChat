@@ -108,11 +108,11 @@ function squareBoard(root: HTMLElement): void {
     const template = board.style.gridTemplateColumns;
     const repeat = /repeat\(\s*(\d+)\s*,/.exec(template);
     if (repeat === null) continue;
-    board.style.gridTemplateColumns = `repeat(${repeat[1]}, var(--stage-cell-size, 20px))`;
+    board.style.gridTemplateColumns = `repeat(${repeat[1]}, var(--stage-cell-size, 32px))`;
   }
 }
 
-/** DOM hosts the stage paints into. */
+/** @brief DOM hosts the stage paints into. */
 export interface StageElements {
   /** Document panel, used for visibility checks. */
   panel: HTMLElement;
@@ -186,7 +186,7 @@ export class GameStage {
    * @param context Optional mount context, e.g. an online bridge.
    * @return Whether the game id is known.
    */
-  open(id: string, title: string, summary: string, context?: GameContext): boolean {
+  open(id: string, title: string, summary: string, context: GameContext | undefined = undefined): boolean {
     const factory = this.factories[id];
     if (factory === undefined) return false;
 
@@ -209,8 +209,10 @@ export class GameStage {
     const frame = document.createElement("div");
     frame.className = "stage-code-frame";
     frame.dataset.summary = summary;
+    frame.dataset.game = id;
     const inner = document.createElement("div");
     inner.className = "stage-game-host";
+    inner.dataset.game = id;
 
     frame.append(codeBlock(headerLines(title)), inner, codeBlock(FOOTER_LINES), this.freeEdit(id));
     this.elements.host.append(frame);
