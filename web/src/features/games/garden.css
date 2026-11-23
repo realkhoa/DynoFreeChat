@@ -2098,3 +2098,31 @@ button.garden-rank-row:hover {
   gap: 4px;
   padding: 2px 0;
 }
+
+/* Staff block: four plot-sized cells beside the quick actions (2x2 grid). */
+.garden-reborn-staff {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.garden-staff-grid {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  grid-auto-rows: max-content;
+  gap: 4px;
+}
+
+.garden-staff-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.garden-staff-market {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

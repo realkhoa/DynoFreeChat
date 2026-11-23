@@ -20,6 +20,7 @@ import {
   PRODUCTS,
   SEEDS,
   SPRAYS,
+  STAFF_ROLES,
   TOOLS,
   TREES,
 } from "@dyno/shared/garden";
@@ -239,7 +240,7 @@ describe("dictionary completeness", () => {
     for (const trait of ["lazy", "slow", "clumsy", "greedy", "diligent", "greenThumb"]) {
       keys.push(`staffTrait.${trait}`);
     }
-    for (const role of ["gardener", "waterer"]) keys.push(`staffRole.${role}`);
+    for (const role of STAFF_ROLES) keys.push(`staffRole.${role}`);
     for (const tab of [
       "garden",
       "market",

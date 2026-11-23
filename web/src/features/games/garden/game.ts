@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file game.ts
  * @brief ASCII Garden document: three tabs, an ASCII plot board and live sync.
  * @details The document stays a source file: the tabs are drawn in the code
@@ -34,6 +34,8 @@ import {
   PETS,
   PET_MAX_LEVEL,
   STAFF_SLOTS,
+  STAFF_ROLES,
+  type StaffRole,
   staffHireCost,
   staffXpToLevel,
   staffMarketAt,
@@ -327,6 +329,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let mushroomPicker: number | null = null;
   /** Tray slot whose info panel is open, if any. */
   let mushroomInfo: number | null = null;
+  /** Staff slot whose hire/config panel is open, if any. */
+  let staffPanel: number | null = null;
   /** Which townhall NPC has its shop open, if any. */
   let townNpc: string | null = null;
   let visitCode: string | null = null;
@@ -1178,7 +1182,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     machineMenu = null;
     specialPicker = null;
     if (next === "legacy") loadTabData(tab);
-    if (next !== "reborn") townNpc = null;
+    if (next !== "reborn") {
+      townNpc = null;
+      staffPanel = null;
+    }
     syncGardenQuery();
     render();
   }
@@ -4695,13 +4702,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           `// ${worker.name} · ${t("staff.level")} ${worker.level} (${worker.xp} XP) · ${t("staff.jobs", { count: worker.jobs })} · ${worker.wage}c · ${traits}`,
         ),
       );
-      const gardener = actionButton(t("staffRole.gardener"), "staffRoleGardener");
-      gardener.dataset.index = String(index);
-      const waterer = actionButton(t("staffRole.waterer"), "staffRoleWaterer");
-      waterer.dataset.index = String(index);
+      const taskButtons: HTMLButtonElement[] = [];
+      for (const role of STAFF_ROLES) {
+        const task = actionButton(t(`staffRole.${role}`), "staffTask");
+        task.dataset.index = String(index);
+        task.dataset.role = role;
+        if (worker.role === role) task.classList.add("is-active");
+        taskButtons.push(task);
+      }
       const fire = actionButton(t("staff.fire"), "staffFire");
       fire.dataset.index = String(index);
-      wrap.append(gardener, waterer, fire);
+      wrap.append(...taskButtons, fire);
     });
 
     wrap.append(lineBlock(`// ${t("extras.contracts")}`));
@@ -5184,14 +5195,111 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const quick = div("garden-reborn-quick");
       quick.append(lineBlock(`// ${t("quick.title")}`), buildRebornActionColumns(rebornActionColumns(at)));
       row.append(quick);
+      row.append(div("garden-reborn-sep"));
+      const staff = div("garden-reborn-staff");
+      staff.append(lineBlock(`// ${t("staff.rebornTitle")}`), buildRebornStaffCells());
+      row.append(staff);
     }
     wrap.append(row);
+    if (mode === "owner" && staffPanel !== null) {
+      const panel = buildStaffPanel(at);
+      if (panel !== null) wrap.append(panel);
+      else staffPanel = null;
+    }
     appendSpecialPickers(wrap);
     if (mode === "owner") {
       appendToolPickers(wrap);
       appendUprootPanel(wrap);
     }
     wrap.append(buildRebornGarden(at));
+    return wrap;
+  }
+
+  /** @brief Staff cells beside the quick actions: four slots as plot cells. */
+  function buildRebornStaffCells(): HTMLElement {
+    const grid = div("garden-staff-grid");
+    const staff = state?.extras.staff ?? [];
+    for (let slot = 0; slot < STAFF_SLOTS; slot += 1) {
+      const worker = staff[slot];
+      if (worker === undefined) {
+        grid.append(
+          buildRebornAction({
+            id: `staff:${slot}`,
+            label: t("staff.emptyShort"),
+            glyph: "+",
+            note: t("staff.hireShort"),
+            tone: "money",
+            act: "staffCell",
+            data: { index: String(slot) },
+            title: t("staff.panelHint"),
+          }),
+        );
+        continue;
+      }
+      grid.append(
+        buildRebornAction({
+          id: `staff:${slot}`,
+          label: worker.name,
+          glyph: "s",
+          note: t(`staffRoleShort.${worker.role}`),
+          tone: "money",
+          act: "staffCell",
+          data: { index: String(slot) },
+          title: `${worker.name} · ${t("staff.level")} ${worker.level} · ${t(`staffRole.${worker.role}`)}`,
+        }),
+      );
+    }
+    return grid;
+  }
+
+  /**
+   * @brief Panel for hiring an empty staff slot or reconfiguring a hired worker.
+   * @param at Server-clock time.
+   * @return The panel, or `null` when the open slot has no worker and no market.
+   */
+  function buildStaffPanel(at: number): HTMLElement | null {
+    if (staffPanel === null || state === null) return null;
+    const wrap = div("garden-staff-panel");
+    const staff = state.extras.staff ?? [];
+    const worker = staff[staffPanel];
+    if (worker === undefined) {
+      wrap.append(lineBlock(`// ${t("staff.market")} · ${staff.length}/${STAFF_SLOTS}`));
+      const market = div("garden-staff-market");
+      for (const candidate of staffMarketAt(state.playerId, at)) {
+        const traits = candidate.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
+        const hire = actionButton(
+          `${candidate.name} · ${candidate.speed}⚡ · ${t("staff.jobs", { count: candidate.jobs })} · ${t("staff.wage", { wage: candidate.wage })} · ${traits} · ${formatCompact(staffHireCost(candidate))}c`,
+          "staffHire",
+          staff.length < STAFF_SLOTS,
+        );
+        hire.dataset.id = candidate.id;
+        market.append(hire);
+      }
+      wrap.append(market);
+    } else {
+      const traits = worker.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
+      const info = document.createElement("pre");
+      info.className = "garden-menu-info";
+      info.textContent = [
+        `// ${worker.name} · ${t("staff.level")} ${worker.level} (${worker.xp}/${staffXpToLevel(worker.level)} XP) · ${worker.wage}c`,
+        `${t("staff.jobs", { count: worker.jobs })} · ${traits}`,
+        `${t("staff.currentTask")}: ${t(`staffRole.${worker.role}`)}`,
+      ].join("\n");
+      wrap.append(info, lineBlock(t("staff.assignHint")));
+      const tasks = div("garden-tools");
+      for (const role of STAFF_ROLES) {
+        const task = actionButton(t(`staffRole.${role}`), "staffTask");
+        task.dataset.index = String(staffPanel);
+        task.dataset.role = role;
+        if (worker.role === role) task.classList.add("is-active");
+        tasks.append(task);
+      }
+      const fire = actionButton(t("staff.fire"), "staffFire");
+      fire.dataset.index = String(staffPanel);
+      tasks.append(fire);
+      wrap.append(tasks);
+    }
+    wrap.append(actionButton(t("common.close"), "staffPanelClose"));
     return wrap;
   }
 
@@ -5244,6 +5352,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     menu = null;
     mushroomPicker = null;
     mushroomInfo = null;
+    staffPanel = null;
     syncGardenQuery();
     render();
   }
@@ -7034,12 +7143,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const index = Number(target.dataset.index);
         if (!Number.isInteger(index)) return;
         closeStaffMenu();
-        if (target.dataset.act === "staffMenuFire") {
-          void runAction({ kind: "fireStaff", index }, t("staff.fired"));
-        } else {
-          const role = target.dataset.act === "staffMenuWaterer" ? "waterer" : "gardener";
-          void runAction({ kind: "setStaffRole", index, role }, t("staff.roleSet"));
-        }
+        void runAction({ kind: "fireStaff", index }, t("staff.fired"));
         return;
       }
       case "staffHire": {
@@ -7052,11 +7156,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (Number.isInteger(index)) void runAction({ kind: "fireStaff", index }, t("staff.fired"));
         return;
       }
-      case "staffRoleGardener":
-      case "staffRoleWaterer": {
+      case "staffCell": {
         const index = Number(target.dataset.index);
-        if (Number.isInteger(index)) {
-          const role = target.dataset.act === "staffRoleWaterer" ? "waterer" : "gardener";
+        if (!Number.isInteger(index)) return;
+        staffPanel = staffPanel === index ? null : index;
+        render();
+        return;
+      }
+      case "staffPanelClose":
+        staffPanel = null;
+        render();
+        return;
+      case "staffTask": {
+        const index = Number(target.dataset.index);
+        const role = target.dataset.role as StaffRole | undefined;
+        if (Number.isInteger(index) && role !== undefined) {
           void runAction({ kind: "setStaffRole", index, role }, t("staff.roleSet"));
         }
         return;

@@ -2143,8 +2143,11 @@ export function rollPet(
 
 /* ------------------------------------------------------------------ staff */
 
-/** Staff job roles. */
-export type StaffRole = "gardener" | "waterer";
+/** Chores a hired hand can be assigned to. */
+export type StaffRole = "water" | "plant" | "harvest" | "harvestMushroom" | "saleHunt";
+
+/** Every assignable staff chore, in strip order. */
+export const STAFF_ROLES: readonly StaffRole[] = ["water", "plant", "harvest", "harvestMushroom", "saleHunt"];
 
 /** Staff personality traits. */
 export type StaffTrait = "lazy" | "slow" | "clumsy" | "greedy" | "diligent" | "greenThumb";
@@ -2195,7 +2198,7 @@ export interface StaffState {
 /** Labour market rotation and slot rules. */
 export const STAFF_MARKET_MS = 60 * 60_000;
 /** Hired hands a garden can keep at once. */
-export const STAFF_SLOTS = 100;
+export const STAFF_SLOTS = 4;
 export const STAFF_QUIT_UNPAID = 3;
 /** Level ceiling and experience rules for hired staff. */
 export const STAFF_MAX_LEVEL = 10;
@@ -3919,7 +3922,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   }
   if (kind === "setStaffRole") {
     const index = value.index;
-    const role = value.role === "waterer" ? "waterer" : value.role === "gardener" ? "gardener" : undefined;
+    const role = STAFF_ROLES.find((entry) => entry === value.role);
     if (role === undefined) return null;
     return typeof index === "number" && Number.isInteger(index) && index >= 0 && index < STAFF_SLOTS
       ? { kind, index, role }

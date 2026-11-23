@@ -485,7 +485,7 @@ describe("legacy view", () => {
     // Four groups with a vertical rule between them, plus one before the group.
     expect(host.querySelectorAll(".garden-reborn-action-col")).toHaveLength(4);
     expect(host.querySelectorAll(".garden-reborn-actions .garden-reborn-sep")).toHaveLength(3);
-    expect(host.querySelectorAll(".garden-reborn-row > .garden-reborn-sep")).toHaveLength(1);
+    expect(host.querySelectorAll(".garden-reborn-row > .garden-reborn-sep")).toHaveLength(2);
     // Requested order: field actions, bulk supplies, quick tools, then uproot.
     expect(actions.map((action) => action.dataset.actionId)).toEqual([
       "water",
@@ -1731,7 +1731,7 @@ describe("staff", () => {
       wage: 900,
       traits: [],
       jobs: index % 2 === 0 ? 2 : 1,
-      role: "gardener" as const,
+      role: "harvest" as const,
       level: 1 + (index % 4),
       xp: 30,
       lastWorkAt: CLOCK,
@@ -1742,7 +1742,7 @@ describe("staff", () => {
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
-    expect(host.querySelector(".garden-staff")?.textContent).toContain("12/100");
+    expect(host.querySelector(".garden-staff")?.textContent).toContain("12/4");
     expect(host.querySelector('[data-act="staffList"]')?.textContent).toContain("+4");
     host.querySelector<HTMLButtonElement>('[data-act="staffList"]')?.click();
     await settle();
@@ -3019,5 +3019,81 @@ describe("mushroom house tab", () => {
     await openMushroomHouse(host);
     expect(host.querySelector(".garden-mushroom-grid")).toBeNull();
     expect(host.textContent).toContain("chỉ xem");
+  });
+});
+
+describe("reborn staff cells", () => {
+  /** Worker fixture for the 4-slot garden staff. */
+  function worker(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "w0",
+      name: "Lan",
+      speed: 3,
+      skill: 3,
+      wage: 700,
+      traits: [],
+      jobs: 2,
+      role: "water" as const,
+      level: 2,
+      xp: 10,
+      lastWorkAt: CLOCK,
+      lastPaidAt: CLOCK,
+      unpaid: 0,
+      ...overrides,
+    };
+  }
+
+  it("shows four staff cells beside the quick actions", async () => {
+    const api = new FakeGardenApi(makeState({ extras: { ...EXTRAS, staff: [worker()] } }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    const cells = host.querySelectorAll<HTMLButtonElement>('[data-act="staffCell"]');
+    expect(cells).toHaveLength(4);
+    // Same plot frame as the garden cells, hired hand on the first slot.
+    expect(cells[0]?.querySelectorAll(".garden-cell-line")).toHaveLength(6);
+    expect(cells[0]?.textContent).toContain("Lan");
+    expect(cells[0]?.textContent).toContain("tưới");
+    expect(cells[1]?.textContent).toContain("Trống");
+  });
+
+  it("hires from an empty staff slot", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 1_000_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    host.querySelectorAll<HTMLButtonElement>('[data-act="staffCell"]')[1]?.click();
+    await settle();
+    const panel = host.querySelector(".garden-staff-panel");
+    expect(panel).not.toBeNull();
+    const hire = panel?.querySelector<HTMLButtonElement>('[data-act="staffHire"]');
+    expect(hire).not.toBeUndefined();
+    hire?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "hireStaff")).toBe(true);
+  });
+
+  it("configures the task of a hired worker", async () => {
+    const api = new FakeGardenApi(makeState({ extras: { ...EXTRAS, staff: [worker()] } }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    host.querySelector<HTMLButtonElement>('[data-act="staffCell"][data-index="0"]')?.click();
+    await settle();
+    const panel = host.querySelector(".garden-staff-panel");
+    expect(panel?.textContent).toContain("Nhiệm vụ");
+    expect(panel?.querySelectorAll('[data-act="staffTask"]')).toHaveLength(5);
+    const hunt = panel?.querySelector<HTMLButtonElement>('[data-act="staffTask"][data-role="saleHunt"]');
+    hunt?.click();
+    await settle();
+    expect(
+      api.calls.some((call) => call.action?.kind === "setStaffRole" && call.action.role === "saleHunt"),
+    ).toBe(true);
   });
 });

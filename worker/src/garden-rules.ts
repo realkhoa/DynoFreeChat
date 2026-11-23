@@ -3067,7 +3067,7 @@ function hireStaff(ledger: GardenLedger, id: string, now: number): RuleResult {
     wage: candidate.wage,
     traits: [...candidate.traits],
     jobs: candidate.jobs,
-    role: "gardener",
+    role: "harvest",
     level: 1,
     xp: 0,
     lastWorkAt: now,
@@ -3123,57 +3123,54 @@ function staffHarvest(ledger: GardenLedger, now: number, rng: () => number): Gar
   return null;
 }
 
-/** @brief Pats the least-petted animal for a worker. */
-function staffPatAnimal(ledger: GardenLedger, now: number): GardenLedger | null {
-  let best: { building: BuildingId; slot: number; pats: number } | null = null;
-  for (const building of BUILDING_IDS) {
-    const animals = ledger.animals[building] ?? [];
-    for (let slot = 0; slot < animals.length; slot += 1) {
-      const animal = animals[slot];
-      if (animal === null || animal === undefined) continue;
-      if (best === null || animal.pats < best.pats) best = { building, slot, pats: animal.pats };
-    }
-  }
-  if (best === null) return null;
-  const result = patAnimal(ledger, best.building, best.slot, now);
-  return result.ok ? result.ledger : null;
-}
-
-/** @brief Loads one idle warehouse machine for a worker. */
-function staffMachine(ledger: GardenLedger, now: number): GardenLedger | null {
-  for (const [rawId, machine] of Object.entries(ledger.machines)) {
-    if (machine === undefined) continue;
-    const id = rawId as MachineId;
-    const definition = machineById(id);
+/** @brief Harvests one ripe mushroom tray for a worker. */
+function staffMushroomHarvest(ledger: GardenLedger, now: number, rng: () => number): GardenLedger | null {
+  for (let slot = 0; slot < MUSHROOM_TRAYS; slot += 1) {
+    const tray = ledger.mushroomTrays?.[slot] ?? null;
+    if (tray === null || now < tray.readyAt) continue;
+    const definition = mushroomById(tray.mushroom);
     if (definition === undefined) continue;
-    if (machine.job !== undefined && now < machine.job.readyAt) continue;
-    if (definition.queued !== true && now - machine.lastCraftAt < definition.cooldownCycles * FARM_CYCLE_MS) {
-      continue;
-    }
-
-    let item: ItemId | undefined;
-    if (definition.input.kind === "product") {
-      const inputProduct = definition.input.product;
-      if (!ledger.bag.products.some((stack) => stack.product === inputProduct && stack.qty > 0)) continue;
-    } else {
-      const allowed = definition.input.seeds;
-      const stack = ledger.bag.crops.find((entry) => {
-        const seed = seedById(entry.item);
-        const fruit = treeById(entry.item);
-        if (seed === undefined && (definition.allProduce !== true || fruit === undefined)) return false;
-        if (allowed !== undefined && (seed === undefined || !allowed.includes(seed.id))) return false;
-        return entry.qty > 0;
-      });
-      if (stack === undefined) continue;
-      item = stack.item;
-    }
-
-    const result = craftMachine(ledger, id, item, now);
-    if (result.ok) return result.ledger;
+    const next = clone(ledger);
+    const calm: EventDefinition = { id: "calm", growScale: 1, sellBonus: 1, effectChances: {} };
+    const effects = rollEffects(calm, rng, {});
+    addProduct(next.bag.products, definition.product, 1, definition.batch, effects);
+    for (const effect of effects) collect(next, `effect:${effect}`);
+    next.stats.harvested += definition.batch;
+    next.mushroomTrays = (next.mushroomTrays ?? []).map((entry, entrySlot) =>
+      entrySlot === slot ? null : entry,
+    );
+    return next;
   }
   return null;
 }
 
+/** @brief Sells one crop stack whose price is well above its base price. */
+function staffSaleHunt(ledger: GardenLedger, now: number, _rng: () => number): GardenLedger | null {
+  const season = seasonAt(now);
+  for (const stack of ledger.bag.crops) {
+    if (stack.qty <= 0) continue;
+    const base = basePriceOf(stack.item, season);
+    if (base <= 0) continue;
+    const unit = cropSellPrice(
+      { item: stack.item, effects: stack.effects, pest: stack.pest, star: stack.star ?? 1, qty: 1 },
+      season,
+    );
+    // Only bite when the market pays at least 25% over the base price.
+    if (unit < base * 1.25) continue;
+    const result = sellCrop(
+      ledger,
+      stack.item,
+      stack.effects,
+      stack.star ?? 1,
+      stack.qty,
+      stack.pest === true,
+      season,
+      now,
+    );
+    if (result.ok) return result.ledger;
+  }
+  return null;
+}
 /** @brief Plants an owned seed in the first free crop cell for a worker. */
 function staffPlant(ledger: GardenLedger, now: number, rng: () => number): GardenLedger | null {
   const seed = SEEDS.find((entry) => (ledger.bag.seeds[entry.id] ?? 0) > 0);
@@ -3265,11 +3262,23 @@ export function settleStaff(ledger: GardenLedger, now: number): GardenLedger {
         tasks += 1;
       }
     };
-    attempt((base, rng) => staffHarvest(base, now, rng));
-    attempt((base, rng) => staffWater(base, now, rng));
-    attempt((base, rng) => staffPlant(base, now, rng));
-    attempt((base) => staffPatAnimal(base, now));
-    attempt((base) => staffMachine(base, now));
+    switch (worker.role) {
+      case "water":
+        attempt((base, rng) => staffWater(base, now, rng));
+        break;
+      case "plant":
+        attempt((base, rng) => staffPlant(base, now, rng));
+        break;
+      case "harvest":
+        attempt((base, rng) => staffHarvest(base, now, rng));
+        break;
+      case "harvestMushroom":
+        attempt((base, rng) => staffMushroomHarvest(base, now, rng));
+        break;
+      case "saleHunt":
+        attempt((base, rng) => staffSaleHunt(base, now, rng));
+        break;
+    }
 
     const after = clone(worked);
     const currentWorker = after.staff[index];
