@@ -1715,7 +1715,7 @@ export interface PlotState {
   readonly watered: boolean;
   /** Full growth duration at planting; watered plants restart from here. */
   readonly growMs?: number;
-  /** Unwatered for a whole day: dead, cannot be harvested, must be uprooted. */
+  /** Unwatered for 24h: dead, cannot be harvested, must be uprooted. */
   readonly dead?: boolean;
   /** Whether the owner already fertilized this planting. */
   readonly fertilized: boolean;
@@ -1751,7 +1751,7 @@ export interface TreeState {
   readonly watered: boolean;
   /** Full growth duration at planting; watered plants restart from here. */
   readonly growMs?: number;
-  /** Unwatered for a whole day: dead, cannot be picked, must be uprooted. */
+  /** Unwatered for 24h: dead, cannot be picked, must be uprooted. */
   readonly dead?: boolean;
   /** Whether the owner already fertilized this cycle. */
   readonly fertilized: boolean;
@@ -1972,8 +1972,11 @@ export interface WarehouseState {
 /** Milliseconds in one day. */
 export const DAY_MS = 24 * 60 * 60_000;
 
-/** One in-game day without water kills a plant (but leaves it for uprooting). */
-export const PLANT_THIRST_MS = DAY_CYCLE_MS;
+/** A full real day (24h) without water kills a plant, but leaves it for uprooting. */
+export const PLANT_THIRST_MS = DAY_MS;
+
+/** Current thirst rule version; older saves revive plants killed by the 20-minute rule. */
+export const THIRST_RULE_VERSION = 2;
 
 /** Contract board rotation. */
 export const CONTRACT_WINDOW_MS = 2 * 60 * 60_000;

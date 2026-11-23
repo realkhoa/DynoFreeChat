@@ -16,6 +16,7 @@ import {
   EVENT_WAVE_MS,
   FARM_CYCLE_MS,
   PLANT_THIRST_MS,
+  THIRST_RULE_VERSION,
   SPECIAL_PATCH_PRICE,
   SPECIAL_PLOT_PRICE,
   cropSellPrice,
@@ -2067,6 +2068,31 @@ describe("thirst rules", () => {
     });
     // Nothing disappears: the owner must uproot the dead plant.
     expect(run(dead, { kind: "uproot", slot: 0, tree: false }).ok).toBe(true);
+  });
+
+  it("revives plants killed by the old 20-minute thirst rule", () => {
+    const ledger = makeLedger();
+    ledger.thirstVersion = undefined;
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW - 60_000,
+      readyAt: NOW + 60_000,
+      effects: [],
+      watered: false,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+      growMs: 120_000,
+      dead: true,
+    };
+    const settled = settleThirst(ledger, NOW);
+    expect(settled.plots[0]?.dead ?? false).toBe(false);
+    expect(settled.plots[0]?.watered).toBe(true);
+    expect(settled.thirstVersion).toBe(THIRST_RULE_VERSION);
   });
 
   it("keeps a watered plant alive regardless of later time", () => {

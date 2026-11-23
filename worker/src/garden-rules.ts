@@ -19,6 +19,7 @@ import {
   FARM_CYCLE_MS,
   DAY_MS,
   PLANT_THIRST_MS,
+  THIRST_RULE_VERSION,
   SPECIAL_PATCHES,
   SPECIAL_PATCH_PRICE,
   SPECIAL_PLOTS_PER_PATCH,
@@ -331,6 +332,8 @@ export interface GardenLedger {
   eggPity: number;
   /** Skill progress. */
   skills: Record<SkillId, SkillState>;
+  /** Version of the thirst rule last applied to this save. */
+  thirstVersion?: number;
   /** Hired staff. */
   staff: StaffState[];
   /** Candidate ids already hired (prevents rehire after firing). */
@@ -444,6 +447,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     tokenHash: input.tokenHash,
     recoveryHash: input.recoveryHash,
     coins: STARTING_COINS,
+    thirstVersion: THIRST_RULE_VERSION,
     tabs: STARTING_TABS,
     unlockedPatches: new Array<number>(STARTING_TABS).fill(1),
     plots: emptyCrops(STARTING_TABS),
@@ -2466,11 +2470,26 @@ function quickPlan(ledger: GardenLedger, season: SeasonSnapshot, now: number, rn
   return changed(current, now);
 }
 /**
- * @brief Kills plants left unwatered for an in-game day.
+ * @brief Kills plants left unwatered for a full day (24h).
  * @details Dead plants stay in the ground (nothing is lost) so the owner can
  * uproot them; they never grow and can never be harvested.
  */
 export function settleThirst(ledger: GardenLedger, now: number): GardenLedger {
+  let current = ledger;
+  // The first thirst rule killed plants after one in-game day (~20 minutes), far
+  // too harsh: on upgrade, revive everything it killed and stretch the window
+  // to a full real day.
+  if ((ledger.thirstVersion ?? 0) < THIRST_RULE_VERSION) {
+    const migrated = clone(ledger);
+    migrated.thirstVersion = THIRST_RULE_VERSION;
+    migrated.plots = migrated.plots.map((plot) =>
+      plot !== null && plot.dead === true ? { ...plot, dead: false, watered: true } : plot,
+    );
+    migrated.trees = migrated.trees.map((tree) =>
+      tree !== null && tree.dead === true ? { ...tree, dead: false, watered: true } : tree,
+    );
+    current = migrated;
+  }
   const thirsty = (entry: {
     plantedAt: number;
     watered: boolean;
@@ -2482,7 +2501,7 @@ export function settleThirst(ledger: GardenLedger, now: number): GardenLedger {
     entry.watered !== true &&
     now - entry.plantedAt >= PLANT_THIRST_MS;
   let changedAny = false;
-  const next = clone(ledger);
+  const next = clone(current);
   next.plots = next.plots.map((plot) => {
     if (plot === null || !thirsty(plot)) return plot;
     changedAny = true;
@@ -2493,7 +2512,8 @@ export function settleThirst(ledger: GardenLedger, now: number): GardenLedger {
     changedAny = true;
     return { ...tree, dead: true };
   });
-  return changedAny ? next : ledger;
+  if (changedAny) return next;
+  return current;
 }
 export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
   const animals = BUILDING_IDS.flatMap((building) => ledger.animals[building] ?? []).filter(
