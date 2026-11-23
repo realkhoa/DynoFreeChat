@@ -2141,5 +2141,12 @@ describe("quick uproot clears dead plants", () => {
     // ...but the dead plant is always cleared, the healthy one stays.
     expect(onlyDead.ledger.plots[0]).toBeNull();
     expect(onlyDead.ledger.plots[1]).not.toBeNull();
+
+    // The dedicated dead-only filter clears just the dead plant too.
+    const deadOnly = run(ledger, { kind: "uprootBulk", dead: true });
+    expect(deadOnly.ok).toBe(true);
+    if (!deadOnly.ok) return;
+    expect(deadOnly.ledger.plots[0]).toBeNull();
+    expect(deadOnly.ledger.plots[1]).not.toBeNull();
   });
 });

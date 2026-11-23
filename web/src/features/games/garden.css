@@ -2173,3 +2173,8 @@ button.garden-rank-row:hover {
 .garden-cell.is-thirsty {
   color: #dcdcaa;
 }
+
+/* Bulk-uproot plant-type dropdown: one control instead of a button per species. */
+.garden-uproot-select {
+  max-width: 280px;
+}

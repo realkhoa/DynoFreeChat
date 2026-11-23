@@ -3361,6 +3361,7 @@ export type GardenAction =
       readonly tree?: TreeId;
       readonly priceBelow?: number;
       readonly profit?: "loss" | "win";
+      readonly dead?: boolean;
     }
   | { readonly kind: "plantTree"; readonly slot: number; readonly tree: TreeId }
   | { readonly kind: "harvest"; readonly slot: number; readonly tree: boolean; readonly auto?: boolean }
@@ -3846,7 +3847,14 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const profitRaw = value.profit;
     const profit = profitRaw === "loss" || profitRaw === "win" ? profitRaw : undefined;
     const priceBelow = value.priceBelow;
-    if (seed === undefined && tree === undefined && profit === undefined && priceBelow === undefined) {
+    const dead = value.dead === true ? true : undefined;
+    if (
+      seed === undefined &&
+      tree === undefined &&
+      profit === undefined &&
+      priceBelow === undefined &&
+      dead === undefined
+    ) {
       return null;
     }
     if (priceBelow !== undefined && (typeof priceBelow !== "number" || priceBelow < 0)) return null;
@@ -3856,6 +3864,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
       ...(tree === undefined ? {} : { tree: tree.id }),
       ...(profit === undefined ? {} : { profit }),
       ...(priceBelow === undefined ? {} : { priceBelow }),
+      ...(dead === undefined ? {} : { dead }),
     };
   }
   if (kind === "plantTree") {

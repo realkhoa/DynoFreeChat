@@ -390,8 +390,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let bulkPanel: "plan" | "uproot" | null = null;
   let confirmPrestige = false;
   let sellAllDialog: { gross: number; net: number; stacks: number; qty: number } | null = null;
-  let uprootPending: { seed?: SeedId; tree?: TreeId; priceBelow?: number; profit?: "loss" | "win" } | null =
-    null;
+  let uprootPending: {
+    seed?: SeedId;
+    tree?: TreeId;
+    priceBelow?: number;
+    profit?: "loss" | "win";
+    dead?: boolean;
+  } | null = null;
   let uprootPriceDraft = "";
   let giftCode = "";
   let giftAmount = "1000";
@@ -2891,6 +2896,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     tree?: TreeId;
     priceBelow?: number;
     profit?: "loss" | "win";
+    dead?: boolean;
   }): { summary: string; count: number } {
     if (state === null || season === null) return { summary: "", count: 0 };
     const at = now();
@@ -2914,6 +2920,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (plot === null || plot.favorite === true) continue;
         if (filter.seed !== undefined && plot.seed !== filter.seed) continue;
         if (plot.dead !== true) {
+          if (filter.dead === true) continue;
           const value = cropSellPrice(
             { item: plot.seed, effects: resolvedCropEffects(plot, at), pest: plot.pest, star: 1, qty: 1 },
             season,
@@ -2929,6 +2936,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (tree === null || tree.favorite === true) continue;
         if (filter.tree !== undefined && tree.tree !== filter.tree) continue;
         if (tree.dead !== true) {
+          if (filter.dead === true) continue;
           const value = cropSellPrice(
             { item: tree.tree, effects: resolvedTreeEffects(tree, at), pest: tree.pest, star: 1, qty: 1 },
             season,
@@ -3037,27 +3045,68 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       wrap.append(panel);
       return;
     }
+    // One dropdown for "uproot exactly this plant", not a button per species.
     const planted = new Map<SeedId, number>();
     for (const plot of state?.plots ?? []) {
       if (plot === null) continue;
       planted.set(plot.seed, (planted.get(plot.seed) ?? 0) + 1);
-    }
-    for (const [seed, count] of planted) {
-      const button = actionButton(`${t("auto.byPlant", { seed: seedName(seed) })} ×${count}`, "uprootSeed");
-      button.dataset.seed = seed;
-      panel.append(button);
     }
     const plantedTrees = new Map<TreeId, number>();
     for (const tree of state?.trees ?? []) {
       if (tree === null) continue;
       plantedTrees.set(tree.tree, (plantedTrees.get(tree.tree) ?? 0) + 1);
     }
-    for (const [tree, count] of plantedTrees) {
-      const button = actionButton(`${t("auto.byPlant", { seed: treeName(tree) })} ×${count}`, "uprootTree");
-      button.dataset.tree = tree;
-      panel.append(button);
+    if (planted.size > 0 || plantedTrees.size > 0) {
+      const select = document.createElement("select");
+      select.className = "stage-input garden-uproot-select";
+      select.dataset.role = "uprootPlant";
+      select.setAttribute("aria-label", t("auto.pickPlant"));
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = t("auto.pickPlant");
+      select.append(placeholder);
+      if (planted.size > 0) {
+        const group = document.createElement("optgroup");
+        group.label = t("garden.crops");
+        for (const [seed, count] of planted) {
+          const option = document.createElement("option");
+          option.value = `seed:${seed}`;
+          option.textContent = `${seedName(seed)} ×${count}`;
+          group.append(option);
+        }
+        select.append(group);
+      }
+      if (plantedTrees.size > 0) {
+        const group = document.createElement("optgroup");
+        group.label = t("garden.trees");
+        for (const [tree, count] of plantedTrees) {
+          const option = document.createElement("option");
+          option.value = `tree:${tree}`;
+          option.textContent = `${treeName(tree)} ×${count}`;
+          group.append(option);
+        }
+        select.append(group);
+      }
+      select.addEventListener("change", () => {
+        const [kind, id] = select.value.split(":");
+        if (id === undefined || id.length === 0) return;
+        uprootPending = kind === "tree" ? { tree: id as TreeId } : { seed: id as SeedId };
+        render();
+      });
+      panel.append(select);
     }
-    panel.append(actionButton(t("auto.loss"), "uprootLoss"), actionButton(t("auto.win"), "uprootWin"));
+    let deadCount = 0;
+    for (const plot of state?.plots ?? []) {
+      if (plot !== null && plot.dead === true && plot.favorite !== true) deadCount += 1;
+    }
+    for (const tree of state?.trees ?? []) {
+      if (tree !== null && tree.dead === true && tree.favorite !== true) deadCount += 1;
+    }
+    panel.append(
+      actionButton(t("auto.deadPlants", { count: deadCount }), "uprootDead", deadCount > 0),
+      actionButton(t("auto.loss"), "uprootLoss"),
+      actionButton(t("auto.win"), "uprootWin"),
+    );
     const priceInput = document.createElement("input");
     priceInput.type = "number";
     priceInput.min = "0";
@@ -6543,6 +6592,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }
         return;
       }
+      case "uprootDead":
+        uprootPending = { dead: true };
+        render();
+        return;
       case "uprootLoss":
         uprootPending = { profit: "loss" };
         render();

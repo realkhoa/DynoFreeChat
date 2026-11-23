@@ -1028,7 +1028,7 @@ function plantAll(ledger: GardenLedger, seedId: SeedId, now: number, rng: () => 
 /** @brief Uproots every crop matching a seed, value or profit filter. */
 function uprootBulk(
   ledger: GardenLedger,
-  filter: { seed?: SeedId; tree?: TreeId; priceBelow?: number; profit?: "loss" | "win" },
+  filter: { seed?: SeedId; tree?: TreeId; priceBelow?: number; profit?: "loss" | "win"; dead?: boolean },
   season: SeasonSnapshot,
   now: number,
 ): RuleResult {
@@ -1036,7 +1036,8 @@ function uprootBulk(
     filter.seed === undefined &&
     filter.tree === undefined &&
     filter.priceBelow === undefined &&
-    filter.profit === undefined
+    filter.profit === undefined &&
+    filter.dead === undefined
   ) {
     return { ok: false, code: "BAD_REQUEST" };
   }
@@ -1058,6 +1059,7 @@ function uprootBulk(
       if (filter.seed !== undefined && plot.seed !== filter.seed) continue;
       // Dead plants are always cleared by Quick Uproot: they cannot be saved.
       if (plot.dead !== true) {
+        if (filter.dead === true) continue;
         const value = cropSellPrice(
           { item: plot.seed, effects: resolvedCropEffects(plot, now), pest: plot.pest, star: 1, qty: 1 },
           season,
@@ -1076,6 +1078,7 @@ function uprootBulk(
       if (filter.tree !== undefined && tree.tree !== filter.tree) continue;
       // Dead trees are cleared too, whatever the value filter says.
       if (tree.dead !== true) {
+        if (filter.dead === true) continue;
         const value = cropSellPrice(
           { item: tree.tree, effects: resolvedTreeEffects(tree, now), pest: tree.pest, star: 1, qty: 1 },
           season,

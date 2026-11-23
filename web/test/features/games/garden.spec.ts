@@ -2516,7 +2516,12 @@ describe("bulk uproot preview", () => {
 
     host.querySelector<HTMLButtonElement>('[data-act="bulkUproot"]')?.click();
     await settle();
-    host.querySelector<HTMLButtonElement>('[data-act="uprootSeed"][data-seed="carrot"]')?.click();
+    const select = host.querySelector<HTMLSelectElement>(".garden-uproot-select");
+    expect(select).not.toBeNull();
+    if (select !== null) {
+      select.value = "seed:carrot";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    }
     await settle();
 
     expect(api.calls.some((call) => call.action?.kind === "uprootBulk")).toBe(false);
@@ -2555,9 +2560,12 @@ describe("bulk uproot trees", () => {
 
     host.querySelector<HTMLButtonElement>('[data-act="bulkUproot"]')?.click();
     await settle();
-    const button = host.querySelector<HTMLButtonElement>('[data-act="uprootTree"][data-tree="apple"]');
-    expect(button).not.toBeNull();
-    button?.click();
+    const select = host.querySelector<HTMLSelectElement>(".garden-uproot-select");
+    expect(select).not.toBeNull();
+    if (select !== null) {
+      select.value = "tree:apple";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    }
     await settle();
     expect(host.querySelector(".garden-garden")?.textContent).toContain("Sắp nhổ");
     host.querySelector<HTMLButtonElement>('[data-act="uprootConfirm"]')?.click();
@@ -3280,15 +3288,18 @@ describe("quick uproot clears dead plants", () => {
 
     host.querySelector<HTMLButtonElement>('[data-action-id="quickUproot"]')?.click();
     await settle();
-    host.querySelector<HTMLButtonElement>('[data-act="uprootLoss"]')?.click();
+    // The panel has a dedicated "dead plants" menu entry.
+    const deadButton = host.querySelector<HTMLButtonElement>('[data-act="uprootDead"]');
+    expect(deadButton?.disabled).toBe(false);
+    deadButton?.click();
     await settle();
     const preview = host.querySelector(".garden-tools")?.textContent ?? "";
     expect(preview).toContain("Cà rốt ×1");
 
     host.querySelector<HTMLButtonElement>('[data-act="uprootConfirm"]')?.click();
     await settle();
-    expect(
-      api.calls.some((call) => call.action?.kind === "uprootBulk" && call.action.profit === "loss"),
-    ).toBe(true);
+    expect(api.calls.some((call) => call.action?.kind === "uprootBulk" && call.action.dead === true)).toBe(
+      true,
+    );
   });
 });
