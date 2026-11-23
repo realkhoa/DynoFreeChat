@@ -3329,3 +3329,14 @@ describe("quick uproot clears dead plants", () => {
     );
   });
 });
+
+describe("reborn row responsiveness", () => {
+  it("lets the row wrap instead of clipping the staff column", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/features/games/garden.css"), "utf8");
+    const row = css.slice(css.indexOf(".garden-reborn-row {"), css.indexOf(".garden-reborn-vip"));
+    expect(row).toContain("flex-wrap: wrap");
+    expect(row).toContain("max-width: 100%");
+    const side = css.slice(css.indexOf(".garden-reborn-side {"), css.indexOf(".garden-reborn-sep"));
+    expect(side).toContain("flex-wrap: nowrap");
+  });
+});
