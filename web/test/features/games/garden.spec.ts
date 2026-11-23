@@ -374,7 +374,7 @@ describe("legacy view", () => {
     mounted.push(game);
 
     // The rebuilt UI owns the document strip; the whole old UI is one legacy tab.
-    expect(host.querySelectorAll(".garden-view-tab")).toHaveLength(3);
+    expect(host.querySelectorAll(".garden-view-tab")).toHaveLength(2);
     expect(host.querySelector(".garden-view-tab.is-active")?.textContent).toContain("legacy");
     expect(host.querySelectorAll(".garden-tabs-legacy .garden-tab")).toHaveLength(13);
     expect(host.querySelectorAll(".garden-tab")).toHaveLength(13);
@@ -474,7 +474,9 @@ describe("legacy view", () => {
     host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
     await settle();
 
-    const actions = Array.from(host.querySelectorAll<HTMLButtonElement>(".garden-reborn-action"));
+    const actions = Array.from(
+      host.querySelectorAll<HTMLButtonElement>(".garden-reborn-quick .garden-reborn-action"),
+    );
     expect(actions).toHaveLength(10);
     // Same six-line frame as the plot cells, so the buttons read as plots too.
     for (const action of actions) expect(action.querySelectorAll(".garden-cell-line")).toHaveLength(6);
@@ -2715,10 +2717,10 @@ describe("townhall view", () => {
     api.seasonValue = { ...SEASON, wave: 0, shop: { ...SEASON.shop, tools: [] } };
     const { host, game } = await mountGame(api);
     mounted.push(game);
-    host.querySelector<HTMLButtonElement>('[data-act="view:townhall"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
     await settle();
 
-    expect(host.querySelector(".garden-townhall")).not.toBeNull();
+    expect(host.querySelector(".garden-reborn .garden-townhall")).not.toBeNull();
     const npcs = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-act="townNpc"]'));
     expect(npcs.map((npc) => npc.dataset.npc)).toEqual(["seeds", "tools"]);
     // NPCs are drawn with the exact same six-line plot frame as the soil cells.
@@ -2733,7 +2735,7 @@ describe("townhall view", () => {
     api.seasonValue = { ...SEASON, wave: 1, shop: { ...SEASON.shop, tools: [] } };
     const { host, game } = await mountGame(api);
     mounted.push(game);
-    host.querySelector<HTMLButtonElement>('[data-act="view:townhall"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
     await settle();
     expect(host.querySelector('[data-npc="traveller"]')).not.toBeNull();
     expect(host.querySelectorAll('[data-act="townNpc"]')).toHaveLength(3);
@@ -2744,7 +2746,7 @@ describe("townhall view", () => {
     api.seasonValue = { ...SEASON, wave: 0, shop: { ...SEASON.shop, tools: [] } };
     const { host, game } = await mountGame(api);
     mounted.push(game);
-    host.querySelector<HTMLButtonElement>('[data-act="view:townhall"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
     await settle();
 
     host.querySelector<HTMLButtonElement>('[data-npc="seeds"]')?.click();
@@ -2774,7 +2776,7 @@ describe("townhall view", () => {
     };
     const { host, game } = await mountGame(api);
     mounted.push(game);
-    host.querySelector<HTMLButtonElement>('[data-act="view:townhall"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
     await settle();
     host.querySelector<HTMLButtonElement>('[data-npc="tools"]')?.click();
     await settle();
@@ -2794,7 +2796,7 @@ describe("townhall view", () => {
     const api = new FakeGardenApi(makeState());
     const { host, game } = await mountGame(api, "ABCDEF");
     mounted.push(game);
-    host.querySelector<HTMLButtonElement>('[data-act="view:townhall"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
     await settle();
     const npcs = host.querySelectorAll<HTMLButtonElement>('[data-act="townNpc"]');
     expect(npcs.length).toBeGreaterThan(0);

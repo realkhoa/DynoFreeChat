@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file dictionary.ts
  * @brief Vietnamese and English strings for the ASCII Garden feature.
  * @details One flat key space keeps lookup trivial and makes a missing key
@@ -54,7 +54,6 @@ export const VI: Dictionary = {
 
   "tabs.legacy": "legacy",
   "tabs.reborn": "reborn",
-  "tabs.townhall": "thị trấn",
   "tabs.garden": "vườn",
   "tabs.farm": "trang trại",
   "tabs.market": "chợ",
@@ -1184,7 +1183,6 @@ export const EN: Dictionary = {
 
   "tabs.legacy": "legacy",
   "tabs.reborn": "reborn",
-  "tabs.townhall": "townhall",
   "tabs.garden": "garden",
   "tabs.farm": "farm",
   "tabs.market": "market",

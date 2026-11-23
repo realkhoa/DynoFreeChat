@@ -194,7 +194,7 @@ type Tab =
   | "levels";
 
 /** One visible view of the document. The pre-rebuild UI sits behind `legacy`. */
-type GardenView = "legacy" | "reborn" | "townhall";
+type GardenView = "legacy" | "reborn";
 
 /**
  * @brief Tabs preserved inside the collapsed legacy view.
@@ -224,7 +224,6 @@ const LEGACY_TABS = [
 const VIEWS: readonly { readonly id: GardenView; readonly labelKey: string }[] = [
   { id: "legacy", labelKey: "tabs.legacy" },
   { id: "reborn", labelKey: "tabs.reborn" },
-  { id: "townhall", labelKey: "tabs.townhall" },
 ];
 
 /** Whether the document is showing the owner's garden or a friend's. */
@@ -1145,7 +1144,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     machineMenu = null;
     specialPicker = null;
     if (next === "legacy") loadTabData(tab);
-    if (next !== "townhall") townNpc = null;
+    if (next !== "reborn") townNpc = null;
     syncGardenQuery();
     render();
   }
@@ -1195,7 +1194,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Restores tab, view, page and selection saved in the URL. */
   function readGardenQuery(): void {
     const savedView = readParam("gview");
-    if (savedView === "reborn" || savedView === "townhall") view = savedView;
+    // An old ?gview=townhall bookmark now lands on reborn, which hosts the town.
+    if (savedView === "reborn" || savedView === "townhall") view = "reborn";
     const savedTab = readParam("gtab");
     if (
       savedTab === "garden" ||
@@ -5104,7 +5104,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Builds the active view content. */
   function buildContent(): HTMLElement {
     if (view === "reborn") return buildRebornView();
-    if (view === "townhall") return buildTownhallView();
     if (mode === "owner" && state === null)
       return lineBlock(offline ? t("common.offline") : t("common.loading"));
     if (mode === "visit" && visiting === null)
@@ -5141,6 +5140,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       appendUprootPanel(wrap);
     }
     wrap.append(buildRebornGarden(at));
+    wrap.append(buildTownhallSection());
     return wrap;
   }
 
@@ -5314,13 +5314,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return seedShopSections();
   }
 
-  /** @brief Builds the rebuilt townhall: NPC cells plus the open shop. */
-  function buildTownhallView(): HTMLElement {
+  /**
+   * @brief Builds the townhall as a section of the rebuilt view.
+   * @details It lives inside the reborn document, under the garden boards, so the
+   * town reads as one more block of the same screen instead of a sibling tab.
+   */
+  function buildTownhallSection(): HTMLElement {
     const wrap = div("garden-townhall");
-    if (mode === "owner" && state === null)
-      return lineBlock(offline ? t("common.offline") : t("common.loading"));
-    if (mode === "visit" && visiting === null)
-      return lineBlock(offline ? t("common.offline") : t("common.loading"));
+    if (mode === "owner" && state === null) return wrap;
+    if (mode === "visit" && visiting === null) return wrap;
     const npcs = townNpcs();
     wrap.append(lineBlock(`// ${t("town.title")}`), buildTownNpcs(npcs, mode === "owner"));
     const open = townNpc === null ? undefined : npcs.find((npc) => npc.id === townNpc);

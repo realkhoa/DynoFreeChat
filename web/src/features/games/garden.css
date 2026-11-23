@@ -1,4 +1,4 @@
-﻿/* ASCII Garden: the tabs and the plot board are drawn in the code document.
+/* ASCII Garden: the tabs and the plot board are drawn in the code document.
    Tabs live outside `stage-bar` so the Focus toggle keeps them reachable while
    it hides comment lines. Cells are flat monospace blocks; the only colour that
    changes at runtime is the white-to-green growth tint, applied inline. */
@@ -1971,16 +1971,16 @@ button.garden-rank-row:hover {
   width: max-content;
 }
 
-/* Townhall: merchants are plot cells; the open shop drops below as a panel made
-   of the same cells, so the whole town reads as one board of plots. */
+/* Townhall: a section inside the rebuilt document. Merchants are plot cells and
+   the open shop drops below as a panel made of the same cells, so the whole town
+   reads as one more block of plots instead of a separate tab. */
 .garden-townhall {
-  flex: 1;
-  min-height: 240px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 4px 0;
-  overflow: auto;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .garden-town-npcs {
