@@ -578,11 +578,17 @@ describe("legacy view", () => {
     await settle();
     expect(host.querySelector(".garden-uproot-price")).not.toBeNull();
 
-    // Quick plan buys the best-ROI seeds and fills every empty slot in one call.
+    // Quick plan first previews what it would buy and plant, then runs on confirm.
     host.querySelector<HTMLButtonElement>('[data-action-id="quickPlan"]')?.click();
     await settle();
+    const preview = host.querySelector(".garden-plan-panel");
+    expect(preview).not.toBeNull();
+    expect(preview?.textContent).toContain("dự kiến");
+    expect(preview?.textContent).toContain("Cây trồng");
+    expect(api.calls.some((call) => call.action?.kind === "quickPlan")).toBe(false);
+    host.querySelector<HTMLButtonElement>('[data-act="quickPlanRun"]')?.click();
+    await settle();
     expect(api.calls.some((call) => call.action?.kind === "quickPlan")).toBe(true);
-    expect(host.querySelector('[data-act="pickPlantSeed"]')).toBeNull();
 
     // Harvest all runs the legacy bulk action.
     host.querySelector<HTMLButtonElement>('[data-action-id="harvest"]')?.click();

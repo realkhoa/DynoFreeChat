@@ -41,6 +41,8 @@ import {
   staffMarketAt,
   staffWorkInterval,
   type StaffTrait,
+  planQuickPlan,
+  type QuickPlanPreview,
   wheelCost,
   petById,
   contractOffers,
@@ -335,6 +337,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let mushroomInfo: number | null = null;
   /** Staff slot whose hire/config panel is open, if any. */
   let staffPanel: number | null = null;
+  /** Quick Plan preview waiting for confirmation, if any. */
+  let quickPlanPreview: QuickPlanPreview | null = null;
   /** Which townhall NPC has its shop open, if any. */
   let townNpc: string | null = null;
   let visitCode: string | null = null;
@@ -1189,6 +1193,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (next !== "reborn") {
       townNpc = null;
       staffPanel = null;
+      quickPlanPreview = null;
     }
     syncGardenQuery();
     render();
@@ -5275,6 +5280,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (panel !== null) wrap.append(panel);
       else staffPanel = null;
     }
+    if (mode === "owner" && quickPlanPreview !== null) wrap.append(buildQuickPlanPanel(quickPlanPreview));
+
     appendSpecialPickers(wrap);
     if (mode === "owner") {
       appendToolPickers(wrap);
@@ -5321,6 +5328,45 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return grid;
   }
 
+  /** @brief Empty crop cells, tree slots and mushroom trays Quick Plan can fill. */
+  function planEmptyCounts(): { crops: number; trees: number; trays: number } {
+    const crops = (state?.plots ?? []).filter(
+      (plot, slot) => plot === null && !cropSlotLocked(slot) && state?.damagedPlots?.[slot] !== true,
+    ).length;
+    const trees = (state?.trees ?? []).filter((tree) => tree === null).length;
+    const trays = (state?.mushroomTrays ?? []).filter((tray) => tray === null).length;
+    return { crops, trees, trays };
+  }
+
+  /** @brief Preview panel: what Quick Plan would buy and plant. */
+  function buildQuickPlanPanel(preview: QuickPlanPreview): HTMLElement {
+    const wrap = div("garden-plan-panel");
+    wrap.append(lineBlock(`// ${t("quick.planPreview")}`));
+    const section = (
+      labelKey: string,
+      entries: readonly { id: string; qty: number; unitCost: number }[],
+      nameKey: string,
+    ): void => {
+      if (entries.length === 0) return;
+      const text = entries
+        .map((entry) => `${t(`${nameKey}.${entry.id}`)} ×${entry.qty} · ${formatCompact(entry.unitCost)}c`)
+        .join(" · ");
+      wrap.append(lineBlock(`${t(labelKey)}: ${text}`));
+    };
+    section("quick.planCrops", preview.crops, "seeds");
+    section("quick.planTrees", preview.trees, "trees");
+    section("quick.planMushrooms", preview.mushrooms, "mushrooms");
+    wrap.append(
+      lineBlock(t("quick.planTotal", { slots: preview.slots, cost: formatCompact(preview.totalCost) })),
+    );
+    const row = div("garden-tools");
+    row.append(
+      actionButton(t("quick.planConfirm"), "quickPlanRun"),
+      actionButton(t("quick.planCancel"), "quickPlanCancel"),
+    );
+    wrap.append(row);
+    return wrap;
+  }
   /**
    * @brief Panel for hiring an empty staff slot or reconfiguring a hired worker.
    * @param at Server-clock time.
@@ -5429,6 +5475,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     mushroomPicker = null;
     mushroomInfo = null;
     staffPanel = null;
+    quickPlanPreview = null;
     syncGardenQuery();
     render();
   }
@@ -6566,11 +6613,38 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         message = tool === null ? null : { text: t("garden.harvestToolActive"), kind: "info" };
         render();
         return;
-      case "quickPlan":
+      case "quickPlan": {
+        if (state === null) return;
+        const empties = planEmptyCounts();
+        const preview = planQuickPlan({
+          coins: state.coins,
+          prestige: state.extras.prestige ?? 0,
+          shopOffers: season?.shop.offers ?? [],
+          emptyCrops: empties.crops,
+          emptyTrees: empties.trees,
+          emptyTrays: empties.trays,
+        });
         toolPicker = null;
         bulkPanel = null;
         tool = null;
-        void runAction({ kind: "quickPlan" }, t("quick.planDone"));
+        if (preview.slots === 0) {
+          message = { text: t("quick.planEmpty"), kind: "info" };
+          render();
+          return;
+        }
+        quickPlanPreview = preview;
+        render();
+        return;
+      }
+      case "quickPlanRun":
+        if (quickPlanPreview !== null) {
+          quickPlanPreview = null;
+          void runAction({ kind: "quickPlan" }, t("quick.planDone"));
+        }
+        return;
+      case "quickPlanCancel":
+        quickPlanPreview = null;
+        render();
         return;
       case "pickPlantTool":
         toolPicker = toolPicker === "plant" ? null : "plant";

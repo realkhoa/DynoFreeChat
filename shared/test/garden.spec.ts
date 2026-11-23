@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file garden.spec.ts
  * @brief Deterministic season, catalog and wire-parsing rules for ASCII Garden.
  * @details "Consistent seeds and events" is a property of these pure functions,
@@ -107,6 +107,7 @@ import {
   staffHireCost,
   staffGainXp,
   staffWorkInterval,
+  planQuickPlan,
   type StaffTrait,
   skillThreshold,
   addSkillXp,
@@ -1242,5 +1243,38 @@ describe("garden wire parsing", () => {
     const first = createRng(7);
     const second = createRng(7);
     expect([first(), first(), first()]).toEqual([second(), second(), second()]);
+  });
+});
+
+describe("quick plan planner", () => {
+  it("picks the seed that earns the most coins per plot", () => {
+    const preview = planQuickPlan({
+      coins: 10_000,
+      prestige: 0,
+      shopOffers: [
+        { seed: "carrot", price: 6, stock: 2 },
+        { seed: "corn", price: 30, stock: 5 },
+      ],
+      emptyCrops: 3,
+      emptyTrees: 1,
+      emptyTrays: 0,
+    });
+    // Corn earns more per planting than carrot, so it fills first while stock lasts.
+    expect(preview.crops[0]?.id).toBe("corn");
+    expect(preview.slots).toBeGreaterThan(0);
+    expect(preview.totalCost).toBeGreaterThan(0);
+  });
+
+  it("shows nothing when the wallet cannot buy any stock", () => {
+    const preview = planQuickPlan({
+      coins: 0,
+      prestige: 0,
+      shopOffers: [{ seed: "carrot", price: 6, stock: 2 }],
+      emptyCrops: 4,
+      emptyTrees: 2,
+      emptyTrays: 27,
+    });
+    expect(preview.slots).toBe(0);
+    expect(preview.totalCost).toBe(0);
   });
 });

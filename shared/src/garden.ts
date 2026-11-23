@@ -2910,6 +2910,118 @@ export interface ShopOffer {
   readonly stock: number;
 }
 
+/** One line of a Quick Plan preview: what to buy and how many. */
+export interface QuickPlanEntry {
+  /** Seed, tree or mushroom id. */
+  readonly id: string;
+  /** How many of them the plan would place. */
+  readonly qty: number;
+  /** Unit cost the plan would pay. */
+  readonly unitCost: number;
+}
+
+/** Everything Quick Plan would buy and plant, computed before spending. */
+export interface QuickPlanPreview {
+  readonly crops: readonly QuickPlanEntry[];
+  readonly trees: readonly QuickPlanEntry[];
+  readonly mushrooms: readonly QuickPlanEntry[];
+  readonly totalCost: number;
+  readonly slots: number;
+}
+
+/** Inputs needed to compute a Quick Plan locally (client preview and server). */
+export interface QuickPlanInput {
+  readonly coins: number;
+  readonly prestige: number;
+  readonly shopOffers: readonly ShopOffer[];
+  readonly emptyCrops: number;
+  readonly emptyTrees: number;
+  readonly emptyTrays: number;
+}
+
+/** @brief Adds one unit to an aggregated preview line. */
+function addPlanEntry(list: QuickPlanEntry[], id: string, unitCost: number): void {
+  const existing = list.find((entry) => entry.id === id && entry.unitCost === unitCost);
+  if (existing === undefined) list.push({ id, qty: 1, unitCost });
+  else list[list.indexOf(existing)] = { id, qty: existing.qty + 1, unitCost };
+}
+
+/**
+ * @brief Plans the best-ROI Quick Plan run without touching the ledger.
+ * @details Same ranking the server uses: crops by sale/shop-price (tie higher
+ * sale), trees by fruit/sapling price, mushrooms by batch revenue/spawn price.
+ * Coins and shop stock are consumed in order, so the preview is exactly what
+ * the server attempt will do for the affordable part.
+ */
+export function planQuickPlan(input: QuickPlanInput): QuickPlanPreview {
+  let coins = input.coins;
+  const stock = new Map<SeedId, number>();
+  for (const offer of input.shopOffers) stock.set(offer.seed, offer.stock);
+  const crops: QuickPlanEntry[] = [];
+  const trees: QuickPlanEntry[] = [];
+  const mushrooms: QuickPlanEntry[] = [];
+
+  for (let slot = 0; slot < input.emptyCrops; slot += 1) {
+    let best: { seed: SeedId; price: number; score: number; sell: number } | null = null;
+    for (const offer of input.shopOffers) {
+      const left = stock.get(offer.seed) ?? 0;
+      if (left < 1 || offer.price > coins) continue;
+      const seed = seedById(offer.seed);
+      if (seed === undefined || seed.category === "fruit") continue;
+      if (prestigeTierForSeed(seed.id) > input.prestige) continue;
+      // Most coins per planting wins; ROI only breaks ties.
+      const profit = seed.sell - offer.price;
+      if (profit <= 0) continue;
+      const score = profit;
+      if (best === null || score > best.score || (score === best.score && seed.sell > best.sell)) {
+        best = { seed: seed.id, price: offer.price, score, sell: seed.sell };
+      }
+    }
+    if (best === null) break;
+    coins -= best.price;
+    stock.set(best.seed, (stock.get(best.seed) ?? 0) - 1);
+    addPlanEntry(crops, best.seed, best.price);
+  }
+
+  for (let slot = 0; slot < input.emptyTrees; slot += 1) {
+    let best: { id: TreeId; buy: number; score: number } | null = null;
+    for (const tree of TREES) {
+      if (tree.buy > coins || tree.sell <= tree.buy) continue;
+      const score = tree.sell - tree.buy;
+      if (best === null || score > best.score) best = { id: tree.id, buy: tree.buy, score };
+    }
+    if (best === null) break;
+    coins -= best.buy;
+    addPlanEntry(trees, best.id, best.buy);
+  }
+
+  for (let slot = 0; slot < input.emptyTrays; slot += 1) {
+    let best: { id: MushroomId; spawn: number; score: number } | null = null;
+    for (const mushroom of MUSHROOMS) {
+      if (mushroom.spawn > coins) continue;
+      const product = productById(mushroom.product);
+      if (product === undefined) continue;
+      const revenue = product.base * mushroom.batch;
+      if (revenue <= mushroom.spawn) continue;
+      const score = revenue - mushroom.spawn;
+      if (best === null || score > best.score) best = { id: mushroom.id, spawn: mushroom.spawn, score };
+    }
+    if (best === null) break;
+    coins -= best.spawn;
+    addPlanEntry(mushrooms, best.id, best.spawn);
+  }
+
+  const totalQty =
+    crops.reduce((sum, entry) => sum + entry.qty, 0) +
+    trees.reduce((sum, entry) => sum + entry.qty, 0) +
+    mushrooms.reduce((sum, entry) => sum + entry.qty, 0);
+  const totalCost =
+    crops.reduce((sum, entry) => sum + entry.qty * entry.unitCost, 0) +
+    trees.reduce((sum, entry) => sum + entry.qty * entry.unitCost, 0) +
+    mushrooms.reduce((sum, entry) => sum + entry.qty * entry.unitCost, 0);
+  return { crops, trees, mushrooms, totalCost, slots: totalQty };
+}
+
 /** Soil fertility of a fresh cell, in percent. */
 export const SOIL_START = 100;
 

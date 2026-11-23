@@ -2080,7 +2080,7 @@ describe("thirst rules", () => {
 });
 
 describe("quick plan", () => {
-  it("buys the best-ROI seed and fills empty crop cells", () => {
+  it("buys the highest-profit seed and fills empty crop cells", () => {
     const ledger = makeLedger();
     ledger.coins = 50_000_000;
     const season = seasonFor(NOW);
@@ -2092,8 +2092,7 @@ describe("quick plan", () => {
       .sort((left, right) => {
         const leftSeed = SEEDS.find((entry) => entry.id === left.seed)!;
         const rightSeed = SEEDS.find((entry) => entry.id === right.seed)!;
-        const score = rightSeed.sell / Math.max(1, right.price) - leftSeed.sell / Math.max(1, left.price);
-        return score !== 0 ? score : rightSeed.sell - leftSeed.sell;
+        return rightSeed.sell - right.price - (leftSeed.sell - left.price);
       })[0];
     if (best === undefined) throw new Error("no affordable offer");
 
@@ -2103,7 +2102,7 @@ describe("quick plan", () => {
     expect(result.ledger.coins).toBeLessThan(ledger.coins);
     const emptyLeft = result.ledger.plots.filter((plot) => plot === null).length;
     expect(emptyLeft).toBeLessThan(ledger.plots.length);
-    // The first planted crop uses the top-ROI seed of this shop rotation.
+    // The first planted crop uses the highest-profit seed of this rotation.
     expect(result.ledger.plots[0]?.seed).toBe(best.seed);
     // Trays and trees are part of the same plan.
     expect(result.ledger.trees.some((tree) => tree !== null)).toBe(true);
