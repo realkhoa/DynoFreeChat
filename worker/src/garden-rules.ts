@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file garden-rules.ts
  * @brief Pure ASCII Garden action rules, shared by the Durable Object and tests.
  * @details The Durable Object owns storage and authentication; this module owns
@@ -1860,7 +1860,14 @@ function harvestAll(ledger: GardenLedger, now: number, rng: () => number): RuleR
     const entry = ledger.trees[slot] ?? null;
     if (entry !== null && entry.favorite !== true && now >= entry.readyAt) trees.push(slot);
   }
-  const count = crops.length + trees.length;
+  // Bulk harvest also clears ripe mushroom trays: the quick action works across
+  // the whole garden, not only the crop board.
+  const mushrooms: number[] = [];
+  for (let slot = 0; slot < MUSHROOM_TRAYS; slot += 1) {
+    const tray = ledger.mushroomTrays?.[slot] ?? null;
+    if (tray !== null && now >= tray.readyAt) mushrooms.push(slot);
+  }
+  const count = crops.length + trees.length + mushrooms.length;
   if (count === 0) return { ok: false, code: "NOTHING_TO_DO" };
   const cost = count * HARVEST_ALL_COST;
   if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
@@ -1872,6 +1879,10 @@ function harvestAll(ledger: GardenLedger, now: number, rng: () => number): RuleR
   }
   for (const slot of trees) {
     const result = harvestTree(current, slot, now, rng, true);
+    if (result.ok) current = result.ledger;
+  }
+  for (const slot of mushrooms) {
+    const result = harvestMushroom(current, slot, now, rng);
     if (result.ok) current = result.ledger;
   }
   const next = clone(current);

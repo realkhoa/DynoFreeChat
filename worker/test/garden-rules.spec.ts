@@ -1959,3 +1959,31 @@ describe("mushroom house rules", () => {
     if (!poor.ok) expect(poor.code).toBe("NOT_ENOUGH_COINS");
   });
 });
+
+describe("bulk harvest across the garden", () => {
+  it("also clears ripe mushroom trays from the quick harvest action", () => {
+    const ledger = makeLedger();
+    ledger.coins = 1_000_000;
+    ledger.mushroomTrays = new Array(27).fill(null);
+    ledger.mushroomTrays[0] = {
+      slot: 0,
+      mushroom: "straw",
+      plantedAt: NOW - 20 * 60_000,
+      readyAt: NOW - 1_000,
+    };
+    ledger.mushroomTrays[1] = {
+      slot: 1,
+      mushroom: "oyster",
+      plantedAt: NOW - 60_000,
+      readyAt: NOW + 20 * 60_000,
+    };
+
+    const harvested = run(ledger, { kind: "harvestAll" });
+    expect(harvested.ok).toBe(true);
+    if (!harvested.ok) return;
+    expect(harvested.ledger.mushroomTrays?.[0] ?? null).toBeNull();
+    expect(harvested.ledger.mushroomTrays?.[1] ?? null).not.toBeNull();
+    const stack = (harvested.ledger.bag.products ?? []).find((entry) => entry.product === "mushStraw");
+    expect(stack?.qty).toBe(30);
+  });
+});

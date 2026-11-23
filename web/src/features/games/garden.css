@@ -2156,3 +2156,11 @@ button.garden-rank-row:hover {
   width: auto;
   text-align: left;
 }
+
+/* Body of a non-main garden tab: content first, the shared quick actions beside. */
+.garden-tab-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}

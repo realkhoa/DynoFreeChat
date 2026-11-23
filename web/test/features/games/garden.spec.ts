@@ -2779,13 +2779,16 @@ describe("reborn sub-tabs", () => {
     host.querySelector<HTMLButtonElement>('[data-act="gardenTab:mushroom"]')?.click();
     await settle();
     expect(host.querySelector(".garden-section-tab.is-active")?.textContent).toContain("nhà nấm");
-    expect(host.querySelector(".garden-reborn-row")).toBeNull();
     expect(host.querySelector(".garden-mushroom-house")).not.toBeNull();
+    // The main garden quick actions follow into every garden tab.
+    expect(host.querySelectorAll(".garden-tab-body .garden-reborn-action").length).toBeGreaterThan(0);
+    expect(host.querySelector(".garden-reborn-quick")).not.toBeNull();
     expect(window.location.search).toContain("gstab=mushroom");
 
     host.querySelector<HTMLButtonElement>('[data-act="gardenTab:nursery"]')?.click();
     await settle();
     expect(host.querySelector(".garden-garden-empty")?.textContent).toContain("vườn ươm");
+    expect(host.querySelector(".garden-reborn-row .garden-reborn-quick")).not.toBeNull();
     expect(window.location.search).toContain("gstab=nursery");
 
     host.querySelector<HTMLButtonElement>('[data-act="gardenTab:main"]')?.click();
@@ -2794,6 +2797,33 @@ describe("reborn sub-tabs", () => {
     expect(host.querySelector(".garden-garden-empty")).toBeNull();
     expect(host.querySelector(".garden-mushroom-house")).toBeNull();
     expect(window.location.search).not.toContain("gstab=");
+  });
+
+  it("keeps the quick actions working from the mushroom house tab", async () => {
+    const tray = {
+      slot: 0,
+      mushroom: "straw" as const,
+      plantedAt: CLOCK - 600_000,
+      readyAt: CLOCK - 1_000,
+    };
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 5_000_000,
+        mushroomTrays: [tray, ...new Array(26).fill(null)] as GardenSnapshot["mushroomTrays"],
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:mushroom"]')?.click();
+    await settle();
+
+    const harvest = host.querySelector<HTMLButtonElement>('.garden-reborn-quick [data-action-id="harvest"]');
+    expect(harvest?.disabled).toBe(false);
+    harvest?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "harvestAll")).toBe(true);
   });
 });
 

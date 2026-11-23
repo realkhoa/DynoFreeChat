@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file game.ts
  * @brief ASCII Garden document: three tabs, an ASCII plot board and live sync.
  * @details The document stays a source file: the tabs are drawn in the code
@@ -1754,6 +1754,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (tree === null) continue;
       if (at >= tree.readyAt) harvest += 1;
       else if (!tree.watered) water += 1;
+    }
+    // The quick harvest action reaches the mushroom house too.
+    for (const tray of state?.mushroomTrays ?? []) {
+      if (tray !== null && at >= tray.readyAt) harvest += 1;
     }
     return { water, harvest };
   }
@@ -5195,7 +5199,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     wrap.append(buildGardenTabStrip());
     if (gardenTab !== "main") {
-      wrap.append(buildGardenTabBody(at));
+      // The main garden's quick actions stay available in every garden tab:
+      // they are garden-wide, so the mushroom house and the future rooms can
+      // trigger them without walking back to the main board.
+      const row = div("garden-reborn-row");
+      const content = div("garden-tab-body");
+      content.append(buildGardenTabBody(at));
+      row.append(content);
+      if (mode === "owner") row.append(div("garden-reborn-sep"), buildQuickColumn(at));
+      wrap.append(row);
+      if (mode === "owner") {
+        appendToolPickers(wrap);
+        appendUprootPanel(wrap);
+      }
       return wrap;
     }
     const row = div("garden-reborn-row");
@@ -5207,10 +5223,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     );
     row.append(vip);
     if (mode === "owner") {
-      row.append(div("garden-reborn-sep"));
-      const quick = div("garden-reborn-quick");
-      quick.append(lineBlock(`// ${t("quick.title")}`), buildRebornActionColumns(rebornActionColumns(at)));
-      row.append(quick);
+      row.append(div("garden-reborn-sep"), buildQuickColumn(at));
       row.append(div("garden-reborn-sep"));
       const staff = div("garden-reborn-staff");
       staff.append(lineBlock(`// ${t("staff.rebornTitle")}`), buildRebornStaffCells());
@@ -5317,6 +5330,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     wrap.append(actionButton(t("common.close"), "staffPanelClose"));
     return wrap;
+  }
+
+  /** @brief The quick action column shared by every garden tab. */
+  function buildQuickColumn(at: number): HTMLElement {
+    const quick = div("garden-reborn-quick");
+    quick.append(lineBlock(`// ${t("quick.title")}`), buildRebornActionColumns(rebornActionColumns(at)));
+    return quick;
   }
 
   /** @brief Builds the garden / townhall sub-tab strip of the rebuilt view. */
