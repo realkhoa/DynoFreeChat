@@ -116,7 +116,8 @@
   align-items: flex-start;
   justify-content: center;
   gap: 10px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 
 .garden-reborn-vip,
