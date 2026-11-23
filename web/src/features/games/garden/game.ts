@@ -180,7 +180,7 @@ type Tab =
   | "levels";
 
 /** One visible view of the document. The pre-rebuild UI sits behind `legacy`. */
-type GardenView = "legacy";
+type GardenView = "legacy" | "reborn";
 
 /**
  * @brief Tabs preserved inside the collapsed legacy view.
@@ -209,6 +209,7 @@ const LEGACY_TABS = [
  */
 const VIEWS: readonly { readonly id: GardenView; readonly labelKey: string }[] = [
   { id: "legacy", labelKey: "tabs.legacy" },
+  { id: "reborn", labelKey: "tabs.reborn" },
 ];
 
 /** Whether the document is showing the owner's garden or a friend's. */
@@ -1114,7 +1115,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
   // ------------------------------------------------------------------- render
 
-  /** @brief Switches the visible view; only `legacy` exists until the rebuild lands. */
+  /** @brief Switches the visible view. */
   function switchView(next: GardenView): void {
     if (view === next) return;
     view = next;
@@ -1126,7 +1127,23 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     moveSource = null;
     machineMenu = null;
     specialPicker = null;
+    if (next === "legacy") loadTabData(tab);
+    syncGardenQuery();
     render();
+  }
+
+  /** @brief Fetches the slow data one legacy tab needs on first open. */
+  function loadTabData(next: Tab): void {
+    if (next === "chart") void loadChart();
+    if (next === "bots") void loadBots();
+    if (next === "rank") void loadLeaderboard();
+    if (next === "extras") {
+      void loadExtras();
+      void loadGuilds();
+    }
+    if (next === "log") void loadGlobalSales();
+    if (next === "dynopedia") void loadGlobalRecipes();
+    if (next === "event") void loadRaid();
   }
 
   /** @brief Switches the active tab. */
@@ -1141,16 +1158,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     moveSource = null;
     machineMenu = null;
     specialPicker = null;
-    if (next === "chart") void loadChart();
-    if (next === "bots") void loadBots();
-    if (next === "rank") void loadLeaderboard();
-    if (next === "extras") {
-      void loadExtras();
-      void loadGuilds();
-    }
-    if (next === "log") void loadGlobalSales();
-    if (next === "dynopedia") void loadGlobalRecipes();
-    if (next === "event") void loadRaid();
+    loadTabData(next);
     syncGardenQuery();
     render();
   }
@@ -1159,14 +1167,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function syncGardenQuery(): void {
     writeParams({
       gtab: tab,
+      gview: view === "legacy" ? null : view,
       gpage: page > 0 ? String(page) : null,
       garea: selectedSlot === null ? null : selectedArea,
       gslot: selectedSlot === null ? null : String(selectedSlot),
     });
   }
 
-  /** @brief Restores tab, page and selection saved in the URL. */
+  /** @brief Restores tab, view, page and selection saved in the URL. */
   function readGardenQuery(): void {
+    const savedView = readParam("gview");
+    if (savedView === "reborn") view = savedView;
     const savedTab = readParam("gtab");
     if (
       savedTab === "garden" ||
@@ -4907,11 +4918,20 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
   /** @brief Builds the active view content. */
   function buildContent(): HTMLElement {
+    if (view === "reborn") return buildRebornView();
     if (mode === "owner" && state === null)
       return lineBlock(offline ? t("common.offline") : t("common.loading"));
     if (mode === "visit" && visiting === null)
       return lineBlock(offline ? t("common.offline") : t("common.loading"));
     return buildLegacyContent();
+  }
+
+  /**
+   * @brief Builds the rebuilt UI.
+   * @details Intentionally blank: the new garden UI starts from an empty document.
+   */
+  function buildRebornView(): HTMLElement {
+    return div("garden-reborn");
   }
 
   /** @brief Builds the content of the active legacy tab. */

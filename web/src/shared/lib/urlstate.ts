@@ -8,7 +8,7 @@
  */
 
 /** Keys owned by this module; everything else in the query is preserved. */
-const OWNED_PREFIX = ["docs", "doc", "game", "gtab", "gpage", "garea", "gslot"];
+const OWNED_PREFIX = ["docs", "doc", "game", "gtab", "gview", "gpage", "garea", "gslot"];
 
 /** @brief Reads one query parameter, or `null`. */
 export function readParam(key: string): string | null {

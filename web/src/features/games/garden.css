@@ -71,6 +71,12 @@
   opacity: 0.85;
 }
 
+/* The rebuilt view starts from a blank document; keep the editor area usable. */
+.garden-reborn {
+  flex: 1;
+  min-height: 240px;
+}
+
 .garden-tabs-spacer {
   flex: 1;
 }

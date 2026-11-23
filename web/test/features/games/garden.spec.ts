@@ -373,8 +373,8 @@ describe("legacy view", () => {
     mounted.push(game);
 
     // The rebuilt UI owns the document strip; the whole old UI is one legacy tab.
-    expect(host.querySelectorAll(".garden-view-tab")).toHaveLength(1);
-    expect(host.querySelector(".garden-view-tab")?.textContent).toContain("legacy");
+    expect(host.querySelectorAll(".garden-view-tab")).toHaveLength(2);
+    expect(host.querySelector(".garden-view-tab.is-active")?.textContent).toContain("legacy");
     expect(host.querySelectorAll(".garden-tabs-legacy .garden-tab")).toHaveLength(13);
     expect(host.querySelectorAll(".garden-tab")).toHaveLength(13);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
@@ -393,6 +393,30 @@ describe("legacy view", () => {
     expect(host.querySelector(".garden-balance")?.textContent).toContain("42c");
     expect(host.querySelector(".stage-hud")?.textContent).not.toContain("coin");
     expect(host.querySelector(".garden-code")?.textContent).toBe("#ABCDEF");
+  });
+
+  it("switches to the blank reborn view and back to legacy", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-view-tab.is-active")?.textContent).toContain("reborn");
+    expect(host.querySelector(".garden-reborn")).not.toBeNull();
+    expect(host.querySelector(".garden-reborn")?.childElementCount).toBe(0);
+    expect(host.querySelectorAll(".garden-tabs-legacy")).toHaveLength(0);
+    expect(host.querySelectorAll(".garden-tab")).toHaveLength(0);
+    expect(window.location.search).toContain("gview=reborn");
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:legacy"]')?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-view-tab.is-active")?.textContent).toContain("legacy");
+    expect(host.querySelectorAll(".garden-tabs-legacy .garden-tab")).toHaveLength(13);
+    expect(host.querySelector(".garden-reborn")).toBeNull();
+    expect(window.location.search).not.toContain("gview=");
   });
 
   it("shows the bag, upgrades and field status in the right rail", async () => {
