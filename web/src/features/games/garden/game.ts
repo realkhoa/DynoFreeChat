@@ -163,7 +163,7 @@ const DATA_TTL_MS = 30_000;
 /** How long an uproot confirmation stays armed. */
 const UPROOT_ARM_MS = 4_000;
 
-/** One active tab inside the document. */
+/** One active tab inside the legacy UI. */
 type Tab =
   | "garden"
   | "market"
@@ -178,6 +178,38 @@ type Tab =
   | "dynopedia"
   | "log"
   | "levels";
+
+/** One visible view of the document. The pre-rebuild UI sits behind `legacy`. */
+type GardenView = "legacy";
+
+/**
+ * @brief Tabs preserved inside the collapsed legacy view.
+ * @details Order drives the legacy strip; every id must stay in sync with {@link Tab}.
+ */
+const LEGACY_TABS = [
+  "garden",
+  "market",
+  "event",
+  "chart",
+  "bots",
+  "rank",
+  "farm",
+  "warehouse",
+  "extras",
+  "prestige",
+  "dynopedia",
+  "log",
+  "levels",
+] as const satisfies readonly Tab[];
+
+/**
+ * @brief Tabs shown in the document strip.
+ * @details The whole old UI is one `legacy` view. Rebuilt views are added here and
+ * dispatched from {@link buildContent}, without touching the legacy strip.
+ */
+const VIEWS: readonly { readonly id: GardenView; readonly labelKey: string }[] = [
+  { id: "legacy", labelKey: "tabs.legacy" },
+];
 
 /** Whether the document is showing the owner's garden or a friend's. */
 type Mode = "owner" | "visit";
@@ -244,6 +276,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let disposed = false;
 
   let mode: Mode = "owner";
+  let view: GardenView = "legacy";
   let tab: Tab = "garden";
   let visitCode: string | null = null;
   let state: GardenSnapshot | null = null;
@@ -1081,6 +1114,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
   // ------------------------------------------------------------------- render
 
+  /** @brief Switches the visible view; only `legacy` exists until the rebuild lands. */
+  function switchView(next: GardenView): void {
+    if (view === next) return;
+    view = next;
+    selectedSlot = null;
+    menu = null;
+    uprootArmed = false;
+    farmPicker = null;
+    animalMenu = null;
+    moveSource = null;
+    machineMenu = null;
+    specialPicker = null;
+    render();
+  }
+
   /** @brief Switches the active tab. */
   function switchTab(next: Tab): void {
     if (tab === next) return;
@@ -1508,31 +1556,20 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (!disposed) render();
   }
 
-  /** @brief Builds the tab strip with the garden code and share action. */
+  /** @brief Builds the view strip with the garden code and share action. */
   function buildTabs(): HTMLElement {
     const bar = div("garden-tabs");
-    for (const id of [
-      "garden",
-      "market",
-      "event",
-      "chart",
-      "bots",
-      "rank",
-      "farm",
-      "warehouse",
-      "extras",
-      "prestige",
-      "dynopedia",
-      "log",
-      "levels",
-    ] as const) {
+    for (const entry of VIEWS) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "garden-tab";
-      button.dataset.act = `tab:${id}`;
-      const label = t(`tabs.${id}`);
-      button.textContent = tab === id ? `[ ${label} ]` : ` ${label} `;
-      if (tab === id) button.classList.add("is-active");
+      button.className = "garden-view-tab";
+      button.dataset.act = `view:${entry.id}`;
+      const label = t(entry.labelKey);
+      button.textContent = view === entry.id ? `[ ${label} ]` : ` ${label} `;
+      if (view === entry.id) {
+        button.classList.add("is-active");
+        button.setAttribute("aria-current", "page");
+      }
       bar.append(button);
     }
     bar.append(span("garden-tabs-spacer", ""));
@@ -1552,6 +1589,26 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (stealth) stealthButton.classList.add("is-active");
     bar.append(stealthButton);
     if (mode === "visit") bar.append(actionButton(t("garden.backHome"), "home"));
+    return bar;
+  }
+
+  /**
+   * @brief Builds the collapsed legacy strip.
+   * @details Every pre-rebuild tab stays reachable from here. Delete this strip and
+   * {@link LEGACY_TABS} once the rebuilt views replace the old UI.
+   */
+  function buildLegacyStrip(): HTMLElement {
+    const bar = div("garden-tabs garden-tabs-legacy");
+    for (const id of LEGACY_TABS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "garden-tab";
+      button.dataset.act = `tab:${id}`;
+      const label = t(`tabs.${id}`);
+      button.textContent = tab === id ? `[ ${label} ]` : ` ${label} `;
+      if (tab === id) button.classList.add("is-active");
+      bar.append(button);
+    }
     return bar;
   }
 
@@ -4848,12 +4905,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
-  /** @brief Builds the active tab content. */
+  /** @brief Builds the active view content. */
   function buildContent(): HTMLElement {
     if (mode === "owner" && state === null)
       return lineBlock(offline ? t("common.offline") : t("common.loading"));
     if (mode === "visit" && visiting === null)
       return lineBlock(offline ? t("common.offline") : t("common.loading"));
+    return buildLegacyContent();
+  }
+
+  /** @brief Builds the content of the active legacy tab. */
+  function buildLegacyContent(): HTMLElement {
     if (tab === "garden") return buildGarden();
     if (tab === "market") return buildMarket();
     if (tab === "chart") return buildChart();
@@ -4910,7 +4972,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     root.dataset.stealth = stealth ? "on" : "off";
     root.dataset.offline = offline ? "on" : "off";
     root.dataset.busy = busy ? "on" : "off";
-    const parts: HTMLElement[] = [buildTabs(), buildHud(), buildContent(), buildStatus()];
+    const parts: HTMLElement[] = [buildTabs()];
+    if (view === "legacy") parts.push(buildLegacyStrip());
+    parts.push(buildHud(), buildContent(), buildStatus());
     const popover = buildMenu(now());
     if (popover !== null) parts.push(popover);
     if (staffMenu !== null) {
@@ -5037,12 +5101,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return;
     }
     const action = target.dataset.act ?? "";
-    if (action.startsWith("tab:")) {
+    if (action.startsWith("view:")) {
       closeMenu();
-      switchTab(action.slice(4) as Tab);
+      switchView(action.slice(5) as GardenView);
       return;
     }
     if (action.startsWith("tab:")) {
+      closeMenu();
       switchTab(action.slice(4) as Tab);
       return;
     }

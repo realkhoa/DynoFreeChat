@@ -52,6 +52,7 @@ export const VI: Dictionary = {
   "side.pests": "Sâu",
   "side.skills": "Kỹ năng",
 
+  "tabs.legacy": "legacy",
   "tabs.garden": "vườn",
   "tabs.farm": "trang trại",
   "tabs.market": "chợ",
@@ -1152,6 +1153,7 @@ export const EN: Dictionary = {
   "side.pests": "Pests",
   "side.skills": "Skills",
 
+  "tabs.legacy": "legacy",
   "tabs.garden": "garden",
   "tabs.farm": "farm",
   "tabs.market": "market",

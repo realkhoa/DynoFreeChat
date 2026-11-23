@@ -30,7 +30,8 @@
   font: 10px/16px var(--font-mono);
 }
 
-.garden-tab {
+.garden-tab,
+.garden-view-tab {
   padding: 0 3px;
   background: transparent;
   border: 0;
@@ -41,19 +42,33 @@
   cursor: pointer;
 }
 
-.garden-tab:hover {
+.garden-view-tab {
+  color: #dcdcaa;
+}
+
+.garden-tab:hover,
+.garden-view-tab:hover {
   background: var(--hover-row);
   color: #dcdcaa;
 }
 
-.garden-tab.is-active {
+.garden-tab.is-active,
+.garden-view-tab.is-active {
   color: #ffffff;
   background: var(--sel);
 }
 
-.garden-tab:focus-visible {
+.garden-tab:focus-visible,
+.garden-view-tab:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
+}
+
+/* The pre-rebuild UI sits one level below the single rebuilt view tab. */
+.garden-tabs-legacy {
+  border-bottom: 0;
+  padding-bottom: 0;
+  opacity: 0.85;
 }
 
 .garden-tabs-spacer {
@@ -1095,7 +1110,8 @@
     display: none;
   }
 
-  .garden-tab {
+  .garden-tab,
+  .garden-view-tab {
     min-height: 26px;
     padding: 0 6px;
     white-space: nowrap;

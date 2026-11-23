@@ -364,14 +364,18 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe("garden tab", () => {
-  it("renders three tabs, a 9x9 crop grid, three fruit patches and the HUD", async () => {
+describe("legacy view", () => {
+  it("collapses the old tabs behind one legacy tab, a 9x9 crop grid, three fruit patches and the HUD", async () => {
     const api = new FakeGardenApi(
       makeState({ plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)] }),
     );
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
+    // The rebuilt UI owns the document strip; the whole old UI is one legacy tab.
+    expect(host.querySelectorAll(".garden-view-tab")).toHaveLength(1);
+    expect(host.querySelector(".garden-view-tab")?.textContent).toContain("legacy");
+    expect(host.querySelectorAll(".garden-tabs-legacy .garden-tab")).toHaveLength(13);
     expect(host.querySelectorAll(".garden-tab")).toHaveLength(13);
     expect(host.querySelectorAll(".garden-cell")).toHaveLength(CROPS_PER_TAB + TREES_PER_TAB);
     expect(host.querySelectorAll(".garden-cell.is-ready")).toHaveLength(1);
