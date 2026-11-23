@@ -2089,3 +2089,12 @@ button.garden-rank-row:hover {
 .garden-mushroom-tray {
   width: 10ch;
 }
+
+/* Tray info panel: opened by clicking any occupied mushroom tray. */
+.garden-mushroom-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file dictionary.ts
  * @brief Vietnamese and English strings for the ASCII Garden feature.
  * @details One flat key space keeps lookup trivial and makes a missing key
@@ -552,6 +552,17 @@ export const VI: Dictionary = {
   "mushroomHouse.title": "Nhà nấm",
   "mushroomHouse.summary": "27 khay · mỗi mẻ cần phôi nấm",
   "mushroomHouse.buySpawn": "Mua phôi",
+  "mushroomHouse.infoTitle": "Khay {slot} · {name}",
+  "mushroomHouse.infoCycles": "Chu kỳ",
+  "mushroomHouse.infoYield": "Năng suất",
+  "mushroomHouse.infoPerBatch": "cây/mẻ",
+  "mushroomHouse.infoBase": "Giá gốc",
+  "mushroomHouse.infoSpawn": "Giá phôi",
+  "mushroomHouse.infoMutation": "Mutation",
+  "mushroomHouse.infoMutationYes": "có thể",
+  "mushroomHouse.infoGrowing": "Đang nuôi · còn {time}",
+  "mushroomHouse.infoReady": "Chín — sẵn sàng thu",
+  "mushroomHouse.harvest": "Thu hoạch",
   "mushroomHouse.spawnOwned": "phôi",
   "mushroomHouse.emptyTray": "Khay trống",
   "mushroomHouse.growing": "Đang nuôi",
@@ -1715,6 +1726,17 @@ export const EN: Dictionary = {
   "mushroomHouse.title": "Mushroom house",
   "mushroomHouse.summary": "27 trays · each batch needs spawn",
   "mushroomHouse.buySpawn": "Buy spawn",
+  "mushroomHouse.infoTitle": "Tray {slot} · {name}",
+  "mushroomHouse.infoCycles": "Cycles",
+  "mushroomHouse.infoYield": "Batch",
+  "mushroomHouse.infoPerBatch": "per batch",
+  "mushroomHouse.infoBase": "Base price",
+  "mushroomHouse.infoSpawn": "Spawn price",
+  "mushroomHouse.infoMutation": "Mutation",
+  "mushroomHouse.infoMutationYes": "possible",
+  "mushroomHouse.infoGrowing": "Growing · {time} left",
+  "mushroomHouse.infoReady": "Ripe — ready to harvest",
+  "mushroomHouse.harvest": "Harvest",
   "mushroomHouse.spawnOwned": "spawn",
   "mushroomHouse.emptyTray": "Empty tray",
   "mushroomHouse.growing": "Growing",

@@ -2954,7 +2954,36 @@ describe("mushroom house tab", () => {
     );
   });
 
-  it("harvests a ripe tray", async () => {
+  it("shows a tray info panel when clicking an occupied tray", async () => {
+    const growing = {
+      slot: 0,
+      mushroom: "oyster" as const,
+      plantedAt: CLOCK - 60_000,
+      readyAt: CLOCK + 8 * 60_000,
+    };
+    const api = new FakeGardenApi(
+      makeState({ mushroomTrays: [growing, ...new Array(26).fill(null)] as GardenSnapshot["mushroomTrays"] }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openMushroomHouse(host);
+
+    host.querySelector<HTMLButtonElement>('.garden-mushroom-tray[data-slot="0"]')?.click();
+    await settle();
+    const panel = host.querySelector(".garden-mushroom-info");
+    expect(panel).not.toBeNull();
+    expect(panel?.textContent).toContain("Nấm bào");
+    expect(panel?.textContent).toContain("Năng suất");
+    expect(panel?.textContent).toContain("Đang nuôi");
+    // A growing batch offers no harvest button yet.
+    expect(panel?.querySelector('[data-act="mushroomHarvest"]')).toBeNull();
+
+    host.querySelector<HTMLButtonElement>('[data-act="mushroomInfoClose"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-mushroom-info")).toBeNull();
+  });
+
+  it("harvests a ripe tray from its info panel", async () => {
     const planted = {
       slot: 0,
       mushroom: "straw" as const,
@@ -2971,6 +3000,12 @@ describe("mushroom house tab", () => {
     const tray = host.querySelector<HTMLButtonElement>('.garden-mushroom-tray[data-slot="0"]');
     expect(tray?.textContent).toContain("Chín");
     tray?.click();
+    await settle();
+    const panel = host.querySelector(".garden-mushroom-info");
+    expect(panel?.textContent).toContain("sẵn sàng thu");
+    const harvest = panel?.querySelector<HTMLButtonElement>('[data-act="mushroomHarvest"]');
+    expect(harvest).not.toBeUndefined();
+    harvest?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "harvestMushroom" && call.action.slot === 0)).toBe(
       true,

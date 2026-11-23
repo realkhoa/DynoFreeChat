@@ -325,6 +325,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let gardenTab: GardenTab = "main";
   /** Tray slot whose spawn picker is open, if any. */
   let mushroomPicker: number | null = null;
+  /** Tray slot whose info panel is open, if any. */
+  let mushroomInfo: number | null = null;
   /** Which townhall NPC has its shop open, if any. */
   let townNpc: string | null = null;
   let visitCode: string | null = null;
@@ -5241,6 +5243,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     selectedSlot = null;
     menu = null;
     mushroomPicker = null;
+    mushroomInfo = null;
     syncGardenQuery();
     render();
   }
@@ -5287,6 +5290,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     wrap.append(grid);
     if (mushroomPicker !== null) wrap.append(buildMushroomPicker(mushroomPicker));
+    else if (mushroomInfo !== null) {
+      const panel = buildMushroomInfoPanel(mushroomInfo, at);
+      if (panel !== null) wrap.append(panel);
+      else mushroomInfo = null;
+    }
     return wrap;
   }
 
@@ -5353,6 +5361,53 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     else wrap.append(lineBlock(t("mushroomHouse.noSpawn")));
     wrap.append(actionButton(t("mushroomHouse.close"), "mushroomPickerClose"));
     return wrap;
+  }
+
+  /**
+   * @brief Builds the info panel for one occupied mushroom tray.
+   * @param slot Tray index.
+   * @param at Server-clock time.
+   * @return The panel, or `null` when the tray is empty.
+   * @details Clicking a tray opens this instead of acting blind: species, cycle
+   * length, batch size, base price, spawn price and the live countdown, plus the
+   * harvest button once the batch is ripe.
+   */
+  function buildMushroomInfoPanel(slot: number, at: number): HTMLElement | null {
+    const tray = (state?.mushroomTrays ?? [])[slot] ?? null;
+    if (tray === null) return null;
+    const definition = mushroomById(tray.mushroom);
+    if (definition === undefined) return null;
+    const ready = at >= tray.readyAt;
+    const name = t(`mushrooms.${tray.mushroom}`);
+    const panel = div("garden-mushroom-info");
+    panel.dataset.ready = ready ? "on" : "off";
+    panel.dataset.slot = String(slot);
+    const info = document.createElement("pre");
+    info.className = "garden-menu-info";
+    info.textContent = [
+      `// ${t("mushroomHouse.infoTitle", { slot: slot + 1, name })}`,
+      labelValue(
+        t("mushroomHouse.infoCycles"),
+        `${definition.cycles} · ${formatDuration(definition.cycles * FARM_CYCLE_MS)}`,
+      ),
+      labelValue(t("mushroomHouse.infoYield"), `${definition.batch} ${t("mushroomHouse.infoPerBatch")}`),
+      labelValue(t("mushroomHouse.infoBase"), `${formatNumber(definition.base)}c`),
+      labelValue(t("mushroomHouse.infoSpawn"), `${formatNumber(definition.spawn)}c`),
+      labelValue(t("mushroomHouse.infoMutation"), t("mushroomHouse.infoMutationYes")),
+      ready
+        ? t("mushroomHouse.infoReady")
+        : t("mushroomHouse.infoGrowing", { time: formatDuration(tray.readyAt - at) }),
+    ].join("\n");
+    panel.append(info);
+    const rows = div("garden-tools");
+    if (ready) {
+      const harvest = actionButton(t("mushroomHouse.harvest"), "mushroomHarvest");
+      harvest.dataset.slot = String(slot);
+      rows.append(harvest);
+    }
+    rows.append(actionButton(t("mushroomHouse.close"), "mushroomInfoClose"));
+    panel.append(rows);
+    return panel;
   }
 
   /**
@@ -5725,6 +5780,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           });
         }
       }
+    }
+    // A tray can ripen while its info panel is open: swap in the harvest button.
+    if (mushroomInfo !== null) {
+      const panel = root.querySelector<HTMLElement>(".garden-mushroom-info");
+      const tray = (state?.mushroomTrays ?? [])[mushroomInfo] ?? null;
+      const ready = tray !== null && at >= tray.readyAt;
+      if (panel !== null && panel.dataset.ready !== (ready ? "on" : "off")) render();
     }
   }
 
@@ -6781,16 +6843,23 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const tray = (state.mushroomTrays ?? [])[slot] ?? null;
         if (tray === null) {
           mushroomPicker = mushroomPicker === slot ? null : slot;
+          mushroomInfo = null;
           render();
           return;
         }
-        if (now() < tray.readyAt) {
-          message = { text: translateError("NOT_READY"), kind: "info" };
-          render();
-          return;
-        }
-        const definition = mushroomById(tray.mushroom);
+        // Occupied trays open an info panel instead of acting blind.
         mushroomPicker = null;
+        mushroomInfo = mushroomInfo === slot ? null : slot;
+        render();
+        return;
+      }
+      case "mushroomHarvest": {
+        const slot = Number(target.dataset.slot);
+        if (!Number.isInteger(slot) || state === null) return;
+        const tray = (state.mushroomTrays ?? [])[slot] ?? null;
+        if (tray === null) return;
+        const definition = mushroomById(tray.mushroom);
+        mushroomInfo = null;
         void runAction(
           { kind: "harvestMushroom", slot },
           t("mushroomHouse.harvested", {
@@ -6800,11 +6869,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         );
         return;
       }
+      case "mushroomInfoClose":
+        mushroomInfo = null;
+        render();
+        return;
       case "mushroomPlant": {
         const slot = Number(target.dataset.slot);
         const mushroom = target.dataset.mushroom as MushroomId | undefined;
         if (!Number.isInteger(slot) || mushroom === undefined) return;
         mushroomPicker = null;
+        mushroomInfo = null;
         void runAction(
           { kind: "plantMushroom", slot, mushroom },
           t("mushroomHouse.planted", { name: t(`mushrooms.${mushroom}`) }),
