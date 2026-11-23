@@ -1,12 +1,12 @@
-/**
+﻿/**
  * @file bot-brain.spec.ts
  * @brief Bot heuristics: uprooting losing crops and honouring the carrot focus.
  */
 
 import { describe, expect, it } from "vitest";
-import { EPOCH_MS, EVENT_WAVE_MS, seasonAt, type PlotState, type SeedId } from "@dyno/shared/garden";
+import { EPOCH_MS, EVENT_WAVE_MS, SEEDS, seasonAt, type PlotState, type SeedId } from "@dyno/shared/garden";
 import { createLedger } from "../src/garden-rules";
-import { planBotActions } from "../src/bot-brain";
+import { bestBotSeed, planBotActions } from "../src/bot-brain";
 
 const NOW = EPOCH_MS + 2 * EVENT_WAVE_MS + 1_000;
 
@@ -113,5 +113,53 @@ describe("bot brain", () => {
     };
     const actions = planBotActions(ledger, seasonAt(NOW), NOW, () => 0.5);
     expect(actions.some((action) => action.kind === "uproot")).toBe(false);
+  });
+});
+
+describe("bot brain neighbourhood", () => {
+  it("uproots every losing plant without mercy in one tick", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000;
+    ledger.bag.seeds = { carrot: 5 };
+    for (let slot = 0; slot < 3; slot += 1) {
+      ledger.plots[slot] = { ...weakPlot(slot, "carrot"), effects: ["shriveled"] };
+    }
+    const actions = planBotActions(ledger, seasonAt(NOW), NOW, () => 0.5);
+    const uprooted = actions.filter((action) => action.kind === "uproot").map((action) => action.slot);
+    expect(uprooted).toEqual([0, 1, 2]);
+  });
+
+  it("uproots dead plants too", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000;
+    ledger.plots[0] = { ...weakPlot(0, "carrot"), dead: true, watered: true };
+    const actions = planBotActions(ledger, seasonAt(NOW), NOW, () => 0.5);
+    expect(actions.some((action) => action.kind === "uproot" && action.slot === 0)).toBe(true);
+  });
+
+  it("diversifies away from the crop every other garden is growing", () => {
+    const ledger = makeLedger();
+    ledger.coins = 1_000_000;
+    ledger.shopStock = { carrot: 99, potato: 99 };
+    const base = seasonAt(NOW);
+    const season = {
+      ...base,
+      prices: { ...base.prices, carrot: 100, potato: 400 },
+      buyPrices: { ...(base.buyPrices ?? {}), carrot: 5, potato: 16 },
+      shop: {
+        ...base.shop,
+        offers: [
+          { seed: "carrot" as const, price: 5, stock: 99 },
+          { seed: "potato" as const, price: 16, stock: 99 },
+        ],
+      },
+    };
+
+    // Alone, the bot prefers the higher profit-per-minute potato.
+    const solo = bestBotSeed(ledger, season);
+    expect(solo?.id).toBe("potato");
+    // Once every neighbour plants potato, it switches to the carrot.
+    const crowded = bestBotSeed(ledger, season, undefined, { potato: 900, carrot: 100 });
+    expect(crowded?.id).toBe("carrot");
   });
 });

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file bot-manager.ts
  * @brief Owns the ten market-maker bot gardens and runs their automation.
  * @details A cron trigger pings this singleton every ten minutes. Each bot
@@ -98,6 +98,30 @@ export class BotManager extends DurableObject<Env> {
     } catch {
       return [];
     }
+  }
+
+  /** @brief Last neighbourhood survey: how many of each crop the bots grow. */
+  private readSurvey(): Record<string, number> {
+    const row = this.sql.exec<MetaRow>("SELECT value FROM meta WHERE key = 'survey'").toArray()[0];
+    if (row === undefined) return {};
+    try {
+      const parsed = JSON.parse(row.value) as Record<string, unknown>;
+      const clean: Record<string, number> = {};
+      for (const [id, count] of Object.entries(parsed)) {
+        if (typeof count === "number" && Number.isFinite(count) && count > 0) clean[id] = count;
+      }
+      return clean;
+    } catch {
+      return {};
+    }
+  }
+
+  /** @brief Persists the neighbourhood survey for the next tick. */
+  private writeSurvey(survey: Record<string, number>): void {
+    this.sql.exec(
+      "INSERT INTO meta (key, value) VALUES ('survey', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      JSON.stringify(survey),
+    );
   }
 
   /** @brief Persists the bot records. */
@@ -274,6 +298,10 @@ export class BotManager extends DurableObject<Env> {
     const marketStub = this.env.MARKET.get(this.env.MARKET.idFromName(MARKET_BOARD_NAME));
     const soldTotals: Record<string, number> = {};
     const boughtTotals: Record<string, number> = {};
+    // Bots coordinate through this survey: they see what the neighbourhood is
+    // growing and diversify instead of all flooding the same crop.
+    const survey = this.readSurvey();
+    const nextSurvey: Record<string, number> = {};
     let actions = 0;
     for (const bot of bots) {
       try {
@@ -287,7 +315,7 @@ export class BotManager extends DurableObject<Env> {
         const response = await garden.fetch("https://garden/bot-tick", {
           method: "POST",
           headers,
-          body: JSON.stringify({ focus: bot.focus }),
+          body: JSON.stringify({ focus: bot.focus, survey }),
         });
         if (!response.ok) continue;
         const result = (await response.json()) as {
@@ -298,12 +326,17 @@ export class BotManager extends DurableObject<Env> {
           bag?: number;
           sold?: Record<string, number>;
           bought?: Record<string, number>;
+          planted?: Record<string, number>;
         };
         actions += result.actions ?? 0;
         if (typeof result.coins === "number") bot.coins = result.coins;
         if (typeof result.earned === "number") bot.earned = result.earned;
         if (typeof result.harvested === "number") bot.harvested = result.harvested;
         if (typeof result.bag === "number") bot.bag = result.bag;
+        for (const [id, count] of Object.entries(result.planted ?? {})) {
+          if (count < 1) continue;
+          nextSurvey[id] = (nextSurvey[id] ?? 0) + count;
+        }
 
         // Aggregate first: one market request per item instead of one per bot,
         // which keeps a 50-bot tick well under the subrequest limit.
@@ -320,6 +353,7 @@ export class BotManager extends DurableObject<Env> {
       }
     }
     this.writeBots(bots);
+    this.writeSurvey(nextSurvey);
     for (const [item, qty] of Object.entries(soldTotals)) {
       try {
         await marketStub.fetch("https://market/record", {

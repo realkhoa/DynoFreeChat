@@ -1095,9 +1095,29 @@ export class Garden extends DurableObject<Env> {
     const body = await readJson(request);
     const focusRaw = typeof body.focus === "string" ? body.focus : undefined;
     const focus = focusRaw === undefined ? undefined : (["carrot"] as const).find((id) => id === focusRaw);
+    // What the other gardens are growing, forwarded by the BotManager survey.
+    const survey: Record<string, number> = {};
+    const surveyRaw = body.survey;
+    if (surveyRaw !== null && typeof surveyRaw === "object") {
+      for (const [id, count] of Object.entries(surveyRaw as Record<string, unknown>)) {
+        if (typeof count === "number" && Number.isFinite(count) && count > 0) survey[id] = count;
+      }
+    }
+    const plantedNow = (source: GardenLedger): Record<string, number> => {
+      const counts: Record<string, number> = {};
+      for (const plot of source.plots) {
+        if (plot !== null) counts[plot.seed] = (counts[plot.seed] ?? 0) + 1;
+      }
+      for (const tree of source.trees) {
+        if (tree !== null) counts[tree.tree] = (counts[tree.tree] ?? 0) + 1;
+      }
+      return counts;
+    };
     const rng = createRng(hash32(`bot:${ledger.playerId}:${Math.floor(now / 60_000)}`));
-    const actions = planBotActions(ledger, season, now, rng, BOT_ACTION_LIMIT, focus);
-    if (actions.length === 0) return json({ ok: true, actions: 0, coins: ledger.coins });
+    const actions = planBotActions(ledger, season, now, rng, BOT_ACTION_LIMIT, focus, survey);
+    if (actions.length === 0) {
+      return json({ ok: true, actions: 0, coins: ledger.coins, planted: plantedNow(ledger) });
+    }
 
     let current = ledger;
     const sold: Record<string, number> = {};
@@ -1131,6 +1151,7 @@ export class Garden extends DurableObject<Env> {
       bag: current.bag.crops.length,
       sold,
       bought,
+      planted: plantedNow(current),
     });
   }
 
