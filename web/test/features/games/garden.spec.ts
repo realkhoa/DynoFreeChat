@@ -2711,14 +2711,54 @@ describe("stealth mode", () => {
   });
 });
 
-describe("townhall view", () => {
-  it("shows the merchants as plot cells and hides the wanderer between visits", async () => {
+describe("reborn sub-tabs", () => {
+  it("starts on the garden tab and keeps the town in a second tab", async () => {
     const api = new FakeGardenApi(makeState());
     api.seasonValue = { ...SEASON, wave: 0, shop: { ...SEASON.shop, tools: [] } };
     const { host, game } = await mountGame(api);
     mounted.push(game);
     host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
     await settle();
+
+    // The rebuilt view owns two sub-tabs; the garden is the default one.
+    const tabs = Array.from(host.querySelectorAll<HTMLButtonElement>(".garden-reborn-tab"));
+    expect(tabs.map((tab) => tab.dataset.act)).toEqual(["rebornTab:garden", "rebornTab:townhall"]);
+    expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("vườn");
+    expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
+    expect(host.querySelector(".garden-townhall")).toBeNull();
+    expect(window.location.search).not.toContain("grtab=");
+
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:townhall"]')?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("thị trấn");
+    expect(host.querySelector(".garden-reborn .garden-townhall")).not.toBeNull();
+    expect(host.querySelector(".garden-reborn-row")).toBeNull();
+    expect(window.location.search).toContain("grtab=townhall");
+
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:garden"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-townhall")).toBeNull();
+    expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
+    expect(window.location.search).not.toContain("grtab=");
+  });
+});
+
+describe("townhall tab", () => {
+  /** Opens the reborn view and switches it to the town tab. */
+  async function openTown(host: HTMLElement): Promise<void> {
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:townhall"]')?.click();
+    await settle();
+  }
+
+  it("shows the merchants as plot cells and hides the wanderer between visits", async () => {
+    const api = new FakeGardenApi(makeState());
+    api.seasonValue = { ...SEASON, wave: 0, shop: { ...SEASON.shop, tools: [] } };
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openTown(host);
 
     expect(host.querySelector(".garden-reborn .garden-townhall")).not.toBeNull();
     const npcs = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-act="townNpc"]'));
@@ -2735,8 +2775,7 @@ describe("townhall view", () => {
     api.seasonValue = { ...SEASON, wave: 1, shop: { ...SEASON.shop, tools: [] } };
     const { host, game } = await mountGame(api);
     mounted.push(game);
-    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
-    await settle();
+    await openTown(host);
     expect(host.querySelector('[data-npc="traveller"]')).not.toBeNull();
     expect(host.querySelectorAll('[data-act="townNpc"]')).toHaveLength(3);
   });
@@ -2746,8 +2785,7 @@ describe("townhall view", () => {
     api.seasonValue = { ...SEASON, wave: 0, shop: { ...SEASON.shop, tools: [] } };
     const { host, game } = await mountGame(api);
     mounted.push(game);
-    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
-    await settle();
+    await openTown(host);
 
     host.querySelector<HTMLButtonElement>('[data-npc="seeds"]')?.click();
     await settle();
@@ -2776,8 +2814,7 @@ describe("townhall view", () => {
     };
     const { host, game } = await mountGame(api);
     mounted.push(game);
-    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
-    await settle();
+    await openTown(host);
     host.querySelector<HTMLButtonElement>('[data-npc="tools"]')?.click();
     await settle();
 
@@ -2796,8 +2833,7 @@ describe("townhall view", () => {
     const api = new FakeGardenApi(makeState());
     const { host, game } = await mountGame(api, "ABCDEF");
     mounted.push(game);
-    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
-    await settle();
+    await openTown(host);
     const npcs = host.querySelectorAll<HTMLButtonElement>('[data-act="townNpc"]');
     expect(npcs.length).toBeGreaterThan(0);
     for (const npc of npcs) expect(npc.disabled).toBe(true);

@@ -196,6 +196,15 @@ type Tab =
 /** One visible view of the document. The pre-rebuild UI sits behind `legacy`. */
 type GardenView = "legacy" | "reborn";
 
+/** One tab inside the rebuilt view. */
+type RebornTab = "garden" | "townhall";
+
+/** @brief Tabs of the rebuilt view, in strip order. */
+const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string }[] = [
+  { id: "garden", labelKey: "reborn.tabGarden" },
+  { id: "townhall", labelKey: "reborn.tabTownhall" },
+];
+
 /**
  * @brief Tabs preserved inside the collapsed legacy view.
  * @details Order drives the legacy strip; every id must stay in sync with {@link Tab}.
@@ -293,6 +302,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let mode: Mode = "owner";
   let view: GardenView = "legacy";
   let tab: Tab = "garden";
+  /** Active tab inside the rebuilt view: the garden or the town. */
+  let rebornTab: RebornTab = "garden";
   /** Which townhall NPC has its shop open, if any. */
   let townNpc: string | null = null;
   let visitCode: string | null = null;
@@ -1185,6 +1196,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     writeParams({
       gtab: tab,
       gview: view === "legacy" ? null : view,
+      grtab: view === "reborn" && rebornTab === "townhall" ? "townhall" : null,
       gpage: page > 0 ? String(page) : null,
       garea: selectedSlot === null ? null : selectedArea,
       gslot: selectedSlot === null ? null : String(selectedSlot),
@@ -1196,6 +1208,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const savedView = readParam("gview");
     // An old ?gview=townhall bookmark now lands on reborn, which hosts the town.
     if (savedView === "reborn" || savedView === "townhall") view = "reborn";
+    if (readParam("grtab") === "townhall") rebornTab = "townhall";
     const savedTab = readParam("gtab");
     if (
       savedTab === "garden" ||
@@ -5112,13 +5125,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /**
-   * @brief Builds the rebuilt UI.
-   * @details The VIP board sits first, with the quick actions grouped in columns
-   * beside it; both reuse the legacy data-act handlers underneath.
+   * @brief Builds the rebuilt UI: one sub-tab strip, then the active tab body.
+   * @details Tab 1 is the garden (VIP board, quick actions, normal boards), tab 2
+   * is the townhall. Both reuse the legacy data-act handlers underneath.
    */
   function buildRebornView(): HTMLElement {
     const at = now();
     const wrap = div("garden-reborn");
+    wrap.append(buildRebornTabStrip());
+    if (rebornTab === "townhall") {
+      wrap.append(buildTownhallSection());
+      return wrap;
+    }
     const row = div("garden-reborn-row");
     const vip = div("garden-reborn-vip");
     const owned = specialView()?.owned ?? 0;
@@ -5140,8 +5158,32 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       appendUprootPanel(wrap);
     }
     wrap.append(buildRebornGarden(at));
-    wrap.append(buildTownhallSection());
     return wrap;
+  }
+
+  /** @brief Builds the garden / townhall sub-tab strip of the rebuilt view. */
+  function buildRebornTabStrip(): HTMLElement {
+    const bar = div("garden-tabs garden-tabs-reborn");
+    for (const entry of REBORN_TABS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "garden-reborn-tab";
+      button.dataset.act = `rebornTab:${entry.id}`;
+      const label = t(entry.labelKey);
+      button.textContent = rebornTab === entry.id ? `[ ${label} ]` : ` ${label} `;
+      if (rebornTab === entry.id) button.classList.add("is-active");
+      bar.append(button);
+    }
+    return bar;
+  }
+
+  /** @brief Switches the rebuilt view between the garden and the townhall. */
+  function switchRebornTab(next: RebornTab): void {
+    if (rebornTab === next) return;
+    rebornTab = next;
+    townNpc = null;
+    syncGardenQuery();
+    render();
   }
 
   /**
@@ -5527,6 +5569,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return;
     }
     const action = target.dataset.act ?? "";
+    if (action.startsWith("rebornTab:")) {
+      closeMenu();
+      switchRebornTab(action.slice(10) as RebornTab);
+      return;
+    }
     if (action.startsWith("view:")) {
       closeMenu();
       switchView(action.slice(5) as GardenView);

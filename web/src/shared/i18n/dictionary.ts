@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file dictionary.ts
  * @brief Vietnamese and English strings for the ASCII Garden feature.
  * @details One flat key space keeps lookup trivial and makes a missing key
@@ -183,6 +183,8 @@ export const VI: Dictionary = {
   "garden.plants": "cây",
   "reborn.vipTitle": "Vườn VIP",
   "reborn.gardenTitle": "Vườn thường",
+  "reborn.tabGarden": "vườn",
+  "reborn.tabTownhall": "thị trấn",
   "reborn.vipProgress": "27 ô · đã mở {owned}/{total}",
   "reborn.action.water": "Tưới nước",
   "reborn.action.harvest": "Thu hoạch",
@@ -1311,6 +1313,8 @@ export const EN: Dictionary = {
   "garden.plants": "plants",
   "reborn.vipTitle": "VIP garden",
   "reborn.gardenTitle": "Garden",
+  "reborn.tabGarden": "garden",
+  "reborn.tabTownhall": "town",
   "reborn.vipProgress": "27 plots · {owned}/{total} opened",
   "reborn.action.water": "Water",
   "reborn.action.harvest": "Harvest",
