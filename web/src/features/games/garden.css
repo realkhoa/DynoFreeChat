@@ -2178,3 +2178,16 @@ button.garden-rank-row:hover {
 .garden-uproot-select {
   max-width: 280px;
 }
+
+/* Quick action menu: floating popover anchored at the clicked cell. */
+.garden-quick-menu {
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+}
+
+.garden-quick-menu-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+

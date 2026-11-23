@@ -230,6 +230,15 @@ const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string 
   { id: "shipping", labelKey: "gardenTab.shipping" },
 ];
 
+/** Quick actions that open a menu, shown as a popover at the clicked cell. */
+const QUICK_MENU_ACTS: ReadonlySet<string> = new Set([
+  "bulkUproot",
+  "pickAllSupply",
+  "pickTool",
+  "pickPlantTool",
+  "quickPlan",
+]);
+
 /**
  * @brief Tabs preserved inside the collapsed legacy view.
  * @details Order drives the legacy strip; every id must stay in sync with {@link Tab}.
@@ -339,6 +348,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let staffPanel: number | null = null;
   /** Quick Plan preview waiting for confirmation, if any. */
   let quickPlanPreview: QuickPlanPreview | null = null;
+  /** Quick action cell whose menu is shown as a popover, if any. */
+  let quickMenu: { action: string; x: number; y: number; anchorTop: number } | null = null;
   /** Which townhall NPC has its shop open, if any. */
   let townNpc: string | null = null;
   let visitCode: string | null = null;
@@ -1199,6 +1210,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       townNpc = null;
       staffPanel = null;
       quickPlanPreview = null;
+      quickMenu = null;
     }
     syncGardenQuery();
     render();
@@ -5307,8 +5319,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (mode === "owner") row.append(div("garden-reborn-sep"), buildQuickColumn(at));
       wrap.append(row);
       if (mode === "owner") {
-        appendToolPickers(wrap);
-        appendUprootPanel(wrap);
+        const popover = buildQuickPopover(at);
+        if (popover !== null) wrap.append(popover);
       }
       return wrap;
     }
@@ -5333,12 +5345,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (panel !== null) wrap.append(panel);
       else staffPanel = null;
     }
-    if (mode === "owner" && quickPlanPreview !== null) wrap.append(buildQuickPlanPanel(quickPlanPreview));
-
     appendSpecialPickers(wrap);
     if (mode === "owner") {
-      appendToolPickers(wrap);
-      appendUprootPanel(wrap);
+      const popover = buildQuickPopover(at);
+      if (popover !== null) wrap.append(popover);
     }
     wrap.append(buildRebornGarden(at));
     return wrap;
@@ -5418,6 +5428,31 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       actionButton(t("quick.planCancel"), "quickPlanCancel"),
     );
     wrap.append(row);
+    return wrap;
+  }
+  /**
+   * @brief Popover holding the menu of one quick action.
+   * @param at Server-clock time.
+   * @details Pickers, uproot filters and the Quick Plan preview all render here,
+   * anchored at the clicked quick-action cell instead of under the toolbar.
+   */
+  function buildQuickPopover(at: number): HTMLElement | null {
+    if (quickMenu === null) return null;
+    const body = div("garden-quick-menu-body");
+    appendToolPickers(body);
+    appendUprootPanel(body);
+    if (quickPlanPreview !== null) body.append(buildQuickPlanPanel(quickPlanPreview));
+    if (body.childElementCount === 0) {
+      quickMenu = null;
+      return null;
+    }
+    const wrap = div("garden-menu garden-quick-menu");
+    const width = 380;
+    const left = Math.min(Math.max(8, quickMenu.x), Math.max(8, window.innerWidth - width - 8));
+    const top = Math.min(Math.max(8, quickMenu.y), Math.max(8, window.innerHeight - 220));
+    wrap.style.left = `${left}px`;
+    wrap.style.top = `${top}px`;
+    wrap.append(body, actionButton(t("common.close"), "quickMenuClose"));
     return wrap;
   }
   /**
@@ -5529,6 +5564,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     mushroomInfo = null;
     staffPanel = null;
     quickPlanPreview = null;
+    quickMenu = null;
     syncGardenQuery();
     render();
   }
@@ -6243,6 +6279,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (target === null) {
       if (!inMenu) {
         closeMenu();
+        if (quickMenu !== null) {
+          quickMenu = null;
+          render();
+          return;
+        }
         if (staffMenu !== null) {
           const inStaff = clicked?.closest(".garden-staff-menu") !== null;
           if (!inStaff) closeStaffMenu();
@@ -6259,6 +6300,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return;
     }
     const action = target.dataset.act ?? "";
+    if (QUICK_MENU_ACTS.has(action)) {
+      const rect = target.getBoundingClientRect();
+      quickMenu =
+        quickMenu?.action === action
+          ? null
+          : { action, x: rect.left, y: rect.bottom + 4, anchorTop: rect.top };
+    }
     if (action.startsWith("gardenTab:")) {
       closeMenu();
       switchGardenTab(action.slice(10) as GardenTab);
@@ -6701,6 +6749,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         return;
       case "quickPlanCancel":
         quickPlanPreview = null;
+        render();
+        return;
+      case "quickMenuClose":
+        quickMenu = null;
+        toolPicker = null;
+        bulkPanel = null;
+        quickPlanPreview = null;
+        uprootPending = null;
         render();
         return;
       case "pickPlantTool":

@@ -3268,6 +3268,29 @@ describe("shipping bin tab", () => {
   });
 });
 
+describe("quick action popovers", () => {
+  it("opens the quick uproot menu as a popover at the clicked cell", async () => {
+    const api = new FakeGardenApi(
+      makeState({ plots: [RIPE_PLOT, ...new Array<PlotState | null>(CROPS_PER_TAB - 1).fill(null)] }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    host.querySelector<HTMLButtonElement>('[data-action-id="quickUproot"]')?.click();
+    await settle();
+    const popover = host.querySelector(".garden-menu.garden-quick-menu");
+    expect(popover).not.toBeNull();
+    expect(popover?.querySelector(".garden-uproot-select")).not.toBeNull();
+    expect(popover?.querySelector('[data-act="uprootDead"]')).not.toBeNull();
+
+    host.querySelector<HTMLButtonElement>('[data-act="quickMenuClose"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-quick-menu")).toBeNull();
+  });
+});
+
 describe("quick uproot clears dead plants", () => {
   it("includes dead plants in the preview and the bulk action", async () => {
     const dead: PlotState = {
