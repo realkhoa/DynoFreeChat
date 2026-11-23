@@ -173,11 +173,35 @@ export function buildRebornAction(action: RebornAction): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "garden-cell garden-reborn-action";
+  for (let index = 0; index < 6; index += 1) {
+    const line = document.createElement("span");
+    line.className = "garden-cell-line";
+    button.append(line);
+  }
+  paintRebornAction(button, action);
+  return button;
+}
+
+/**
+ * @brief Repaints one action cell in place.
+ * @param button Cell created by {@link buildRebornAction}.
+ * @param action Fresh action data; also refreshes labels, tone, action and title.
+ * @details Kept separate so per-second tickers can repaint a cell without
+ * rebuilding the DOM (and without losing focus).
+ */
+export function paintRebornAction(button: HTMLButtonElement, action: RebornAction): void {
+  for (const name of Array.from(button.classList)) {
+    if (name.startsWith("tone-") || name === "is-active") button.classList.remove(name);
+  }
   if (action.tone !== undefined) button.classList.add(`tone-${action.tone}`);
   button.dataset.act = action.act;
   button.dataset.actionId = action.id;
-  if (action.kind !== undefined) button.dataset.kind = action.kind;
-  for (const [key, value] of Object.entries(action.data ?? {})) button.dataset[key] = value;
+  if (action.kind === undefined) delete button.dataset.kind;
+  else button.dataset.kind = action.kind;
+  for (const key of Object.keys(action.data ?? {})) {
+    const value = action.data?.[key];
+    if (value !== undefined) button.dataset[key] = value;
+  }
   button.disabled = action.disabled === true;
   if (action.active === true) button.classList.add("is-active");
   button.title = action.title ?? (action.note.length > 0 ? `${action.label} · ${action.note}` : action.label);
@@ -191,13 +215,10 @@ export function buildRebornAction(action: RebornAction): HTMLButtonElement {
     `|${fitText(action.note, CELL_INNER)}|`,
     `+${"-".repeat(CELL_INNER)}+`,
   ];
-  for (const line of lines) {
-    const span = document.createElement("span");
-    span.className = "garden-cell-line";
-    span.textContent = line;
-    button.append(span);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = button.children.item(index);
+    if (line instanceof HTMLElement) line.textContent = lines[index] ?? "";
   }
-  return button;
 }
 
 /**

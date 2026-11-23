@@ -943,7 +943,12 @@ export type ProductId =
   | "butter"
   | "goatCheese"
   | "duckMayo"
-  | "caviar";
+  | "caviar"
+  | "mushStraw"
+  | "mushOyster"
+  | "mushButton"
+  | "mushShiitake"
+  | "mushReishi";
 
 /** One animal definition. */
 export interface AnimalDefinition {
@@ -1037,7 +1042,108 @@ export const PRODUCTS: readonly ProductDefinition[] = [
   { id: "goatCheese", base: 20_000 },
   { id: "duckMayo", base: 2_500 },
   { id: "caviar", base: 5_000_000 },
+  // Mushroom house batches: base price of one mushroom of each species.
+  { id: "mushStraw", base: 1_000 },
+  { id: "mushOyster", base: 2_500 },
+  { id: "mushButton", base: 5_000 },
+  { id: "mushShiitake", base: 12_000 },
+  { id: "mushReishi", base: 40_000 },
 ];
+
+/** Mushroom house: every tray grows one batch per planting. */
+export const MUSHROOM_TRAYS = 27;
+
+/** One mushroom species the house can grow. */
+export type MushroomId = "straw" | "oyster" | "button" | "shiitake" | "reishi";
+
+/** One mushroom species definition. */
+export interface MushroomDefinition {
+  /** Stable id. */
+  readonly id: MushroomId;
+  /** Product stack the batch turns into. */
+  readonly product: ProductId;
+  /** Cycles one batch needs; one cycle is {@link FARM_CYCLE_MS}. */
+  readonly cycles: number;
+  /** Mushrooms harvested per batch. */
+  readonly batch: number;
+  /** Base sale price of one mushroom. */
+  readonly base: number;
+  /** Price of one spawn block, bought before planting. */
+  readonly spawn: number;
+  /** Four growth frames, like a crop. */
+  readonly art: readonly [string, string, string, string];
+}
+
+/** Every mushroom species, cheapest first. */
+export const MUSHROOMS: readonly MushroomDefinition[] = [
+  {
+    id: "straw",
+    product: "mushStraw",
+    cycles: 3,
+    batch: 30,
+    base: 1_000,
+    spawn: 8_000,
+    art: [".", "v", "Y", "m"],
+  },
+  {
+    id: "oyster",
+    product: "mushOyster",
+    cycles: 3,
+    batch: 30,
+    base: 2_500,
+    spawn: 20_000,
+    art: [".", "v", "T", "M"],
+  },
+  {
+    id: "button",
+    product: "mushButton",
+    cycles: 4,
+    batch: 25,
+    base: 5_000,
+    spawn: 45_000,
+    art: [".", "v", "b", "M"],
+  },
+  {
+    id: "shiitake",
+    product: "mushShiitake",
+    cycles: 4,
+    batch: 25,
+    base: 12_000,
+    spawn: 120_000,
+    art: [".", "v", "h", "M"],
+  },
+  {
+    id: "reishi",
+    product: "mushReishi",
+    cycles: 6,
+    batch: 12,
+    base: 40_000,
+    spawn: 500_000,
+    art: [".", "v", "R", "M"],
+  },
+];
+
+/** @brief Mushroom species by id. */
+export function mushroomById(id: string): MushroomDefinition | undefined {
+  return MUSHROOMS.find((entry) => entry.id === id);
+}
+
+/** @brief Milliseconds one batch of this species needs. */
+export function mushroomGrowMs(definition: MushroomDefinition): number {
+  return Math.max(1, definition.cycles) * FARM_CYCLE_MS;
+}
+
+/** One planted mushroom tray, outside the crop grid. */
+export interface MushroomTrayState {
+  /** Zero-based tray index, `0..MUSHROOM_TRAYS-1`. */
+  readonly slot: number;
+  /** Species growing on the tray. */
+  readonly mushroom: MushroomId;
+  /** Server time the spawn block was planted. */
+  readonly plantedAt: number;
+  /** Server time the batch is ready to harvest. */
+  readonly readyAt: number;
+}
 
 /** Warehouse machine ids. */
 export type MachineId =
@@ -2676,6 +2782,10 @@ export interface GardenSnapshot {
   readonly specialUnlocked: readonly number[];
   /** Special plots outside the normal crop grid; never auto-sold. */
   readonly specialPlots: readonly (PlotState | null)[];
+  /** Mushroom house trays, `0..MUSHROOM_TRAYS-1`. */
+  readonly mushroomTrays: readonly (MushroomTrayState | null)[];
+  /** Owned spawn blocks per mushroom species. */
+  readonly mushroomSpawn: Readonly<Partial<Record<MushroomId, number>>>;
   /** Warehouse and built machines. */
   readonly warehouse: WarehouseState;
   /** Fertility percent per crop cell, index = absolute slot. */
@@ -3227,6 +3337,9 @@ export type GardenAction =
   | { readonly kind: "detachMachine"; readonly slot: AttachmentSlot }
   | { readonly kind: "buySeed"; readonly seed: SeedId; readonly qty: number }
   | { readonly kind: "buySupply"; readonly supply: SupplyId; readonly qty: number }
+  | { readonly kind: "buyMushroomSpawn"; readonly mushroom: MushroomId; readonly qty: number }
+  | { readonly kind: "plantMushroom"; readonly slot: number; readonly mushroom: MushroomId }
+  | { readonly kind: "harvestMushroom"; readonly slot: number }
   | { readonly kind: "sellAll" }
   | { readonly kind: "claimQuest"; readonly id: string }
   | { readonly kind: "prestige" }
@@ -3271,6 +3384,9 @@ export type GardenErrorCode =
   | "ALREADY_FERTILIZED"
   | "NO_SEED"
   | "NO_SUPPLY"
+  | "NO_SPAWN"
+  | "TRAY_EMPTY"
+  | "TRAY_OCCUPIED"
   | "SHOP_SOLD_OUT"
   | "NO_CROP"
   | "NOTHING_TO_SELL"
@@ -3687,6 +3803,30 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
       return null;
     }
     return { kind, seed: seed.id, qty };
+  }
+  if (kind === "buyMushroomSpawn") {
+    const mushroom = typeof value.mushroom === "string" ? mushroomById(value.mushroom) : undefined;
+    const qty = value.qty;
+    if (
+      mushroom === undefined ||
+      typeof qty !== "number" ||
+      !Number.isInteger(qty) ||
+      qty < 1 ||
+      qty > MAX_BUY_QTY
+    ) {
+      return null;
+    }
+    return { kind, mushroom: mushroom.id, qty };
+  }
+  if (kind === "plantMushroom") {
+    const slot = readSlot(value.slot, MUSHROOM_TRAYS);
+    const mushroom = typeof value.mushroom === "string" ? mushroomById(value.mushroom) : undefined;
+    if (slot === null || mushroom === undefined) return null;
+    return { kind, slot, mushroom: mushroom.id };
+  }
+  if (kind === "harvestMushroom") {
+    const slot = readSlot(value.slot, MUSHROOM_TRAYS);
+    return slot === null ? null : { kind, slot };
   }
   if (kind === "sellCrop") {
     const item = typeof value.item === "string" ? itemById(value.item) : undefined;

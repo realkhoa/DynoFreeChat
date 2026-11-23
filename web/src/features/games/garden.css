@@ -2058,3 +2058,34 @@ button.garden-rank-row:hover {
 .garden-garden-empty {
   padding: 4px 0;
 }
+
+/* Mushroom house tab: spawn shop on top, then 27 plot-sized trays in a 9x3 grid. */
+.garden-mushroom-house {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.garden-mushroom-spawns,
+.garden-mushroom-picker {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.garden-mushroom-grid {
+  display: grid;
+  grid-template-columns: repeat(9, max-content);
+  grid-auto-rows: max-content;
+  gap: 5px;
+  width: max-content;
+  max-width: 100%;
+}
+
+.garden-mushroom-tray {
+  width: 10ch;
+}

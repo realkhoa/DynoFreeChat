@@ -94,6 +94,10 @@ import {
   EVENTS,
   PRODUCTS,
   TOOLS,
+  MUSHROOM_TRAYS,
+  MUSHROOMS,
+  mushroomById,
+  type MushroomId,
   MACHINES,
   MACHINE_MAX_LEVEL,
   machineCycles,
@@ -151,8 +155,10 @@ import type { GameContext, GameMount } from "../mount";
 import { animalCellRender, cellRender, fitText, growthColor, labelValue, treeCellRender } from "./ascii";
 import { GardenApi, GardenApiError } from "./api";
 import {
+  buildRebornAction,
   buildRebornActionColumns,
   buildRebornBoard,
+  paintRebornAction,
   paintRebornCell,
   type RebornAction,
   type RebornPlot,
@@ -317,6 +323,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let rebornTab: RebornTab = "garden";
   /** Active tab inside the garden: main garden, mushroom house, greenhouse, nursery. */
   let gardenTab: GardenTab = "main";
+  /** Tray slot whose spawn picker is open, if any. */
+  let mushroomPicker: number | null = null;
   /** Which townhall NPC has its shop open, if any. */
   let townNpc: string | null = null;
   let visitCode: string | null = null;
@@ -5158,7 +5166,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     wrap.append(buildGardenTabStrip());
     if (gardenTab !== "main") {
-      wrap.append(buildGardenTabPlaceholder());
+      wrap.append(gardenTab === "mushroom" ? buildMushroomHouse(at) : buildGardenTabPlaceholder());
       return wrap;
     }
     const row = div("garden-reborn-row");
@@ -5232,8 +5240,119 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     gardenTab = next;
     selectedSlot = null;
     menu = null;
+    mushroomPicker = null;
     syncGardenQuery();
     render();
+  }
+
+  /**
+   * @brief Builds the mushroom house: spawn shop, 27 trays and the spawn picker.
+   * @param at Server-clock time.
+   * @details Trays are plot cells. An empty tray opens the spawn picker; a tray
+   * whose batch is ripe harvests straight into the product bag.
+   */
+  function buildMushroomHouse(at: number): HTMLElement {
+    const wrap = div("garden-mushroom-house");
+    wrap.append(lineBlock(`// ${t("mushroomHouse.title")} · ${t("mushroomHouse.summary")}`));
+    if (mode === "visit") {
+      wrap.append(lineBlock(t("mushroomHouse.visitHint")));
+      return wrap;
+    }
+    const coins = state?.coins ?? 0;
+    const spawn = state?.mushroomSpawn ?? {};
+    const shop = div("garden-mushroom-spawns");
+    for (const mushroom of MUSHROOMS) {
+      const owned = spawn[mushroom.id] ?? 0;
+      shop.append(
+        buildRebornAction({
+          id: `spawn:${mushroom.id}`,
+          label: t(`mushrooms.${mushroom.id}`),
+          glyph: mushroom.art[2] ?? "m",
+          note: `${formatCompact(mushroom.spawn)}c·${owned}`,
+          tone: "harvest",
+          act: "buyMushroomSpawn",
+          data: { mushroom: mushroom.id },
+          title: `${t(`mushrooms.${mushroom.id}`)} · ${t("mushroomHouse.buySpawn")} ${formatNumber(mushroom.spawn)}c · ${t("mushroomHouse.spawnOwned")} ${owned}`,
+          disabled: coins < mushroom.spawn,
+        }),
+      );
+    }
+    wrap.append(shop);
+    const grid = div("garden-mushroom-grid");
+    for (let slot = 0; slot < MUSHROOM_TRAYS; slot += 1) {
+      const cell = buildRebornAction(mushroomTrayAction(slot, at));
+      cell.classList.add("garden-mushroom-tray");
+      cell.dataset.slot = String(slot);
+      grid.append(cell);
+    }
+    wrap.append(grid);
+    if (mushroomPicker !== null) wrap.append(buildMushroomPicker(mushroomPicker));
+    return wrap;
+  }
+
+  /** @brief One mushroom tray as a plot-styled cell. */
+  function mushroomTrayAction(slot: number, at: number): RebornAction {
+    const tray = (state?.mushroomTrays ?? [])[slot] ?? null;
+    if (tray === null) {
+      return {
+        id: `tray:${slot}`,
+        label: t("mushroomHouse.emptyTray"),
+        glyph: ".",
+        note: "--",
+        act: "mushroomTray",
+        data: { slot: String(slot) },
+        title: t("mushroomHouse.pickSpawn"),
+      };
+    }
+    const definition = mushroomById(tray.mushroom);
+    const ready = at >= tray.readyAt;
+    const progress = Math.min(
+      1,
+      Math.max(0, (at - tray.plantedAt) / Math.max(1, tray.readyAt - tray.plantedAt)),
+    );
+    const stage = ready ? 3 : Math.min(2, Math.floor(progress * 3));
+    return {
+      id: `tray:${slot}`,
+      label: t(`mushrooms.${tray.mushroom}`),
+      glyph: definition?.art[stage] ?? "m",
+      note: ready ? t("mushroomHouse.ready") : formatDuration(tray.readyAt - at, "short"),
+      tone: ready ? "harvest" : "fertilizer",
+      active: ready,
+      act: "mushroomTray",
+      data: { slot: String(slot) },
+      title: ready
+        ? t("mushroomHouse.trayReadyHint")
+        : `${t(`mushrooms.${tray.mushroom}`)} · ${formatDuration(tray.readyAt - at, "short")}`,
+    };
+  }
+
+  /** @brief Spawn picker shown after clicking an empty tray. */
+  function buildMushroomPicker(slot: number): HTMLElement {
+    const wrap = div("garden-mushroom-picker");
+    wrap.append(lineBlock(t("mushroomHouse.pickSpawn")));
+    const spawn = state?.mushroomSpawn ?? {};
+    const row = div("garden-mushroom-spawns");
+    let any = false;
+    for (const mushroom of MUSHROOMS) {
+      const owned = spawn[mushroom.id] ?? 0;
+      if (owned < 1) continue;
+      any = true;
+      row.append(
+        buildRebornAction({
+          id: `plant:${mushroom.id}`,
+          label: t(`mushrooms.${mushroom.id}`),
+          glyph: mushroom.art[2] ?? "m",
+          note: String(owned),
+          tone: "fertilizer",
+          act: "mushroomPlant",
+          data: { slot: String(slot), mushroom: mushroom.id },
+        }),
+      );
+    }
+    if (any) wrap.append(row);
+    else wrap.append(lineBlock(t("mushroomHouse.noSpawn")));
+    wrap.append(actionButton(t("mushroomHouse.close"), "mushroomPickerClose"));
+    return wrap;
   }
 
   /**
@@ -5568,6 +5687,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const slot = Number(cell.dataset.slot);
       const plot = Number.isInteger(slot) ? reborn[slot] : undefined;
       if (plot !== undefined && cell instanceof HTMLButtonElement) paintRebornCell(cell, plot, at);
+    }
+    for (const cell of root.querySelectorAll<HTMLElement>(".garden-mushroom-tray[data-slot]")) {
+      const slot = Number(cell.dataset.slot);
+      if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) {
+        paintRebornAction(cell, mushroomTrayAction(slot, at));
+      }
     }
     for (const element of root.querySelectorAll<HTMLElement>(".garden-side-time[data-side-until]")) {
       const until = Number(element.dataset.sideUntil);
@@ -6640,6 +6765,56 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }
         return;
       }
+      case "buyMushroomSpawn": {
+        const mushroom = target.dataset.mushroom as MushroomId | undefined;
+        if (mushroom === undefined) return;
+        void runAction(
+          { kind: "buyMushroomSpawn", mushroom, qty: 1 },
+          t("mushroomHouse.boughtSpawn", { qty: 1, name: t(`mushrooms.${mushroom}`) }),
+        );
+        return;
+      }
+      case "mushroomTray": {
+        const slot = Number(target.dataset.slot);
+        if (!Number.isInteger(slot)) return;
+        if (mode !== "owner" || state === null) return;
+        const tray = (state.mushroomTrays ?? [])[slot] ?? null;
+        if (tray === null) {
+          mushroomPicker = mushroomPicker === slot ? null : slot;
+          render();
+          return;
+        }
+        if (now() < tray.readyAt) {
+          message = { text: translateError("NOT_READY"), kind: "info" };
+          render();
+          return;
+        }
+        const definition = mushroomById(tray.mushroom);
+        mushroomPicker = null;
+        void runAction(
+          { kind: "harvestMushroom", slot },
+          t("mushroomHouse.harvested", {
+            count: definition?.batch ?? 0,
+            name: t(`mushrooms.${tray.mushroom}`),
+          }),
+        );
+        return;
+      }
+      case "mushroomPlant": {
+        const slot = Number(target.dataset.slot);
+        const mushroom = target.dataset.mushroom as MushroomId | undefined;
+        if (!Number.isInteger(slot) || mushroom === undefined) return;
+        mushroomPicker = null;
+        void runAction(
+          { kind: "plantMushroom", slot, mushroom },
+          t("mushroomHouse.planted", { name: t(`mushrooms.${mushroom}`) }),
+        );
+        return;
+      }
+      case "mushroomPickerClose":
+        mushroomPicker = null;
+        render();
+        return;
       case "staffSlot": {
         const rect = target?.getBoundingClientRect();
         if (rect === undefined) return;

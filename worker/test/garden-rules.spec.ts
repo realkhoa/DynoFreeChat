@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file garden-rules.spec.ts
  * @brief Economy rules for ASCII Garden, exercised with a controlled clock.
  * @details Harvesting normally takes minutes; the pure rule set lets the tests
@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   ACTIONS_PER_MINUTE,
   BREED_CYCLES,
+  MUSHROOM_TRAYS,
   EPOCH_MS,
   EFFECTS,
   EVENT_WAVE_MS,
@@ -1880,5 +1881,81 @@ describe("garden ledger rules", () => {
     if (!planted.ok) throw new Error("plant failed");
     expect(planted.ledger.rev).toBe(ledger.rev + 1);
     expect(planted.ledger.updatedAt).toBe(NOW);
+  });
+});
+
+describe("mushroom house rules", () => {
+  it("buys spawn blocks and refuses to plant without one", async () => {
+    const ledger = makeLedger();
+    ledger.coins = 100_000;
+
+    const empty = run(ledger, { kind: "plantMushroom", slot: 0, mushroom: "straw" });
+    expect(empty.ok).toBe(false);
+    if (!empty.ok) expect(empty.code).toBe("NO_SPAWN");
+
+    const bought = run(ledger, { kind: "buyMushroomSpawn", mushroom: "straw", qty: 2 });
+    expect(bought.ok).toBe(true);
+    if (!bought.ok) return;
+    expect(bought.ledger.coins).toBe(100_000 - 2 * 8_000);
+    expect(bought.ledger.mushroomSpawn?.straw).toBe(2);
+    expect(bought.ledger.stats.spent).toBe(16_000);
+  });
+
+  it("plants one spawn per tray and starts the batch clock", async () => {
+    const ledger = makeLedger();
+    ledger.coins = 100_000;
+    const bought = run(ledger, { kind: "buyMushroomSpawn", mushroom: "straw", qty: 2 });
+    expect(bought.ok).toBe(true);
+    if (!bought.ok) return;
+
+    const planted = run(bought.ledger, { kind: "plantMushroom", slot: 4, mushroom: "straw" });
+    expect(planted.ok).toBe(true);
+    if (!planted.ok) return;
+    expect(planted.ledger.mushroomSpawn?.straw).toBe(1);
+    expect(planted.ledger.mushroomTrays).toHaveLength(MUSHROOM_TRAYS);
+    const tray = planted.ledger.mushroomTrays?.[4] ?? null;
+    expect(tray?.mushroom).toBe("straw");
+    // Straw mushrooms need three farm cycles per batch.
+    expect((tray?.readyAt ?? 0) - NOW).toBe(3 * FARM_CYCLE_MS);
+
+    const again = run(planted.ledger, { kind: "plantMushroom", slot: 4, mushroom: "straw" });
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.code).toBe("TRAY_OCCUPIED");
+  });
+
+  it("waits three cycles, then harvests 30 mushrooms with mutations allowed", async () => {
+    const ledger = makeLedger();
+    ledger.coins = 100_000;
+    const bought = run(ledger, { kind: "buyMushroomSpawn", mushroom: "straw", qty: 1 });
+    if (!bought.ok) throw new Error("buy failed");
+    const planted = run(bought.ledger, { kind: "plantMushroom", slot: 0, mushroom: "straw" });
+    if (!planted.ok) throw new Error("plant failed");
+
+    const early = run(planted.ledger, { kind: "harvestMushroom", slot: 0 });
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.code).toBe("NOT_READY");
+
+    // A zero roll forces every natural mutation to land.
+    const ripeAt = NOW + 3 * FARM_CYCLE_MS;
+    const harvested = run(planted.ledger, { kind: "harvestMushroom", slot: 0 }, ripeAt, 0, seasonFor(ripeAt));
+    expect(harvested.ok).toBe(true);
+    if (!harvested.ok) return;
+    expect(harvested.ledger.mushroomTrays?.[0] ?? null).toBeNull();
+    const stack = (harvested.ledger.bag.products ?? []).find((entry) => entry.product === "mushStraw");
+    expect(stack?.qty).toBe(30);
+    expect((stack?.effects ?? []).length).toBeGreaterThan(0);
+    expect(stack?.star ?? 1).toBeGreaterThanOrEqual(1);
+    expect(harvested.ledger.stats.harvested).toBe(30);
+
+    const snapshot = ledgerSnapshot(harvested.ledger);
+    expect(snapshot.mushroomTrays).toHaveLength(MUSHROOM_TRAYS);
+    expect(snapshot.mushroomSpawn).toEqual({});
+  });
+
+  it("charges coins up front for spawn blocks", async () => {
+    const ledger = makeLedger();
+    const poor = run(ledger, { kind: "buyMushroomSpawn", mushroom: "reishi", qty: 1 });
+    expect(poor.ok).toBe(false);
+    if (!poor.ok) expect(poor.code).toBe("NOT_ENOUGH_COINS");
   });
 });

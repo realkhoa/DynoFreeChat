@@ -28,6 +28,9 @@ import {
   SPECIAL_RESET_VERSION,
   specialPlotCost,
   SPECIAL_SLOTS,
+  MUSHROOM_TRAYS,
+  mushroomById,
+  mushroomGrowMs,
   WATER_ALL_COST,
   SELL_TAX_RATE,
   SOIL_START,
@@ -180,9 +183,12 @@ import {
   type BuildingId,
   type CropStack,
   type EffectId,
+  type EventDefinition,
   type FertilizerId,
   type SprayId,
   type GardenAction,
+  type MushroomId,
+  type MushroomTrayState,
   type TimelineEvent,
   type CustomRecipe,
   type PrestigeSkillId,
@@ -300,6 +306,10 @@ export interface GardenLedger {
   specialUnlocked: number[];
   /** Premium plots outside the normal crop grid. */
   specialPlots: (PlotState | null)[];
+  /** Mushroom house trays; absent on old saves. */
+  mushroomTrays?: (MushroomTrayState | null)[];
+  /** Owned mushroom spawn blocks per species. */
+  mushroomSpawn?: Partial<Record<MushroomId, number>>;
   /** Last crop planted on each cell, for rotation. */
   lastCrop: (SeedId | null)[];
   /** Greenhouse level. */
@@ -455,6 +465,8 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     specialPatches: 0,
     specialUnlocked: new Array<number>(SPECIAL_PATCHES).fill(0),
     specialPlots: new Array<PlotState | null>(SPECIAL_SLOTS).fill(null),
+    mushroomTrays: new Array<MushroomTrayState | null>(MUSHROOM_TRAYS).fill(null),
+    mushroomSpawn: {},
     lastCrop: new Array<SeedId | null>(totalCrops(STARTING_TABS)).fill(null),
     greenhouse: 0,
     pet: 0,
@@ -623,6 +635,8 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     specialPatches: ledger.specialPatches ?? 0,
     specialUnlocked: [...(ledger.specialUnlocked ?? [])],
     specialPlots: (ledger.specialPlots ?? []).map((plot) => (plot === null ? null : { ...plot })),
+    mushroomTrays: (ledger.mushroomTrays ?? []).map((tray) => (tray === null ? null : { ...tray })),
+    mushroomSpawn: { ...(ledger.mushroomSpawn ?? {}) },
     extras: extrasSnapshot(ledger),
     skills: {
       farming: { ...ledger.skills.farming },
@@ -833,6 +847,12 @@ export function applyGardenAction(
       return buySeed(ledger, action.seed, action.qty, season, now);
     case "buySupply":
       return buySupply(ledger, action.supply, action.qty, season, now);
+    case "buyMushroomSpawn":
+      return buyMushroomSpawn(ledger, action.mushroom, action.qty, now);
+    case "plantMushroom":
+      return plantMushroom(ledger, action.slot, action.mushroom, now);
+    case "harvestMushroom":
+      return harvestMushroom(ledger, action.slot, now, rng);
     case "sellCrop":
       return sellCrop(
         ledger,
@@ -1593,6 +1613,80 @@ function buySupply(
   next.coins -= total;
   next.stats.spent += total;
   next.bag.supplies[supply] = (next.bag.supplies[supply] ?? 0) + qty;
+  return changed(next, now);
+}
+
+/** @brief Buys mushroom spawn blocks at their fixed price. */
+function buyMushroomSpawn(ledger: GardenLedger, mushroom: MushroomId, qty: number, now: number): RuleResult {
+  const definition = mushroomById(mushroom);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+  const total = definition.spawn * qty;
+  if (ledger.coins < total) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  const next = clone(ledger);
+  next.coins -= total;
+  next.stats.spent += total;
+  next.mushroomSpawn = {
+    ...(next.mushroomSpawn ?? {}),
+    [mushroom]: (next.mushroomSpawn?.[mushroom] ?? 0) + qty,
+  };
+  return changed(next, now);
+}
+
+/** @brief Plants one spawn block on an empty mushroom tray. */
+function plantMushroom(ledger: GardenLedger, slot: number, mushroom: MushroomId, now: number): RuleResult {
+  const definition = mushroomById(mushroom);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+  if (slot < 0 || slot >= MUSHROOM_TRAYS) return { ok: false, code: "SLOT_OUT_OF_RANGE" };
+  const trays = ledger.mushroomTrays ?? [];
+  if ((trays[slot] ?? null) !== null) return { ok: false, code: "TRAY_OCCUPIED" };
+  const owned = ledger.mushroomSpawn?.[mushroom] ?? 0;
+  if (owned < 1) return { ok: false, code: "NO_SPAWN" };
+
+  const next = clone(ledger);
+  next.mushroomTrays = Array.from({ length: MUSHROOM_TRAYS }, (_unused, index) => {
+    if (index === slot) {
+      return { slot, mushroom, plantedAt: now, readyAt: now + mushroomGrowMs(definition) };
+    }
+    return next.mushroomTrays?.[index] ?? null;
+  });
+  const spawnCounts = { ...(next.mushroomSpawn ?? {}) };
+  const left = owned - 1;
+  if (left > 0) spawnCounts[mushroom] = left;
+  else delete spawnCounts[mushroom];
+  next.mushroomSpawn = spawnCounts;
+  next.stats.planted += 1;
+  grantXp(next, "farming", 20);
+  return changed(next, now);
+}
+
+/** @brief Harvests one mushroom tray into a mutated product stack. */
+function harvestMushroom(ledger: GardenLedger, slot: number, now: number, rng: () => number): RuleResult {
+  const tray = ledger.mushroomTrays?.[slot] ?? null;
+  if (tray === null) return { ok: false, code: "TRAY_EMPTY" };
+  if (now < tray.readyAt) return { ok: false, code: "NOT_READY" };
+  const definition = mushroomById(tray.mushroom);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+
+  const next = clone(ledger);
+  // One planting's worth of natural mutation rolls, boosted by prestige and pets.
+  const bonus: Partial<Record<EffectId, number>> = { ...mutationChances(ledger) };
+  const petMutation = petEffect(ledger, "mutation");
+  if (petMutation > 0) {
+    for (const effect of EFFECTS) {
+      if (effect.natural) bonus[effect.id] = (bonus[effect.id] ?? 0) + petMutation;
+    }
+  }
+  const calm: EventDefinition = { id: "calm", growScale: 1, sellBonus: 1, effectChances: {} };
+  const effects = rollEffects(calm, rng, bonus);
+  const star = rollCropQuality(ledger, `mushroom:${slot}`, false, false, false, SOIL_START, now);
+  addProduct(next.bag.products, definition.product, star, definition.batch, effects);
+  for (const effect of effects) collect(next, `effect:${effect}`);
+  next.stats.harvested += definition.batch;
+  grantXp(next, "farming", 50 + definition.batch * 2 + effects.length * 25);
+  next.mushroomTrays = Array.from({ length: MUSHROOM_TRAYS }, (_unused, index) =>
+    index === slot ? null : (next.mushroomTrays?.[index] ?? null),
+  );
   return changed(next, now);
 }
 

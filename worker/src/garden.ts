@@ -37,6 +37,7 @@ import {
   SPECIAL_PATCHES,
   SPECIAL_PLOTS_PER_PATCH,
   SPECIAL_SLOTS,
+  MUSHROOM_TRAYS,
   totalCrops,
   weekKeyAt,
   DEFAULT_SKILLS,
@@ -526,6 +527,11 @@ export class Garden extends DurableObject<Env> {
         const plot = raw.specialPlots?.[index] ?? null;
         return plot === null ? null : { ...plot };
       }),
+      mushroomTrays: Array.from({ length: MUSHROOM_TRAYS }, (_unused, index) => {
+        const tray = raw.mushroomTrays?.[index] ?? null;
+        return tray === null ? null : { ...tray, slot: index };
+      }),
+      mushroomSpawn: raw.mushroomSpawn ?? {},
       lastCrop: raw.lastCrop ?? new Array<SeedId | null>(totalCrops(tabs)).fill(null),
       greenhouse: raw.greenhouse ?? 0,
       pet: raw.pet ?? 0,

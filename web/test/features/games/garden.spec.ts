@@ -139,6 +139,8 @@ function makeState(overrides: Partial<GardenSnapshot> = {}): GardenSnapshot {
     specialPatches: 0,
     specialUnlocked: [0, 0, 0],
     specialPlots: [],
+    mushroomTrays: new Array(27).fill(null),
+    mushroomSpawn: {},
     warehouse: { level: 0, machines: {} },
     soil: new Array<number>(CROPS_PER_TAB).fill(100),
     extras: EXTRAS,
@@ -2773,12 +2775,12 @@ describe("reborn sub-tabs", () => {
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
     expect(window.location.search).not.toContain("gstab=");
 
-    // The three future rooms exist now and read as empty placeholders.
+    // The mushroom house is rebuilt; the other two rooms are placeholders so far.
     host.querySelector<HTMLButtonElement>('[data-act="gardenTab:mushroom"]')?.click();
     await settle();
     expect(host.querySelector(".garden-section-tab.is-active")?.textContent).toContain("nhà nấm");
     expect(host.querySelector(".garden-reborn-row")).toBeNull();
-    expect(host.querySelector(".garden-garden-empty")?.textContent).toContain("chưa có gì");
+    expect(host.querySelector(".garden-mushroom-house")).not.toBeNull();
     expect(window.location.search).toContain("gstab=mushroom");
 
     host.querySelector<HTMLButtonElement>('[data-act="gardenTab:nursery"]')?.click();
@@ -2790,6 +2792,7 @@ describe("reborn sub-tabs", () => {
     await settle();
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
     expect(host.querySelector(".garden-garden-empty")).toBeNull();
+    expect(host.querySelector(".garden-mushroom-house")).toBeNull();
     expect(window.location.search).not.toContain("gstab=");
   });
 });
@@ -2888,6 +2891,98 @@ describe("townhall tab", () => {
     expect(npcs.length).toBeGreaterThan(0);
     for (const npc of npcs) expect(npc.disabled).toBe(true);
     expect(host.querySelector(".garden-town-shop")).toBeNull();
+    expect(host.textContent).toContain("chỉ xem");
+  });
+});
+
+describe("mushroom house tab", () => {
+  /** Opens the reborn garden and switches to the mushroom house tab. */
+  async function openMushroomHouse(host: HTMLElement): Promise<void> {
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:mushroom"]')?.click();
+    await settle();
+  }
+
+  it("shows 27 plot-sized trays and the spawn shop", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 500_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openMushroomHouse(host);
+
+    expect(host.querySelector(".garden-mushroom-house")).not.toBeNull();
+    const trays = host.querySelectorAll<HTMLButtonElement>(".garden-mushroom-tray");
+    expect(trays).toHaveLength(27);
+    for (const tray of trays) expect(tray.querySelectorAll(".garden-cell-line")).toHaveLength(6);
+    const spawns = host.querySelectorAll<HTMLButtonElement>('[data-act="buyMushroomSpawn"]');
+    expect(spawns).toHaveLength(5);
+    expect(host.textContent).toContain("Nấm rơm");
+    expect(host.textContent).toContain("Nấm linh");
+  });
+
+  it("buys a spawn block from the shop", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 500_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openMushroomHouse(host);
+
+    host.querySelector<HTMLButtonElement>('[data-act="buyMushroomSpawn"][data-mushroom="straw"]')?.click();
+    await settle();
+    expect(
+      api.calls.some((call) => call.action?.kind === "buyMushroomSpawn" && call.action.mushroom === "straw"),
+    ).toBe(true);
+  });
+
+  it("plants an owned spawn into an empty tray", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 500_000, mushroomSpawn: { straw: 1 } }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openMushroomHouse(host);
+
+    host.querySelector<HTMLButtonElement>('.garden-mushroom-tray[data-slot="0"]')?.click();
+    await settle();
+    const picker = host.querySelector(".garden-mushroom-picker");
+    expect(picker).not.toBeNull();
+    const plant = picker?.querySelector<HTMLButtonElement>(
+      '[data-act="mushroomPlant"][data-mushroom="straw"]',
+    );
+    expect(plant).not.toBeUndefined();
+    plant?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "plantMushroom" && call.action.slot === 0)).toBe(
+      true,
+    );
+  });
+
+  it("harvests a ripe tray", async () => {
+    const planted = {
+      slot: 0,
+      mushroom: "straw" as const,
+      plantedAt: CLOCK - 60_000,
+      readyAt: CLOCK - 1_000,
+    };
+    const api = new FakeGardenApi(
+      makeState({ mushroomTrays: [planted, ...new Array(26).fill(null)] as GardenSnapshot["mushroomTrays"] }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openMushroomHouse(host);
+
+    const tray = host.querySelector<HTMLButtonElement>('.garden-mushroom-tray[data-slot="0"]');
+    expect(tray?.textContent).toContain("Chín");
+    tray?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "harvestMushroom" && call.action.slot === 0)).toBe(
+      true,
+    );
+  });
+
+  it("stays read-only while visiting", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api, "ABCDEF");
+    mounted.push(game);
+    await openMushroomHouse(host);
+    expect(host.querySelector(".garden-mushroom-grid")).toBeNull();
     expect(host.textContent).toContain("chỉ xem");
   });
 });
