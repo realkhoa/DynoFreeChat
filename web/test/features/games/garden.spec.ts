@@ -3180,6 +3180,9 @@ describe("reborn staff cells", () => {
     const panel = host.querySelector(".garden-staff-panel");
     expect(panel?.textContent).toContain("Nhiệm vụ");
     expect(panel?.querySelectorAll('[data-act="staffTask"]')).toHaveLength(5);
+    // The panel spells out how the run interval is computed.
+    expect(panel?.textContent).toContain("phút/lần = max(10");
+    expect(panel?.textContent).toContain("quality");
     const hunt = panel?.querySelector<HTMLButtonElement>('[data-act="staffTask"][data-role="saleHunt"]');
     hunt?.click();
     await settle();

@@ -1422,6 +1422,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           `// ${t("staff.level")} ${worker.level} · ${worker.xp}/${staffXpToLevel(worker.level)} XP · ${staffIntervalText(worker)}`,
         ),
       );
+      wrap.append(lineBlock(`// ${t("staff.formula")}`));
       wrap.append(lineBlock(`// ${traits}`));
       wrap.append(menuRow(t("staff.fire"), "staffMenuFire", { data: { index: String(staffMenu.index) } }));
       wrap.append(menuRow(t("common.close"), "staffMenuClose"));
@@ -5482,7 +5483,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         `${staffIntervalText(worker)} · ${traits}`,
         `${t("staff.currentTask")}: ${t(`staffRole.${worker.role}`)}`,
       ].join("\n");
-      wrap.append(info, lineBlock(t("staff.assignHint")));
+      wrap.append(
+        info,
+        lineBlock(`// ${t("staff.formula")}`),
+        lineBlock(`//   ${t("staff.formulaLine")}`),
+        lineBlock(`//   ${t("staff.formulaQuality")}`),
+        lineBlock(
+          `// ${t("staff.formulaNow", {
+            speed: worker.speed,
+            skill: worker.skill,
+            level: worker.level,
+            quality: worker.speed + worker.skill + Math.floor(worker.level / 2),
+            minutes: Math.round(staffWorkIntervalMs(worker) / 60_000),
+          })}`,
+        ),
+        lineBlock(t("staff.assignHint")),
+      );
       const tasks = div("garden-tools");
       for (const role of STAFF_ROLES) {
         const task = actionButton(t(`staffRole.${role}`), "staffTask");
