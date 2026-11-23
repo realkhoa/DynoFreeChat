@@ -127,6 +127,10 @@ export interface RebornAction {
   readonly act: string;
   /** Optional `data-kind` used by the picker handlers. */
   readonly kind?: string;
+  /** Extra `data-*` payload for the click handler, e.g. `{ npc: "seeds" }`. */
+  readonly data?: Readonly<Record<string, string>>;
+  /** Full tooltip; defaults to `label · note`. */
+  readonly title?: string;
   /** Whether the action is currently unavailable. */
   readonly disabled?: boolean;
   /** Whether the action's picker or tool is already open/active. */
@@ -173,9 +177,10 @@ export function buildRebornAction(action: RebornAction): HTMLButtonElement {
   button.dataset.act = action.act;
   button.dataset.actionId = action.id;
   if (action.kind !== undefined) button.dataset.kind = action.kind;
+  for (const [key, value] of Object.entries(action.data ?? {})) button.dataset[key] = value;
   button.disabled = action.disabled === true;
   if (action.active === true) button.classList.add("is-active");
-  button.title = action.note.length > 0 ? `${action.label} · ${action.note}` : action.label;
+  button.title = action.title ?? (action.note.length > 0 ? `${action.label} · ${action.note}` : action.label);
   button.setAttribute("aria-label", button.title);
   const [first, second] = wrapCellLabel(action.label);
   const lines = [

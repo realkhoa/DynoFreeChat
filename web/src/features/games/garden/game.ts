@@ -157,6 +157,13 @@ import {
   type RebornAction,
   type RebornPlot,
 } from "./reborn";
+import {
+  buildTownNpcs,
+  buildTownShop,
+  type TownNpc,
+  type TownShopItem,
+  type TownShopSection,
+} from "./townhall";
 
 /** Repaint interval while the document is open. */
 const TICK_MS = 1_000;
@@ -187,7 +194,7 @@ type Tab =
   | "levels";
 
 /** One visible view of the document. The pre-rebuild UI sits behind `legacy`. */
-type GardenView = "legacy" | "reborn";
+type GardenView = "legacy" | "reborn" | "townhall";
 
 /**
  * @brief Tabs preserved inside the collapsed legacy view.
@@ -217,6 +224,7 @@ const LEGACY_TABS = [
 const VIEWS: readonly { readonly id: GardenView; readonly labelKey: string }[] = [
   { id: "legacy", labelKey: "tabs.legacy" },
   { id: "reborn", labelKey: "tabs.reborn" },
+  { id: "townhall", labelKey: "tabs.townhall" },
 ];
 
 /** Whether the document is showing the owner's garden or a friend's. */
@@ -286,6 +294,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let mode: Mode = "owner";
   let view: GardenView = "legacy";
   let tab: Tab = "garden";
+  /** Which townhall NPC has its shop open, if any. */
+  let townNpc: string | null = null;
   let visitCode: string | null = null;
   let state: GardenSnapshot | null = null;
   let visiting: VisitSnapshot | null = null;
@@ -1135,6 +1145,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     machineMenu = null;
     specialPicker = null;
     if (next === "legacy") loadTabData(tab);
+    if (next !== "townhall") townNpc = null;
     syncGardenQuery();
     render();
   }
@@ -1184,7 +1195,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Restores tab, view, page and selection saved in the URL. */
   function readGardenQuery(): void {
     const savedView = readParam("gview");
-    if (savedView === "reborn") view = savedView;
+    if (savedView === "reborn" || savedView === "townhall") view = savedView;
     const savedTab = readParam("gtab");
     if (
       savedTab === "garden" ||
@@ -5093,6 +5104,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Builds the active view content. */
   function buildContent(): HTMLElement {
     if (view === "reborn") return buildRebornView();
+    if (view === "townhall") return buildTownhallView();
     if (mode === "owner" && state === null)
       return lineBlock(offline ? t("common.offline") : t("common.loading"));
     if (mode === "visit" && visiting === null)
@@ -5154,6 +5166,169 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     treePanel.append(span("garden-board-title", t("garden.trees")), buildTreeBoard());
     boards.append(cropPanel, treePanel);
     wrap.append(boards);
+    return wrap;
+  }
+
+  // ---------------------------------------------------------------- townhall
+
+  /** @brief Whether the wanderer happens to be in town this wave. */
+  function travellerInTown(): boolean {
+    return season !== null && season.wave % 3 === 1;
+  }
+
+  /**
+   * @brief NPC merchants standing in the townhall right now.
+   * @details Extension point: add one entry here, one shop builder below and the
+   * i18n labels. The townhall layout and click handler stay untouched.
+   */
+  function townNpcs(): TownNpc[] {
+    const npcs: TownNpc[] = [
+      { id: "seeds", name: t("town.seedNpc"), glyph: "s", tone: "harvest", note: t("town.seedNpcNote") },
+      { id: "tools", name: t("town.toolNpc"), glyph: "w", tone: "soil", note: t("town.toolNpcNote") },
+    ];
+    if (travellerInTown()) {
+      npcs.push({
+        id: "traveller",
+        name: t("town.traveller"),
+        glyph: "?",
+        tone: "chemical",
+        note: t("town.travellerNote"),
+      });
+    }
+    return npcs;
+  }
+
+  /** @brief Remaining stock this restock, falling back to the offer's stock. */
+  function shopStockOf(id: string, fallback: number): number {
+    const tracked = state?.shopStock ?? {};
+    return Object.prototype.hasOwnProperty.call(tracked, id) ? (tracked[id] ?? 0) : fallback;
+  }
+
+  /** @brief One seed offer as a townhall shop cell. */
+  function townSeedItem(offer: {
+    readonly seed: SeedId;
+    readonly price: number;
+    readonly stock: number;
+  }): TownShopItem {
+    const definition = seedById(offer.seed);
+    const rare = definition?.rare === true;
+    const price = rare ? offer.price : buyPriceOf(offer.seed, offer.price);
+    const stock = shopStockOf(offer.seed, offer.stock);
+    return {
+      id: `seed:${offer.seed}`,
+      name: t(`seeds.${offer.seed}.short`),
+      glyph: definition?.art[3] ?? "?",
+      note: stock > 0 ? `${formatCompact(price)}c·${stock}` : t("town.soldOut"),
+      tone: "harvest",
+      title: `${seedName(offer.seed)} · ${formatNumber(price)}c · ${t("market.stock")} ${stock}`,
+      act: "townBuy",
+      data: { kind: "seed", item: offer.seed },
+      disabled: stock <= 0 || (state?.coins ?? 0) < price,
+    };
+  }
+
+  /** @brief One fertilizer or spray as a townhall shop cell. */
+  function townSupplyItem(supply: { readonly id: SupplyId; readonly price: number }): TownShopItem {
+    const price = buyPriceOf(supply.id, supply.price);
+    return {
+      id: `supply:${supply.id}`,
+      name: t(`supplies.${supply.id}`),
+      glyph: "+",
+      note: `${formatCompact(price)}c`,
+      tone: "fertilizer",
+      title: `${t(`supplies.${supply.id}`)} · ${formatNumber(price)}c`,
+      act: "townBuy",
+      data: { kind: "supply", item: supply.id },
+      disabled: (state?.coins ?? 0) < price,
+    };
+  }
+
+  /** @brief Seed and fertilizer merchant stock. */
+  function seedShopSections(): TownShopSection[] {
+    return [
+      {
+        id: "seeds",
+        title: t("town.sectionSeeds"),
+        items: (season?.shop.offers ?? []).map(townSeedItem),
+        emptyHint: t("town.soldOut"),
+      },
+      {
+        id: "supplies",
+        title: t("town.sectionSupplies"),
+        items: FERTILIZERS.map(townSupplyItem),
+        emptyHint: t("town.soldOut"),
+      },
+    ];
+  }
+
+  /** @brief Tool merchant stock; tools missing from the rotation read sold out. */
+  function toolShopSections(): TownShopSection[] {
+    const offers = new Map((season?.shop.tools ?? []).map((offer) => [offer.tool, offer]));
+    const items = TOOLS.map((tool): TownShopItem => {
+      const offer = offers.get(tool.id);
+      const stock = offer === undefined ? 0 : shopStockOf(tool.id, offer.stock);
+      const price = offer?.price ?? tool.price;
+      return {
+        id: `tool:${tool.id}`,
+        name: t(`tools.${tool.id}`),
+        glyph: "w",
+        note: offer === undefined ? t("town.soldOut") : `${formatCompact(price)}c·${stock}`,
+        tone: "soil",
+        title: `${t(`tools.${tool.id}`)} · ${formatNumber(price)}c`,
+        act: "townBuy",
+        data: { kind: "tool", item: tool.id },
+        disabled: offer === undefined || stock <= 0 || (state?.coins ?? 0) < price,
+      };
+    });
+    return [{ id: "tools", title: t("town.sectionTools"), items, emptyHint: t("town.soldOut") }];
+  }
+
+  /** @brief The wanderer's rotating pick of seeds and supplies. */
+  function travellerShopSections(): TownShopSection[] {
+    const wave = season?.wave ?? 0;
+    const seeds = (season?.shop.offers ?? []).filter((_, index) => (index + wave) % 3 === 0);
+    const supplies = [...FERTILIZERS, ...SPRAYS].filter((_, index) => (index + wave) % 4 === 1);
+    return [
+      {
+        id: "seeds",
+        title: t("town.sectionSeeds"),
+        items: seeds.map(townSeedItem),
+        emptyHint: t("town.soldOut"),
+      },
+      {
+        id: "supplies",
+        title: t("town.sectionSupplies"),
+        items: supplies.map(townSupplyItem),
+        emptyHint: t("town.soldOut"),
+      },
+    ];
+  }
+
+  /**
+   * @brief Stock for one NPC's shop.
+   * @param id NPC id from {@link townNpcs}; unknown ids fall back to the seed shop.
+   */
+  function townShopSections(id: string): TownShopSection[] {
+    if (id === "tools") return toolShopSections();
+    if (id === "traveller") return travellerShopSections();
+    return seedShopSections();
+  }
+
+  /** @brief Builds the rebuilt townhall: NPC cells plus the open shop. */
+  function buildTownhallView(): HTMLElement {
+    const wrap = div("garden-townhall");
+    if (mode === "owner" && state === null)
+      return lineBlock(offline ? t("common.offline") : t("common.loading"));
+    if (mode === "visit" && visiting === null)
+      return lineBlock(offline ? t("common.offline") : t("common.loading"));
+    const npcs = townNpcs();
+    wrap.append(lineBlock(`// ${t("town.title")}`), buildTownNpcs(npcs, mode === "owner"));
+    const open = townNpc === null ? undefined : npcs.find((npc) => npc.id === townNpc);
+    if (open !== undefined && mode === "owner") {
+      wrap.append(buildTownShop(open, townShopSections(open.id), t("town.close")));
+    } else {
+      wrap.append(lineBlock(mode === "owner" ? t("town.hint") : t("town.visitHint")));
+    }
     return wrap;
   }
 
@@ -6320,6 +6495,36 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (root !== null) root.dataset.stealth = stealth ? "on" : "off";
         target.classList.toggle("is-active", stealth);
         return;
+      case "townNpc": {
+        const npc = target.dataset.npc;
+        if (npc === undefined) return;
+        townNpc = townNpc === npc ? null : npc;
+        render();
+        return;
+      }
+      case "townClose":
+        townNpc = null;
+        render();
+        return;
+      case "townBuy": {
+        const kind = target.dataset.kind;
+        const item = target.dataset.item;
+        if (item === undefined) return;
+        if (kind === "seed") {
+          void runAction(
+            { kind: "buySeed", seed: item as SeedId, qty: 1 },
+            t("market.bought", { qty: 1, seed: seedName(item as SeedId) }),
+          );
+        } else if (kind === "supply") {
+          void runAction(
+            { kind: "buySupply", supply: item as SupplyId, qty: 1 },
+            t("garden.boughtSupply", { supply: t(`supplies.${item}`) }),
+          );
+        } else if (kind === "tool") {
+          void runAction({ kind: "buyTool", tool: item as ToolId, qty: 1 }, t("market.boughtTool"));
+        }
+        return;
+      }
       case "staffSlot": {
         const rect = target?.getBoundingClientRect();
         if (rect === undefined) return;

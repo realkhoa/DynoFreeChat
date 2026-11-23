@@ -1970,3 +1970,50 @@ button.garden-rank-row:hover {
 .garden-reborn-garden .garden-tree-grid {
   width: max-content;
 }
+
+/* Townhall: merchants are plot cells; the open shop drops below as a panel made
+   of the same cells, so the whole town reads as one board of plots. */
+.garden-townhall {
+  flex: 1;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+  overflow: auto;
+}
+
+.garden-town-npcs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.garden-town-shop {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.garden-town-shop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.garden-town-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.garden-town-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+}

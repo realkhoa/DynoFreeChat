@@ -374,7 +374,7 @@ describe("legacy view", () => {
     mounted.push(game);
 
     // The rebuilt UI owns the document strip; the whole old UI is one legacy tab.
-    expect(host.querySelectorAll(".garden-view-tab")).toHaveLength(2);
+    expect(host.querySelectorAll(".garden-view-tab")).toHaveLength(3);
     expect(host.querySelector(".garden-view-tab.is-active")?.textContent).toContain("legacy");
     expect(host.querySelectorAll(".garden-tabs-legacy .garden-tab")).toHaveLength(13);
     expect(host.querySelectorAll(".garden-tab")).toHaveLength(13);
@@ -2706,5 +2706,100 @@ describe("stealth mode", () => {
     expect(css).toContain('.garden-root[data-stealth="on"] > * {');
     expect(css).toContain("filter: saturate(0.3)");
     expect(css).toContain("animation: none !important");
+  });
+});
+
+describe("townhall view", () => {
+  it("shows the merchants as plot cells and hides the wanderer between visits", async () => {
+    const api = new FakeGardenApi(makeState());
+    api.seasonValue = { ...SEASON, wave: 0, shop: { ...SEASON.shop, tools: [] } };
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:townhall"]')?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-townhall")).not.toBeNull();
+    const npcs = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-act="townNpc"]'));
+    expect(npcs.map((npc) => npc.dataset.npc)).toEqual(["seeds", "tools"]);
+    // NPCs are drawn with the exact same six-line plot frame as the soil cells.
+    for (const npc of npcs) expect(npc.querySelectorAll(".garden-cell-line")).toHaveLength(6);
+    expect(host.querySelector('[data-npc="traveller"]')).toBeNull();
+    expect(host.textContent).toContain("Hạt");
+    expect(host.textContent).toContain("Nông cụ");
+  });
+
+  it("adds the wander traveler only on the lucky waves", async () => {
+    const api = new FakeGardenApi(makeState());
+    api.seasonValue = { ...SEASON, wave: 1, shop: { ...SEASON.shop, tools: [] } };
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:townhall"]')?.click();
+    await settle();
+    expect(host.querySelector('[data-npc="traveller"]')).not.toBeNull();
+    expect(host.querySelectorAll('[data-act="townNpc"]')).toHaveLength(3);
+  });
+
+  it("opens the seed shop and buys one seed", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 5_000_000_000 }));
+    api.seasonValue = { ...SEASON, wave: 0, shop: { ...SEASON.shop, tools: [] } };
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:townhall"]')?.click();
+    await settle();
+
+    host.querySelector<HTMLButtonElement>('[data-npc="seeds"]')?.click();
+    await settle();
+    const shop = host.querySelector(".garden-town-shop");
+    expect(shop).not.toBeNull();
+    expect(shop?.querySelectorAll(".garden-town-section")).toHaveLength(2);
+    const seeds = shop?.querySelectorAll('[data-act="townBuy"][data-kind="seed"]') ?? [];
+    expect(seeds.length).toBe(SEASON.shop.offers.length);
+    expect(shop?.textContent).toContain("Phân bón");
+
+    (seeds[0] as HTMLButtonElement | undefined)?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "buySeed" && call.action.qty === 1)).toBe(true);
+
+    host.querySelector<HTMLButtonElement>('[data-act="townClose"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-town-shop")).toBeNull();
+  });
+
+  it("sells farm tools only while they are in stock", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 5_000_000_000 }));
+    api.seasonValue = {
+      ...SEASON,
+      wave: 0,
+      shop: { ...SEASON.shop, tools: [{ tool: "shovel", price: 900_000, stock: 1 }] },
+    };
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:townhall"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-npc="tools"]')?.click();
+    await settle();
+
+    expect(host.querySelectorAll(".garden-town-shop .garden-town-section")).toHaveLength(1);
+    const shovel = host.querySelector<HTMLButtonElement>('[data-item="shovel"]');
+    const autoWater = host.querySelector<HTMLButtonElement>('[data-item="autoWater"]');
+    expect(shovel?.disabled).toBe(false);
+    expect(autoWater?.disabled).toBe(true);
+
+    shovel?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "buyTool")).toBe(true);
+  });
+
+  it("keeps the town read-only while visiting", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api, "ABCDEF");
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:townhall"]')?.click();
+    await settle();
+    const npcs = host.querySelectorAll<HTMLButtonElement>('[data-act="townNpc"]');
+    expect(npcs.length).toBeGreaterThan(0);
+    for (const npc of npcs) expect(npc.disabled).toBe(true);
+    expect(host.querySelector(".garden-town-shop")).toBeNull();
+    expect(host.textContent).toContain("chỉ xem");
   });
 });
