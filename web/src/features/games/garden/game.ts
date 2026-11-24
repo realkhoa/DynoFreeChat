@@ -226,12 +226,13 @@ type Tab =
 type GardenView = "legacy" | "reborn";
 
 /** One tab inside the rebuilt view. */
-type RebornTab = "garden" | "townhall";
+type RebornTab = "garden" | "townhall" | "weather";
 
 /** @brief Tabs of the rebuilt view, in strip order. */
 const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string }[] = [
   { id: "garden", labelKey: "reborn.tabGarden" },
   { id: "townhall", labelKey: "reborn.tabTownhall" },
+  { id: "weather", labelKey: "reborn.tabWeather" },
 ];
 
 /** One tab inside the garden tab of the rebuilt view. */
@@ -1291,7 +1292,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     writeParams({
       gtab: tab,
       gview: view === "legacy" ? null : view,
-      grtab: view === "reborn" && rebornTab === "townhall" ? "townhall" : null,
+      grtab: view === "reborn" && (rebornTab === "townhall" || rebornTab === "weather") ? rebornTab : null,
       gstab: view === "reborn" && rebornTab === "garden" && gardenTab !== "main" ? gardenTab : null,
       gpage: page > 0 ? String(page) : null,
       garea: selectedSlot === null ? null : selectedArea,
@@ -1304,7 +1305,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const savedView = readParam("gview");
     // An old ?gview=townhall bookmark now lands on reborn, which hosts the town.
     if (savedView === "reborn" || savedView === "townhall") view = "reborn";
-    if (readParam("grtab") === "townhall") rebornTab = "townhall";
+    const savedRebornTab = readParam("grtab");
+    if (savedRebornTab === "townhall" || savedRebornTab === "weather") {
+      rebornTab = savedRebornTab;
+    }
     const savedGardenTab = readParam("gstab");
     if (
       savedGardenTab === "mushroom" ||
@@ -5862,6 +5866,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       wrap.append(buildTownhallSection());
       return wrap;
     }
+    if (rebornTab === "weather") {
+      wrap.append(buildWeatherSection(at));
+      return wrap;
+    }
     wrap.append(buildGardenTabStrip());
     if (gardenTab !== "main") {
       // The main garden's quick actions stay available in every garden tab:
@@ -6782,6 +6790,242 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (id === "tools") return toolShopSections();
     if (id === "traveller") return travellerShopSections();
     return seedShopSections();
+  }
+
+  /**
+   * @brief Builds the reborn weather tab section.
+   * @details Renders current day phase, active weather events, weekly modifier,
+   * next wave countdown, and the multi-wave weather forecast.
+   * @param at Server-clock timestamp.
+   * @return Weather container element.
+   */
+  function buildWeatherSection(at: number): HTMLElement {
+    const wrap = div("garden-reborn-weather");
+    if (!season) {
+      wrap.append(lineBlock(t("common.loading")));
+      return wrap;
+    }
+
+    // 1. Header: Section title, current day phase, phase countdown
+    const phaseEndsIn = Math.max(0, season.phase.endsAt - at);
+    const waveEndsIn = Math.max(0, season.event.endsAt - at);
+    wrap.append(
+      lineBlock(
+        `// ${t("reborn.weatherTitle")} · ${t("event.phase")}: ${t(`phase.${season.phase.id}`)} (${formatDuration(phaseEndsIn)}) · Đợt ${season.wave}`,
+      ),
+    );
+
+    // 2. Active Conditions Grid (Phase, Active Weather Events, Weekly Modifier, Boss Raid)
+    wrap.append(lineBlock(`// ${t("reborn.weatherNow")}`));
+    const activeGrid = div("garden-town-npcs");
+
+    // Phase Card
+    const phaseGlyph =
+      season.phase.id === "day"
+        ? "☼"
+        : season.phase.id === "dusk"
+          ? "☀"
+          : season.phase.id === "night"
+            ? "☾"
+            : "☽";
+    activeGrid.append(
+      buildRebornAction({
+        id: "weather:phase",
+        label: t(`phase.${season.phase.id}`),
+        glyph: phaseGlyph,
+        note: formatDuration(phaseEndsIn),
+        tone: season.phase.id === "night" ? "water" : "harvest",
+        act: "noop",
+        title: `${t("reborn.weatherPhase")}: ${t(`phase.${season.phase.id}`)}`,
+      }),
+    );
+
+    // Active Weather Event Cards
+    const EVENT_GLYPHS: Record<string, string> = {
+      calm: "☼",
+      rain: "~",
+      goldenHour: "*",
+      frost: "#",
+      marketBoom: "$",
+      snowfall: "*",
+      coldSnap: "!",
+      heatwave: "^",
+      smoke: "%",
+      drought: "x",
+      wildfire: "^",
+      meteorShower: "*",
+      auroraNight: "@",
+      moonlight: "o",
+      toxicRain: "~",
+      plasmaStorm: "&",
+      goldenFog: "~",
+      crystalFrost: "#",
+      rainbowSky: "@",
+      blightWind: "~",
+    };
+
+    const EVENT_TONES: Record<string, "default" | "harvest" | "money" | "water" | "tool"> = {
+      calm: "default",
+      rain: "water",
+      goldenHour: "harvest",
+      frost: "tool",
+      marketBoom: "money",
+      snowfall: "tool",
+      coldSnap: "tool",
+      heatwave: "money",
+      smoke: "default",
+      drought: "tool",
+      wildfire: "money",
+      meteorShower: "harvest",
+      auroraNight: "harvest",
+      moonlight: "water",
+      toxicRain: "tool",
+      plasmaStorm: "money",
+      goldenFog: "harvest",
+      crystalFrost: "tool",
+      rainbowSky: "harvest",
+      blightWind: "default",
+    };
+
+    if (season.events.length === 0) {
+      activeGrid.append(
+        buildRebornAction({
+          id: "weather:calm",
+          label: t("events.calm"),
+          glyph: "☼",
+          note: t("events.calm.desc"),
+          tone: "default",
+          act: "noop",
+          title: `${t("events.calm")}: ${t("events.calm.desc")}`,
+        }),
+      );
+    } else {
+      for (const ev of season.events) {
+        const glyph = EVENT_GLYPHS[ev.id] ?? "*";
+        const tone = EVENT_TONES[ev.id] ?? "default";
+        const timeLeft = Math.max(0, ev.endsAt - at);
+        activeGrid.append(
+          buildRebornAction({
+            id: `weather:${ev.id}`,
+            label: t(`events.${ev.id}`),
+            glyph,
+            note: formatDuration(timeLeft),
+            tone,
+            act: "noop",
+            title: `${t(`events.${ev.id}`)}: ${t(`events.${ev.id}.desc`)} (${formatDuration(timeLeft)})`,
+          }),
+        );
+      }
+    }
+
+    // Weekly Modifier Card
+    const modifier = weeklyModifier(at);
+    const weekTimeLeft = Math.max(0, weekEndsAt(at) - at);
+    activeGrid.append(
+      buildRebornAction({
+        id: "weather:weekly",
+        label: t(`weekly.${modifier.id}`),
+        glyph: "W",
+        note: formatDuration(weekTimeLeft),
+        tone: "money",
+        act: "noop",
+        title: `${t("reborn.weatherWeekly")}: ${t(`weekly.${modifier.id}`)}`,
+      }),
+    );
+
+    // Boss Raid Card (if active)
+    if (raidSnapshot !== null) {
+      const raidTimeLeft = Math.max(0, raidSnapshot.endsAt - at);
+      activeGrid.append(
+        buildRebornAction({
+          id: "weather:raid",
+          label: t("reborn.weatherRaid"),
+          glyph: "!",
+          note: `${formatCompact(raidSnapshot.hp)}/${formatCompact(raidSnapshot.maxHp)} HP`,
+          tone: "harvest",
+          act: "raidHit",
+          title: `${t("reborn.weatherRaid")} · ${formatDuration(raidTimeLeft)} · Bấm để tấn công (100k xu)`,
+        }),
+      );
+    }
+
+    wrap.append(activeGrid);
+
+    // 3. Next Wave & Countdown
+    wrap.append(div("garden-town-sep"));
+    wrap.append(lineBlock(`// ${t("reborn.weatherNext")} (sau ${formatDuration(waveEndsIn)})`));
+    const nextGrid = div("garden-town-npcs");
+    if (season.nextEvents.length === 0) {
+      nextGrid.append(
+        buildRebornAction({
+          id: "weather:next-calm",
+          label: t("events.calm"),
+          glyph: "☼",
+          note: t("events.calm.desc"),
+          tone: "default",
+          act: "noop",
+          title: t("events.calm"),
+        }),
+      );
+    } else {
+      for (const ev of season.nextEvents) {
+        const glyph = EVENT_GLYPHS[ev.id] ?? "*";
+        const tone = EVENT_TONES[ev.id] ?? "default";
+        nextGrid.append(
+          buildRebornAction({
+            id: `weather:next-${ev.id}`,
+            label: t(`events.${ev.id}`),
+            glyph,
+            note: t(`events.${ev.id}.desc`),
+            tone,
+            act: "noop",
+            title: t(`events.${ev.id}`),
+          }),
+        );
+      }
+    }
+    wrap.append(nextGrid);
+
+    // 4. Multi-wave Weather Forecast Radar
+    wrap.append(div("garden-town-sep"));
+    wrap.append(lineBlock(`// ${t("reborn.weatherForecast")}`));
+    const forecastGrid = div("garden-town-npcs");
+    season.forecast.forEach((wave, idx) => {
+      const waveOffsetMin = (idx + 1) * 10;
+      const waveLabel = `+${waveOffsetMin}m`;
+      if (wave.length === 0) {
+        forecastGrid.append(
+          buildRebornAction({
+            id: `weather:fc-${idx}`,
+            label: t("events.calm"),
+            glyph: "☼",
+            note: waveLabel,
+            tone: "default",
+            act: "noop",
+            title: `Đợt ${idx + 1} (${waveLabel}): ${t("events.calm")}`,
+          }),
+        );
+      } else {
+        const names = wave.map((e) => t(`events.${e.id}`)).join(" + ");
+        const firstEv = wave[0]!;
+        const glyph = EVENT_GLYPHS[firstEv.id] ?? "*";
+        const tone = EVENT_TONES[firstEv.id] ?? "default";
+        forecastGrid.append(
+          buildRebornAction({
+            id: `weather:fc-${idx}`,
+            label: names,
+            glyph,
+            note: waveLabel,
+            tone,
+            act: "noop",
+            title: `Đợt ${idx + 1} (${waveLabel}): ${names}`,
+          }),
+        );
+      }
+    });
+    wrap.append(forecastGrid);
+
+    return wrap;
   }
 
   /**

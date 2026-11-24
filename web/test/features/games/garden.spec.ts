@@ -2813,12 +2813,17 @@ describe("reborn sub-tabs", () => {
     host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
     await settle();
 
-    // The rebuilt view owns two sub-tabs; the garden is the default one.
+    // The rebuilt view owns three sub-tabs; the garden is the default one.
     const tabs = Array.from(host.querySelectorAll<HTMLButtonElement>(".garden-reborn-tab"));
-    expect(tabs.map((tab) => tab.dataset.act)).toEqual(["rebornTab:garden", "rebornTab:townhall"]);
+    expect(tabs.map((tab) => tab.dataset.act)).toEqual([
+      "rebornTab:garden",
+      "rebornTab:townhall",
+      "rebornTab:weather",
+    ]);
     expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("vườn");
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
     expect(host.querySelector(".garden-townhall")).toBeNull();
+    expect(host.querySelector(".garden-reborn-weather")).toBeNull();
     expect(window.location.search).not.toContain("grtab=");
 
     host.querySelector<HTMLButtonElement>('[data-act="rebornTab:townhall"]')?.click();
@@ -2829,9 +2834,18 @@ describe("reborn sub-tabs", () => {
     expect(host.querySelector(".garden-reborn-row")).toBeNull();
     expect(window.location.search).toContain("grtab=townhall");
 
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:weather"]')?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("thời tiết");
+    expect(host.querySelector(".garden-reborn .garden-reborn-weather")).not.toBeNull();
+    expect(host.querySelector(".garden-reborn-row")).toBeNull();
+    expect(window.location.search).toContain("grtab=weather");
+
     host.querySelector<HTMLButtonElement>('[data-act="rebornTab:garden"]')?.click();
     await settle();
     expect(host.querySelector(".garden-townhall")).toBeNull();
+    expect(host.querySelector(".garden-reborn-weather")).toBeNull();
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
     expect(window.location.search).not.toContain("grtab=");
   });
@@ -3543,6 +3557,37 @@ describe("quick uproot clears dead plants", () => {
     expect(mineGrid).not.toBeNull();
     const cells = host.querySelectorAll(".garden-mine-grid .garden-reborn-action");
     expect(cells.length).toBe(25);
+  });
+
+  it("renders the reborn weather tab with current conditions and multi-wave forecast", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // Click on the top-level weather tab
+    const weatherTabBtn = host.querySelector<HTMLButtonElement>('[data-act="rebornTab:weather"]');
+    expect(weatherTabBtn).not.toBeNull();
+    weatherTabBtn?.click();
+    await settle();
+
+    // Verify weather container and action cards
+    const weatherSection = host.querySelector(".garden-reborn-weather");
+    expect(weatherSection).not.toBeNull();
+
+    // Verify day phase card and weekly modifier card exist
+    const phaseCard = host.querySelector('[data-action-id="weather:phase"]');
+    expect(phaseCard).not.toBeNull();
+
+    const weeklyCard = host.querySelector('[data-action-id="weather:weekly"]');
+    expect(weeklyCard).not.toBeNull();
+
+    // Verify forecast cards exist
+    const forecastCards = host.querySelectorAll('[data-action-id^="weather:fc-"]');
+    expect(forecastCards.length).toBeGreaterThan(0);
+    expect(window.location.search).toContain("grtab=weather");
   });
 });
 
