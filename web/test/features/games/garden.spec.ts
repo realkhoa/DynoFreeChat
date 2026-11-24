@@ -3020,7 +3020,19 @@ describe("townhall tab", () => {
     expect(host.querySelector(".garden-chart")).not.toBeNull();
     expect(host.querySelector(".garden-chart-cycle")?.textContent).toContain("Chu kỳ");
 
+    // The third board lists every bot garden, including the AI ones.
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="bots"]')?.click();
+    await settle();
+    await settle();
+    expect(host.querySelector(".garden-bots")).not.toBeNull();
+    expect(host.querySelector(".garden-bots")?.textContent).toContain("Bot AI 01");
+    expect(host.querySelector(".garden-ai-thoughts")?.textContent).toContain("Thu hoạch 3 cây chín");
+
     // Clicking the open board again closes it.
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="chart"]')?.click();
+    await settle();
+    await settle();
+    expect(host.querySelector(".garden-chart")).not.toBeNull();
     host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="chart"]')?.click();
     await settle();
     expect(host.querySelector(".garden-chart")).toBeNull();

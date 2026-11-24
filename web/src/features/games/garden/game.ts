@@ -356,7 +356,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** Which townhall NPC has its shop open, if any. */
   let townNpc: string | null = null;
   /** Which public board is open in the town square, if any. */
-  let townBoard: "rank" | "chart" | null = null;
+  let townBoard: "rank" | "chart" | "bots" | null = null;
   let visitCode: string | null = null;
   let state: GardenSnapshot | null = null;
   let visiting: VisitSnapshot | null = null;
@@ -6272,6 +6272,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         title: t("chart.title"),
         active: townBoard === "chart",
       }),
+      buildRebornAction({
+        id: "town:bots",
+        label: t("town.boardBots"),
+        glyph: "b",
+        note: t("town.boardBotsNote"),
+        tone: "harvest",
+        act: "townBoard",
+        data: { board: "bots" },
+        title: t("bots.title", { count: botGardens.length }),
+        active: townBoard === "bots",
+      }),
     );
     wrap.append(boards);
     const open = townNpc === null ? undefined : npcs.find((npc) => npc.id === townNpc);
@@ -6283,6 +6294,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     } else if (townBoard === "chart") {
       void loadChart();
       wrap.append(buildChart());
+    } else if (townBoard === "bots") {
+      void loadBots();
+      wrap.append(buildBots(), buildAiThoughts());
     } else {
       wrap.append(lineBlock(mode === "owner" ? t("town.hint") : t("town.visitHint")));
     }
@@ -7550,11 +7564,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       case "townBoard": {
         const board = target.dataset.board;
-        if (board !== "rank" && board !== "chart") return;
+        if (board !== "rank" && board !== "chart" && board !== "bots") return;
         townBoard = townBoard === board ? null : board;
         townNpc = null;
         if (townBoard === "rank") void loadLeaderboard();
         if (townBoard === "chart") void loadChart();
+        if (townBoard === "bots") void loadBots();
         render();
         return;
       }
