@@ -1136,7 +1136,21 @@ describe("garden wire parsing", () => {
       slot: 3,
     });
     expect(parseGardenAction({ kind: "sellAnimal", building: "nope", slot: 0 })).toBeNull();
-    expect(parseGardenAction({ kind: "breedAnimal", building: "coop", slot: 12 })).toBeNull();
+    expect(parseGardenAction({ kind: "breedAnimal", building: "coop", slot: 12 })).toEqual({
+      kind: "breedAnimal",
+      building: "coop",
+      slot: 12,
+    });
+    expect(parseGardenAction({ kind: "buyAnimal", building: "coop", slot: 12, animal: "chicken" })).toEqual({
+      kind: "buyAnimal",
+      building: "coop",
+      slot: 12,
+      animal: "chicken",
+    });
+    expect(parseGardenAction({ kind: "breedAnimal", building: "coop", slot: 81 })).toBeNull();
+    expect(
+      parseGardenAction({ kind: "buyAnimal", building: "coop", slot: 81, animal: "chicken" }),
+    ).toBeNull();
     expect(parseGardenAction({ kind: "fertilizeAll", supply: "speedGrow" })).toEqual({
       kind: "fertilizeAll",
       supply: "speedGrow",

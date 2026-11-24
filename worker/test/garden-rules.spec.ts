@@ -962,6 +962,39 @@ describe("garden ledger rules", () => {
     expect(sold.ledger.bag.products).toHaveLength(0);
   });
 
+  it("allows purchasing and managing animals beyond 12 slots in an upgraded coop", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "coop" });
+    if (!built.ok) throw new Error("build failed");
+    const lvl2 = run(built.ledger, { kind: "upgradeBuilding", building: "coop" });
+    if (!lvl2.ok) throw new Error("upgrade 2 failed");
+    const lvl3 = run(lvl2.ledger, { kind: "upgradeBuilding", building: "coop" });
+    if (!lvl3.ok) throw new Error("upgrade 3 failed");
+    expect(lvl3.ledger.animals.coop).toHaveLength(16);
+
+    const bought12 = run(lvl3.ledger, { kind: "buyAnimal", building: "coop", slot: 12, animal: "chicken" });
+    expect(bought12.ok).toBe(true);
+    if (!bought12.ok) return;
+    expect(bought12.ledger.animals.coop[12]?.kind).toBe("chicken");
+
+    const bought15 = run(bought12.ledger, { kind: "buyAnimal", building: "coop", slot: 15, animal: "duck" });
+    expect(bought15.ok).toBe(true);
+    if (!bought15.ok) return;
+    expect(bought15.ledger.animals.coop[15]?.kind).toBe("duck");
+
+    const outOfRange = run(bought15.ledger, {
+      kind: "buyAnimal",
+      building: "coop",
+      slot: 16,
+      animal: "chicken",
+    });
+    expect(outOfRange.ok).toBe(false);
+    if (!outOfRange.ok) {
+      expect(outOfRange.code).toBe("SLOT_OUT_OF_RANGE");
+    }
+  });
+
   it("doubles every building upgrade and reaches the eighty-one slot cap", () => {
     const ledger = makeLedger();
     ledger.coins = 1_000_000_000;

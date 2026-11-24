@@ -5003,7 +5003,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const animal = typeof value.animal === "string" ? animalById(value.animal) : undefined;
     const slot = value.slot;
     if (building === undefined || animal === undefined || animal.building !== building.id) return null;
-    const limit = building.id === "coop" ? 12 : 81;
+    const limit = building.slots[building.slots.length - 1] ?? 81;
     if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= limit) return null;
     return { kind, building: building.id, slot, animal: animal.id };
   }
@@ -5011,7 +5011,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const building = typeof value.building === "string" ? buildingById(value.building) : undefined;
     const slot = value.slot;
     if (building === undefined) return null;
-    const limit = building.id === "coop" ? 12 : 81;
+    const limit = building.slots[building.slots.length - 1] ?? 81;
     if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= limit) return null;
     return { kind, building: building.id, slot };
   }
