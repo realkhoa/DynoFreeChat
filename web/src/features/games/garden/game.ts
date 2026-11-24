@@ -170,6 +170,7 @@ import {
   formatCompact,
   formatDuration,
   formatNumber,
+  getLocale,
   onLocaleChange,
   t,
   tList,
@@ -179,7 +180,15 @@ import { loadIdentity, type Identity } from "@/shared/lib/identity";
 import type { GardenBot } from "@/features/games/garden/api";
 import { readParam, writeParams } from "@/shared/lib/urlstate";
 import type { GameContext, GameMount } from "../mount";
-import { animalCellRender, cellRender, fitText, growthColor, labelValue, treeCellRender } from "./ascii";
+import {
+  animalCellRender,
+  CELL_INNER,
+  cellRender,
+  fitText,
+  growthColor,
+  labelValue,
+  treeCellRender,
+} from "./ascii";
 import { GardenApi, GardenApiError } from "./api";
 import {
   buildRebornAction,
@@ -4059,65 +4068,244 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     smelter: "^",
   };
 
+  /** Compact Vietnamese product names for 8-char plot cells. */
+  const SHORT_PRODUCT_NAMES: Readonly<Record<string, string>> = {
+    dried: "Đồ sấy",
+    cheese: "Phô mai",
+    goatCheese: "P.M Dê",
+    copperBar: "Thỏi Đ",
+    ironBar: "Thỏi S",
+    goldBar: "Thỏi V",
+    iridiumBar: "Thỏi Ir",
+    caviar: "Caviar",
+    mayo: "Mayo",
+    duckMayo: "Mayo V",
+    pickles: "Dưa muối",
+    oil: "Dầu",
+    juice: "Nước ép",
+    jam: "Mứt",
+    butter: "Bơ",
+    wine: "Rượu",
+    fabric: "Vải",
+  };
+
+  /** Compact English product names for 8-char plot cells. */
+  const SHORT_PRODUCT_NAMES_EN: Readonly<Record<string, string>> = {
+    dried: "Dried",
+    cheese: "Cheese",
+    goatCheese: "GoatChz",
+    copperBar: "Cu Bar",
+    ironBar: "Fe Bar",
+    goldBar: "Au Bar",
+    iridiumBar: "Ir Bar",
+    caviar: "Caviar",
+    mayo: "Mayo",
+    duckMayo: "DuckMayo",
+    pickles: "Pickles",
+    oil: "Oil",
+    juice: "Juice",
+    jam: "Jam",
+    butter: "Butter",
+    wine: "Wine",
+    fabric: "Fabric",
+  };
+
+  /**
+   * @brief Resolves a short product name for fitting inside 8-char plot cells.
+   * @param machine Machine definition from {@link MACHINES}.
+   * @param inputItem Input item or product identifier.
+   * @return Compact product display name (at most 7 chars).
+   */
+  function machineOutputShortName(machine: MachineDefinition, inputItem: string): string {
+    const isEn = getLocale() === "en";
+    const dict = isEn ? SHORT_PRODUCT_NAMES_EN : SHORT_PRODUCT_NAMES;
+    const recipe = machine.recipes?.find((r) => r.input === inputItem);
+    if (recipe !== undefined) {
+      return dict[recipe.output] ?? recipe.output;
+    }
+    if (machine.output.kind === "product") {
+      return dict[machine.output.product] ?? machine.output.product;
+    }
+    if (machine.output.kind === "seeds") {
+      return isEn ? "Seeds" : "Hạt";
+    }
+    return isEn ? "Out" : "Sản phẩm";
+  }
+
+  /**
+   * @brief Resolves the product or output name produced by a machine for a given input item.
+   * @param machine Machine definition from {@link MACHINES}.
+   * @param inputItem Input item or product identifier.
+   * @return Localized product display name.
+   */
+  function machineOutputName(machine: MachineDefinition, inputItem: string): string {
+    const recipe = machine.recipes?.find((r) => r.input === inputItem);
+    if (recipe !== undefined) {
+      return t(`products.${recipe.output}`);
+    }
+    if (machine.output.kind === "product") {
+      return t(`products.${machine.output.product}`);
+    }
+    if (machine.output.kind === "seeds") {
+      return t("warehouse.seedsOutput");
+    }
+    return t("warehouse.output");
+  }
+
   /**
    * @brief Builds the plot action data for one warehouse machine cell.
    * @param machine Machine definition from {@link MACHINES}.
    * @param at Server-clock timestamp.
-   * @return Plot cell action configuration.
+   * @return Plot cell action configuration with ASCII plot lines and active production state.
    */
   function machinePlotAction(machine: MachineDefinition, at: number): RebornAction {
     const built = state?.warehouse.machines[machine.id];
     const name = t(`machines.${machine.id}.plot`);
     const fullTitle = t(`machines.${machine.id}`);
+
     if (built === undefined) {
       const cost = MACHINE_PRICE;
       const canAfford = (state?.coins ?? 0) >= cost;
+      const costStr = `${formatCompact(cost)}c`;
+      const lines = [
+        `+${"-".repeat(CELL_INNER)}+`,
+        `|${fitText(name, CELL_INNER, "center")}|`,
+        `|${fitText(t("warehouse.unbuilt"), CELL_INNER, "center")}|`,
+        `|${fitText(t("warehouse.clickToBuild"), CELL_INNER, "center")}|`,
+        `|${fitText(costStr, CELL_INNER, "center")}|`,
+        `+${"-".repeat(CELL_INNER)}+`,
+      ];
       return {
         id: `machine:${machine.id}`,
         label: name,
         glyph: "+",
-        note: `${formatCompact(cost)}c`,
+        note: costStr,
         tone: "money",
         act: "buildMachine",
         data: { machine: machine.id },
-        title: `${fullTitle} · ${t("warehouse.buildMachine", { cost: formatCompact(cost) })}`,
+        title: `${fullTitle} · ${t("warehouse.buildMachine", { cost: costStr })}`,
         disabled: !canAfford,
+        lines,
       };
     }
+
     const remaining = machineRemaining(built, machine.id, at);
     const queueCount = built.queue?.length ?? 0;
     const isReady = built.job !== undefined && built.job.readyAt <= at;
     const isBrewing = built.job !== undefined && built.job.readyAt > at;
     const glyph = MACHINE_GLYPHS[machine.id] ?? "M";
+    const levelTag = `Lv.${built.level}`;
+    const levelDashes = Math.max(0, CELL_INNER - levelTag.length);
+    const levelLeft = Math.floor(levelDashes / 2);
+    const levelRight = levelDashes - levelLeft;
+    const topBorder = `+${"-".repeat(levelLeft)}${levelTag}${"-".repeat(levelRight)}+`;
 
-    let note = `Lv.${built.level}`;
-    let tone = "harvest";
-    let active = false;
-    if (isReady) {
-      note = t("warehouse.jobReady");
-      tone = "harvest";
-      active = true;
-    } else if (isBrewing && built.job !== undefined) {
-      note = formatDuration(built.job.readyAt - at, "short");
-      tone = "water";
-    } else if (remaining > 0) {
-      note = formatDuration(remaining, "short");
-      tone = "tool";
-    } else if (queueCount > 0) {
-      note = `Lv.${built.level} +${queueCount}Q`;
-      tone = "fertilizer";
+    const queueTag = queueCount > 0 ? `+${queueCount}Q` : "";
+    let bottomBorder = `+${"-".repeat(CELL_INNER)}+`;
+    if (queueTag.length > 0) {
+      const qDashes = Math.max(0, CELL_INNER - queueTag.length);
+      const qLeft = Math.floor(qDashes / 2);
+      const qRight = qDashes - qLeft;
+      bottomBorder = `+${"-".repeat(qLeft)}${queueTag}${"-".repeat(qRight)}+`;
     }
 
+    if (isReady && built.job !== undefined) {
+      const inName = materialName(built.job.item);
+      const outShort = machineOutputShortName(machine, built.job.item);
+      const outFull = machineOutputName(machine, built.job.item);
+      const lines = [
+        topBorder,
+        `|${fitText(name, CELL_INNER, "center")}|`,
+        `|${fitText(inName, CELL_INNER, "center")}|`,
+        `|${fitText(`➔ ${outShort}`, CELL_INNER, "center")}|`,
+        `|${fitText("✨ Xong!", CELL_INNER, "center")}|`,
+        bottomBorder,
+      ];
+      return {
+        id: `machine:${machine.id}`,
+        label: name,
+        glyph: "✨",
+        note: t("warehouse.jobReady"),
+        tone: "harvest",
+        active: true,
+        act: "machineMenuOpen",
+        data: { machine: machine.id },
+        title: `${fullTitle} · ${levelTag}/${MACHINE_MAX_LEVEL} · ${t("warehouse.jobReady")}: ${inName} ➔ ${outFull}${queueCount > 0 ? ` · +${queueCount}Q` : ""}`,
+        lines,
+      };
+    }
+
+    if (isBrewing && built.job !== undefined) {
+      const inName = materialName(built.job.item);
+      const outShort = machineOutputShortName(machine, built.job.item);
+      const outFull = machineOutputName(machine, built.job.item);
+      const timeStr = formatDuration(built.job.readyAt - at, "short");
+      const lines = [
+        topBorder,
+        `|${fitText(name, CELL_INNER, "center")}|`,
+        `|${fitText(inName, CELL_INNER, "center")}|`,
+        `|${fitText(`➔ ${outShort}`, CELL_INNER, "center")}|`,
+        `|${fitText(`⏱ ${timeStr}`, CELL_INNER, "center")}|`,
+        bottomBorder,
+      ];
+      return {
+        id: `machine:${machine.id}`,
+        label: name,
+        glyph,
+        note: timeStr,
+        tone: "water",
+        active: true,
+        act: "machineMenuOpen",
+        data: { machine: machine.id },
+        title: `${fullTitle} · ${levelTag}/${MACHINE_MAX_LEVEL} · ${t("warehouse.crafting")}: ${inName} ➔ ${outFull} · ⏱ ${timeStr}${queueCount > 0 ? ` · +${queueCount}Q` : ""}`,
+        lines,
+      };
+    }
+
+    if (remaining > 0) {
+      const timeStr = formatDuration(remaining, "short");
+      const lines = [
+        topBorder,
+        `|${fitText(name, CELL_INNER, "center")}|`,
+        `|${fitText(t("warehouse.cooling"), CELL_INNER, "center")}|`,
+        `|${fitText(t("warehouse.machineResting"), CELL_INNER, "center")}|`,
+        `|${fitText(`❄ ${timeStr}`, CELL_INNER, "center")}|`,
+        bottomBorder,
+      ];
+      return {
+        id: `machine:${machine.id}`,
+        label: name,
+        glyph,
+        note: timeStr,
+        tone: "tool",
+        act: "machineMenuOpen",
+        data: { machine: machine.id },
+        title: `${fullTitle} · ${levelTag}/${MACHINE_MAX_LEVEL} · ${t("warehouse.cooling")}: ${timeStr}${queueCount > 0 ? ` · +${queueCount}Q` : ""}`,
+        lines,
+      };
+    }
+
+    // Idle
+    const limitInfo =
+      built.limit !== undefined ? `${Math.min(built.made ?? 0, built.limit)}/${built.limit}` : null;
+    const lines = [
+      topBorder,
+      `|${fitText(name, CELL_INNER, "center")}|`,
+      `|${fitText(t("warehouse.idle"), CELL_INNER, "center")}|`,
+      `|${fitText(queueCount > 0 ? `+${queueCount}Q` : t("warehouse.readyHint"), CELL_INNER, "center")}|`,
+      `|${fitText(limitInfo ?? t("warehouse.ready"), CELL_INNER, "center")}|`,
+      bottomBorder,
+    ];
     return {
       id: `machine:${machine.id}`,
       label: name,
       glyph,
-      note,
-      tone,
-      active,
+      note: levelTag,
+      tone: queueCount > 0 ? "fertilizer" : "default",
       act: "machineMenuOpen",
       data: { machine: machine.id },
-      title: `${fullTitle} · ${t("warehouse.level")} ${built.level}/${MACHINE_MAX_LEVEL}${queueCount > 0 ? ` · +${queueCount}Q` : ""}`,
+      title: `${fullTitle} · ${levelTag}/${MACHINE_MAX_LEVEL} · ${t("warehouse.ready")}${queueCount > 0 ? ` · +${queueCount}Q` : ""}${limitInfo ? ` · ${limitInfo}` : ""}`,
+      lines,
     };
   }
 
@@ -7382,7 +7570,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (gardenTab === "barn" || gardenTab === "coop" || gardenTab === "pond") {
       return buildAnimalTab(gardenTab);
     }
-    if (gardenTab === "warehouse") return buildWarehouse();
+    if (gardenTab === "warehouse") return buildWarehouseReborn(at);
     if (gardenTab === "kitchen") return buildKitchenTab(at);
     if (gardenTab === "mine") return buildMineReborn(at);
     if (gardenTab === "shipping") return buildShippingBin();
@@ -8885,6 +9073,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const slot = Number(cell.dataset.slot);
       if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) {
         paintRebornAction(cell, mushroomTrayAction(slot, at));
+      }
+    }
+    for (const cell of root.querySelectorAll<HTMLElement>(".garden-warehouse-cell[data-machine]")) {
+      const machineId = cell.dataset.machine as MachineId | undefined;
+      const machine = machineId ? machineById(machineId) : undefined;
+      if (machine !== undefined && cell instanceof HTMLButtonElement) {
+        paintRebornAction(cell, machinePlotAction(machine, at));
       }
     }
     for (const element of root.querySelectorAll<HTMLElement>(".garden-side-time[data-side-until]")) {

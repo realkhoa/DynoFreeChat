@@ -1559,6 +1559,57 @@
   max-width: 100%;
 }
 
+.garden-warehouse-cell {
+  position: relative;
+  transition:
+    transform 0.1s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.garden-warehouse-cell:hover {
+  transform: translateY(-1px);
+}
+
+.garden-warehouse-cell.tone-water {
+  color: #70cfff;
+}
+
+.garden-warehouse-cell.tone-water .garden-cell-line:nth-child(4) {
+  color: #4fc1ff;
+  font-weight: 600;
+}
+
+.garden-warehouse-cell.tone-harvest {
+  color: #ffd700;
+}
+
+.garden-warehouse-cell.tone-harvest.is-active {
+  animation: warehouse-pulse 1.6s ease-in-out infinite;
+}
+
+.garden-warehouse-cell.tone-tool {
+  color: #9cdcfe;
+}
+
+.garden-warehouse-cell.tone-fertilizer {
+  color: #ce9178;
+}
+
+.garden-warehouse-cell.tone-money {
+  color: #c586c0;
+}
+
+@keyframes warehouse-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px rgba(255, 215, 0, 0.4));
+  }
+  50% {
+    filter: drop-shadow(0 0 7px rgba(255, 215, 0, 0.8));
+  }
+}
+
 @media (max-width: 760px) {
   .garden-warehouse-plots {
     grid-template-columns: repeat(3, max-content);

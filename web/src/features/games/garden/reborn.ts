@@ -135,6 +135,8 @@ export interface RebornAction {
   readonly disabled?: boolean;
   /** Whether the action's picker or tool is already open/active. */
   readonly active?: boolean;
+  /** Optional custom six lines to override default ASCII formatting. */
+  readonly lines?: readonly string[];
 }
 
 /**
@@ -207,7 +209,7 @@ export function paintRebornAction(button: HTMLButtonElement, action: RebornActio
   button.title = action.title ?? (action.note.length > 0 ? `${action.label} · ${action.note}` : action.label);
   button.setAttribute("aria-label", button.title);
   const [first, second] = wrapCellLabel(action.label);
-  const lines = [
+  const lines = action.lines ?? [
     `+${"-".repeat(CELL_INNER)}+`,
     `|${fitText(action.glyph, CELL_INNER, "center")}|`,
     `|${first}|`,

@@ -1986,6 +1986,83 @@ describe("warehouse tab", () => {
     const call = api.calls.find((entry) => entry.action?.kind === "craftMachine");
     expect(call?.action).toMatchObject({ kind: "craftMachine", machine: "mayoMaker" });
   });
+
+  it("renders warehouse machines as plot cells displaying active production status", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        warehouse: {
+          level: 1,
+          machines: {
+            dryer: {
+              level: 1,
+              lastCraftAt: CLOCK,
+              job: { item: "carrot", startedAt: CLOCK, readyAt: CLOCK + 300_000 },
+              queue: [{ item: "apple", startedAt: 0, readyAt: 0 }],
+            },
+            cheesePress: {
+              level: 2,
+              lastCraftAt: CLOCK - 600_000,
+              job: { item: "milk", startedAt: CLOCK - 600_000, readyAt: CLOCK - 1 },
+            },
+            mayoMaker: {
+              level: 1,
+              lastCraftAt: 0,
+            },
+          },
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // Switch to warehouse tab in reborn UI
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:warehouse"]')?.click();
+    await settle();
+
+    // Verify reborn warehouse container and plot grid
+    const warehouse = host.querySelector(".garden-warehouse-reborn");
+    expect(warehouse).not.toBeNull();
+    const grid = warehouse?.querySelector(".garden-warehouse-plots");
+    expect(grid).not.toBeNull();
+
+    // 1. Dryer is actively producing carrot -> dried goods
+    const dryerCell = grid?.querySelector<HTMLButtonElement>('.garden-warehouse-cell[data-machine="dryer"]');
+    expect(dryerCell).not.toBeNull();
+    expect(dryerCell?.classList.contains("tone-water")).toBe(true);
+    expect(dryerCell?.textContent).toContain("Máy sấy");
+    expect(dryerCell?.textContent).toContain("Cà rốt");
+    expect(dryerCell?.textContent).toContain("Đồ sấy");
+    expect(dryerCell?.textContent).toContain("⏱ 5m");
+    expect(dryerCell?.textContent).toContain("+1Q");
+
+    // 2. Cheese press is ready to collect
+    const cheeseCell = grid?.querySelector<HTMLButtonElement>(
+      '.garden-warehouse-cell[data-machine="cheesePress"]',
+    );
+    expect(cheeseCell).not.toBeNull();
+    expect(cheeseCell?.classList.contains("tone-harvest")).toBe(true);
+    expect(cheeseCell?.textContent).toContain("Phô mai");
+    expect(cheeseCell?.textContent).toContain("Sữa bò");
+    expect(cheeseCell?.textContent).toContain("Xong");
+
+    // 3. Mayo maker is idle
+    const mayoCell = grid?.querySelector<HTMLButtonElement>(
+      '.garden-warehouse-cell[data-machine="mayoMaker"]',
+    );
+    expect(mayoCell).not.toBeNull();
+    expect(mayoCell?.textContent).toContain("Mayo");
+    expect(mayoCell?.textContent).toContain("Rảnh rỗi");
+
+    // 4. Unbuilt machine (e.g. keg) shows build action
+    const kegCell = grid?.querySelector<HTMLButtonElement>('.garden-warehouse-cell[data-machine="keg"]');
+    expect(kegCell).not.toBeNull();
+    expect(kegCell?.dataset.act).toBe("buildMachine");
+    expect(kegCell?.textContent).toContain("Chưa xây");
+  });
 });
 
 describe("bots tab", () => {
@@ -3673,10 +3750,10 @@ describe("quick uproot clears dead plants", () => {
     warehouseTabBtn?.click();
     await settle();
 
-    // Verify warehouse container and machines are rendered
-    expect(host.querySelector(".garden-warehouse")).not.toBeNull();
-    const rows = host.querySelectorAll(".garden-warehouse-row");
-    expect(rows.length).toBeGreaterThanOrEqual(2);
+    // Verify warehouse container and machine plot cells are rendered
+    expect(host.querySelector(".garden-warehouse-reborn")).not.toBeNull();
+    const plots = host.querySelectorAll(".garden-warehouse-cell");
+    expect(plots.length).toBeGreaterThanOrEqual(2);
   });
 
   it("renders the kitchen tab with build gate when kitchen is not built", async () => {
