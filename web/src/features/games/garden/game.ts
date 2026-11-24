@@ -226,13 +226,14 @@ type Tab =
 type GardenView = "legacy" | "reborn";
 
 /** One tab inside the rebuilt view. */
-type RebornTab = "garden" | "townhall" | "weather";
+type RebornTab = "garden" | "townhall" | "weather" | "dynopedia";
 
 /** @brief Tabs of the rebuilt view, in strip order. */
 const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string }[] = [
   { id: "garden", labelKey: "reborn.tabGarden" },
   { id: "townhall", labelKey: "reborn.tabTownhall" },
   { id: "weather", labelKey: "reborn.tabWeather" },
+  { id: "dynopedia", labelKey: "reborn.tabDynopedia" },
 ];
 
 /** One tab inside the garden tab of the rebuilt view. */
@@ -790,6 +791,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         mode = "owner";
         visiting = null;
         await loadOwner();
+        if (view === "reborn" && rebornTab === "dynopedia") {
+          void loadGlobalRecipes();
+          void loadGlobalHybrids();
+        }
       }
       if (disposed) return;
       offline = false;
@@ -1306,7 +1311,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     writeParams({
       gtab: tab,
       gview: view === "legacy" ? null : view,
-      grtab: view === "reborn" && (rebornTab === "townhall" || rebornTab === "weather") ? rebornTab : null,
+      grtab:
+        view === "reborn" &&
+        (rebornTab === "townhall" || rebornTab === "weather" || rebornTab === "dynopedia")
+          ? rebornTab
+          : null,
       gstab: view === "reborn" && rebornTab === "garden" && gardenTab !== "main" ? gardenTab : null,
       gpage: page > 0 ? String(page) : null,
       garea: selectedSlot === null ? null : selectedArea,
@@ -1320,7 +1329,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     // An old ?gview=townhall bookmark now lands on reborn, which hosts the town.
     if (savedView === "reborn" || savedView === "townhall") view = "reborn";
     const savedRebornTab = readParam("grtab");
-    if (visitCode === null && (savedRebornTab === "townhall" || savedRebornTab === "weather")) {
+    if (
+      visitCode === null &&
+      (savedRebornTab === "townhall" || savedRebornTab === "weather" || savedRebornTab === "dynopedia")
+    ) {
       rebornTab = savedRebornTab;
     }
     const savedGardenTab = readParam("gstab");
@@ -5885,6 +5897,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       wrap.append(buildWeatherSection(at));
       return wrap;
     }
+    if (rebornTab === "dynopedia") {
+      wrap.append(buildDynopedia());
+      return wrap;
+    }
     wrap.append(buildGardenTabStrip());
     if (gardenTab !== "main") {
       // The main garden's quick actions stay available in every garden tab:
@@ -6166,12 +6182,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return bar;
   }
 
-  /** @brief Switches the rebuilt view between the garden and the townhall. */
+  /** @brief Switches the rebuilt view between garden, townhall, weather, and dynopedia. */
   function switchRebornTab(next: RebornTab): void {
     if (rebornTab === next) return;
     rebornTab = next;
     townNpc = null;
     townBoard = null;
+    if (next === "dynopedia") {
+      void loadGlobalRecipes();
+      void loadGlobalHybrids();
+    }
 
     syncGardenQuery();
     render();

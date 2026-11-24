@@ -2813,17 +2813,19 @@ describe("reborn sub-tabs", () => {
     host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
     await settle();
 
-    // The rebuilt view owns three sub-tabs; the garden is the default one.
+    // The rebuilt view owns four sub-tabs; the garden is the default one.
     const tabs = Array.from(host.querySelectorAll<HTMLButtonElement>(".garden-reborn-tab"));
     expect(tabs.map((tab) => tab.dataset.act)).toEqual([
       "rebornTab:garden",
       "rebornTab:townhall",
       "rebornTab:weather",
+      "rebornTab:dynopedia",
     ]);
     expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("vườn");
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
     expect(host.querySelector(".garden-townhall")).toBeNull();
     expect(host.querySelector(".garden-reborn-weather")).toBeNull();
+    expect(host.querySelector(".garden-dynopedia")).toBeNull();
     expect(window.location.search).not.toContain("grtab=");
 
     host.querySelector<HTMLButtonElement>('[data-act="rebornTab:townhall"]')?.click();
@@ -2842,10 +2844,19 @@ describe("reborn sub-tabs", () => {
     expect(host.querySelector(".garden-reborn-row")).toBeNull();
     expect(window.location.search).toContain("grtab=weather");
 
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:dynopedia"]')?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("dynopedia");
+    expect(host.querySelector(".garden-reborn .garden-dynopedia")).not.toBeNull();
+    expect(host.querySelector(".garden-reborn-row")).toBeNull();
+    expect(window.location.search).toContain("grtab=dynopedia");
+
     host.querySelector<HTMLButtonElement>('[data-act="rebornTab:garden"]')?.click();
     await settle();
     expect(host.querySelector(".garden-townhall")).toBeNull();
     expect(host.querySelector(".garden-reborn-weather")).toBeNull();
+    expect(host.querySelector(".garden-dynopedia")).toBeNull();
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
     expect(window.location.search).not.toContain("grtab=");
   });
@@ -3588,6 +3599,33 @@ describe("quick uproot clears dead plants", () => {
     const forecastCards = host.querySelectorAll('[data-action-id^="weather:fc-"]');
     expect(forecastCards.length).toBeGreaterThan(0);
     expect(window.location.search).toContain("grtab=weather");
+  });
+
+  it("renders the reborn dynopedia tab with search and category buttons", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // Click on the top-level dynopedia tab
+    const dynopediaTabBtn = host.querySelector<HTMLButtonElement>('[data-act="rebornTab:dynopedia"]');
+    expect(dynopediaTabBtn).not.toBeNull();
+    dynopediaTabBtn?.click();
+    await settle();
+
+    // Verify dynopedia container and search input
+    const dynopediaSection = host.querySelector(".garden-reborn .garden-dynopedia");
+    expect(dynopediaSection).not.toBeNull();
+
+    const searchInput = host.querySelector<HTMLInputElement>(".garden-dynopedia-search");
+    expect(searchInput).not.toBeNull();
+
+    // Verify category buttons exist
+    const categoryButtons = host.querySelectorAll<HTMLButtonElement>('[data-act="dynopediaCategory"]');
+    expect(categoryButtons.length).toBeGreaterThan(0);
+    expect(window.location.search).toContain("grtab=dynopedia");
   });
 
   it("switches to reborn garden view when visiting a player from reborn townhall rank board and allows returning home", async () => {
