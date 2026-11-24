@@ -2010,6 +2010,55 @@ describe("garden ledger rules", () => {
     expect(run(ledger, { kind: "sellAll" })).toMatchObject({ ok: false, code: "RATE_LIMITED" });
   });
 
+  it("permits automated actions even when actionCount is at or above capacity", () => {
+    const ledger = makeLedger();
+    ledger.actionWindow = NOW;
+    ledger.actionCount = ACTIONS_PER_MINUTE;
+    ledger.plots[0] = {
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW - 60_000,
+      readyAt: NOW - 1_000,
+      effects: [],
+      watered: true,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+      pest: false,
+      protectedUntil: 0,
+    };
+    const result = run(ledger, { kind: "harvest", slot: 0, tree: false, auto: true });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.ledger.actionCount).toBe(ACTIONS_PER_MINUTE);
+    }
+  });
+
+  it("resets an undefined, null, or stale action window without triggering rate limit", () => {
+    const ledger = makeLedger();
+    (ledger as unknown as Record<string, unknown>).actionWindow = undefined;
+    (ledger as unknown as Record<string, unknown>).actionCount = undefined;
+    const planted = run(ledger, { kind: "plant", slot: 0, seed: "carrot" });
+    expect(planted.ok).toBe(true);
+    if (planted.ok) {
+      expect(planted.ledger.actionWindow).toBe(NOW);
+      expect(planted.ledger.actionCount).toBe(1);
+    }
+  });
+
+  it("resets a future action window caused by clock drift", () => {
+    const ledger = makeLedger();
+    ledger.actionWindow = NOW + 100_000;
+    ledger.actionCount = 50;
+    const planted = run(ledger, { kind: "plant", slot: 0, seed: "carrot" });
+    expect(planted.ok).toBe(true);
+    if (planted.ok) {
+      expect(planted.ledger.actionWindow).toBe(NOW);
+      expect(planted.ledger.actionCount).toBe(1);
+    }
+  });
+
   it("bumps the revision on every successful mutation", () => {
     const ledger = makeLedger();
     const planted = run(ledger, { kind: "plant", slot: 0, seed: "carrot" });

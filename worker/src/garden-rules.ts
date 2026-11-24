@@ -690,11 +690,23 @@ export function applyGardenAction(
   now: number,
   rng: () => number = createRng(hash32(`${ledger.playerId}:${now}:${ledger.rev}`)),
 ): RuleResult {
-  if (now - ledger.actionWindow > 60_000) {
-    ledger = { ...ledger, actionWindow: now, actionCount: 0 };
+  const isAuto = "auto" in action && action.auto === true;
+  if (!isAuto) {
+    const windowValid =
+      typeof ledger.actionWindow === "number" &&
+      Number.isFinite(ledger.actionWindow) &&
+      ledger.actionWindow > 0;
+    const countValid =
+      typeof ledger.actionCount === "number" &&
+      Number.isFinite(ledger.actionCount) &&
+      ledger.actionCount >= 0;
+
+    if (!windowValid || !countValid || now - ledger.actionWindow > 60_000 || ledger.actionWindow > now) {
+      ledger = { ...ledger, actionWindow: now, actionCount: 0 };
+    }
+    if (ledger.actionCount >= ACTIONS_PER_MINUTE) return { ok: false, code: "RATE_LIMITED" };
+    ledger = { ...ledger, actionCount: ledger.actionCount + 1 };
   }
-  if (ledger.actionCount >= ACTIONS_PER_MINUTE) return { ok: false, code: "RATE_LIMITED" };
-  ledger = { ...ledger, actionCount: ledger.actionCount + 1 };
 
   switch (action.kind) {
     case "plant":
@@ -3518,7 +3530,7 @@ function staffPlant(ledger: GardenLedger, now: number, rng: () => number): Garde
     if (seed === undefined) break;
     const result = applyGardenAction(
       current,
-      { kind: "plant", slot, seed: seed.id },
+      { kind: "plant", slot, seed: seed.id, auto: true },
       seasonAt(now),
       now,
       rng,
@@ -3537,7 +3549,13 @@ function staffWater(ledger: GardenLedger, now: number, rng: () => number): Garde
   for (let slot = 0; slot < ledger.plots.length; slot += 1) {
     const plot = current.plots[slot] ?? null;
     if (plot === null || plot.watered || plot.dead === true) continue;
-    const result = applyGardenAction(current, { kind: "water", slot, tree: false }, seasonAt(now), now, rng);
+    const result = applyGardenAction(
+      current,
+      { kind: "water", slot, tree: false, auto: true },
+      seasonAt(now),
+      now,
+      rng,
+    );
     if (result.ok) {
       current = result.ledger;
       worked = true;
@@ -3546,7 +3564,13 @@ function staffWater(ledger: GardenLedger, now: number, rng: () => number): Garde
   for (let slot = 0; slot < ledger.trees.length; slot += 1) {
     const tree = current.trees[slot] ?? null;
     if (tree === null || tree.watered || tree.dead === true) continue;
-    const result = applyGardenAction(current, { kind: "water", slot, tree: true }, seasonAt(now), now, rng);
+    const result = applyGardenAction(
+      current,
+      { kind: "water", slot, tree: true, auto: true },
+      seasonAt(now),
+      now,
+      rng,
+    );
     if (result.ok) {
       current = result.ledger;
       worked = true;

@@ -626,6 +626,14 @@ export class Garden extends DurableObject<Env> {
         tax: stats.tax ?? 0,
       },
       publishedPrestige: typeof raw.publishedPrestige === "number" ? raw.publishedPrestige : 0,
+      actionWindow:
+        typeof raw.actionWindow === "number" && Number.isFinite(raw.actionWindow) && raw.actionWindow > 0
+          ? raw.actionWindow
+          : 0,
+      actionCount:
+        typeof raw.actionCount === "number" && Number.isFinite(raw.actionCount) && raw.actionCount >= 0
+          ? raw.actionCount
+          : 0,
     };
     const ledger: GardenLedger = {
       ...meta,
@@ -1157,7 +1165,7 @@ export class Garden extends DurableObject<Env> {
     const sold: Record<string, number> = {};
     const bought: Record<string, number> = {};
     for (const action of actions) {
-      const result = applyGardenAction(current, action, season, now);
+      const result = applyGardenAction(current, { ...action, auto: true }, season, now);
       if (!result.ok) continue;
       const diffSold = soldDiff(current.bag.crops, result.ledger.bag.crops);
       for (const [item, qty] of Object.entries(diffSold)) sold[item] = (sold[item] ?? 0) + qty;

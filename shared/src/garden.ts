@@ -3692,7 +3692,7 @@ export interface LeaderboardEntry {
 }
 
 /** Actions the owner can apply to their garden. */
-export type GardenAction =
+export type GardenAction = (
   | { readonly kind: "plant"; readonly slot: number; readonly seed: SeedId }
   | { readonly kind: "plantAll"; readonly seed: SeedId }
   | {
@@ -3705,7 +3705,7 @@ export type GardenAction =
     }
   | { readonly kind: "plantTree"; readonly slot: number; readonly tree: TreeId }
   | { readonly kind: "harvest"; readonly slot: number; readonly tree: boolean; readonly auto?: boolean }
-  | { readonly kind: "water"; readonly slot: number; readonly tree: boolean }
+  | { readonly kind: "water"; readonly slot: number; readonly tree: boolean; readonly auto?: boolean }
   | {
       readonly kind: "fertilize";
       readonly slot: number;
@@ -3826,7 +3826,8 @@ export type GardenAction =
       readonly supply: SupplyId;
       readonly qty: number;
     }
-  | { readonly kind: "giftTool"; readonly code: string; readonly tool: ToolId; readonly qty: number };
+  | { readonly kind: "giftTool"; readonly code: string; readonly tool: ToolId; readonly qty: number }
+) & { readonly auto?: boolean };
 
 /** Error codes; the client localizes them, the server never sends prose. */
 export type GardenErrorCode =
