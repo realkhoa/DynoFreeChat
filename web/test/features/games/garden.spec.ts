@@ -3294,7 +3294,7 @@ describe("animal building tabs", () => {
   };
 
   it("shows four small pens with the built ones and the animal grid", async () => {
-    const coopAnimals = [chicken, ...new Array(5).fill(null)];
+    const coopAnimals = [chicken, ...new Array(8).fill(null)];
     const api = new FakeGardenApi(
       makeState({
         coins: 100_000_000,
@@ -3310,10 +3310,10 @@ describe("animal building tabs", () => {
     await settle();
 
     expect(host.querySelector(".garden-animal-tab")).not.toBeNull();
-    // One cell per small pen, max four pens in the old progression.
-    expect(host.querySelectorAll(".garden-pen-row .garden-reborn-action")).toHaveLength(4);
-    // Level 2 = six animal slots, still opened through the legacy cell flow.
-    expect(host.querySelectorAll(".garden-animal-cell")).toHaveLength(6);
+    // One cell per small pen, eight pens up to 81 slots.
+    expect(host.querySelectorAll(".garden-pen-row .garden-reborn-action")).toHaveLength(8);
+    // Level 2 = nine animal slots, still opened through the legacy cell flow.
+    expect(host.querySelectorAll(".garden-animal-cell")).toHaveLength(9);
     const build = host.querySelector<HTMLButtonElement>('[data-act="upgradeBuilding"]');
     expect(build).not.toBeNull();
     build?.click();

@@ -812,7 +812,7 @@ describe("garden ledger rules", () => {
     const upgraded = run(built.ledger, { kind: "upgradeBuilding", building: "coop" });
     expect(upgraded.ok).toBe(true);
     if (!upgraded.ok) return;
-    expect(upgraded.ledger.animals.coop).toHaveLength(6);
+    expect(upgraded.ledger.animals.coop).toHaveLength(9);
     expect(upgraded.ledger.coins).toBe(4_000_000);
 
     const bought = run(upgraded.ledger, { kind: "buyAnimal", building: "coop", slot: 0, animal: "chicken" });
@@ -832,6 +832,32 @@ describe("garden ledger rules", () => {
     if (!sold.ok) return;
     expect(sold.ledger.coins).toBeGreaterThan(later.coins);
     expect(sold.ledger.bag.products).toHaveLength(0);
+  });
+
+  it("doubles every building upgrade and reaches the eighty-one slot cap", () => {
+    const ledger = makeLedger();
+    ledger.coins = 1_000_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "coop" });
+    if (!built.ok) throw new Error("build failed");
+    expect(built.ledger.coins).toBe(1_000_000_000 - 3_000_000);
+
+    let current = built.ledger;
+    let expected = 1_000_000_000 - 3_000_000;
+    for (let level = 2; level <= 8; level += 1) {
+      const result = run(current, { kind: "upgradeBuilding", building: "coop" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expected -= 3_000_000 * 2 ** (level - 2);
+      current = result.ledger;
+    }
+    expect(current.buildings.coop).toBe(8);
+    expect(current.animals.coop).toHaveLength(81);
+    expect(current.coins).toBe(expected);
+    // The ninth upgrade is refused at the cap.
+    expect(run(current, { kind: "upgradeBuilding", building: "coop" })).toMatchObject({
+      ok: false,
+      code: "MAX_LEVEL",
+    });
   });
 
   it("keeps an egg, hatches a chick and refuses a full coop", () => {

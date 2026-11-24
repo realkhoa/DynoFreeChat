@@ -99,6 +99,7 @@ import {
   animalGeneMutation,
   pondGrowthFactor,
   buildingSlots,
+  buildingUpgradeCost,
   EGG_PITY,
   PETS,
   contractOffers,
@@ -333,16 +334,18 @@ describe("farm buildings", () => {
     expect(marketBuyBaseItems(seasonAt(EPOCH_MS + 1)).some((row) => row.item === "beanstalk")).toBe(false);
   });
 
-  it("has a four-to-twelve slot ladder for both buildings", () => {
+  it("has a four-to-eighty-one slot ladder that doubles every upgrade", () => {
     for (const building of BUILDINGS) {
       expect(building.slots[0]).toBe(4);
-      expect(building.slots.at(-1)).toBe(12);
-      expect(building.slots).toHaveLength(4);
-      expect(buildingUpgradeCostForTest(building.id)).toBe(building.upgrade);
+      expect(building.slots.at(-1)).toBe(81);
+      expect(building.slots).toHaveLength(8);
+      expect(buildingUpgradeCost(building.id, 1)).toBe(building.upgrade);
+      expect(buildingUpgradeCost(building.id, 2)).toBe(building.upgrade * 2);
+      expect(buildingUpgradeCost(building.id, 8)).toBe(building.upgrade * 2 ** 7);
     }
     expect(buildingSlots("coop", 0)).toBe(0);
     expect(buildingSlots("coop", 1)).toBe(4);
-    expect(buildingSlots("coop", 4)).toBe(12);
+    expect(buildingSlots("coop", 8)).toBe(81);
   });
 
   it("raises animal quality with age and pats, and doubles product value", () => {
@@ -368,7 +371,7 @@ describe("farm buildings", () => {
   it("adds a fish pond with fish and snails", () => {
     const pond = BUILDINGS.find((building) => building.id === "pond");
     expect(pond?.animals).toEqual(["fish", "snail"]);
-    expect(pond?.slots).toEqual([4, 6, 9, 12]);
+    expect(pond?.slots).toEqual([4, 9, 16, 25, 36, 49, 64, 81]);
     expect(ANIMALS.find((animal) => animal.id === "fish")?.product).toBe("roe");
     expect(ANIMALS.find((animal) => animal.id === "snail")?.product).toBe("snailMeat");
   });
@@ -548,11 +551,6 @@ describe("farm buildings", () => {
 // Small local helper so the test does not import another symbol by mistake.
 function animalByIdForTest(id: "cow"): number {
   return ANIMALS.find((animal) => animal.id === id)?.buy ?? 0;
-}
-
-// Small local helper so the test does not import another symbol by mistake.
-function buildingUpgradeCostForTest(id: BuildingId): number {
-  return BUILDINGS.find((building) => building.id === id)?.upgrade ?? 0;
 }
 
 describe("event seeds", () => {

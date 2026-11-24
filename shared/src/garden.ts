@@ -988,21 +988,37 @@ export interface BuildingDefinition {
   readonly animals: readonly AnimalId[];
 }
 
-/** Buildings and their ladders: three upgrades, up to twelve slots. */
+/**
+ * Slot ladder for every animal building: square numbers up to 81 slots.
+ * @details Each upgrade adds the next odd number of slots (5, 7, 9, ...), so the
+ * top tier opens a full 81-slot farm.
+ */
+export const BUILDING_SLOT_LADDER: readonly number[] = [4, 9, 16, 25, 36, 49, 64, 81];
+
+/** Every building upgrade costs this multiple of the previous step. */
+export const BUILDING_UPGRADE_FACTOR = 2;
+
+/** Buildings and their ladders: seven upgrades, up to eighty-one slots. */
 export const BUILDINGS: readonly BuildingDefinition[] = [
-  { id: "coop", price: 3_000_000, upgrade: 3_000_000, slots: [4, 6, 9, 12], animals: ["chicken", "duck"] },
+  {
+    id: "coop",
+    price: 3_000_000,
+    upgrade: 3_000_000,
+    slots: BUILDING_SLOT_LADDER,
+    animals: ["chicken", "duck"],
+  },
   {
     id: "barn",
     price: 4_000_000,
     upgrade: 4_000_000,
-    slots: [4, 6, 9, 12],
+    slots: BUILDING_SLOT_LADDER,
     animals: ["cow", "goat", "sheep"],
   },
   {
     id: "pond",
     price: 6_000_000,
     upgrade: 3_000_000,
-    slots: [4, 6, 9, 12],
+    slots: BUILDING_SLOT_LADDER,
     animals: ["fish", "snail"],
   },
 ];
@@ -1553,9 +1569,16 @@ export function maxBuildingLevel(building: BuildingId): number {
   return buildingById(building)?.slots.length ?? 0;
 }
 
-/** @brief Price of the next upgrade step. */
-export function buildingUpgradeCost(building: BuildingId): number {
-  return buildingById(building)?.upgrade ?? 0;
+/**
+ * @brief Price of the next upgrade step.
+ * @param building Animal building.
+ * @param level Current level, `1..maxBuildingLevel(building)`.
+ * @details Every step doubles the last price, the same incremental curve the
+ * premium plots use.
+ */
+export function buildingUpgradeCost(building: BuildingId, level = 1): number {
+  const base = buildingById(building)?.upgrade ?? 0;
+  return base * BUILDING_UPGRADE_FACTOR ** Math.min(10, Math.max(0, Math.floor(level) - 1));
 }
 
 /** @brief One animal living in a building slot. */

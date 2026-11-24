@@ -38,6 +38,8 @@ import {
   SPECIAL_PLOTS_PER_PATCH,
   SPECIAL_SLOTS,
   MUSHROOM_TRAYS,
+  BUILDING_IDS,
+  buildingSlots,
   totalCrops,
   weekKeyAt,
   DEFAULT_SKILLS,
@@ -625,12 +627,23 @@ export class Garden extends DurableObject<Env> {
       },
       publishedPrestige: typeof raw.publishedPrestige === "number" ? raw.publishedPrestige : 0,
     };
-    return {
+    const ledger: GardenLedger = {
       ...meta,
       plots,
       trees: this.readTrees(tabs),
       bag: this.readBag(),
     };
+    // Older saves were sized for the old 4/6/9/12 ladder: grow the animal lists
+    // up to the current level's capacity so the new square ladder fits.
+    for (const building of BUILDING_IDS) {
+      const level = ledger.buildings[building] ?? 0;
+      const capacity = level > 0 ? buildingSlots(building, level) : 0;
+      const list = ledger.animals[building] ?? [];
+      while (list.length < capacity) list.push(null);
+      if (list.length > capacity && capacity > 0) list.length = capacity;
+      ledger.animals[building] = list;
+    }
+    return ledger;
   }
 
   /**

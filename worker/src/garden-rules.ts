@@ -2105,7 +2105,7 @@ function upgradeBuilding(ledger: GardenLedger, building: BuildingId, now: number
   const level = ledger.buildings[building];
   if (level <= 0) return { ok: false, code: "BUILDING_LOCKED" };
   if (level >= maxBuildingLevel(building)) return { ok: false, code: "MAX_LEVEL" };
-  const cost = buildingUpgradeCost(building);
+  const cost = buildingUpgradeCost(building, level);
   if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
 
   const next = clone(ledger);
@@ -4605,3 +4605,4 @@ function removeCrop(
   else
     crops[index] = { item, effects: canonicalEffects(effects), ...(pest ? { pest: true } : {}), qty: left };
 }
+

@@ -3405,7 +3405,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         boards.append(panel);
         continue;
       }
-      const upgradeCost = buildingUpgradeCost(building);
+      const upgradeCost = buildingUpgradeCost(building, level);
       const actions = div("garden-farm-actions");
       const upgrade = actionButton(
         level >= maxBuildingLevel(building)
@@ -5866,7 +5866,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         continue;
       }
       if (penLevel === level + 1) {
-        const cost = level === 0 ? definition.price : buildingUpgradeCost(building);
+        const cost = level === 0 ? definition.price : buildingUpgradeCost(building, level);
         pens.append(
           buildRebornAction({
             id: `pen:${building}:${penLevel}`,
