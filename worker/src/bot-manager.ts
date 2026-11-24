@@ -57,6 +57,8 @@ export interface BotThought {
   model?: string;
   /** Short model-written plan summary (chain of thought). */
   reasoning?: string;
+  /** Trimmed raw chain-of-thought excerpt when the provider exposes one. */
+  cot?: string;
   /** Action kinds the bot ran this tick. */
   actions?: readonly string[];
   /** True when the deterministic heuristic planned instead of the model. */
@@ -431,6 +433,7 @@ export class BotManager extends DurableObject<Env> {
             model?: string;
             reasoning?: string;
             actions?: string[];
+            cot?: string;
             error?: string;
           };
         };
@@ -444,6 +447,7 @@ export class BotManager extends DurableObject<Env> {
             at: Date.now(),
             ...(result.ai?.model === undefined ? {} : { model: result.ai.model }),
             ...(result.ai?.reasoning === undefined ? {} : { reasoning: result.ai.reasoning }),
+            ...(result.ai?.cot === undefined ? {} : { cot: result.ai.cot }),
             ...(result.ai?.actions === undefined ? {} : { actions: result.ai.actions }),
             ...(result.ai?.error === undefined ? {} : { error: result.ai.error }),
             fallback: result.ai?.used !== true,

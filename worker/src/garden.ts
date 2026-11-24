@@ -1123,6 +1123,7 @@ export class Garden extends DurableObject<Env> {
       error?: string;
       reasoning?: string;
       actions?: string[];
+      cot?: string;
     } = { used: false };
     let planned: GardenAction[] | null = null;
     if (body.ai === true) {
@@ -1130,6 +1131,7 @@ export class Garden extends DurableObject<Env> {
       aiMeta = { used: aiPlan.actions.length > 0, model: aiPlan.model };
       if (aiPlan.error !== null) aiMeta.error = aiPlan.error;
       if (aiPlan.reasoning !== null) aiMeta.reasoning = aiPlan.reasoning;
+      if (aiPlan.rawReasoning !== null) aiMeta.cot = aiPlan.rawReasoning;
       if (aiPlan.actions.length > 0) planned = aiPlan.actions;
     }
     const heuristic = planBotActions(ledger, season, now, rng, BOT_ACTION_LIMIT, focus, survey);

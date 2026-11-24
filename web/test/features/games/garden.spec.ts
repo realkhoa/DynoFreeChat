@@ -249,6 +249,7 @@ class FakeGardenApi {
             at: CLOCK - 120_000,
             model: "free-model",
             reasoning: "Thu hoạch 3 cây chín trước, rồi tưới phần còn lại.",
+            cot: "Tôi thấy túi đang có 5 nông sản nên bán trước.",
             actions: ["harvest", "harvest", "waterAll"],
             fallback: false,
           },
@@ -3278,6 +3279,8 @@ describe("ai bot thoughts", () => {
     expect(feed?.textContent).toContain("Thu hoạch 3 cây chín");
     expect(feed?.textContent).toContain("harvest");
     expect(feed?.textContent).toContain("free-model");
+    expect(feed?.textContent).toContain("chain of thought");
+    expect(feed?.textContent).toContain("nên bán trước");
   });
 });
 

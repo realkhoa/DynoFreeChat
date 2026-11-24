@@ -5383,7 +5383,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const ago = formatDuration(Math.max(0, Date.now() - thought.at), "short");
       const label = thought.fallback === true ? t("aiBots.fallback") : (thought.model ?? t("aiBots.noModel"));
       wrap.append(lineBlock(`${bot.nick} · ${ago} · ${label}`));
-      if (thought.reasoning !== undefined) wrap.append(lineBlock(`  → ${thought.reasoning}`));
+      if (thought.reasoning !== undefined) wrap.append(span("garden-hint", `  → ${thought.reasoning}`));
+      if (thought.cot !== undefined && thought.cot !== thought.reasoning) {
+        wrap.append(span("garden-hint", `  ${t("aiBots.cot")}: ${thought.cot}`));
+      }
       if (thought.actions !== undefined && thought.actions.length > 0) {
         wrap.append(lineBlock(`  ${t("aiBots.actions")}: ${thought.actions.join(", ")}`));
       }

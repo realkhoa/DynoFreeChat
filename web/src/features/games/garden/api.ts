@@ -45,6 +45,7 @@ export interface GardenBot {
     readonly at: number;
     readonly model?: string;
     readonly reasoning?: string;
+    readonly cot?: string;
     readonly actions?: readonly string[];
     readonly fallback?: boolean;
     readonly error?: string;

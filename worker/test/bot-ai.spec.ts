@@ -11,6 +11,7 @@ import {
   buildAiMessages,
   parseAiDecisions,
   parseAiPlan,
+  trimReasoning,
   planAiActions,
   summarizeGarden,
   type AiGardenContext,
@@ -188,6 +189,18 @@ describe("opencode integration", () => {
     expect(plan.actions.map((action) => action.kind)).toEqual(["sellAll"]);
     const call = fetchImpl.mock.calls[0] as unknown as [string, { headers: Record<string, string> }];
     expect(call[1].headers["x-opencode-session"]).toContain("bot-session");
+  });
+});
+
+describe("reasoning excerpt", () => {
+  it("cuts on a sentence boundary and marks the truncation", () => {
+    const long =
+      "First thought about the garden. Second thought with more detail. Third thought that goes on and on.";
+    const trimmed = trimReasoning(long, 60);
+    expect(trimmed.length).toBeLessThanOrEqual(62);
+    expect(trimmed.endsWith("…")).toBe(true);
+    expect(trimReasoning("short", 60)).toBe("short");
+    expect(trimReasoning("word ".repeat(40), 40).endsWith("…")).toBe(true);
   });
 });
 

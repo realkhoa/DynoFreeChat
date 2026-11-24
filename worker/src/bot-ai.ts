@@ -95,6 +95,8 @@ export interface AiPlan {
   readonly actions: GardenAction[];
   /** Short model-written plan summary, shown in the garden UI. */
   readonly reasoning: string | null;
+  /** Trimmed raw chain of thought, when the provider exposes one. */
+  readonly rawReasoning: string | null;
   /** Model id used, for the bot tick response. */
   readonly model: string;
   /** Why an empty plan happened, if it did. */
@@ -306,6 +308,23 @@ export function parseAiDecisions(raw: string, limit = 8): GardenAction[] {
   return parseAiPlan(raw, limit).actions;
 }
 
+/**
+ * @brief Trims a raw chain of thought to a readable excerpt.
+ * @param text Provider reasoning text.
+ * @param max Maximum characters to keep.
+ * @details Cuts on a sentence boundary when possible so the UI never shows a
+ * half-word, and always ends with an ellipsis when shortened.
+ */
+export function trimReasoning(text: string, max = 600): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  const slice = clean.slice(0, max);
+  const boundary = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! "), slice.lastIndexOf("? "));
+  if (boundary > max * 0.4) return `${slice.slice(0, boundary + 1)}…`;
+  const space = slice.lastIndexOf(" ");
+  return `${slice.slice(0, space > 0 ? space : max)}…`;
+}
+
 /** @brief Asks the model to plan one round; never throws. */
 export async function planAiActions(
   env: Env,
@@ -318,7 +337,13 @@ export async function planAiActions(
 ): Promise<AiPlan> {
   const config = aiConfig(env);
   if (config === null) {
-    return { actions: [], reasoning: null, model: "none", error: "AI_BOT_API_KEY is not configured" };
+    return {
+      actions: [],
+      reasoning: null,
+      rawReasoning: null,
+      model: "none",
+      error: "AI_BOT_API_KEY is not configured",
+    };
   }
   const context = summarizeGarden(ledger, season, now, neighbourhood);
   const messages = buildAiMessages(context);
@@ -379,7 +404,13 @@ export async function planAiActions(
 
     let result = await callModel(messages, 3_000);
     if (!result.ok) {
-      return { actions: [], reasoning: null, model: config.model, error: `model HTTP ${result.status}` };
+      return {
+        actions: [],
+        reasoning: null,
+        rawReasoning: null,
+        model: config.model,
+        error: `model HTTP ${result.status}`,
+      };
     }
     // A reasoning model can burn the whole budget on chain-of-thought and return
     // empty content; retry once with a bigger budget and an explicit "JSON only".
@@ -388,7 +419,8 @@ export async function planAiActions(
       if (fromReasoning.actions.length > 0) {
         return {
           actions: fromReasoning.actions,
-          reasoning: result.reply.reasoning.slice(0, 600),
+          reasoning: fromReasoning.reasoning ?? trimReasoning(result.reply.reasoning),
+          rawReasoning: trimReasoning(result.reply.reasoning),
           model: config.model,
           error: null,
         };
@@ -399,29 +431,42 @@ export async function planAiActions(
       ];
       result = await callModel(retryMessages, 4_000);
       if (!result.ok) {
-        return { actions: [], reasoning: null, model: config.model, error: `model HTTP ${result.status}` };
+        return {
+          actions: [],
+          reasoning: null,
+          rawReasoning: null,
+          model: config.model,
+          error: `model HTTP ${result.status}`,
+        };
       }
     }
     if (result.reply.content === null) {
       return {
         actions: [],
         reasoning: null,
+        rawReasoning: trimReasoning(result.reply.reasoning) || null,
         model: config.model,
         error: `model returned no content (finish=${result.reply.finish || "?"}, reasoning=${result.reply.reasoning.length} chars)`,
       };
     }
     const plan = parseAiPlan(result.reply.content);
-    // OpenCode's beam-free model exposes its raw chain of thought separately.
-    const reasoning =
-      result.reply.reasoning.length > 0 ? result.reply.reasoning.slice(0, 600) : plan.reasoning;
+    // Prefer the short plan summary; keep the raw chain of thought as an excerpt.
+    const rawReasoning = result.reply.reasoning.length > 0 ? trimReasoning(result.reply.reasoning) : null;
     return {
       actions: plan.actions,
-      reasoning,
+      reasoning: plan.reasoning ?? rawReasoning,
+      rawReasoning,
       model: config.model,
       error: plan.actions.length === 0 ? "model returned no usable actions" : null,
     };
   } catch (error) {
-    return { actions: [], reasoning: null, model: config.model, error: (error as Error).message };
+    return {
+      actions: [],
+      reasoning: null,
+      rawReasoning: null,
+      model: config.model,
+      error: (error as Error).message,
+    };
   }
 }
 
