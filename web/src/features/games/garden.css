@@ -1542,6 +1542,30 @@
   color: #d7ba7d;
 }
 
+/* Reborn warehouse: each machine rendered as an ASCII plot cell */
+.garden-warehouse-reborn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.garden-warehouse-plots {
+  display: grid;
+  grid-template-columns: repeat(6, max-content);
+  gap: 6px;
+  justify-content: flex-start;
+  max-width: 100%;
+}
+
+@media (max-width: 760px) {
+  .garden-warehouse-plots {
+    grid-template-columns: repeat(3, max-content);
+    gap: 4px;
+  }
+}
+
 /* Sell-all confirmation: centered on desktop, full width on phones. */
 .garden-sell-all-dialog {
   width: 340px;

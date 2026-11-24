@@ -125,6 +125,7 @@ import {
   productPrice,
   type AnimalId,
   type BuildingId,
+  type MachineDefinition,
   type MachineId,
   type MachineState,
   type ProductId,
@@ -3917,6 +3918,149 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       wrap.append(panel);
     }
+    return wrap;
+  }
+
+  /** Glyphs representing each machine on its reborn plot cell. */
+  const MACHINE_GLYPHS: Readonly<Record<MachineId, string>> = {
+    seedMaker: ".",
+    loom: "#",
+    cheesePress: "O",
+    mayoMaker: "o",
+    pickleJar: "&",
+    caviarFermenter: "*",
+    oilPress: "~",
+    dryer: "%",
+    juicer: "!",
+    jamMaker: "@",
+    butterChurn: "=",
+    keg: "U",
+  };
+
+  /**
+   * @brief Builds the plot action data for one warehouse machine cell.
+   * @param machine Machine definition from {@link MACHINES}.
+   * @param at Server-clock timestamp.
+   * @return Plot cell action configuration.
+   */
+  function machinePlotAction(machine: MachineDefinition, at: number): RebornAction {
+    const built = state?.warehouse.machines[machine.id];
+    const name = t(`machines.${machine.id}.plot`);
+    const fullTitle = t(`machines.${machine.id}`);
+    if (built === undefined) {
+      const cost = MACHINE_PRICE;
+      const canAfford = (state?.coins ?? 0) >= cost;
+      return {
+        id: `machine:${machine.id}`,
+        label: name,
+        glyph: "+",
+        note: `${formatCompact(cost)}c`,
+        tone: "money",
+        act: "buildMachine",
+        data: { machine: machine.id },
+        title: `${fullTitle} · ${t("warehouse.buildMachine", { cost: formatCompact(cost) })}`,
+        disabled: !canAfford,
+      };
+    }
+    const remaining = machineRemaining(built, machine.id, at);
+    const queueCount = built.queue?.length ?? 0;
+    const isReady = built.job !== undefined && built.job.readyAt <= at;
+    const isBrewing = built.job !== undefined && built.job.readyAt > at;
+    const glyph = MACHINE_GLYPHS[machine.id] ?? "M";
+
+    let note = `Lv.${built.level}`;
+    let tone = "harvest";
+    let active = false;
+    if (isReady) {
+      note = t("warehouse.jobReady");
+      tone = "harvest";
+      active = true;
+    } else if (isBrewing && built.job !== undefined) {
+      note = formatDuration(built.job.readyAt - at, "short");
+      tone = "water";
+    } else if (remaining > 0) {
+      note = formatDuration(remaining, "short");
+      tone = "tool";
+    } else if (queueCount > 0) {
+      note = `Lv.${built.level} +${queueCount}Q`;
+      tone = "fertilizer";
+    }
+
+    return {
+      id: `machine:${machine.id}`,
+      label: name,
+      glyph,
+      note,
+      tone,
+      active,
+      act: "machineMenuOpen",
+      data: { machine: machine.id },
+      title: `${fullTitle} · ${t("warehouse.level")} ${built.level}/${MACHINE_MAX_LEVEL}${queueCount > 0 ? ` · +${queueCount}Q` : ""}`,
+    };
+  }
+
+  /**
+   * @brief Builds the reborn warehouse tab: each machine is an individual ASCII plot cell.
+   * @param at Server-clock timestamp.
+   * @return The warehouse container with the machine plots grid.
+   */
+  function buildWarehouseReborn(at: number): HTMLElement {
+    const wrap = div("garden-warehouse-reborn");
+    if (state === null) return lineBlock(t("common.loading"));
+    wrap.append(lineBlock(`// ${t("warehouse.title")} · ${t("gardenTab.warehouse")}`));
+    if (state.warehouse.level === 0) {
+      wrap.append(
+        buildRebornAction({
+          id: "buildWarehouse",
+          label: t("warehouse.title"),
+          glyph: "+",
+          note: `${formatCompact(WAREHOUSE_PRICE)}c`,
+          tone: "money",
+          act: "buildWarehouse",
+          title: t("warehouse.build", { cost: formatCompact(WAREHOUSE_PRICE) }),
+          disabled: (state.coins ?? 0) < WAREHOUSE_PRICE,
+        }),
+      );
+      return wrap;
+    }
+
+    const grid = div("garden-warehouse-plots");
+    for (const machine of MACHINES) {
+      const cell = buildRebornAction(machinePlotAction(machine, at));
+      cell.classList.add("garden-warehouse-cell");
+      grid.append(cell);
+    }
+    wrap.append(grid);
+
+    wrap.append(lineBlock(`// ${t("kitchen.title")}`));
+    const kitchenGrid = div("garden-warehouse-plots");
+    if (state.extras.kitchen === true) {
+      kitchenGrid.append(
+        buildRebornAction({
+          id: "kitchen",
+          label: t("kitchen.title"),
+          glyph: "K",
+          note: t("kitchen.built"),
+          tone: "harvest",
+          act: "kitchenInfo",
+          title: `${t("kitchen.title")} · ${t("kitchen.built")}`,
+        }),
+      );
+    } else {
+      kitchenGrid.append(
+        buildRebornAction({
+          id: "buildKitchen",
+          label: t("kitchen.title"),
+          glyph: "+",
+          note: `${formatCompact(KITCHEN_PRICE)}c`,
+          tone: "money",
+          act: "buildKitchen",
+          title: t("kitchen.build", { cost: formatCompact(KITCHEN_PRICE) }),
+          disabled: (state.coins ?? 0) < KITCHEN_PRICE,
+        }),
+      );
+    }
+    wrap.append(kitchenGrid);
     return wrap;
   }
 
