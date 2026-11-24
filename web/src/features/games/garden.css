@@ -2922,3 +2922,412 @@ button.garden-rank-row:hover {
     grid-row: 3;
   }
 }
+
+/* ===================================================================== *
+ *  Dynopedia: Modern Farm Encyclopedia & Codex Dashboard
+ * ===================================================================== */
+.garden-dynopedia {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(100%, 1100px);
+  margin: 0 auto;
+  padding: 6px 0 28px;
+}
+
+.garden-dynopedia-header {
+  background: var(--bg-surface-raised, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.garden-dynopedia-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.garden-dynopedia-title {
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--text-normal);
+  margin: 0;
+}
+
+.garden-dynopedia-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+}
+
+.garden-dynopedia-codex-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 260px;
+  background: var(--bg-surface, rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.garden-dynopedia-codex-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.garden-dynopedia-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.garden-dynopedia-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38a169, #68d391);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.garden-dynopedia-claim-btn {
+  padding: 4px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #d69e2e;
+  border-color: #d69e2e;
+  background: rgba(236, 201, 75, 0.1);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.garden-dynopedia-claim-btn:hover {
+  background: rgba(236, 201, 75, 0.2);
+  color: #ecc94b;
+}
+
+.garden-dynopedia-claimed-tag {
+  font-size: 0.78rem;
+  color: #48bb78;
+  font-weight: 500;
+}
+
+/* Category navigation strip */
+.garden-dynopedia-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.garden-dynopedia-cat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: var(--bg-surface, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-subtle);
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.garden-dynopedia-cat-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--brand-accent, #68d391);
+}
+
+.garden-dynopedia-cat-btn.is-active {
+  font-weight: 600;
+  color: var(--brand-accent, #68d391);
+  border-color: currentColor;
+  background: rgba(104, 211, 145, 0.1);
+}
+
+.garden-dynopedia-cat-icon {
+  font-size: 1rem;
+}
+
+/* Toolbar: search & filter chips */
+.garden-dynopedia-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.garden-dynopedia-search-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 240px;
+  position: relative;
+}
+
+.garden-dynopedia-search-icon {
+  position: absolute;
+  left: 10px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.garden-dynopedia-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px 8px 32px;
+  font-size: 0.88rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input, rgba(0, 0, 0, 0.2));
+  color: var(--text-normal);
+}
+
+.garden-dynopedia-filters {
+  display: flex;
+  gap: 4px;
+}
+
+.garden-dynopedia-filter-btn {
+  padding: 4px 10px;
+  font-size: 0.82rem;
+  border-radius: 4px;
+}
+
+.garden-dynopedia-filter-btn.is-active {
+  font-weight: 600;
+  color: var(--brand-accent, #68d391);
+  border-color: currentColor;
+}
+
+/* Cards Grid */
+.garden-dynopedia-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 10px;
+}
+
+.garden-dynopedia-card {
+  background: var(--bg-surface, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.garden-dynopedia-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(104, 211, 145, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.garden-dynopedia-card[data-status="unknown"] {
+  opacity: 0.75;
+}
+
+.garden-dynopedia-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.garden-dynopedia-ident-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.garden-dynopedia-card-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.garden-dynopedia-title-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.garden-dynopedia-card-title {
+  font-weight: 600;
+  font-size: 0.98rem;
+  color: var(--text-normal);
+}
+
+.garden-dynopedia-card-id {
+  font-size: 0.74rem;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-muted);
+}
+
+.garden-dynopedia-status-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.garden-dynopedia-status-badge.status-known {
+  background: rgba(72, 187, 120, 0.15);
+  color: #48bb78;
+  border: 1px solid rgba(72, 187, 120, 0.3);
+}
+
+.garden-dynopedia-status-badge.status-unknown {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Card metrics */
+.garden-dynopedia-card-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.garden-dynopedia-pill {
+  font-size: 0.76rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
+}
+
+.garden-dynopedia-pill.pill-buy {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.garden-dynopedia-pill.pill-sell {
+  background: rgba(104, 211, 145, 0.15);
+  color: #68d391;
+  border: 1px solid rgba(104, 211, 145, 0.3);
+}
+
+.garden-dynopedia-pill.pill-profit {
+  background: rgba(236, 201, 75, 0.15);
+  color: #ecc94b;
+  border: 1px solid rgba(236, 201, 75, 0.3);
+  font-weight: 600;
+}
+
+.garden-dynopedia-pill.pill-time {
+  background: rgba(99, 179, 237, 0.15);
+  color: #63b3ed;
+  border: 1px solid rgba(99, 179, 237, 0.3);
+}
+
+.garden-dynopedia-pill.pill-boost {
+  background: rgba(183, 148, 244, 0.15);
+  color: #b794f4;
+  border: 1px solid rgba(183, 148, 244, 0.3);
+  font-weight: 600;
+}
+
+/* Card tags */
+.garden-dynopedia-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.garden-dynopedia-tag {
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.garden-dynopedia-card-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: auto;
+}
+
+.garden-dynopedia-empty {
+  grid-column: 1 / -1;
+  padding: 36px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+/* Recipe Lab Drawer */
+.garden-dynopedia-lab {
+  margin-top: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-surface, rgba(0, 0, 0, 0.15));
+  overflow: hidden;
+}
+
+.garden-dynopedia-lab-toggle {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text-normal);
+  background: var(--bg-surface-raised, rgba(255, 255, 255, 0.03));
+}
+
+.garden-dynopedia-lab-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.garden-dynopedia-lab-content {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.garden-dynopedia-lab-hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 760px) {
+  .garden-dynopedia-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .garden-dynopedia-headline {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .garden-dynopedia-codex-card {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .garden-dynopedia-categories {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+  }
+}

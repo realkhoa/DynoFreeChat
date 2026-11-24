@@ -3988,7 +3988,12 @@ describe("quick uproot clears dead plants", () => {
   });
 
   it("renders the reborn dynopedia tab with search and category buttons", async () => {
-    const api = new FakeGardenApi(makeState());
+    const api = new FakeGardenApi(
+      makeState({
+        collection: ["seed:carrot", "effect:golden"],
+        codexUnclaimed: 150_000,
+      }),
+    );
     const { host, game } = await mountGame(api);
     mounted.push(game);
 
@@ -4005,13 +4010,64 @@ describe("quick uproot clears dead plants", () => {
     const dynopediaSection = host.querySelector(".garden-reborn .garden-dynopedia");
     expect(dynopediaSection).not.toBeNull();
 
+    // Verify header and codex card
+    expect(host.querySelector(".garden-dynopedia-progress-bar")).not.toBeNull();
+    const claimBtn = host.querySelector<HTMLButtonElement>('[data-act="claimCodex"]');
+    expect(claimBtn).not.toBeNull();
+    expect(claimBtn?.textContent).toContain("150.000c");
+
     const searchInput = host.querySelector<HTMLInputElement>(".garden-dynopedia-search");
     expect(searchInput).not.toBeNull();
 
-    // Verify category buttons exist
+    // Verify category buttons exist and include all 13 categories
     const categoryButtons = host.querySelectorAll<HTMLButtonElement>('[data-act="dynopediaCategory"]');
-    expect(categoryButtons.length).toBeGreaterThan(0);
+    expect(categoryButtons.length).toBe(13);
     expect(window.location.search).toContain("grtab=dynopedia");
+
+    // Verify cards grid renders cards
+    let cards = host.querySelectorAll<HTMLElement>(".garden-dynopedia-card");
+    expect(cards.length).toBeGreaterThan(0);
+
+    // Switch category to seeds
+    host.querySelector<HTMLButtonElement>('[data-act="dynopediaCategory"][data-category="seeds"]')?.click();
+    await settle();
+
+    cards = host.querySelectorAll<HTMLElement>(".garden-dynopedia-card");
+    expect(cards.length).toBeGreaterThan(0);
+    expect(host.querySelector(".garden-dynopedia")?.textContent).toContain("Cà rốt");
+
+    // Filter by discovered only
+    host.querySelector<HTMLButtonElement>('[data-act="dynopediaFilter:known"]')?.click();
+    await settle();
+
+    let visibleCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-dynopedia-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(visibleCards.length).toBe(1);
+    expect(visibleCards[0]?.textContent).toContain("Cà rốt");
+
+    // Filter by undiscovered
+    host.querySelector<HTMLButtonElement>('[data-act="dynopediaFilter:unknown"]')?.click();
+    await settle();
+
+    visibleCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-dynopedia-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(visibleCards.length).toBeGreaterThan(1);
+    expect(visibleCards.every((c) => !c.textContent?.includes("Cà rốt"))).toBe(true);
+
+    // Filter by all
+    host.querySelector<HTMLButtonElement>('[data-act="dynopediaFilter:all"]')?.click();
+    await settle();
+
+    visibleCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-dynopedia-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(visibleCards.length).toBe(cards.length);
+
+    // Verify recipe lab collapsible exists
+    const lab = host.querySelector(".garden-dynopedia-lab");
+    expect(lab).not.toBeNull();
   });
 
   it("switches to reborn garden view when visiting a player from reborn townhall rank board and allows returning home", async () => {

@@ -446,6 +446,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }> = [];
   let globalHybrids: HybridFishDefinition[] = [];
   let dynopediaQuery = "";
+  /** Filter for dynopedia items: all, discovered only, or undiscovered only. */
+  let dynopediaFilter: "all" | "known" | "unknown" = "all";
   let kitchenQuery = "";
   let kitchenStatusFilter: "all" | "cookable" | "missing" | "cooldown" = "all";
   let kitchenIngredientFilter = "";
@@ -5435,19 +5437,208 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
   }
 
-  /** @brief Builds the Dynopedia wiki tab: catalogs and search. */
+  /**
+   * @brief Helper to pick an iconic emoji avatar for Dynopedia items.
+   * @param category Dynopedia category name.
+   * @param id Identifier of the item or entity.
+   * @return Emoji string representation for visual card depiction.
+   */
+  function dynopediaItemIcon(category: string, id: string): string {
+    if (category === "effects") return "✨";
+    if (category === "seeds") {
+      const map: Record<string, string> = {
+        carrot: "🥕",
+        potato: "🥔",
+        tomato: "🍅",
+        cucumber: "🥒",
+        onion: "🧅",
+        garlic: "🧄",
+        pepper: "🌶️",
+        corn: "🌽",
+        wheat: "🌾",
+        strawberry: "🍓",
+        cocomelon: "🍈",
+        watermelon: "🍉",
+        pumpkin: "🎃",
+        blueberry: "🫐",
+        dragonfruit: "🐉",
+        persimmon: "🍊",
+      };
+      return map[id] ?? "🌱";
+    }
+    if (category === "trees") {
+      const map: Record<string, string> = {
+        apple: "🍎",
+        orange: "🍊",
+        peach: "🍑",
+        cherry: "🍒",
+        banana: "🍌",
+        mango: "🥭",
+      };
+      return map[id] ?? "🌳";
+    }
+    if (category === "animals") {
+      const map: Record<string, string> = {
+        chicken: "🐔",
+        cow: "🐮",
+        sheep: "🐑",
+        pig: "🐷",
+        duck: "🦆",
+        goat: "🐐",
+      };
+      return map[id] ?? "🐮";
+    }
+    if (category === "fish") {
+      const map: Record<string, string> = {
+        salmon: "🐟",
+        carp: "🐠",
+        tuna: "🦈",
+      };
+      return map[id] ?? "🐟";
+    }
+    if (category === "products") {
+      const map: Record<string, string> = {
+        milk: "🥛",
+        cheese: "🧀",
+        egg: "🥚",
+        mayo: "🥣",
+        wool: "🧶",
+        cloth: "🧵",
+        wine: "🍷",
+        juice: "🧃",
+        jam: "🍯",
+        flour: "🥡",
+        bread: "🍞",
+        dried_crop: "🥨",
+        cured_meat: "🥓",
+      };
+      return map[id] ?? "📦";
+    }
+    if (category === "machines") return "⚙️";
+    if (category === "supplies") return "🧪";
+    if (category === "tools") return "🛠️";
+    if (category === "buildings") return "🏠";
+    if (category === "attachments") return "🧩";
+    if (category === "events") return "⛅";
+    if (category === "pets") return "🐾";
+    return "📦";
+  }
+
+  /**
+   * @brief Builds the redesigned Dynopedia wiki and codex tab.
+   * @details Renders an interactive encyclopedia dashboard for the garden ecosystem:
+   * 1. Header with Codex progress tracker, mastery percentage, and unclaimed reward claim button.
+   * 2. Category navigation with icons and active counters.
+   * 3. Toolbar with debounced search and discovery filter chips (all / discovered / undiscovered).
+   * 4. High-contrast visual cards grid with badges, price margins, growth times, and codex status.
+   * 5. Collapsible culinary recipe research lab for AI and server recipe crafting.
+   * @return HTMLElement representing the rebuilt Dynopedia view.
+   */
   function buildDynopedia(): HTMLElement {
     const wrap = div("garden-dynopedia garden-market");
-    wrap.append(lineBlock(`// ${t("dynopedia.title")}`));
+
+    // 1. Header & Codex Mastery Box
+    const header = div("garden-dynopedia-header");
+    const headline = div("garden-dynopedia-headline");
+    const titleWrap = div("garden-dynopedia-title-wrap");
+
+    const title = div("garden-dynopedia-title");
+    title.textContent = t("dynopedia.title");
+    const subtitle = div("garden-dynopedia-subtitle");
+    subtitle.textContent = t("dynopedia.subtitle");
+    titleWrap.append(title, subtitle);
+    headline.append(titleWrap);
+
     const discovered = state?.collection?.length ?? 0;
-    wrap.append(
-      lineBlock(
-        t("dynopedia.discovered", { count: discovered, coins: formatCompact(state?.codexUnclaimed ?? 0) }),
-      ),
-    );
-    if ((state?.codexUnclaimed ?? 0) > 0) {
-      wrap.append(actionButton(t("dynopedia.claim"), "claimCodex"));
+    const codexTotalTargets =
+      EFFECTS.length +
+      SEEDS.length +
+      ANIMALS.length +
+      PRODUCTS.length +
+      MACHINES.length +
+      TOOLS.length +
+      PETS.length;
+    const codexPercent = Math.min(100, Math.round((discovered / Math.max(1, codexTotalTargets)) * 100));
+    const unclaimed = state?.codexUnclaimed ?? 0;
+
+    const codexCard = div("garden-dynopedia-codex-card");
+    const codexMeta = div("garden-dynopedia-codex-meta");
+    const codexLabel = div("garden-dynopedia-codex-label");
+    codexLabel.textContent = t("dynopedia.codexProgress", {
+      count: discovered,
+      total: codexTotalTargets,
+      percent: codexPercent,
+    });
+    codexMeta.append(codexLabel);
+
+    const progBar = div("garden-dynopedia-progress-bar");
+    const progFill = div("garden-dynopedia-progress-fill");
+    progFill.style.width = `${codexPercent}%`;
+    progBar.append(progFill);
+    codexCard.append(codexMeta, progBar);
+
+    if (unclaimed > 0) {
+      const claimBtn = actionButton(
+        t("dynopedia.claimReward", { coins: formatCompact(unclaimed) }),
+        "claimCodex",
+      );
+      claimBtn.className = "stage-btn garden-dynopedia-claim-btn tone-gold";
+      codexCard.append(claimBtn);
+    } else {
+      const allClaimed = div("garden-dynopedia-claimed-tag");
+      allClaimed.textContent = t("dynopedia.allRewardsClaimed");
+      codexCard.append(allClaimed);
     }
+
+    headline.append(codexCard);
+    header.append(headline);
+    wrap.append(header);
+
+    // 2. Categories Bar
+    const categoriesBar = div("garden-dynopedia-categories");
+    const categories = [
+      { id: "effects", icon: "✨", labelKey: "dynopedia.cat.effects" },
+      { id: "seeds", icon: "🌱", labelKey: "dynopedia.cat.seeds" },
+      { id: "trees", icon: "🌳", labelKey: "dynopedia.cat.trees" },
+      { id: "animals", icon: "🐮", labelKey: "dynopedia.cat.animals" },
+      { id: "fish", icon: "🐟", labelKey: "dynopedia.cat.fish" },
+      { id: "products", icon: "📦", labelKey: "dynopedia.cat.products" },
+      { id: "machines", icon: "⚙️", labelKey: "dynopedia.cat.machines" },
+      { id: "supplies", icon: "🧪", labelKey: "dynopedia.cat.supplies" },
+      { id: "tools", icon: "🛠️", labelKey: "dynopedia.cat.tools" },
+      { id: "buildings", icon: "🏠", labelKey: "dynopedia.cat.buildings" },
+      { id: "attachments", icon: "🧩", labelKey: "dynopedia.cat.attachments" },
+      { id: "events", icon: "⛅", labelKey: "dynopedia.cat.events" },
+      { id: "pets", icon: "🐾", labelKey: "dynopedia.cat.pets" },
+    ] as const;
+
+    for (const cat of categories) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `stage-btn garden-dynopedia-cat-btn${dynopediaCategory === cat.id ? " is-active" : ""}`;
+      btn.dataset.act = "dynopediaCategory";
+      btn.dataset.category = cat.id;
+
+      const catIcon = document.createElement("span");
+      catIcon.className = "garden-dynopedia-cat-icon";
+      catIcon.textContent = cat.icon;
+
+      const catLabel = document.createElement("span");
+      catLabel.className = "garden-dynopedia-cat-label";
+      catLabel.textContent = t(cat.labelKey);
+
+      btn.append(catIcon, catLabel);
+      categoriesBar.append(btn);
+    }
+    wrap.append(categoriesBar);
+
+    // 3. Toolbar: Search Input + Discovery Filter Chips
+    const toolbar = div("garden-dynopedia-toolbar");
+    const searchWrap = div("garden-dynopedia-search-wrap");
+
+    const searchIcon = div("garden-dynopedia-search-icon");
+    searchIcon.textContent = "🔍";
+
     const search = document.createElement("input");
     search.type = "search";
     search.className = "stage-input garden-dynopedia-search";
@@ -5455,113 +5646,53 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     search.value = dynopediaQuery;
     search.dataset.role = "dynopediaSearch";
     search.setAttribute("aria-label", t("dynopedia.search"));
-    wrap.append(search);
 
-    const lab = div("garden-market-panel");
-    const ingredientList = document.createElement("datalist");
-    ingredientList.id = "recipe-ingredients";
-    for (const seed of SEEDS) {
-      const option = document.createElement("option");
-      option.value = seed.id;
-      option.label = t(`seeds.${seed.id}`);
-      ingredientList.append(option);
-    }
-    for (const tree of TREES) {
-      const option = document.createElement("option");
-      option.value = tree.id;
-      option.label = t(`trees.${tree.id}`);
-      ingredientList.append(option);
-    }
-    for (const product of PRODUCTS) {
-      const option = document.createElement("option");
-      option.value = product.id;
-      option.label = t(`products.${product.id}`);
-      ingredientList.append(option);
-    }
-    lab.append(ingredientList);
-    lab.append(lineBlock(`// ${t("recipe.title")}`));
-    const recipeRow = div("garden-restore-row");
-    recipeInputs.forEach((value, index) => {
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "stage-input";
-      input.value = value;
-      input.placeholder = t("recipe.ingredient", { index: index + 1 });
-      input.dataset.role = "recipeInput";
-      input.dataset.index = String(index);
-      input.setAttribute("list", "recipe-ingredients");
-      input.setAttribute("aria-label", t("recipe.ingredient", { index: index + 1 }));
-      recipeRow.append(input);
-      if (recipeInputs.length > 2) {
-        const remove = actionButton("×", "recipeRemoveInput");
-        remove.dataset.index = String(index);
-        recipeRow.append(remove);
-      }
-    });
-    if (recipeInputs.length < 6) {
-      recipeRow.append(actionButton(t("recipe.addIngredient"), "recipeAddInput"));
-    }
-    lab.append(recipeRow, actionButton(t("recipe.suggest"), "recipeSuggest"));
-    if (recipeResult.length > 0) lab.append(lineBlock(recipeResult));
-    for (const recipe of state?.extras.recipes ?? []) {
-      const row = div("garden-machine-row");
-      row.append(
-        lineBlock(
-          `${t("recipe.saved")}: ${recipe.inputs.join(" + ")} → ${recipe.output} · ${formatCompact(recipe.price)}c`,
-        ),
-      );
-      const canCook = state?.extras.kitchen === true;
-      const cook = actionButton(t("recipe.cook"), "cookRecipe", canCook);
-      if (!canCook) lab.append(lineBlock(t("kitchen.required")));
-      cook.dataset.id = recipe.id;
-      row.append(cook);
-      lab.append(row);
-    }
-    if (globalRecipes.length > 0) {
-      lab.append(lineBlock(`// ${t("recipe.global")}`));
-      for (const recipe of globalRecipes) {
-        const row = div("garden-machine-row");
-        row.append(
-          lineBlock(`${recipe.inputs.join(" + ")} → ${recipe.output} · ${formatCompact(recipe.price)}c`),
-        );
-        const learn = actionButton(t("recipe.learn"), "recipeLearn");
-        learn.dataset.id = recipe.id;
-        row.append(learn);
-        lab.append(row);
-      }
-    }
-    wrap.append(lab);
+    searchWrap.append(searchIcon, search);
+    toolbar.append(searchWrap);
 
-    const categories = [
-      "effects",
-      "seeds",
-      "trees",
-      "animals",
-      "fish",
-      "products",
-      "machines",
-      "supplies",
-      "tools",
-      "buildings",
-      "attachments",
-      "events",
-      "pets",
-    ] as const;
-    const bar = div("garden-tools");
-    for (const category of categories) {
-      const button = actionButton(t(`dynopedia.cat.${category}`), "dynopediaCategory");
-      button.dataset.category = category;
-      if (dynopediaCategory === category) button.classList.add("is-active");
-      bar.append(button);
-    }
-    wrap.append(bar);
+    const filterGroup = div("garden-dynopedia-filters");
+    const filters: readonly { readonly id: "all" | "known" | "unknown"; readonly labelKey: string }[] = [
+      { id: "all", labelKey: "dynopedia.filterAll" },
+      { id: "known", labelKey: "dynopedia.filterDiscovered" },
+      { id: "unknown", labelKey: "dynopedia.filterUndiscovered" },
+    ];
 
-    const rows: Array<{ id: string; title: string; detail: string }> = [];
+    for (const f of filters) {
+      const fBtn = document.createElement("button");
+      fBtn.type = "button";
+      fBtn.className = `stage-btn garden-dynopedia-filter-btn${dynopediaFilter === f.id ? " is-active" : ""}`;
+      fBtn.dataset.act = `dynopediaFilter:${f.id}`;
+      fBtn.textContent = dynopediaFilter === f.id ? `[ ${t(f.labelKey)} ]` : t(f.labelKey);
+      filterGroup.append(fBtn);
+    }
+    toolbar.append(filterGroup);
+    wrap.append(toolbar);
+
+    // 4. Gather Cards
+    interface CardData {
+      id: string;
+      title: string;
+      codexKey: string | null;
+      icon: string;
+      tags: string[];
+      buy?: number;
+      sell?: number;
+      growTime?: string;
+      boost?: string;
+      detail: string;
+    }
+
+    const cards: CardData[] = [];
+
     if (dynopediaCategory === "effects") {
       for (const effect of EFFECTS) {
-        rows.push({
+        cards.push({
           id: effect.id,
           title: t(`effects.${effect.id}`),
+          codexKey: `effect:${effect.id}`,
+          icon: dynopediaItemIcon("effects", effect.id),
+          tags: [effect.natural ? t("dynopedia.weather") : t("dynopedia.special")],
+          boost: `x${effect.multiplier}`,
           detail: `x${effect.multiplier} · ${effect.natural ? t("dynopedia.weather") : t("dynopedia.special")}`,
         });
       }
@@ -5572,26 +5703,43 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           seed.rare === true ? t("dynopedia.rare") : "",
           seed.prestigeOnly === true ? `P${PRESTIGE_SHOP.find((o) => o.seed === seed.id)?.tier ?? 0}` : "",
         ].filter((tag) => tag.length > 0);
-        rows.push({
+        cards.push({
           id: seed.id,
           title: t(`seeds.${seed.id}`),
+          codexKey: `seed:${seed.id}`,
+          icon: dynopediaItemIcon("seeds", seed.id),
+          tags,
+          buy: seed.buy,
+          sell: seed.sell,
+          growTime: formatDuration(seed.growMs),
           detail: `${formatDuration(seed.growMs)} · ${formatCompact(seed.buy)}c → ${formatCompact(seed.sell)}c · ${tags.join(" · ")}`,
         });
       }
     } else if (dynopediaCategory === "trees") {
       for (const tree of TREES) {
-        rows.push({
+        cards.push({
           id: tree.id,
           title: t(`trees.${tree.id}`),
+          codexKey: null,
+          icon: dynopediaItemIcon("trees", tree.id),
+          tags: [t("dynopedia.regrow")],
+          buy: tree.buy,
+          sell: tree.sell,
+          growTime: formatDuration(tree.growMs),
           detail: `${formatDuration(tree.growMs)} · ${formatCompact(tree.buy)}c → ${formatCompact(tree.sell)}c`,
         });
       }
     } else if (dynopediaCategory === "animals") {
       for (const animal of ANIMALS) {
         if (animal.building === "pond") continue;
-        rows.push({
+        cards.push({
           id: animal.id,
           title: t(`animals.${animal.id}`),
+          codexKey: `animal:${animal.id}`,
+          icon: dynopediaItemIcon("animals", animal.id),
+          tags: [t(`farm.${animal.building}`)],
+          buy: animal.buy,
+          growTime: formatDuration(animalIntervalMs(animal.id)),
           detail: `${t(`farm.${animal.building}`)} · ${formatCompact(animal.buy)}c · ${formatDuration(animalIntervalMs(animal.id))} · ${t(`products.${animal.product}`)}`,
         });
       }
@@ -5599,9 +5747,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       for (const fishId of BASE_FISH_SPECIES) {
         const def = animalById(fishId);
         if (def === undefined) continue;
-        rows.push({
+        cards.push({
           id: fishId,
           title: t(`animals.${fishId}`),
+          codexKey: `fish:${fishId}`,
+          icon: dynopediaItemIcon("fish", fishId),
+          tags: [t("farm.pond")],
+          buy: def.buy,
+          growTime: formatDuration(animalIntervalMs(fishId)),
           detail: `${formatCompact(def.buy)}c · ${formatDuration(animalIntervalMs(fishId))} · ${t(`products.${def.product}`)}`,
         });
       }
@@ -5654,17 +5807,25 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
       for (const [hid, hybrid] of hybridMap) {
         const fullKey = hid.startsWith("hybrid:") ? hid : `hybrid:${hid}`;
-        rows.push({
+        cards.push({
           id: fullKey,
           title: `${hybrid.glyph} ${hybrid.name} [${hybrid.tier}]`,
+          codexKey: fullKey,
+          icon: hybrid.glyph || "Ж",
+          tags: [hybrid.tier],
+          buy: hybrid.price > 0 ? hybrid.price : undefined,
           detail: `${hybrid.price > 0 ? formatCompact(hybrid.price) + "c" : ""}${hybrid.lore ? ` · ${hybrid.lore}` : ""}`,
         });
       }
     } else if (dynopediaCategory === "products") {
       for (const product of PRODUCTS) {
-        rows.push({
+        cards.push({
           id: product.id,
           title: t(`products.${product.id}`),
+          codexKey: `product:${product.id}`,
+          icon: dynopediaItemIcon("products", product.id),
+          tags: [],
+          sell: product.base,
           detail: `${formatCompact(product.base)}c`,
         });
       }
@@ -5681,56 +5842,84 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const recipes = (machine.recipes ?? [])
           .map((recipe) => `${t(`products.${recipe.input}`)} → ${t(`products.${recipe.output}`)}`)
           .join(", ");
-        rows.push({
+        cards.push({
           id: machine.id,
           title: t(`machines.${machine.id}`),
-          detail: `${input} → ${output}${recipes.length > 0 ? ` · ${recipes}` : ""} · ${machine.cooldownCycles} ${t("dynopedia.cycles")}${machine.queued === true ? ` · ${t("dynopedia.timed")}` : ""}`,
+          codexKey: `machine:${machine.id}`,
+          icon: dynopediaItemIcon("machines", machine.id),
+          tags: [
+            machine.queued ? t("dynopedia.timed") : `${machine.cooldownCycles} ${t("dynopedia.cycles")}`,
+          ],
+          detail: `${input} → ${output}${recipes.length > 0 ? ` · ${recipes}` : ""} · ${machine.cooldownCycles} ${t("dynopedia.cycles")}`,
         });
       }
     } else if (dynopediaCategory === "supplies") {
       for (const fertilizer of FERTILIZERS) {
-        rows.push({
+        cards.push({
           id: fertilizer.id,
           title: t(`supplies.${fertilizer.id}`),
+          codexKey: null,
+          icon: dynopediaItemIcon("supplies", fertilizer.id),
+          tags: [`x${fertilizer.growMultiplier}`],
+          buy: fertilizer.price,
           detail: `x${fertilizer.growMultiplier} · ${fertilizer.harvests} ${t("dynopedia.harvests")} · ${formatCompact(fertilizer.price)}c`,
         });
       }
       for (const spray of SPRAYS) {
-        rows.push({
+        cards.push({
           id: spray.id,
           title: t(`supplies.${spray.id}`),
+          codexKey: null,
+          icon: dynopediaItemIcon("supplies", spray.id),
+          tags: [`x${SPRAY_MUTATION_BOOST}`],
+          buy: spray.price,
           detail: `${spray.effects.map((id) => t(`effects.${id}`)).join(", ")} · x${SPRAY_MUTATION_BOOST} · ${formatCompact(spray.price)}c`,
         });
       }
     } else if (dynopediaCategory === "tools") {
       for (const tool of TOOLS) {
-        rows.push({
+        cards.push({
           id: tool.id,
           title: t(`tools.${tool.id}`),
+          codexKey: `tool:${tool.id}`,
+          icon: dynopediaItemIcon("tools", tool.id),
+          tags: [],
+          buy: tool.price,
           detail: `${formatCompact(tool.price)}c`,
         });
       }
     } else if (dynopediaCategory === "buildings") {
       for (const building of BUILDINGS) {
-        rows.push({
+        cards.push({
           id: building.id,
           title: t(`farm.${building.id}`),
+          codexKey: null,
+          icon: dynopediaItemIcon("buildings", building.id),
+          tags: [`${building.slots.join("/")} ${t("dynopedia.slots")}`],
+          buy: building.price,
           detail: `${formatCompact(building.price)}c · ${building.slots.join("/")} ${t("dynopedia.slots")} · ${formatCompact(building.upgrade)}c/${t("farm.level")}`,
         });
       }
     } else if (dynopediaCategory === "attachments") {
       for (const attachment of ATTACHMENTS) {
-        rows.push({
+        cards.push({
           id: attachment.id,
           title: t(`attachments.${attachment.id}`),
+          codexKey: null,
+          icon: dynopediaItemIcon("attachments", attachment.id),
+          tags: [t(`farm.${attachment.slot}`)],
+          buy: attachment.price,
           detail: `${t(`farm.${attachment.slot}`)} · ${formatCompact(attachment.price)}c · ${t(`dynopedia.attach.${attachment.id}`)}`,
         });
       }
     } else if (dynopediaCategory === "events") {
       for (const event of EVENTS) {
-        rows.push({
+        cards.push({
           id: event.id,
           title: t(`events.${event.id}`),
+          codexKey: null,
+          icon: dynopediaItemIcon("events", event.id),
+          tags: [`grow x${event.growScale}`, `sell x${event.sellBonus}`],
           detail: `${t(`events.${event.id}.desc`)} · grow x${event.growScale} · sell x${event.sellBonus}`,
         });
       }
@@ -5742,40 +5931,228 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (pet.grow !== undefined) bonuses.push(`grow +${Math.round(pet.grow * 100)}%`);
         if (pet.mutation !== undefined) bonuses.push(`mutation +${Math.round(pet.mutation * 100)}%`);
         if (pet.sell !== undefined) bonuses.push(`sell +${Math.round(pet.sell * 100)}%`);
-        rows.push({
+        cards.push({
           id: pet.id,
           title: t(`pets.${pet.id}`),
+          codexKey: `pet:${pet.id}`,
+          icon: dynopediaItemIcon("pets", pet.id),
+          tags: [t(`petRarity.${pet.rarity}`)],
           detail: `${t(`petRarity.${pet.rarity}`)} · ${bonuses.join(" · ")}`,
         });
       }
     }
 
-    const query = dynopediaQuery.trim().toLowerCase();
-    const list = div("garden-dynopedia-list");
-    let shown = 0;
-    const codexKey = (id: string): string | null => {
-      if (dynopediaCategory === "effects") return `effect:${id}`;
-      if (dynopediaCategory === "seeds") return `seed:${id}`;
-      if (dynopediaCategory === "animals") return `animal:${id}`;
-      if (dynopediaCategory === "fish") return id.startsWith("hybrid:") ? id : `fish:${id}`;
-      if (dynopediaCategory === "products") return `product:${id}`;
-      if (dynopediaCategory === "machines") return `machine:${id}`;
-      if (dynopediaCategory === "pets") return `pet:${id}`;
-      return null;
-    };
-    for (const row of rows) {
-      const key = codexKey(row.id);
-      const known = key !== null && (state?.collection?.includes(key) ?? false);
-      const marker = key === null ? "" : known ? "✓ " : "· ";
-      const line = lineBlock(`// ${marker}${row.title} — ${row.detail}`);
-      line.classList.add("garden-dynopedia-row");
-      const haystack = `${row.id} ${row.title} ${row.detail}`.toLowerCase();
-      if (query.length > 0 && !haystack.includes(query)) line.hidden = true;
-      else shown += 1;
-      list.append(line);
+    // 5. Render Cards Grid
+    const grid = div("garden-dynopedia-grid");
+    let shownCount = 0;
+
+    const query = dynopediaQuery.trim();
+    const queryLower = query.toLowerCase();
+    const queryFolded = foldDiacritics(query);
+
+    for (const card of cards) {
+      const isCodex = card.codexKey !== null;
+      const isKnown = isCodex ? (state?.collection?.includes(card.codexKey!) ?? false) : true;
+      const statusStr = isKnown ? "known" : "unknown";
+
+      const cardEl = div("garden-dynopedia-card garden-dynopedia-row");
+      cardEl.dataset.id = card.id;
+      cardEl.dataset.category = dynopediaCategory;
+      cardEl.dataset.status = statusStr;
+
+      // Top row: Icon + Ident + Status Badge
+      const topRow = div("garden-dynopedia-card-top");
+      const identWrap = div("garden-dynopedia-ident-wrap");
+
+      const iconEl = div("garden-dynopedia-card-icon");
+      iconEl.textContent = card.icon;
+
+      const titleCol = div("garden-dynopedia-title-col");
+      const titleEl = div("garden-dynopedia-card-title");
+      titleEl.textContent = card.title;
+      const idEl = div("garden-dynopedia-card-id");
+      idEl.textContent = `#${card.id}`;
+      titleCol.append(titleEl, idEl);
+      identWrap.append(iconEl, titleCol);
+
+      const statusBadge = div(`garden-dynopedia-status-badge ${isKnown ? "status-known" : "status-unknown"}`);
+      statusBadge.textContent = isCodex
+        ? isKnown
+          ? t("dynopedia.statusDiscovered")
+          : t("dynopedia.statusUndiscovered")
+        : t(`dynopedia.cat.${dynopediaCategory}`);
+      topRow.append(identWrap, statusBadge);
+      cardEl.append(topRow);
+
+      // Metrics row
+      const metricsRow = div("garden-dynopedia-card-metrics");
+      if (card.buy !== undefined) {
+        const buyPill = div("garden-dynopedia-pill pill-buy");
+        buyPill.textContent = t("dynopedia.buy", { amount: formatCompact(card.buy) });
+        metricsRow.append(buyPill);
+      }
+      if (card.sell !== undefined) {
+        const sellPill = div("garden-dynopedia-pill pill-sell");
+        sellPill.textContent = t("dynopedia.sell", { amount: formatCompact(card.sell) });
+        metricsRow.append(sellPill);
+
+        if (card.buy !== undefined && card.buy > 0) {
+          const profitPercent = Math.round(((card.sell - card.buy) / card.buy) * 100);
+          if (profitPercent > 0) {
+            const profitPill = div("garden-dynopedia-pill pill-profit");
+            profitPill.textContent = t("dynopedia.profit", { percent: profitPercent });
+            metricsRow.append(profitPill);
+          }
+        }
+      }
+      if (card.growTime !== undefined) {
+        const growPill = div("garden-dynopedia-pill pill-time");
+        growPill.textContent = `⏱️ ${card.growTime}`;
+        metricsRow.append(growPill);
+      }
+      if (card.boost !== undefined) {
+        const boostPill = div("garden-dynopedia-pill pill-boost");
+        boostPill.textContent = `⚡ ${card.boost}`;
+        metricsRow.append(boostPill);
+      }
+      if (metricsRow.children.length > 0) {
+        cardEl.append(metricsRow);
+      }
+
+      // Tags row
+      if (card.tags.length > 0) {
+        const tagsRow = div("garden-dynopedia-card-tags");
+        for (const tag of card.tags) {
+          const tagPill = div("garden-dynopedia-tag");
+          tagPill.textContent = tag;
+          tagsRow.append(tagPill);
+        }
+        cardEl.append(tagsRow);
+      }
+
+      // Details footer text
+      const descEl = div("garden-dynopedia-card-desc");
+      descEl.textContent = card.detail;
+      cardEl.append(descEl);
+
+      // Search corpus
+      const searchCorpus =
+        `${card.id} ${card.title} ${card.detail} ${card.tags.join(" ")} ${card.buy ?? ""} ${card.sell ?? ""}`.toLowerCase();
+      cardEl.dataset.search = searchCorpus;
+
+      const matchesQuery =
+        query.length === 0 ||
+        searchCorpus.includes(queryLower) ||
+        foldDiacritics(searchCorpus).includes(queryFolded);
+      const matchesFilter =
+        dynopediaFilter === "all" ||
+        (dynopediaFilter === "known" && isKnown) ||
+        (dynopediaFilter === "unknown" && !isKnown);
+
+      const isVisible = matchesQuery && matchesFilter;
+      cardEl.hidden = !isVisible;
+      if (isVisible) shownCount += 1;
+
+      grid.append(cardEl);
     }
-    if (shown === 0) list.append(lineBlock(t("dynopedia.empty")));
-    wrap.append(list);
+
+    const emptyBox = div("garden-dynopedia-empty");
+    emptyBox.textContent = t("dynopedia.empty");
+    emptyBox.hidden = shownCount > 0;
+    grid.append(emptyBox);
+
+    wrap.append(grid);
+
+    // 6. Collapsible Culinary Recipe Laboratory
+    const labDetails = document.createElement("details");
+    labDetails.className = "garden-dynopedia-lab";
+    const labSummary = document.createElement("summary");
+    labSummary.className = "garden-dynopedia-lab-toggle";
+    labSummary.textContent = `🧪 ${t("dynopedia.recipeLabTitle")}`;
+    labDetails.append(labSummary);
+
+    const labContent = div("garden-dynopedia-lab-content");
+    const labHint = div("garden-dynopedia-lab-hint");
+    labHint.textContent = t("dynopedia.recipeLabHint");
+    labContent.append(labHint);
+
+    const ingredientList = document.createElement("datalist");
+    ingredientList.id = "recipe-ingredients";
+    for (const seed of SEEDS) {
+      const option = document.createElement("option");
+      option.value = seed.id;
+      option.label = t(`seeds.${seed.id}`);
+      ingredientList.append(option);
+    }
+    for (const tree of TREES) {
+      const option = document.createElement("option");
+      option.value = tree.id;
+      option.label = t(`trees.${tree.id}`);
+      ingredientList.append(option);
+    }
+    for (const product of PRODUCTS) {
+      const option = document.createElement("option");
+      option.value = product.id;
+      option.label = t(`products.${product.id}`);
+      ingredientList.append(option);
+    }
+    labContent.append(ingredientList);
+
+    const recipeRow = div("garden-restore-row");
+    recipeInputs.forEach((value, index) => {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "stage-input";
+      input.value = value;
+      input.placeholder = t("recipe.ingredient", { index: index + 1 });
+      input.dataset.role = "recipeInput";
+      input.dataset.index = String(index);
+      input.setAttribute("list", "recipe-ingredients");
+      input.setAttribute("aria-label", t("recipe.ingredient", { index: index + 1 }));
+      recipeRow.append(input);
+      if (recipeInputs.length > 2) {
+        const remove = actionButton("×", "recipeRemoveInput");
+        remove.dataset.index = String(index);
+        recipeRow.append(remove);
+      }
+    });
+    if (recipeInputs.length < 6) {
+      recipeRow.append(actionButton(t("recipe.addIngredient"), "recipeAddInput"));
+    }
+    labContent.append(recipeRow, actionButton(t("recipe.suggest"), "recipeSuggest"));
+    if (recipeResult.length > 0) labContent.append(lineBlock(recipeResult));
+
+    for (const recipe of state?.extras.recipes ?? []) {
+      const row = div("garden-machine-row");
+      row.append(
+        lineBlock(
+          `${t("recipe.saved")}: ${recipe.inputs.join(" + ")} → ${recipe.output} · ${formatCompact(recipe.price)}c`,
+        ),
+      );
+      const canCook = state?.extras.kitchen === true;
+      const cook = actionButton(t("recipe.cook"), "cookRecipe", canCook);
+      if (!canCook) labContent.append(lineBlock(t("kitchen.required")));
+      cook.dataset.id = recipe.id;
+      row.append(cook);
+      labContent.append(row);
+    }
+    if (globalRecipes.length > 0) {
+      labContent.append(lineBlock(`// ${t("recipe.global")}`));
+      for (const recipe of globalRecipes) {
+        const row = div("garden-machine-row");
+        row.append(
+          lineBlock(`${recipe.inputs.join(" + ")} → ${recipe.output} · ${formatCompact(recipe.price)}c`),
+        );
+        const learn = actionButton(t("recipe.learn"), "recipeLearn");
+        learn.dataset.id = recipe.id;
+        row.append(learn);
+        labContent.append(row);
+      }
+    }
+
+    labDetails.append(labContent);
+    wrap.append(labDetails);
+
     return wrap;
   }
 
@@ -8608,6 +8985,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       return;
     }
+    if (action.startsWith("dynopediaFilter:")) {
+      const nextFilter = action.slice(16) as "all" | "known" | "unknown";
+      if (nextFilter === "all" || nextFilter === "known" || nextFilter === "unknown") {
+        dynopediaFilter = nextFilter;
+        render();
+      }
+      return;
+    }
     if (action.startsWith("view:")) {
       closeMenu();
       switchView(action.slice(5) as GardenView);
@@ -10343,9 +10728,27 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     if (target.dataset.role === "dynopediaSearch") {
       dynopediaQuery = target.value;
-      const query = dynopediaQuery.trim().toLowerCase();
+      const query = dynopediaQuery.trim();
+      const queryLower = query.toLowerCase();
+      const queryFolded = foldDiacritics(query);
+      let visibleCount = 0;
       for (const row of root?.querySelectorAll<HTMLElement>(".garden-dynopedia-row") ?? []) {
-        row.hidden = query.length > 0 && !(row.textContent ?? "").toLowerCase().includes(query);
+        const text = row.dataset.search ?? row.textContent ?? "";
+        const matchesQuery =
+          query.length === 0 ||
+          text.toLowerCase().includes(queryLower) ||
+          foldDiacritics(text).includes(queryFolded);
+        const matchesFilter =
+          dynopediaFilter === "all" ||
+          (dynopediaFilter === "known" && row.dataset.status === "known") ||
+          (dynopediaFilter === "unknown" && row.dataset.status === "unknown");
+        const isVisible = matchesQuery && matchesFilter;
+        row.hidden = !isVisible;
+        if (isVisible) visibleCount += 1;
+      }
+      const emptyNotice = root?.querySelector<HTMLElement>(".garden-dynopedia-empty");
+      if (emptyNotice) {
+        emptyNotice.hidden = visibleCount > 0;
       }
     }
     if (target.dataset.role === "kitchenSearch") {
