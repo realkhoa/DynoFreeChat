@@ -251,7 +251,8 @@ type GardenTab =
   | "warehouse"
   | "kitchen"
   | "mine"
-  | "shipping";
+  | "shipping"
+  | "prestige";
 
 /** @brief Garden tabs, in strip order. */
 const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string }[] = [
@@ -266,6 +267,7 @@ const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string 
   { id: "kitchen", labelKey: "gardenTab.kitchen" },
   { id: "mine", labelKey: "gardenTab.mine" },
   { id: "shipping", labelKey: "gardenTab.shipping" },
+  { id: "prestige", labelKey: "gardenTab.prestige" },
 ];
 
 /** Quick actions that open a menu, shown as a popover at the clicked cell. */
@@ -1392,7 +1394,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         savedGardenTab === "warehouse" ||
         savedGardenTab === "kitchen" ||
         savedGardenTab === "mine" ||
-        savedGardenTab === "shipping")
+        savedGardenTab === "shipping" ||
+        savedGardenTab === "prestige")
     ) {
       gardenTab = savedGardenTab;
     }
@@ -4940,8 +4943,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Builds the dedicated Prestige tab: control, buffs and shops. */
   function buildPrestige(): HTMLElement {
     const wrap = div("garden-market garden-prestige");
-    if (state === null) return lineBlock(t("common.loading"));
-    const extras = state.extras;
+    const view = mode === "visit" ? visiting : state;
+    if (view === null) return lineBlock(t("common.loading"));
+    const extras = view.extras;
     const prestigeLevel = extras.prestige ?? 0;
     const prestigeNeed = prestigeRequirement(prestigeLevel);
 
@@ -4973,20 +4977,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     prestigeCoinLine.title = `${formatNumber(extras.prestigeCoins ?? 0)} prestige coins`;
     control.append(prestigeCoinLine);
     control.append(lineBlock(t("prestige.conversionHint")));
-    if (state.stats.earned >= prestigeNeed) {
-      control.append(
-        actionButton(
-          confirmPrestige
-            ? t("prestige.confirm", { level: prestigeLevel + 1 })
-            : t("prestige.ready", { level: prestigeLevel + 1 }),
-          "prestige",
-        ),
-      );
+    if (view.stats.earned >= prestigeNeed) {
+      if (mode === "owner") {
+        control.append(
+          actionButton(
+            confirmPrestige
+              ? t("prestige.confirm", { level: prestigeLevel + 1 })
+              : t("prestige.ready", { level: prestigeLevel + 1 }),
+            "prestige",
+          ),
+        );
+      }
     } else {
       control.append(
         lineBlock(
           t("prestige.progress", {
-            earned: formatCompact(state.stats.earned),
+            earned: formatCompact(view.stats.earned),
             need: formatCompact(prestigeNeed),
           }),
         ),
@@ -5006,7 +5012,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const button = actionButton(
         t(`prestige.skill.${skill}`, { level }),
         "buyPrestigeSkill",
-        skillPoints > 0,
+        mode === "owner" && skillPoints > 0,
       );
       button.dataset.skill = skill;
       skillPanel.append(button);
@@ -5014,7 +5020,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const spentPoints = Object.values(extras.prestigeSkills ?? {}).reduce((sum, points) => sum + points, 0);
     if (prestigeLevel > 0 && spentPoints > 0) {
       skillPanel.append(
-        actionButton(t("prestige.respec"), "respecPrestige", (extras.prestigeCoins ?? 0) >= 1),
+        actionButton(
+          t("prestige.respec"),
+          "respecPrestige",
+          mode === "owner" && (extras.prestigeCoins ?? 0) >= 1,
+        ),
       );
     }
     wrap.append(skillPanel);
@@ -5033,7 +5043,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (locked) card.classList.add("is-prestige-locked");
         card.dataset.act = "buyPrestigeSeed";
         card.dataset.seed = offer.seed;
-        card.disabled = locked || (state?.coins ?? 0) < offer.price;
+        card.disabled = locked || (view.coins ?? 0) < offer.price || mode !== "owner";
         card.title = `${seedName(offer.seed)} · ${formatCompact(offer.price)}c · P${offer.tier}`;
         card.append(
           span("garden-buy-line is-name", seedName(offer.seed)),
@@ -5043,7 +5053,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             "garden-buy-line is-stock",
             locked
               ? t("prestige.tierLocked", { tier: offer.tier })
-              : `${t("garden.bag")} ${state?.bag.seeds[offer.seed] ?? 0}`,
+              : `${t("garden.bag")} ${view.bag.seeds[offer.seed] ?? 0}`,
           ),
         );
         grid.append(card);
@@ -5077,7 +5087,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (!finalUnlocked) card.classList.add("is-prestige-locked");
       card.dataset.act = "buyFinalSeed";
       card.dataset.seed = offer.seed;
-      card.disabled = !finalUnlocked || prestigeCoins < offer.coins;
+      card.disabled = !finalUnlocked || prestigeCoins < offer.coins || mode !== "owner";
       card.title = `${seedName(offer.seed)} · ${offer.coins} xu`;
       card.append(
         span("garden-buy-line is-name", seedName(offer.seed)),
@@ -6759,6 +6769,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (gardenTab === "kitchen") return buildKitchenTab(at);
     if (gardenTab === "mine") return buildMineReborn(at);
     if (gardenTab === "shipping") return buildShippingBin();
+    if (gardenTab === "prestige") return buildPrestige();
     return buildGardenTabPlaceholder();
   }
 

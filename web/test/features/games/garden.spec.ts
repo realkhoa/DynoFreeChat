@@ -2882,6 +2882,7 @@ describe("reborn sub-tabs", () => {
       "gardenTab:kitchen",
       "gardenTab:mine",
       "gardenTab:shipping",
+      "gardenTab:prestige",
     ]);
     expect(host.querySelector(".garden-section-tab.is-active")?.textContent).toContain("vườn chính");
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
@@ -3930,6 +3931,67 @@ describe("quick uproot clears dead plants", () => {
     expect(host.querySelector(".garden-townhall")).toBeNull();
     expect(host.querySelector(".garden-reborn-garden")).not.toBeNull();
     expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("vườn");
+  });
+
+  it("switches to prestige sub-tab inside reborn farm tab and displays prestige dashboard", async () => {
+    const state = makeState({
+      extras: {
+        ...makeState().extras,
+        prestige: 2,
+        prestigeCoins: 5,
+        prestigePoints: 3,
+      },
+    });
+    const api = new FakeGardenApi(state);
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // Click on the prestige sub-tab
+    const prestigeTabBtn = host.querySelector<HTMLButtonElement>('[data-act="gardenTab:prestige"]');
+    expect(prestigeTabBtn).not.toBeNull();
+    prestigeTabBtn?.click();
+    await settle();
+
+    // Verify prestige container rendered inside reborn tab
+    expect(host.querySelector(".garden-prestige")).not.toBeNull();
+    expect(host.textContent).toContain("Prestige");
+    expect(window.location.search).toContain("gstab=prestige");
+  });
+
+  it("disables prestige actions in reborn prestige sub-tab when visiting another player", async () => {
+    const api = new FakeGardenApi(makeState());
+    api.visitValue = {
+      ...makeVisit(),
+      extras: {
+        ...makeVisit().extras,
+        prestige: 5,
+        prestigeCoins: 10,
+        prestigePoints: 2,
+      },
+    };
+    const { host, game } = await mountGame(api, "ZZZZZZ");
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    const prestigeTabBtn = host.querySelector<HTMLButtonElement>('[data-act="gardenTab:prestige"]');
+    expect(prestigeTabBtn).not.toBeNull();
+    prestigeTabBtn?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-prestige")).not.toBeNull();
+    const buySkillBtns = host.querySelectorAll<HTMLButtonElement>('[data-act="buyPrestigeSkill"]');
+    for (const btn of buySkillBtns) {
+      expect(btn.disabled).toBe(true);
+    }
+    const seedBtns = host.querySelectorAll<HTMLButtonElement>('[data-act="buyPrestigeSeed"]');
+    for (const btn of seedBtns) {
+      expect(btn.disabled).toBe(true);
+    }
   });
 });
 

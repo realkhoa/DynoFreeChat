@@ -2608,6 +2608,10 @@ button.garden-rank-row:hover {
   min-width: 0;
 }
 
+.garden-tab-body .garden-prestige {
+  width: 100%;
+}
+
 /* Thirst states: a dead plant only offers uproot; a dry one only watering. */
 .garden-cell.is-dead {
   color: #f48771;
