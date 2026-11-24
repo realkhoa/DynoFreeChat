@@ -1126,7 +1126,7 @@ export class Garden extends DurableObject<Env> {
     } = { used: false };
     let planned: GardenAction[] | null = null;
     if (body.ai === true) {
-      const aiPlan = await planAiActions(this.env, ledger, season, now, survey);
+      const aiPlan = await planAiActions(this.env, ledger, season, now, survey, fetch, ledger.playerId);
       aiMeta = { used: aiPlan.actions.length > 0, model: aiPlan.model };
       if (aiPlan.error !== null) aiMeta.error = aiPlan.error;
       if (aiPlan.reasoning !== null) aiMeta.reasoning = aiPlan.reasoning;

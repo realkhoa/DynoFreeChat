@@ -1,4 +1,4 @@
-# DynoFreeChat
+﻿# DynoFreeChat
 
 Chat room nhiều phòng, giao diện giả lập **Visual Studio 2022 (dark)** — mỗi tin nhắn là một dòng log. Frontend tĩnh trên **GitHub Pages**, realtime bằng **Cloudflare Worker + Durable Objects**, mỗi phòng có thể đặt **mật khẩu**.
 
@@ -245,13 +245,14 @@ Cấu hình (đều là env của worker):
 | Biến | Mặc định | Ý nghĩa |
 | --- | --- | --- |
 | `AI_BOT_API_KEY` | chưa set | bật AI; key của OpenRouter/Beam/Groq/Ollama… |
-| `AI_BOT_API_BASE` | `https://openrouter.ai/api/v1` | base URL OpenAI-compatible |
-| `AI_BOT_MODEL` | `meta-llama/llama-3.3-70b-instruct:free` | model chat (free tier cũng được) |
+| `AI_BOT_API_BASE` | `https://opencode.ai/inference/go/v1` | base URL OpenAI-compatible |
+| `AI_BOT_MODEL` | `beam-free` | model chat (OpenCode Go Beam Free) |
 
 ```bash
 cd worker
-npx wrangler secret put AI_BOT_API_KEY     # dán key free (OpenRouter/Beam/...)
+npx wrangler secret put AI_BOT_API_KEY     # dán key OpenCode Go (oc_sk_...); bỏ trống thì dùng OPENCODE_API_KEY
 npx wrangler deploy                        # vars AI_BOT_API_BASE / AI_BOT_MODEL đã có trong wrangler.jsonc
 ```
 
 Đổi sang model free khác (Beam, Groq, Ollama local) chỉ cần sửa `AI_BOT_API_BASE` + `AI_BOT_MODEL` trong `worker/wrangler.jsonc` rồi deploy lại.
+

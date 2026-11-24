@@ -54,8 +54,8 @@ describe("ai bot config", () => {
   it("returns null without a key and defaults the model", () => {
     expect(aiConfig(makeEnv({ AI_BOT_API_KEY: undefined }))).toBeNull();
     const config = aiConfig(makeEnv({ AI_BOT_API_BASE: undefined, AI_BOT_MODEL: undefined }));
-    expect(config?.base).toBe("https://openrouter.ai/api/v1");
-    expect(config?.model).toBe("meta-llama/llama-3.3-70b-instruct:free");
+    expect(config?.base).toBe("https://opencode.ai/inference/go/v1");
+    expect(config?.model).toBe("beam-free");
   });
 });
 
@@ -148,6 +148,46 @@ describe("ai decision parsing", () => {
     expect(parseAiDecisions(JSON.stringify({ actions }))).toHaveLength(8);
     expect(parseAiDecisions("I cannot help with that.")).toEqual([]);
     expect(parseAiDecisions("{}")).toEqual([]);
+  });
+});
+
+describe("opencode integration", () => {
+  it("reuses the recipe-lab key when the bot key is missing", () => {
+    const config = aiConfig(makeEnv({ AI_BOT_API_KEY: undefined, OPENCODE_API_KEY: "shared-key" }));
+    expect(config?.key).toBe("shared-key");
+    expect(aiConfig(makeEnv({ AI_BOT_API_KEY: undefined, OPENCODE_API_KEY: undefined }))).toBeNull();
+  });
+
+  it("shows the model's own reasoning_content when it is present", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({ actions: [{ kind: "sellAll" }] }),
+                  reasoning_content: "Tôi thấy túi đầy nên bán trước, rồi mới trồng.",
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const plan = await planAiActions(
+      makeEnv({ AI_BOT_API_KEY: "oc-key", AI_BOT_API_BASE: "https://opencode.ai/inference/go/v1" }),
+      makeLedger(),
+      seasonAt(NOW),
+      NOW,
+      {},
+      fetchImpl as unknown as typeof fetch,
+      "bot-session",
+    );
+    expect(plan.reasoning).toContain("bán trước");
+    expect(plan.actions.map((action) => action.kind)).toEqual(["sellAll"]);
+    const call = fetchImpl.mock.calls[0] as unknown as [string, { headers: Record<string, string> }];
+    expect(call[1].headers["x-opencode-session"]).toContain("bot-session");
   });
 });
 

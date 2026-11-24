@@ -58,7 +58,7 @@
   },
   "vars": {
     "ALLOWED_ORIGINS": "localhost,https://realkhoa.github.io",
-    "AI_BOT_API_BASE": "https://openrouter.ai/api/v1",
-    "AI_BOT_MODEL": "meta-llama/llama-3.3-70b-instruct:free",
+    "AI_BOT_API_BASE": "https://opencode.ai/inference/go/v1",
+    "AI_BOT_MODEL": "beam-free",
   },
 }

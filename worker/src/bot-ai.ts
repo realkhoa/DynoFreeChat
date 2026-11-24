@@ -31,10 +31,10 @@ export const AI_BOT_NICKS: readonly string[] = [
 ];
 
 /** Default OpenAI-compatible endpoint: OpenRouter's free tier. */
-export const DEFAULT_AI_BASE = "https://openrouter.ai/api/v1";
+export const DEFAULT_AI_BASE = "https://opencode.ai/inference/go/v1";
 
 /** Default model; any free OpenAI-compatible chat model works. */
-export const DEFAULT_AI_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+export const DEFAULT_AI_MODEL = "beam-free";
 
 /** Actions the model may choose. Gifts, prestige and insurance are excluded. */
 export const AI_ALLOWED_ACTIONS: ReadonlySet<string> = new Set([
@@ -130,7 +130,10 @@ export interface AiGardenContext {
 
 /** @brief Reads the AI model configuration, or `null` when unconfigured. */
 export function aiConfig(env: Env): { base: string; model: string; key: string } | null {
-  const raw = typeof env.AI_BOT_API_KEY === "string" ? env.AI_BOT_API_KEY.trim() : "";
+  const direct = typeof env.AI_BOT_API_KEY === "string" ? env.AI_BOT_API_KEY.trim() : "";
+  // The recipe lab already ships an OpenCode Go key; reuse it when the bot key is unset.
+  const shared = typeof env.OPENCODE_API_KEY === "string" ? env.OPENCODE_API_KEY.trim() : "";
+  const raw = direct.length > 0 ? direct : shared;
   if (raw.length === 0) return null;
   const base =
     typeof env.AI_BOT_API_BASE === "string" && env.AI_BOT_API_BASE.trim().length > 0
@@ -290,6 +293,7 @@ export async function planAiActions(
   now: number,
   neighbourhood: Readonly<Record<string, number>>,
   fetchImpl: typeof fetch = fetch,
+  session = "dynofreechat-bot-ai",
 ): Promise<AiPlan> {
   const config = aiConfig(env);
   if (config === null) {
@@ -298,14 +302,20 @@ export async function planAiActions(
   const context = summarizeGarden(ledger, season, now, neighbourhood);
   const messages = buildAiMessages(context);
   try {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      authorization: `Bearer ${config.key}`,
+      "user-agent": "DynoFreeChat/1.0",
+    };
+    if (config.base.includes("opencode.ai")) {
+      headers["x-opencode-session"] = `${session}-${Date.now()}`;
+    } else {
+      headers["http-referer"] = "https://realkhoa.github.io/DynoFreeChat/";
+      headers["x-title"] = "DynoFreeChat AI bots";
+    }
     const response = await fetchImpl(`${config.base}/chat/completions`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${config.key}`,
-        "http-referer": "https://realkhoa.github.io/DynoFreeChat/",
-        "x-title": "DynoFreeChat AI bots",
-      },
+      headers,
       body: JSON.stringify({ model: config.model, messages, temperature: 0.4, max_tokens: 700 }),
       signal: AbortSignal.timeout(20_000),
     });
@@ -313,16 +323,21 @@ export async function planAiActions(
       return { actions: [], reasoning: null, model: config.model, error: `model HTTP ${response.status}` };
     }
     const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: unknown } }>;
+      choices?: Array<{ message?: { content?: unknown; reasoning_content?: unknown } }>;
     };
-    const content = payload.choices?.[0]?.message?.content;
+    const message = payload.choices?.[0]?.message;
+    const content = message?.content;
     if (typeof content !== "string") {
       return { actions: [], reasoning: null, model: config.model, error: "model returned no content" };
     }
     const plan = parseAiPlan(content);
+    // OpenCode's beam-free model exposes its raw chain of thought separately.
+    const rawReasoning =
+      typeof message?.reasoning_content === "string" ? message.reasoning_content.trim() : "";
+    const reasoning = rawReasoning.length > 0 ? rawReasoning.slice(0, 600) : plan.reasoning;
     return {
       actions: plan.actions,
-      reasoning: plan.reasoning,
+      reasoning,
       model: config.model,
       error: plan.actions.length === 0 ? "model returned no usable actions" : null,
     };
