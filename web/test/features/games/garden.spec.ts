@@ -2958,7 +2958,14 @@ describe("townhall tab", () => {
 
     expect(host.querySelector(".garden-reborn .garden-townhall")).not.toBeNull();
     const npcs = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-act="townNpc"]'));
-    expect(npcs.map((npc) => npc.dataset.npc)).toEqual(["seeds", "tools"]);
+    expect(npcs.map((npc) => npc.dataset.npc)).toEqual([
+      "seeds",
+      "tools",
+      "wheel",
+      "insurance",
+      "pet",
+      "guild",
+    ]);
     // NPCs are drawn with the exact same six-line plot frame as the soil cells.
     for (const npc of npcs) expect(npc.querySelectorAll(".garden-cell-line")).toHaveLength(6);
     expect(host.querySelector('[data-npc="traveller"]')).toBeNull();
@@ -2973,7 +2980,7 @@ describe("townhall tab", () => {
     mounted.push(game);
     await openTown(host);
     expect(host.querySelector('[data-npc="traveller"]')).not.toBeNull();
-    expect(host.querySelectorAll('[data-act="townNpc"]')).toHaveLength(3);
+    expect(host.querySelectorAll('[data-act="townNpc"]')).toHaveLength(7);
   });
 
   it("opens the seed shop and buys one seed", async () => {
@@ -3085,6 +3092,108 @@ describe("townhall tab", () => {
     for (const npc of npcs) expect(npc.disabled).toBe(true);
     expect(host.querySelector(".garden-town-shop")).toBeNull();
     expect(host.textContent).toContain("chỉ xem");
+  });
+
+  it("opens wheel, insurance, pet and guild NPCs in town", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        extras: {
+          ...makeState().extras,
+          wheelSpins: 0,
+          pets: { dog: 1 },
+          equippedPet: "dog",
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openTown(host);
+
+    // 1. Wheel NPC
+    host.querySelector<HTMLButtonElement>('[data-npc="wheel"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-town-shop")).not.toBeNull();
+    expect(host.textContent).toContain("Vòng quay may mắn");
+    const spinBtn = host.querySelector<HTMLButtonElement>('[data-act="extrasWheel"]');
+    expect(spinBtn).not.toBeNull();
+    spinBtn?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "spinWheel")).toBe(true);
+
+    // 2. Insurance NPC
+    host.querySelector<HTMLButtonElement>('[data-npc="insurance"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-town-shop")).not.toBeNull();
+    expect(host.textContent).toContain("bảo hiểm");
+    const insBtn = host.querySelector<HTMLButtonElement>('[data-act="extrasInsurance"]');
+    expect(insBtn).not.toBeNull();
+    insBtn?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "buyInsurance")).toBe(true);
+
+    // 3. Pet NPC
+    host.querySelector<HTMLButtonElement>('[data-npc="pet"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-town-shop")).not.toBeNull();
+    expect(host.textContent).toContain("thú cưng");
+    const hatchBtn = host.querySelector<HTMLButtonElement>('[data-act="extrasHatch"]');
+    expect(hatchBtn).not.toBeNull();
+    hatchBtn?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "hatchEgg")).toBe(true);
+
+    // 4. Guild NPC
+    host.querySelector<HTMLButtonElement>('[data-npc="guild"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-town-shop")).not.toBeNull();
+    expect(host.textContent).toContain("Bang");
+    expect(host.querySelector('[data-role="guildName"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="guildCreate"]')).not.toBeNull();
+  });
+
+  it("opens billboard, quests and jobs boards in town", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        extras: {
+          ...makeState().extras,
+          quests: [{ id: "water", kind: "water", target: 10, progress: 10, reward: 500, claimed: false }],
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openTown(host);
+
+    // 1. Billboard board
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="billboard"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-town-shop")).not.toBeNull();
+    expect(host.textContent).toContain("billboard");
+    expect(host.textContent).toContain("Hợp đồng");
+
+    // 2. Quests board
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="quests"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-town-shop")).not.toBeNull();
+    expect(host.textContent).toContain("nhiệm vụ");
+    const claimBtn = host.querySelector<HTMLButtonElement>('[data-act="claimQuest"][data-id="water"]');
+    expect(claimBtn).not.toBeNull();
+    claimBtn?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "claimQuest")).toBe(true);
+
+    // 3. Jobs board
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="jobs"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-town-shop")).not.toBeNull();
+    expect(host.textContent).toContain("nhân công");
+    const hireBtn = host.querySelector<HTMLButtonElement>('[data-act="staffHire"]');
+    expect(hireBtn).not.toBeNull();
+    hireBtn?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "hireStaff")).toBe(true);
   });
 });
 

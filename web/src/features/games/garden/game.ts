@@ -393,7 +393,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** Which townhall NPC has its shop open, if any. */
   let townNpc: string | null = null;
   /** Which public board is open in the town square, if any. */
-  let townBoard: "rank" | "chart" | "bots" | null = null;
+  let townBoard: "rank" | "chart" | "bots" | "billboard" | "quests" | "jobs" | null = null;
   let visitCode: string | null = null;
   let state: GardenSnapshot | null = null;
   let visiting: VisitSnapshot | null = null;
@@ -7172,6 +7172,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const npcs: TownNpc[] = [
       { id: "seeds", name: t("town.seedNpc"), glyph: "s", tone: "harvest", note: t("town.seedNpcNote") },
       { id: "tools", name: t("town.toolNpc"), glyph: "w", tone: "soil", note: t("town.toolNpcNote") },
+      { id: "wheel", name: t("town.wheelNpc"), glyph: "✦", tone: "money", note: t("town.wheelNpcNote") },
+      {
+        id: "insurance",
+        name: t("town.insuranceNpc"),
+        glyph: "§",
+        tone: "water",
+        note: t("town.insuranceNpcNote"),
+      },
+      { id: "pet", name: t("town.petNpc"), glyph: "p", tone: "harvest", note: t("town.petNpcNote") },
+      { id: "guild", name: t("town.guildNpc"), glyph: "G", tone: "soil", note: t("town.guildNpcNote") },
     ];
     if (travellerInTown()) {
       npcs.push({
@@ -7538,6 +7548,475 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /**
+   * @brief Builds the townhall lucky wheel panel.
+   * @param npc Fortune host NPC descriptor.
+   * @return Lucky wheel interactive panel.
+   */
+  function buildTownWheel(npc: TownNpc): HTMLElement {
+    const panel = div("garden-town-shop");
+    const head = div("garden-town-shop-head");
+    const title = span("garden-line", `// ${npc.name} · ${npc.note}`);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "stage-btn";
+    close.textContent = `[ ${t("town.close")} ]`;
+    close.dataset.act = "townClose";
+    head.append(title, close);
+    panel.append(head);
+
+    const block = div("garden-town-section");
+    block.append(span("garden-board-title", t("town.wheelTitle")));
+    block.append(lineBlock(t("town.wheelHint")));
+    block.append(lineBlock(t("town.wheelPrizes")));
+
+    const spins = state?.extras.wheelSpins ?? 0;
+    const wheelPrice = wheelCost(spins);
+    const canSpin = (state?.coins ?? 0) >= wheelPrice && mode === "owner";
+
+    block.append(
+      lineBlock(
+        `// ${t("extras.wheelToday", {
+          spins,
+          cost: formatCompact(wheelCost(spins + 1)),
+        })}`,
+      ),
+    );
+
+    if ((state?.extras.wheelLast ?? "").length > 0) {
+      block.append(lineBlock(`// ${t("extras.wheelLast")}: ${state?.extras.wheelLast}`));
+    }
+
+    const spinBtn = actionButton(
+      t("extras.wheel", { cost: formatCompact(wheelPrice) }),
+      "extrasWheel",
+      canSpin,
+    );
+    block.append(spinBtn);
+
+    const prizeGrid = div("garden-tools");
+    prizeGrid.append(
+      span("garden-gold-tag", "💰 100k - 5M coins"),
+      span("garden-gold-tag", "🌱 Rare Seeds"),
+      span("garden-gold-tag", "✨ Premium Fertilizers"),
+      span("garden-gold-tag", "🧪 Pesticide Sprays"),
+      span("garden-gold-tag", "⭐ Farming XP"),
+    );
+    block.append(prizeGrid);
+
+    panel.append(block);
+    return panel;
+  }
+
+  /**
+   * @brief Builds the townhall crop insurance panel.
+   * @param npc Insurance broker NPC descriptor.
+   * @return Insurance interactive panel.
+   */
+  function buildTownInsurance(npc: TownNpc): HTMLElement {
+    const panel = div("garden-town-shop");
+    const head = div("garden-town-shop-head");
+    const title = span("garden-line", `// ${npc.name} · ${npc.note}`);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "stage-btn";
+    close.textContent = `[ ${t("town.close")} ]`;
+    close.dataset.act = "townClose";
+    head.append(title, close);
+    panel.append(head);
+
+    const block = div("garden-town-section");
+    block.append(span("garden-board-title", t("town.insuranceTitle")));
+    block.append(lineBlock(t("town.insuranceHint")));
+
+    const at = now();
+    const insured = (state?.extras.insuranceUntil ?? 0) > at;
+    const remaining = (state?.extras.insuranceUntil ?? 0) - at;
+
+    block.append(
+      lineBlock(
+        insured
+          ? `// ${t("extras.insured", { time: formatDuration(remaining, "short") })}`
+          : `// ${t("extras.notInsured")}`,
+      ),
+    );
+
+    const canBuy = (state?.coins ?? 0) >= INSURANCE_PRICE && mode === "owner";
+    const buyBtn = actionButton(
+      t("extras.insurance", { cost: formatCompact(INSURANCE_PRICE) }),
+      "extrasInsurance",
+      canBuy,
+    );
+    block.append(buyBtn);
+
+    const perkList = div("garden-tools");
+    perkList.append(
+      span("garden-gold-tag", "🛡️ Frost & Blizzard Immunity"),
+      span("garden-gold-tag", "🪲 Pest Damage Protection"),
+      span("garden-gold-tag", "🔥 Farm Explosion Shield"),
+      span("garden-gold-tag", "⏱️ 24h Coverage Duration"),
+    );
+    block.append(perkList);
+
+    panel.append(block);
+    return panel;
+  }
+
+  /**
+   * @brief Builds the townhall pet breeder and hatching panel.
+   * @param npc Pet breeder NPC descriptor.
+   * @return Pet breeder interactive panel.
+   */
+  function buildTownPet(npc: TownNpc): HTMLElement {
+    const panel = div("garden-town-shop");
+    const head = div("garden-town-shop-head");
+    const title = span("garden-line", `// ${npc.name} · ${npc.note}`);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "stage-btn";
+    close.textContent = `[ ${t("town.close")} ]`;
+    close.dataset.act = "townClose";
+    head.append(title, close);
+    panel.append(head);
+
+    // Section 1: Egg Hatching
+    const hatchBlock = div("garden-town-section");
+    hatchBlock.append(span("garden-board-title", t("town.petHatchTitle")));
+    hatchBlock.append(lineBlock(t("town.petHatchHint")));
+
+    if ((state?.extras.lastHatch ?? null) !== null) {
+      hatchBlock.append(lineBlock(`// ${t("extras.lastHatch")}: ${t(`pets.${state?.extras.lastHatch}`)}`));
+    }
+
+    const canHatch = (state?.coins ?? 0) >= EGG_PRICE && mode === "owner";
+    const hatchBtn = actionButton(
+      t("extras.hatch", { cost: formatCompact(EGG_PRICE) }),
+      "extrasHatch",
+      canHatch,
+    );
+    hatchBlock.append(hatchBtn);
+    panel.append(hatchBlock);
+
+    // Section 2: Pet Collection & Equipped Pet
+    const manageBlock = div("garden-town-section");
+    const equipped = state?.extras.equippedPet ?? null;
+    const equippedName = equipped !== null ? t(`pets.${equipped}`) : t("town.petNone");
+    manageBlock.append(span("garden-board-title", t("town.petTitle")));
+    manageBlock.append(lineBlock(t("town.petEquipped", { name: equippedName })));
+
+    const petGrid = div("garden-tools");
+    for (const pet of PETS) {
+      const copies = Math.min(PET_MAX_LEVEL, state?.extras.pets[pet.id] ?? 0);
+      const isEquipped = equipped === pet.id;
+      const parts: string[] = [];
+      if (pet.pestShield !== undefined)
+        parts.push(t("petEffects.pestShield", { value: Math.round(pet.pestShield * 100) }));
+      if (pet.mutation !== undefined)
+        parts.push(t("petEffects.mutation", { value: Math.round(pet.mutation * 100) }));
+      if (pet.grow !== undefined) parts.push(t("petEffects.grow", { value: Math.round(pet.grow * 100) }));
+      if (pet.sell !== undefined) parts.push(t("petEffects.sell", { value: Math.round(pet.sell * 100) }));
+      if (pet.extraHarvest !== undefined)
+        parts.push(t("petEffects.extraHarvest", { value: Math.round(pet.extraHarvest * 100) }));
+
+      if (copies > 0) {
+        const btn = actionButton(
+          `${isEquipped ? "★ " : ""}${t(`pets.${pet.id}`)} [${t(`petRarity.${pet.rarity}`)}] lv${copies} (${parts.join(", ")}) — ${isEquipped ? t("town.petActive") : t("town.petEquip")}`,
+          "equipPet",
+          mode === "owner" && !isEquipped,
+        );
+        btn.dataset.pet = pet.id;
+        petGrid.append(btn);
+      } else {
+        manageBlock.append(
+          lineBlock(
+            `// ${t(`pets.${pet.id}`)} [${t(`petRarity.${pet.rarity}`)}] — ${t("town.petLocked")} (${parts.join(", ")})`,
+          ),
+        );
+      }
+    }
+    manageBlock.append(petGrid);
+    panel.append(manageBlock);
+
+    return panel;
+  }
+
+  /**
+   * @brief Builds the townhall guild master hall panel.
+   * @param npc Guild master NPC descriptor.
+   * @return Guild hall interactive panel.
+   */
+  function buildTownGuild(npc: TownNpc): HTMLElement {
+    const panel = div("garden-town-shop");
+    const head = div("garden-town-shop-head");
+    const title = span("garden-line", `// ${npc.name} · ${npc.note}`);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "stage-btn";
+    close.textContent = `[ ${t("town.close")} ]`;
+    close.dataset.act = "townClose";
+    head.append(title, close);
+    panel.append(head);
+
+    const block = div("garden-town-section");
+    block.append(span("garden-board-title", t("town.guildTitle")));
+
+    if (guildSnapshot !== null) {
+      block.append(
+        lineBlock(t("guild.current", { name: guildSnapshot.name, count: guildSnapshot.members.length })),
+      );
+      for (const member of guildSnapshot.members) {
+        block.append(lineBlock(`// [${member.code}] ${member.nick}`));
+      }
+      block.append(lineBlock(t("guild.bank", { coins: formatCompact(guildSnapshot.bank) })));
+
+      const donateRow = div("garden-restore-row");
+      const donateInput = document.createElement("input");
+      donateInput.type = "number";
+      donateInput.min = "1";
+      donateInput.className = "stage-input";
+      donateInput.value = guildDonateDraft;
+      donateInput.dataset.role = "guildDonate";
+      donateInput.setAttribute("aria-label", t("guild.donate"));
+      donateRow.append(donateInput, actionButton(t("guild.donate"), "guildDonate", mode === "owner"));
+      block.append(donateRow);
+      block.append(actionButton(t("guild.leave"), "guildLeave", mode === "owner"));
+    } else {
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.className = "stage-input";
+      nameInput.value = guildNameDraft;
+      nameInput.placeholder = t("guild.name");
+      nameInput.dataset.role = "guildName";
+      block.append(nameInput, actionButton(t("guild.create"), "guildCreate", mode === "owner"));
+
+      if (guildBoard.length > 0) {
+        block.append(lineBlock(`// ${t("guild.title")}`));
+        for (const guild of guildBoard) {
+          const join = actionButton(
+            t("guild.join", { name: guild.name, count: guild.members }),
+            "guildJoin",
+            mode === "owner",
+          );
+          join.dataset.id = guild.id;
+          block.append(join);
+        }
+      }
+    }
+
+    panel.append(block);
+    return panel;
+  }
+
+  /**
+   * @brief Builds the billboard contract board in town.
+   * @return Delivery contract billboard element.
+   */
+  function buildTownBillboard(): HTMLElement {
+    const panel = div("garden-town-shop");
+    const head = div("garden-town-shop-head");
+    const title = span("garden-line", `// ${t("town.boardBillboardTitle")}`);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "stage-btn";
+    close.textContent = `[ ${t("town.close")} ]`;
+    close.dataset.act = "townBoard";
+    close.dataset.board = "billboard";
+    head.append(title, close);
+    panel.append(head);
+
+    if (state === null) {
+      panel.append(lineBlock(t("common.loading")));
+      return panel;
+    }
+
+    const at = now();
+    const contractBlock = div("garden-town-section");
+    contractBlock.append(span("garden-board-title", t("extras.contracts")));
+
+    const offers = contractOffers(state.playerId, at);
+    if (offers.length === 0) {
+      contractBlock.append(lineBlock(t("extras.claimed")));
+    } else {
+      for (const offer of offers) {
+        const claimed = state.extras.contractClaims.includes(offer.id);
+        const label = `${t(`products.${offer.product}`)} ≥${offer.star}★ x${offer.qty} → ${formatCompact(offer.reward)}c`;
+        if (claimed) {
+          contractBlock.append(lineBlock(`// ${label} [${t("extras.claimed")}]`));
+        } else {
+          const button = actionButton(label, "extrasContract", mode === "owner");
+          button.dataset.id = offer.id;
+          contractBlock.append(button);
+        }
+      }
+    }
+    panel.append(contractBlock);
+
+    const chainBlock = div("garden-town-section");
+    chainBlock.append(span("garden-board-title", t("chain.title")));
+    const chainStep = state.extras.chainStep ?? 0;
+    const chain = CONTRACT_CHAIN[chainStep];
+    if (chain === undefined) {
+      chainBlock.append(lineBlock(t("chain.done")));
+    } else {
+      const label = `${t(`chain.${chain.id}`)} · ${t(`products.${chain.product}`)} ≥${chain.star}★ x${chain.qty} → ${formatCompact(chain.reward)}c`;
+      chainBlock.append(actionButton(label, "extrasChain", mode === "owner"));
+      chainBlock.append(
+        lineBlock(t("chain.progress", { step: chainStep + 1, total: CONTRACT_CHAIN.length })),
+      );
+    }
+    panel.append(chainBlock);
+
+    const futureBlock = div("garden-town-section");
+    futureBlock.append(span("garden-board-title", t("extras.futures")));
+    if (state.extras.futures.length === 0) {
+      futureBlock.append(lineBlock(t("extras.noFutures")));
+    } else {
+      for (const future of state.extras.futures) {
+        futureBlock.append(
+          lineBlock(`// ${itemName(future.item)} x${future.qty} @ ${formatCompact(future.price)}c`),
+        );
+      }
+    }
+    for (const item of new Set((state.bag.crops ?? []).map((stack) => stack.item))) {
+      const button = actionButton(
+        t("extras.lockFuture", { item: itemName(item) }),
+        "extrasFuture",
+        mode === "owner",
+      );
+      button.dataset.item = item;
+      futureBlock.append(button);
+    }
+    panel.append(futureBlock);
+
+    return panel;
+  }
+
+  /**
+   * @brief Builds the daily quest progress board in town.
+   * @return Daily quest board element.
+   */
+  function buildTownQuests(): HTMLElement {
+    const panel = div("garden-town-shop");
+    const head = div("garden-town-shop-head");
+    const title = span("garden-line", `// ${t("town.boardQuestsTitle")}`);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "stage-btn";
+    close.textContent = `[ ${t("town.close")} ]`;
+    close.dataset.act = "townBoard";
+    close.dataset.board = "quests";
+    head.append(title, close);
+    panel.append(head);
+
+    if (state === null) {
+      panel.append(lineBlock(t("common.loading")));
+      return panel;
+    }
+
+    const block = div("garden-town-section");
+    block.append(span("garden-board-title", t("quests.title")));
+
+    const quests = state.extras.quests ?? [];
+    if (quests.length === 0) {
+      block.append(lineBlock(t("quests.empty")));
+    } else {
+      for (const quest of quests) {
+        const progress = Math.min(quest.progress, quest.target);
+        const label = `${t("quests.progress", {
+          progress,
+          target: quest.target,
+        })} · +${formatCompact(quest.reward)}c`;
+        if (quest.claimed) {
+          block.append(lineBlock(`// ${t(`quests.${quest.id}`)} — ${t("quests.claimed")}`));
+        } else {
+          const button = actionButton(
+            `${t(`quests.${quest.id}`)} · ${label}`,
+            "claimQuest",
+            quest.progress >= quest.target && mode === "owner",
+          );
+          button.dataset.id = quest.id;
+          block.append(button);
+        }
+      }
+    }
+    panel.append(block);
+    return panel;
+  }
+
+  /**
+   * @brief Builds the job market and staff employment board in town.
+   * @return Staff job board element.
+   */
+  function buildTownJobs(): HTMLElement {
+    const panel = div("garden-town-shop");
+    const head = div("garden-town-shop-head");
+    const title = span("garden-line", `// ${t("town.boardJobsTitle")}`);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "stage-btn";
+    close.textContent = `[ ${t("town.close")} ]`;
+    close.dataset.act = "townBoard";
+    close.dataset.board = "jobs";
+    head.append(title, close);
+    panel.append(head);
+
+    if (state === null) {
+      panel.append(lineBlock(t("common.loading")));
+      return panel;
+    }
+
+    panel.append(lineBlock(`// ${t("staff.roster")} ${state.extras.staff.length}/${STAFF_SLOTS}`));
+
+    // Section 1: Candidate Market
+    const marketBlock = div("garden-town-section");
+    marketBlock.append(span("garden-board-title", t("staff.market")));
+    const candidates = staffMarketAt(state.playerId, now());
+    if (candidates.length === 0) {
+      marketBlock.append(lineBlock(t("town.soldOut")));
+    } else {
+      for (const candidate of candidates) {
+        const traits = candidate.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
+        const hireCost = staffHireCost(candidate);
+        const canHire =
+          state.extras.staff.length < STAFF_SLOTS && state.coins >= hireCost && mode === "owner";
+        const label = `${candidate.name} · ${candidate.speed}⚡ · ${candidate.skill}✦ · ${candidate.wage}c · ${traits} · ${formatCompact(hireCost)}c`;
+        const button = actionButton(label, "staffHire", canHire);
+        button.dataset.id = candidate.id;
+        marketBlock.append(button);
+      }
+    }
+    panel.append(marketBlock);
+
+    // Section 2: Hired Staff Roster & Role Assignments
+    if (state.extras.staff.length > 0) {
+      const rosterBlock = div("garden-town-section");
+      rosterBlock.append(span("garden-board-title", t("staff.roster")));
+      state.extras.staff.forEach((worker, index) => {
+        const traits = worker.traits.map((trait) => t(`staffTrait.${trait}`)).join(", ");
+        rosterBlock.append(
+          lineBlock(
+            `// ${worker.name} · ${t("staff.level")} ${worker.level} (${worker.xp}/${staffXpToLevel(worker.level)} XP) · ${worker.wage}c · ${traits}`,
+          ),
+        );
+        const taskRow = div("garden-tools");
+        for (const role of STAFF_ROLES) {
+          const task = actionButton(t(`staffRole.${role}`), "staffTask", mode === "owner");
+          task.dataset.index = String(index);
+          task.dataset.role = role;
+          if (worker.role === role) task.classList.add("is-active");
+          taskRow.append(task);
+        }
+        const fire = actionButton(t("staff.fire"), "staffFire", mode === "owner");
+        fire.dataset.index = String(index);
+        taskRow.append(fire);
+        rosterBlock.append(taskRow);
+      });
+      panel.append(rosterBlock);
+    }
+
+    return panel;
+  }
+
+  /**
    * @brief Builds the townhall as a section of the rebuilt view.
    * @details It lives inside the reborn document, under the garden boards, so the
    * town reads as one more block of the same screen instead of a sibling tab.
@@ -7584,11 +8063,54 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         title: t("bots.title", { count: botGardens.length }),
         active: townBoard === "bots",
       }),
+      buildRebornAction({
+        id: "town:billboard",
+        label: t("town.boardBillboard"),
+        glyph: "B",
+        note: t("town.boardBillboardNote"),
+        tone: "chemical",
+        act: "townBoard",
+        data: { board: "billboard" },
+        title: t("town.boardBillboardTitle"),
+        active: townBoard === "billboard",
+      }),
+      buildRebornAction({
+        id: "town:quests",
+        label: t("town.boardQuests"),
+        glyph: "Q",
+        note: t("town.boardQuestsNote"),
+        tone: "harvest",
+        act: "townBoard",
+        data: { board: "quests" },
+        title: t("town.boardQuestsTitle"),
+        active: townBoard === "quests",
+      }),
+      buildRebornAction({
+        id: "town:jobs",
+        label: t("town.boardJobs"),
+        glyph: "J",
+        note: t("town.boardJobsNote"),
+        tone: "soil",
+        act: "townBoard",
+        data: { board: "jobs" },
+        title: t("town.boardJobsTitle"),
+        active: townBoard === "jobs",
+      }),
     );
     wrap.append(boards);
     const open = townNpc === null ? undefined : npcs.find((npc) => npc.id === townNpc);
     if (open !== undefined && mode === "owner") {
-      wrap.append(buildTownShop(open, townShopSections(open.id), t("town.close")));
+      if (open.id === "wheel") {
+        wrap.append(buildTownWheel(open));
+      } else if (open.id === "insurance") {
+        wrap.append(buildTownInsurance(open));
+      } else if (open.id === "pet") {
+        wrap.append(buildTownPet(open));
+      } else if (open.id === "guild") {
+        wrap.append(buildTownGuild(open));
+      } else {
+        wrap.append(buildTownShop(open, townShopSections(open.id), t("town.close")));
+      }
     } else if (townBoard === "rank") {
       void loadLeaderboard();
       wrap.append(buildRank());
@@ -7598,6 +8120,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     } else if (townBoard === "bots") {
       void loadBots();
       wrap.append(buildBots(), buildAiThoughts());
+    } else if (townBoard === "billboard") {
+      wrap.append(buildTownBillboard());
+    } else if (townBoard === "quests") {
+      wrap.append(buildTownQuests());
+    } else if (townBoard === "jobs") {
+      wrap.append(buildTownJobs());
     } else {
       wrap.append(lineBlock(mode === "owner" ? t("town.hint") : t("town.visitHint")));
     }
@@ -8931,8 +9459,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       case "townBoard": {
         const board = target.dataset.board;
-        if (board !== "rank" && board !== "chart" && board !== "bots") return;
-        townBoard = townBoard === board ? null : board;
+        if (
+          board !== "rank" &&
+          board !== "chart" &&
+          board !== "bots" &&
+          board !== "billboard" &&
+          board !== "quests" &&
+          board !== "jobs"
+        )
+          return;
+        townBoard = townBoard === board ? null : (board as typeof townBoard);
         townNpc = null;
         if (townBoard === "rank") void loadLeaderboard();
         if (townBoard === "chart") void loadChart();
@@ -8945,6 +9481,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (npc === undefined) return;
         townNpc = townNpc === npc ? null : npc;
         townBoard = null;
+        if (townNpc === "guild") void loadGuilds();
         render();
         return;
       }
