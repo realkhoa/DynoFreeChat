@@ -2207,3 +2207,10 @@ button.garden-rank-row:hover {
   width: min(100%, 960px);
   background: var(--border-subtle);
 }
+
+/* Public boards as plot cells under the NPC row. */
+.garden-town-boards {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}

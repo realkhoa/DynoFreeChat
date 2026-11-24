@@ -352,6 +352,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let quickMenu: { action: string; x: number; y: number; anchorTop: number } | null = null;
   /** Which townhall NPC has its shop open, if any. */
   let townNpc: string | null = null;
+  /** Which public board is open in the town square, if any. */
+  let townBoard: "rank" | "chart" | null = null;
   let visitCode: string | null = null;
   let state: GardenSnapshot | null = null;
   let visiting: VisitSnapshot | null = null;
@@ -1208,6 +1210,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (next === "legacy") loadTabData(tab);
     if (next !== "reborn") {
       townNpc = null;
+      townBoard = null;
       staffPanel = null;
       quickPlanPreview = null;
       quickMenu = null;
@@ -5305,9 +5308,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const wrap = div("garden-reborn");
     wrap.append(buildRebornTabStrip());
     if (rebornTab === "townhall") {
-      // Leaderboard and the market chart live in the town square now.
-      void loadLeaderboard();
-      void loadChart();
       wrap.append(buildTownhallSection());
       return wrap;
     }
@@ -5562,10 +5562,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (rebornTab === next) return;
     rebornTab = next;
     townNpc = null;
-    if (next === "townhall") {
-      void loadLeaderboard();
-      void loadChart();
-    }
+    townBoard = null;
+
     syncGardenQuery();
     render();
   }
@@ -6112,14 +6110,45 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (mode === "visit" && visiting === null) return wrap;
     const npcs = townNpcs();
     wrap.append(lineBlock(`// ${t("town.title")}`), buildTownNpcs(npcs, mode === "owner"));
+    // Public boards are plot cells too: click one to open it, click again to close.
+    const boards = div("garden-town-npcs garden-town-boards");
+    boards.append(
+      buildRebornAction({
+        id: "town:rank",
+        label: t("town.boardRank"),
+        glyph: "#",
+        note: t("town.boardRankNote"),
+        tone: "money",
+        act: "townBoard",
+        data: { board: "rank" },
+        title: t("rank.title"),
+        active: townBoard === "rank",
+      }),
+      buildRebornAction({
+        id: "town:chart",
+        label: t("town.boardChart"),
+        glyph: "%",
+        note: t("town.boardChartNote"),
+        tone: "water",
+        act: "townBoard",
+        data: { board: "chart" },
+        title: t("chart.title"),
+        active: townBoard === "chart",
+      }),
+    );
+    wrap.append(boards);
     const open = townNpc === null ? undefined : npcs.find((npc) => npc.id === townNpc);
     if (open !== undefined && mode === "owner") {
       wrap.append(buildTownShop(open, townShopSections(open.id), t("town.close")));
+    } else if (townBoard === "rank") {
+      void loadLeaderboard();
+      wrap.append(buildRank());
+    } else if (townBoard === "chart") {
+      void loadChart();
+      wrap.append(buildChart());
     } else {
       wrap.append(lineBlock(mode === "owner" ? t("town.hint") : t("town.visitHint")));
     }
-    // The town square also carries the public boards: ranking and market trend.
-    wrap.append(div("garden-town-sep"), buildRank(), div("garden-town-sep"), buildChart());
     return wrap;
   }
 
@@ -7366,10 +7395,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (root !== null) root.dataset.stealth = stealth ? "on" : "off";
         target.classList.toggle("is-active", stealth);
         return;
+      case "townBoard": {
+        const board = target.dataset.board;
+        if (board !== "rank" && board !== "chart") return;
+        townBoard = townBoard === board ? null : board;
+        townNpc = null;
+        if (townBoard === "rank") void loadLeaderboard();
+        if (townBoard === "chart") void loadChart();
+        render();
+        return;
+      }
       case "townNpc": {
         const npc = target.dataset.npc;
         if (npc === undefined) return;
         townNpc = townNpc === npc ? null : npc;
+        townBoard = null;
         render();
         return;
       }

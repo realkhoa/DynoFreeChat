@@ -2974,7 +2974,7 @@ describe("townhall tab", () => {
     expect(api.calls.some((call) => call.action?.kind === "buyTool")).toBe(true);
   });
 
-  it("shows the leaderboard and the market chart in the town square", async () => {
+  it("opens the leaderboard and the market chart from plot cells", async () => {
     const api = new FakeGardenApi(makeState({ coins: 1_000 }));
     const { host, game } = await mountGame(api);
     mounted.push(game);
@@ -2982,13 +2982,34 @@ describe("townhall tab", () => {
     await settle();
     host.querySelector<HTMLButtonElement>('[data-act="rebornTab:townhall"]')?.click();
     await settle();
-    await settle();
 
+    // The boards are plot cells in the town square, hidden until clicked.
+    expect(host.querySelector(".garden-rank")).toBeNull();
+    expect(host.querySelector(".garden-chart")).toBeNull();
+
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="rank"]')?.click();
+    await settle();
+    await settle();
     expect(host.querySelector(".garden-rank")).not.toBeNull();
     expect(host.querySelectorAll(".garden-rank-row").length).toBeGreaterThan(1);
+    expect(api.calls.some((call) => call.method === "leaderboard")).toBe(true);
+
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="chart"]')?.click();
+    await settle();
+    await settle();
     expect(host.querySelector(".garden-chart")).not.toBeNull();
     expect(host.querySelector(".garden-chart-cycle")?.textContent).toContain("Chu kỳ");
-    expect(api.calls.some((call) => call.method === "leaderboard")).toBe(true);
+
+    // Clicking the open board again closes it.
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="chart"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-chart")).toBeNull();
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="rank"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-rank")).not.toBeNull();
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="rank"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-rank")).toBeNull();
   });
 
   it("keeps the town read-only while visiting", async () => {
