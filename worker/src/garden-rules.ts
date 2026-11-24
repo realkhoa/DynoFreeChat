@@ -4605,4 +4605,3 @@ function removeCrop(
   else
     crops[index] = { item, effects: canonicalEffects(effects), ...(pest ? { pest: true } : {}), qty: left };
 }
-
