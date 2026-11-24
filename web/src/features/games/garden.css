@@ -2301,34 +2301,245 @@ button.garden-rank-row:hover {
   gap: 2px;
 }
 
-/* Shipping bin tab: quick sell cells on top, then the whole bag as sell rows. */
+/* Shipping bin tab: quick sell crops at top, categorized inventory cards below */
 .garden-shipping {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 4px 0;
+  gap: 8px;
+  padding: 6px 0;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
 }
 
 .garden-shipping-quick {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
 }
 
 .garden-shipping-inv {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+}
+
+.garden-shipping-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  background: var(--bg-surface, #1e1e1e);
+  border: 1px solid var(--border-subtle, #333333);
+  border-radius: 4px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+.garden-shipping-note {
+  font-size: 0.85em;
+  color: var(--text-muted, #888888);
+  font-style: italic;
+}
+
+.garden-shipping-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+
+.garden-shipping-card {
+  display: flex;
   align-items: center;
-  gap: 2px;
-  width: max-content;
-  max-width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-card, #252526);
+  border: 1px solid var(--border-subtle, #3a3a3a);
+  border-radius: 3px;
+  color: var(--text-normal, #cccccc);
+  font-family: inherit;
+  font-size: 0.9em;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.05s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.garden-shipping-card:hover {
+  background: var(--bg-hover, #2d2d30);
+  border-color: #4ec9b0;
+}
+
+.garden-shipping-card:active {
+  transform: translateY(1px);
+}
+
+.garden-shipping-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.garden-shipping-card-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.garden-shipping-name {
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.garden-shipping-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.garden-shipping-qty {
+  background: #333333;
+  color: #9cdcfe;
+  border: 1px solid #444444;
+}
+
+.garden-shipping-star {
+  color: #ffd700;
+  font-size: 0.85em;
+  font-weight: bold;
+}
+
+.garden-shipping-pest {
+  font-size: 0.85em;
+}
+
+.garden-shipping-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.garden-shipping-effect {
+  font-size: 0.75em;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: #2a2d2e;
+  border: 1px solid #3c3c3c;
+  color: #dcdcaa;
+}
+
+.garden-shipping-effect.effect-golden {
+  color: #ffd700;
+  border-color: #6d5b00;
+}
+
+.garden-shipping-effect.effect-wet {
+  color: #4fc1ff;
+  border-color: #0e4e6d;
+}
+
+.garden-shipping-effect.effect-frozen {
+  color: #9cdcfe;
+  border-color: #264f68;
+}
+
+.garden-shipping-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.garden-shipping-price-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.garden-shipping-unit {
+  font-size: 0.75em;
+  color: var(--text-muted, #858585);
+}
+
+.garden-shipping-total {
+  font-size: 0.9em;
+  font-weight: 600;
+  color: #dcdcaa;
+}
+
+.garden-shipping-sell-btn {
+  font-size: 0.8em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #264f78;
+  color: #ffffff;
+  border: 1px solid #3b7ab8;
+  font-weight: 600;
+}
+
+.garden-shipping-card:hover .garden-shipping-sell-btn {
+  background: #316499;
+  border-color: #4f9bee;
 }
 
 .garden-shipping-row {
   width: auto;
   text-align: left;
+}
+
+/* Chips for non-sellable storage (seeds, supplies, tools, mushroom spawns) */
+.garden-shipping-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.garden-shipping-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: var(--bg-card, #252526);
+  border: 1px solid var(--border-subtle, #333333);
+  border-radius: 12px;
+  font-size: 0.85em;
+  color: var(--text-normal, #cccccc);
+}
+
+.garden-shipping-chip-glyph {
+  font-size: 0.9em;
+}
+
+.garden-shipping-chip-label {
+  font-weight: 500;
+}
+
+.garden-shipping-chip-qty {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: #9cdcfe;
+  background: #1e1e1e;
+  padding: 0 4px;
+  border-radius: 6px;
+  border: 1px solid #333333;
 }
 
 /* Body of a non-main garden tab: content first, the shared quick actions beside. */

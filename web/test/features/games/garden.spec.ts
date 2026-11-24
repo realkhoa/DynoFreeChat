@@ -3411,7 +3411,7 @@ describe("shipping bin tab", () => {
     expect(inv?.textContent).toContain("Công cụ");
     expect(inv?.textContent).toContain("Phôi nấm");
     expect(host.querySelector('[data-act="shipSellAllCrops"]')).not.toBeNull();
-    expect(host.querySelector('[data-act="shipSellAllProducts"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="shipSellAllProducts"]')).toBeNull();
 
     // Clicking one inventory row sells that exact stack with its mutations.
     const cropRow = host.querySelector<HTMLButtonElement>('[data-act="shipSellCrop"]');
@@ -3421,9 +3421,17 @@ describe("shipping bin tab", () => {
     const sold = api.calls.find((call) => call.action?.kind === "sellCrop")?.action;
     expect(sold).toMatchObject({ kind: "sellCrop", item: "carrot", qty: 3, star: 2 });
     expect((sold as { effects?: string[] }).effects).toEqual(["golden"]);
+
+    // Selling an individual product stack from its product card.
+    const productRow = host.querySelector<HTMLButtonElement>('[data-act="shipSellProduct"]');
+    expect(productRow?.textContent).toContain("Trứng");
+    productRow?.click();
+    await settle();
+    const soldProd = api.calls.find((call) => call.action?.kind === "sellProduct")?.action;
+    expect(soldProd).toMatchObject({ kind: "sellProduct", product: "egg", qty: 5, star: 1 });
   });
 
-  it("sells every crop or product from the quick cells", async () => {
+  it("sells all crops via quick sell and protects products for individual sale", async () => {
     const api = new FakeGardenApi(
       makeState({
         bag: {
@@ -3439,13 +3447,16 @@ describe("shipping bin tab", () => {
     mounted.push(game);
     await openShipping(host);
 
+    // Quick sell only sells crops, not products.
+    expect(host.querySelector('[data-act="shipSellAllProducts"]')).toBeNull();
     host.querySelector<HTMLButtonElement>('[data-act="shipSellAllCrops"]')?.click();
     await settle();
     expect(api.calls.some((call) => call.action?.kind === "sellAll")).toBe(true);
 
-    host.querySelector<HTMLButtonElement>('[data-act="shipSellAllProducts"]')?.click();
+    // Products are sold individually from their inventory cards.
+    host.querySelector<HTMLButtonElement>('[data-act="shipSellProduct"]')?.click();
     await settle();
-    expect(api.calls.some((call) => call.action?.kind === "sellAllProducts")).toBe(true);
+    expect(api.calls.some((call) => call.action?.kind === "sellProduct")).toBe(true);
   });
 
   it("is read-only while visiting", async () => {

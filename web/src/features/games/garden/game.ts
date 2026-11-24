@@ -134,6 +134,8 @@ import {
   productPrice,
   type AnimalId,
   type BuildingId,
+  type CropStack,
+  type ProductStack,
   type MachineDefinition,
   type MachineId,
   type MachineState,
@@ -6705,17 +6707,130 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return farmPicker !== null && farmPicker.building === building;
   }
 
-  /** @brief One clickable inventory row that sells a whole stack. */
-  function shippingRow(text: string, act: string, data: Readonly<Record<string, string>>): HTMLButtonElement {
-    const row = rowButton("garden-shipping-row", text, act);
-    for (const [key, value] of Object.entries(data)) row.dataset[key] = value;
-    return row;
+  /**
+   * @brief Builds an interactive inventory card button for selling a crop stack.
+   * @param stack The crop stack with quantity, star rating, pest status and mutations.
+   * @param atSeason Current season snapshot for market pricing.
+   * @return A styled interactive card button configured with shipSellCrop dataset.
+   */
+  function buildCropShippingCard(stack: CropStack, atSeason: SeasonSnapshot | null): HTMLButtonElement {
+    const unit = atSeason === null ? 0 : cropSellPrice(stack, atSeason);
+    const total = unit * stack.qty;
+
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "garden-shipping-card garden-shipping-row garden-shipping-crop-card";
+    card.dataset.act = "shipSellCrop";
+    card.dataset.item = stack.item;
+    card.dataset.effects = JSON.stringify(stack.effects);
+    card.dataset.star = String(stack.star ?? 1);
+    card.dataset.pest = stack.pest === true ? "1" : "0";
+    card.dataset.qty = String(stack.qty);
+    card.title = `${t("shipping.sellSingle")} ${itemName(stack.item)} (+${formatCompact(total)}c)`;
+
+    const info = div("garden-shipping-card-info");
+    const titleRow = div("garden-shipping-card-title-row");
+    titleRow.append(span("garden-shipping-name", itemName(stack.item)));
+    titleRow.append(span("garden-shipping-badge garden-shipping-qty", `×${stack.qty}`));
+    if ((stack.star ?? 1) > 1) {
+      titleRow.append(span("garden-shipping-star", `${stack.star}★`));
+    }
+    if (stack.pest === true) {
+      titleRow.append(span("garden-shipping-pest", "🐛"));
+    }
+    info.append(titleRow);
+
+    if (stack.effects.length > 0) {
+      const effectsWrap = div("garden-shipping-effects");
+      for (const effect of stack.effects) {
+        effectsWrap.append(span(`garden-shipping-effect effect-${effect}`, t(`effects.${effect}`)));
+      }
+      info.append(effectsWrap);
+    }
+
+    const actions = div("garden-shipping-card-actions");
+    const priceColumn = div("garden-shipping-price-col");
+    priceColumn.append(span("garden-shipping-unit", `${formatCompact(unit)}c/món`));
+    priceColumn.append(span("garden-shipping-total", `→ ${formatCompact(total)}c`));
+    const sellBtn = span("garden-shipping-sell-btn", `[ ${t("shipping.sellSingle")} ]`);
+    actions.append(priceColumn, sellBtn);
+
+    card.append(info, actions);
+    return card;
   }
 
   /**
-   * @brief Builds the shipping bin tab: quick sell cells plus the whole bag.
-   * @details Quick cells sell every crop or product in one press; each inventory
-   * row sells that exact stack at the live market price.
+   * @brief Builds an interactive inventory card button for selling a product stack.
+   * @param stack The product stack with product ID, quantity, star rating and effects.
+   * @param atSeason Current season snapshot for market pricing.
+   * @return A styled interactive card button configured with shipSellProduct dataset.
+   */
+  function buildProductShippingCard(stack: ProductStack, atSeason: SeasonSnapshot | null): HTMLButtonElement {
+    const unit = atSeason === null ? 0 : productPrice(stack, atSeason);
+    const total = unit * stack.qty;
+    const prodName = t(`products.${stack.product}`);
+
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "garden-shipping-card garden-shipping-row garden-shipping-product-card";
+    card.dataset.act = "shipSellProduct";
+    card.dataset.product = stack.product;
+    card.dataset.star = String(stack.star);
+    card.dataset.effects = JSON.stringify(stack.effects ?? []);
+    card.dataset.qty = String(stack.qty);
+    card.title = `${t("shipping.sellSingle")} ${prodName} (+${formatCompact(total)}c)`;
+
+    const info = div("garden-shipping-card-info");
+    const titleRow = div("garden-shipping-card-title-row");
+    titleRow.append(span("garden-shipping-name", prodName));
+    titleRow.append(span("garden-shipping-badge garden-shipping-qty", `×${stack.qty}`));
+    if (stack.star > 1) {
+      titleRow.append(span("garden-shipping-star", `${stack.star}★`));
+    }
+    info.append(titleRow);
+
+    if (stack.effects !== undefined && stack.effects.length > 0) {
+      const effectsWrap = div("garden-shipping-effects");
+      for (const effect of stack.effects) {
+        effectsWrap.append(span(`garden-shipping-effect effect-${effect}`, t(`effects.${effect}`)));
+      }
+      info.append(effectsWrap);
+    }
+
+    const actions = div("garden-shipping-card-actions");
+    const priceColumn = div("garden-shipping-price-col");
+    priceColumn.append(span("garden-shipping-unit", `${formatCompact(unit)}c/món`));
+    priceColumn.append(span("garden-shipping-total", `→ ${formatCompact(total)}c`));
+    const sellBtn = span("garden-shipping-sell-btn", `[ ${t("shipping.sellSingle")} ]`);
+    actions.append(priceColumn, sellBtn);
+
+    card.append(info, actions);
+    return card;
+  }
+
+  /**
+   * @brief Builds one chip displaying an inventory item count.
+   * @param glyph Emoji or icon representing the item type.
+   * @param label Localized name of the item.
+   * @param count Available quantity in the bag.
+   * @return A styled chip element.
+   */
+  function buildInventoryChip(glyph: string, label: string, count: number): HTMLElement {
+    const chip = div("garden-shipping-chip");
+    chip.append(
+      span("garden-shipping-chip-glyph", glyph),
+      span("garden-shipping-chip-label", label),
+      span("garden-shipping-chip-qty", `×${count}`),
+    );
+    return chip;
+  }
+
+  /**
+   * @brief Builds the shipping bin tab: quick sell crops plus categorized bag inventory.
+   * @details Quick sell strictly sells raw harvested crops, preserving processed
+   * goods, seeds and tools. Bag inventory is organized into structured category
+   * sections with responsive card grids and badges.
+   * @return An HTML container representing the complete shipping bin interface.
    */
   function buildShippingBin(): HTMLElement {
     const wrap = div("garden-shipping");
@@ -6742,108 +6857,101 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       buildRebornAction({
         id: "ship:crops",
         label: t("shipping.sellCrops"),
-        glyph: "$",
-        note: `${cropStacks.length}·${formatCompact(cropValue)}c`,
+        glyph: "🌾",
+        note: `${cropStacks.length} loại · ${formatCompact(cropValue)}c`,
         tone: "harvest",
         act: "shipSellAllCrops",
         disabled: cropStacks.length === 0,
-      }),
-      buildRebornAction({
-        id: "ship:products",
-        label: t("shipping.sellProducts"),
-        glyph: "$",
-        note: `${productStacks.length}·${formatCompact(productValue)}c`,
-        tone: "money",
-        act: "shipSellAllProducts",
-        disabled: productStacks.length === 0,
+        title: t("shipping.sellCropsDesc"),
       }),
     );
     wrap.append(quick);
+    wrap.append(lineBlock(`// 🌾 ${t("shipping.quickSellNote")}`));
 
     const inventory = div("garden-shipping-inv");
     inventory.append(lineBlock(`// ${t("shipping.invTitle")}`));
 
     if (cropStacks.length > 0) {
-      inventory.append(lineBlock(`// ${t("shipping.cropsTitle")}`));
+      const sec = div("garden-shipping-section");
+      sec.append(
+        lineBlock(
+          `// ${t("shipping.cropsTitle")} · ${cropStacks.length} loại · ${formatCompact(cropValue)}c`,
+        ),
+      );
+      const cards = div("garden-shipping-cards");
       for (const stack of cropStacks) {
-        const unit = nowSeason === null ? 0 : cropSellPrice(stack, nowSeason);
-        const effects = stack.effects.map((effect) => t(`effects.${effect}`)).join(", ");
-        const quality = (stack.star ?? 1) > 1 ? ` · ${stack.star}★` : "";
-        inventory.append(
-          shippingRow(
-            `${itemName(stack.item)} ×${stack.qty}${quality}${effects.length > 0 ? ` · ${effects}` : ""} → ${formatCompact(unit * stack.qty)}c`,
-            "shipSellCrop",
-            {
-              item: stack.item,
-              effects: JSON.stringify(stack.effects),
-              star: String(stack.star ?? 1),
-              pest: stack.pest === true ? "1" : "0",
-              qty: String(stack.qty),
-            },
-          ),
-        );
+        cards.append(buildCropShippingCard(stack, nowSeason));
       }
+      sec.append(cards);
+      inventory.append(sec);
     }
+
     if (productStacks.length > 0) {
-      inventory.append(lineBlock(`// ${t("shipping.productsTitle")}`));
+      const sec = div("garden-shipping-section");
+      sec.append(
+        lineBlock(
+          `// ${t("shipping.productsTitle")} · ${productStacks.length} loại · ${formatCompact(productValue)}c`,
+        ),
+      );
+      const note = div("garden-shipping-note");
+      note.textContent = t("shipping.productsSubtitle");
+      sec.append(note);
+      const cards = div("garden-shipping-cards");
       for (const stack of productStacks) {
-        const unit = nowSeason === null ? 0 : productPrice(stack, nowSeason);
-        const effects = (stack.effects ?? []).map((effect) => t(`effects.${effect}`)).join(", ");
-        inventory.append(
-          shippingRow(
-            `${t(`products.${stack.product}`)} ×${stack.qty} · ${stack.star}★${effects.length > 0 ? ` · ${effects}` : ""} → ${formatCompact(unit * stack.qty)}c`,
-            "shipSellProduct",
-            {
-              product: stack.product,
-              star: String(stack.star),
-              effects: JSON.stringify(stack.effects ?? []),
-              qty: String(stack.qty),
-            },
-          ),
-        );
+        cards.append(buildProductShippingCard(stack, nowSeason));
       }
+      sec.append(cards);
+      inventory.append(sec);
     }
 
     const seedCounts = Object.entries(bag?.seeds ?? {}).filter(([, count]) => (count ?? 0) > 0);
     if (seedCounts.length > 0) {
-      inventory.append(
-        lineBlock(
-          `// ${t("shipping.seedsTitle")}: ${seedCounts
-            .map(([seed, count]) => `${t(`seeds.${seed as SeedId}`)} ×${count}`)
-            .join(" · ")}`,
-        ),
-      );
+      const sec = div("garden-shipping-section");
+      sec.append(lineBlock(`// ${t("shipping.seedsTitle")} · ${seedCounts.length} loại`));
+      const chips = div("garden-shipping-chips");
+      for (const [seed, count] of seedCounts) {
+        chips.append(buildInventoryChip("🌱", t(`seeds.${seed as SeedId}`), count ?? 0));
+      }
+      sec.append(chips);
+      inventory.append(sec);
     }
+
     const supplyCounts = Object.entries(bag?.supplies ?? {}).filter(([, count]) => (count ?? 0) > 0);
     if (supplyCounts.length > 0) {
-      inventory.append(
-        lineBlock(
-          `// ${t("shipping.suppliesTitle")}: ${supplyCounts
-            .map(([supply, count]) => `${t(`supplies.${supply}`)} ×${count}`)
-            .join(" · ")}`,
-        ),
-      );
+      const sec = div("garden-shipping-section");
+      sec.append(lineBlock(`// ${t("shipping.suppliesTitle")} · ${supplyCounts.length} loại`));
+      const chips = div("garden-shipping-chips");
+      for (const [supply, count] of supplyCounts) {
+        chips.append(buildInventoryChip("🧪", t(`supplies.${supply}`), count ?? 0));
+      }
+      sec.append(chips);
+      inventory.append(sec);
     }
+
     const toolCounts = Object.entries(bag?.tools ?? {}).filter(([, count]) => (count ?? 0) > 0);
     if (toolCounts.length > 0) {
-      inventory.append(
-        lineBlock(
-          `// ${t("shipping.toolsTitle")}: ${toolCounts
-            .map(([tool, count]) => `${t(`tools.${tool}`)} ×${count}`)
-            .join(" · ")}`,
-        ),
-      );
+      const sec = div("garden-shipping-section");
+      sec.append(lineBlock(`// ${t("shipping.toolsTitle")} · ${toolCounts.length} loại`));
+      const chips = div("garden-shipping-chips");
+      for (const [tool, count] of toolCounts) {
+        chips.append(buildInventoryChip("🛠", t(`tools.${tool}`), count ?? 0));
+      }
+      sec.append(chips);
+      inventory.append(sec);
     }
+
     const spawnCounts = Object.entries(state?.mushroomSpawn ?? {}).filter(([, count]) => (count ?? 0) > 0);
     if (spawnCounts.length > 0) {
-      inventory.append(
-        lineBlock(
-          `// ${t("shipping.spawnTitle")}: ${spawnCounts
-            .map(([spawn, count]) => `${t(`mushrooms.${spawn}`)} ×${count}`)
-            .join(" · ")}`,
-        ),
-      );
+      const sec = div("garden-shipping-section");
+      sec.append(lineBlock(`// ${t("shipping.spawnTitle")} · ${spawnCounts.length} loại`));
+      const chips = div("garden-shipping-chips");
+      for (const [spawn, count] of spawnCounts) {
+        chips.append(buildInventoryChip("🍄", t(`mushrooms.${spawn}`), count ?? 0));
+      }
+      sec.append(chips);
+      inventory.append(sec);
     }
+
     if (
       cropStacks.length === 0 &&
       productStacks.length === 0 &&
