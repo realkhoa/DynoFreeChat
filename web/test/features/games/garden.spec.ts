@@ -3625,6 +3625,162 @@ describe("quick uproot clears dead plants", () => {
     expect(host.querySelector('button[data-act="recipeSuggest"]')).not.toBeNull();
   });
 
+  it("filters kitchen recipes by search query, ingredient select, and status chips", async () => {
+    const state = makeState({
+      extras: {
+        ...makeState().extras,
+        kitchen: true,
+        recipes: [
+          {
+            id: "apple_pie",
+            inputs: ["apple", "wheat"],
+            output: "Bánh Táo Nướng",
+            price: 250000,
+            createdAt: 0,
+          },
+          { id: "egg_salad", inputs: ["egg", "carrot"], output: "Salad Trứng", price: 180000, createdAt: 0 },
+          { id: "fish_soup", inputs: ["roe", "onion"], output: "Súp Trứng Cá", price: 320000, createdAt: 0 },
+        ],
+        recipeCookedAt: {
+          fish_soup: Date.now(),
+        },
+      },
+      bag: {
+        ...makeState().bag,
+        crops: [
+          { item: "apple", qty: 5, effects: [] },
+          { item: "carrot", qty: 2, effects: [] },
+          { item: "onion", qty: 3, effects: [] },
+        ],
+        products: [
+          { product: "egg", qty: 4, star: 3, effects: [] },
+          { product: "roe", qty: 2, star: 1, effects: [] },
+        ],
+      },
+    });
+    const api = new FakeGardenApi(state);
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:kitchen"]')?.click();
+    await settle();
+
+    // 1. Verify all 3 recipes initially rendered
+    const initialCards = host.querySelectorAll(".garden-kitchen-card");
+    expect(initialCards.length).toBe(3);
+
+    // 2. Filter by status: Cookable
+    const cookableBtn = host.querySelector<HTMLButtonElement>('button[data-filter="cookable"]');
+    expect(cookableBtn).not.toBeNull();
+    cookableBtn?.click();
+    await settle();
+
+    const cookableCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-kitchen-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(cookableCards.length).toBe(1);
+    expect(cookableCards[0]?.textContent).toContain("Salad Trứng");
+
+    // 3. Filter by status: Missing ingredients
+    const missingBtn = host.querySelector<HTMLButtonElement>('button[data-filter="missing"]');
+    missingBtn?.click();
+    await settle();
+    const missingCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-kitchen-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(missingCards.length).toBe(1);
+    expect(missingCards[0]?.textContent).toContain("Bánh Táo Nướng");
+
+    // 4. Filter by status: Cooldown
+    const cooldownBtn = host.querySelector<HTMLButtonElement>('button[data-filter="cooldown"]');
+    cooldownBtn?.click();
+    await settle();
+    const cooldownCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-kitchen-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(cooldownCards.length).toBe(1);
+    expect(cooldownCards[0]?.textContent).toContain("Súp Trứng Cá");
+
+    // 5. Clear filter button
+    const clearBtn = host.querySelector<HTMLButtonElement>('button[data-act="kitchenClearFilters"]');
+    expect(clearBtn).not.toBeNull();
+    clearBtn?.click();
+    await settle();
+    const resetCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-kitchen-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(resetCards.length).toBe(3);
+
+    // 6. Filter by search input (matching dish name accent-insensitively, e.g. "banh tao")
+    const searchInput = host.querySelector<HTMLInputElement>('input[data-role="kitchenSearch"]');
+    expect(searchInput).not.toBeNull();
+    if (searchInput) {
+      searchInput.value = "banh tao";
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await settle();
+    }
+    const searchedCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-kitchen-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(searchedCards.length).toBe(1);
+    expect(searchedCards[0]?.textContent).toContain("Bánh Táo Nướng");
+
+    // 7. Filter by ingredient search (e.g. "ca rot" matching carrot in Salad Trứng)
+    if (searchInput) {
+      searchInput.value = "ca rot";
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await settle();
+    }
+    const searchedIngCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-kitchen-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(searchedIngCards.length).toBe(1);
+    expect(searchedIngCards[0]?.textContent).toContain("Salad Trứng");
+
+    // 7b. Fuzzier search: "trung" matches both Salad Trứng and Súp Trứng Cá
+    if (searchInput) {
+      searchInput.value = "trung";
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await settle();
+    }
+    const searchedTrungCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-kitchen-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(searchedTrungCards.length).toBe(2);
+
+    // 8. Filter by clicking ingredient tag (e.g. clicking egg tag)
+    if (searchInput) {
+      searchInput.value = "";
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await settle();
+    }
+    const eggTag = host.querySelector<HTMLButtonElement>(
+      'button[data-act="kitchenPickIngredient"][data-ing="egg"]',
+    );
+    expect(eggTag).not.toBeNull();
+    eggTag?.click();
+    await settle();
+
+    const ingPickCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-kitchen-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(ingPickCards.length).toBe(1);
+    expect(ingPickCards[0]?.textContent).toContain("Salad Trứng");
+
+    // Clicking again clears ingredient filter
+    const activeEggTag = host.querySelector<HTMLButtonElement>(
+      'button[data-act="kitchenPickIngredient"][data-ing="egg"]',
+    );
+    activeEggTag?.click();
+    await settle();
+    const clearedIngCards = Array.from(host.querySelectorAll<HTMLElement>(".garden-kitchen-card")).filter(
+      (c) => !c.hidden,
+    );
+    expect(clearedIngCards.length).toBe(3);
+  });
+
   it("navigates to kitchen from warehouse kitchenInfo button", async () => {
     const state = makeState({
       warehouse: { level: 1, machines: {} },

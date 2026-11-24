@@ -1586,6 +1586,50 @@
   padding: 8px 10px;
 }
 
+.garden-kitchen-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-subtle, #333);
+}
+
+.garden-kitchen-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+}
+
+.garden-kitchen-search {
+  flex: 1;
+  min-width: 160px;
+}
+
+.garden-kitchen-select {
+  max-width: 220px;
+}
+
+.garden-kitchen-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.garden-kitchen-filter-chips .stage-action-btn.is-active {
+  background: var(--btn-active, #0e639c);
+  color: #fff;
+  border-color: #1177bb;
+}
+
+.garden-kitchen-empty-filter {
+  padding: 8px 0;
+  color: var(--text-muted, #888);
+  font-style: italic;
+}
+
 .garden-kitchen-card {
   display: flex;
   flex-direction: column;
@@ -1614,6 +1658,20 @@
   padding: 1px 4px;
   border-radius: 2px;
   background: var(--bg-tag, #2d2d2d);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  border: 1px solid transparent;
+  font-family: inherit;
+}
+
+.garden-kitchen-ing-tag:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.garden-kitchen-ing-tag.is-active-filter {
+  outline: 2px solid #4ec9b0;
+  font-weight: bold;
 }
 
 .garden-kitchen-ing-tag.is-enough {

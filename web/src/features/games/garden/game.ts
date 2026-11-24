@@ -438,6 +438,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }> = [];
   let globalHybrids: HybridFishDefinition[] = [];
   let dynopediaQuery = "";
+  let kitchenQuery = "";
+  let kitchenStatusFilter: "all" | "cookable" | "missing" | "cooldown" = "all";
+  let kitchenIngredientFilter = "";
   let machineLimitDraft = "";
   let specialSupplyPicker: { kind: "fertilize" | "spray"; slot: number } | null = null;
   let bulkPanel: "plan" | "uproot" | null = null;
@@ -602,6 +605,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function seedLocked(id: SeedId): boolean {
     const level = state?.extras.prestige ?? 0;
     return seedPrestigeTier(id) > level;
+  }
+
+  /**
+   * @brief Removes diacritical marks and normalizes letters for fuzzy text matching.
+   * @details Normalizes Unicode characters using NFD decomposition and strips accent marks,
+   * while mapping special Vietnamese characters such as đ/Đ to d.
+   * @param text Raw text string to normalize.
+   * @return Lowercase diacritics-free string suitable for substring matching.
+   */
+  function foldDiacritics(text: string): string {
+    return text
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "d")
+      .toLowerCase();
   }
 
   /** @brief Display name for a crop, fruit or product id. */
@@ -4195,8 +4214,135 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (recipes.length === 0) {
       stoveSection.append(lineBlock(t("kitchen.noRecipes")));
     } else {
+      let countCookable = 0;
+      let countMissing = 0;
+      let countCooldown = 0;
+
       for (const recipe of recipes) {
+        const hasAll = recipe.inputs.every((input) => countMaterialInBag(input) >= 1);
+        const lastCooked = state.extras.recipeCookedAt?.[recipe.id] ?? 0;
+        const elapsed = at - lastCooked;
+        const remaining = Math.max(0, DAY_MS - elapsed);
+        const inCooldown = remaining > 0;
+
+        if (inCooldown) countCooldown += 1;
+        if (hasAll && !inCooldown) countCookable += 1;
+        if (!hasAll) countMissing += 1;
+      }
+
+      const uniqueIngredients = Array.from(new Set(recipes.flatMap((r) => r.inputs))).sort((a, b) =>
+        materialName(a).localeCompare(materialName(b)),
+      );
+
+      // Filter Toolbar
+      const toolbar = div("garden-kitchen-toolbar");
+
+      const searchRow = div("garden-kitchen-search-row");
+      const searchInput = document.createElement("input");
+      searchInput.type = "search";
+      searchInput.className = "stage-input garden-kitchen-search";
+      searchInput.placeholder = t("kitchen.searchPlaceholder");
+      searchInput.value = kitchenQuery;
+      searchInput.dataset.role = "kitchenSearch";
+      searchInput.setAttribute("aria-label", t("kitchen.searchPlaceholder"));
+      searchRow.append(searchInput);
+
+      if (uniqueIngredients.length > 0) {
+        const ingSelect = document.createElement("select");
+        ingSelect.className = "stage-input garden-kitchen-select";
+        ingSelect.dataset.role = "kitchenIngredientSelect";
+        ingSelect.setAttribute("aria-label", t("kitchen.ingredientFilter"));
+        const allOpt = document.createElement("option");
+        allOpt.value = "";
+        allOpt.textContent = `-- ${t("kitchen.allIngredients")} --`;
+        ingSelect.append(allOpt);
+        for (const ing of uniqueIngredients) {
+          const opt = document.createElement("option");
+          opt.value = ing;
+          const count = recipes.filter((r) => r.inputs.includes(ing)).length;
+          opt.textContent = `${materialName(ing)} (${count})`;
+          if (kitchenIngredientFilter === ing) opt.selected = true;
+          ingSelect.append(opt);
+        }
+        searchRow.append(ingSelect);
+      }
+      toolbar.append(searchRow);
+
+      const filterChips = div("garden-kitchen-filter-chips");
+      const allBtn = actionButton(t("kitchen.filterAll", { count: recipes.length }), "kitchenFilter");
+      allBtn.dataset.filter = "all";
+      if (kitchenStatusFilter === "all") allBtn.classList.add("is-active");
+      filterChips.append(allBtn);
+
+      const cookableBtn = actionButton(
+        t("kitchen.filterCookable", { count: countCookable }),
+        "kitchenFilter",
+      );
+      cookableBtn.dataset.filter = "cookable";
+      if (kitchenStatusFilter === "cookable") cookableBtn.classList.add("is-active");
+      filterChips.append(cookableBtn);
+
+      const missingBtn = actionButton(t("kitchen.filterMissing", { count: countMissing }), "kitchenFilter");
+      missingBtn.dataset.filter = "missing";
+      if (kitchenStatusFilter === "missing") missingBtn.classList.add("is-active");
+      filterChips.append(missingBtn);
+
+      const cooldownBtn = actionButton(
+        t("kitchen.filterCooldown", { count: countCooldown }),
+        "kitchenFilter",
+      );
+      cooldownBtn.dataset.filter = "cooldown";
+      if (kitchenStatusFilter === "cooldown") cooldownBtn.classList.add("is-active");
+      filterChips.append(cooldownBtn);
+
+      if (kitchenQuery.trim() !== "" || kitchenStatusFilter !== "all" || kitchenIngredientFilter !== "") {
+        const clearBtn = actionButton(`× ${t("kitchen.clearFilters")}`, "kitchenClearFilters");
+        clearBtn.classList.add("is-danger");
+        filterChips.append(clearBtn);
+      }
+
+      toolbar.append(filterChips);
+      stoveSection.append(toolbar);
+
+      const query = kitchenQuery.trim();
+      const queryLower = query.toLowerCase();
+      const queryFolded = foldDiacritics(query);
+
+      let visibleCount = 0;
+      for (const recipe of recipes) {
+        const hasAll = recipe.inputs.every((input) => countMaterialInBag(input) >= 1);
+        const lastCooked = state.extras.recipeCookedAt?.[recipe.id] ?? 0;
+        const elapsed = at - lastCooked;
+        const remaining = Math.max(0, DAY_MS - elapsed);
+        const inCooldown = remaining > 0;
+
+        let matchStatus = true;
+        if (kitchenStatusFilter === "cookable" && (!hasAll || inCooldown)) matchStatus = false;
+        else if (kitchenStatusFilter === "missing" && hasAll) matchStatus = false;
+        else if (kitchenStatusFilter === "cooldown" && !inCooldown) matchStatus = false;
+
+        let matchIng = true;
+        if (kitchenIngredientFilter !== "" && !recipe.inputs.includes(kitchenIngredientFilter)) {
+          matchIng = false;
+        }
+
+        const inputNames = recipe.inputs.map(materialName).join(" ");
+        const searchableText = `${recipe.output} ${inputNames} ${recipe.inputs.join(" ")}`;
+        let matchQuery = true;
+        if (query.length > 0) {
+          matchQuery =
+            searchableText.toLowerCase().includes(queryLower) ||
+            foldDiacritics(searchableText).includes(queryFolded);
+        }
+
+        const isVisible = matchStatus && matchIng && matchQuery;
+        if (isVisible) visibleCount += 1;
+
         const card = div("garden-kitchen-card");
+        card.dataset.search = searchableText;
+        card.dataset.matchStatus = String(matchStatus);
+        card.dataset.matchIng = String(matchIng);
+        if (!isVisible) card.hidden = true;
 
         // Head: Dish name & Base value
         const head = div("garden-kitchen-card-head");
@@ -4206,27 +4352,25 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
         // Ingredients with real-time stock from crops & products
         const ingContainer = div("garden-kitchen-card-ingredients");
-        let hasAll = true;
         for (const input of recipe.inputs) {
           const count = countMaterialInBag(input);
           const name = materialName(input);
           const isEnough = count >= 1;
-          if (!isEnough) hasAll = false;
-          const tag = span(
-            `garden-kitchen-ing-tag ${isEnough ? "is-enough" : "is-missing"}`,
-            `${name} (${count >= 1 ? `x${count}` : t("kitchen.missingIng")})`,
-          );
+          const tag = document.createElement("button");
+          tag.type = "button";
+          const activeTagClass = kitchenIngredientFilter === input ? "is-active-filter" : "";
+          tag.className =
+            `garden-kitchen-ing-tag ${isEnough ? "is-enough" : "is-missing"} ${activeTagClass}`.trim();
+          tag.dataset.act = "kitchenPickIngredient";
+          tag.dataset.ing = input;
+          tag.title = t("kitchen.filterByIngredient", { name });
+          tag.textContent = `${name} (${count >= 1 ? `x${count}` : t("kitchen.missingIng")})`;
           ingContainer.append(tag);
         }
         card.append(ingContainer);
 
         // Foot: Cooldown timer & Cook button
         const foot = div("garden-kitchen-card-foot");
-        const lastCooked = state.extras.recipeCookedAt?.[recipe.id] ?? 0;
-        const elapsed = at - lastCooked;
-        const remaining = Math.max(0, DAY_MS - elapsed);
-        const inCooldown = remaining > 0;
-
         const statusLabel = span(
           "garden-kitchen-status",
           inCooldown
@@ -4249,6 +4393,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         card.append(foot);
         stoveSection.append(card);
       }
+
+      const emptyNotice = lineBlock(t("kitchen.noMatch"));
+      emptyNotice.className = "garden-kitchen-empty-filter";
+      if (visibleCount > 0) emptyNotice.hidden = true;
+      stoveSection.append(emptyNotice);
     }
     wrap.append(stoveSection);
 
@@ -8453,6 +8602,29 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }
         return;
       }
+      case "kitchenFilter": {
+        const filter = target.dataset.filter;
+        if (filter === "all" || filter === "cookable" || filter === "missing" || filter === "cooldown") {
+          kitchenStatusFilter = filter;
+          render();
+        }
+        return;
+      }
+      case "kitchenClearFilters": {
+        kitchenQuery = "";
+        kitchenStatusFilter = "all";
+        kitchenIngredientFilter = "";
+        render();
+        return;
+      }
+      case "kitchenPickIngredient": {
+        const ing = target.dataset.ing;
+        if (ing !== undefined) {
+          kitchenIngredientFilter = kitchenIngredientFilter === ing ? "" : ing;
+          render();
+        }
+        return;
+      }
       case "logRefresh":
         void loadGlobalSales();
         return;
@@ -9380,8 +9552,44 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         row.hidden = query.length > 0 && !(row.textContent ?? "").toLowerCase().includes(query);
       }
     }
+    if (target.dataset.role === "kitchenSearch") {
+      kitchenQuery = target.value;
+      const query = kitchenQuery.trim();
+      const queryLower = query.toLowerCase();
+      const queryFolded = foldDiacritics(query);
+      let visibleCount = 0;
+      for (const card of root?.querySelectorAll<HTMLElement>(".garden-kitchen-card") ?? []) {
+        const text = card.dataset.search ?? card.textContent ?? "";
+        const matchQuery =
+          query.length === 0 ||
+          text.toLowerCase().includes(queryLower) ||
+          foldDiacritics(text).includes(queryFolded);
+        const matchStatus = card.dataset.matchStatus !== "false";
+        const matchIng = card.dataset.matchIng !== "false";
+        const isVisible = matchQuery && matchStatus && matchIng;
+        card.hidden = !isVisible;
+        if (isVisible) visibleCount += 1;
+      }
+      const emptyNotice = root?.querySelector<HTMLElement>(".garden-kitchen-empty-filter");
+      if (emptyNotice) {
+        emptyNotice.hidden = visibleCount > 0;
+      }
+    }
     if (target.dataset.role === "giftCode") giftCode = target.value;
     if (target.dataset.role === "giftAmount") giftAmount = target.value;
+  }
+
+  /**
+   * @brief Handles change events for form controls such as select dropdowns.
+   * @param event Native browser change event.
+   */
+  function onChange(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.dataset.role === "kitchenIngredientSelect" && target instanceof HTMLSelectElement) {
+      kitchenIngredientFilter = target.value;
+      render();
+    }
   }
 
   /** @brief Closes the context menu when the pointer lands outside it. */
@@ -9439,6 +9647,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     listen(root, "click", (event) => onClick(event as MouseEvent));
     listen(root, "input", onInput);
+    listen(root, "change", onChange);
     listen(target, "keydown", (event) => onKeyDown(event as KeyboardEvent));
     listen(document, "visibilitychange", onVisibility);
     listen(document, "pointerdown", (event) => onPointerDown(event as PointerEvent));
