@@ -219,7 +219,7 @@ const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string 
 ];
 
 /** One tab inside the garden tab of the rebuilt view. */
-type GardenTab = "main" | "mushroom" | "greenhouse" | "nursery" | "shipping";
+type GardenTab = "main" | "mushroom" | "greenhouse" | "nursery" | "barn" | "coop" | "pond" | "shipping";
 
 /** @brief Garden tabs, in strip order. */
 const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string }[] = [
@@ -227,6 +227,9 @@ const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string 
   { id: "mushroom", labelKey: "gardenTab.mushroom" },
   { id: "greenhouse", labelKey: "gardenTab.greenhouse" },
   { id: "nursery", labelKey: "gardenTab.nursery" },
+  { id: "barn", labelKey: "gardenTab.barn" },
+  { id: "coop", labelKey: "gardenTab.coop" },
+  { id: "pond", labelKey: "gardenTab.pond" },
   { id: "shipping", labelKey: "gardenTab.shipping" },
 ];
 
@@ -1274,6 +1277,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       savedGardenTab === "mushroom" ||
       savedGardenTab === "greenhouse" ||
       savedGardenTab === "nursery" ||
+      savedGardenTab === "barn" ||
+      savedGardenTab === "coop" ||
+      savedGardenTab === "pond" ||
       savedGardenTab === "shipping"
     ) {
       gardenTab = savedGardenTab;
@@ -5767,8 +5773,105 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
    */
   function buildGardenTabBody(at: number): HTMLElement {
     if (gardenTab === "mushroom") return buildMushroomHouse(at);
+    if (gardenTab === "barn" || gardenTab === "coop" || gardenTab === "pond") {
+      return buildAnimalTab(gardenTab);
+    }
     if (gardenTab === "shipping") return buildShippingBin();
     return buildGardenTabPlaceholder();
+  }
+
+  /**
+   * @brief Builds one small-building tab (barn, coop or fish pond).
+   * @param building Animal building shown by this tab.
+   * @details Each level is one small pen: built pens show their capacity, the
+   * next pen carries the old build/upgrade price, and the animal grid keeps the
+   * legacy click flow (buy, pet, breed, sell) untouched.
+   */
+  function buildAnimalTab(building: BuildingId): HTMLElement {
+    const wrap = div("garden-animal-tab");
+    const definition = buildingById(building);
+    if (state === null || definition === undefined) {
+      wrap.append(lineBlock(t("common.loading")));
+      return wrap;
+    }
+    const level = state.buildings[building] ?? 0;
+    const animals = state.animals[building] ?? [];
+    const maxLevel = maxBuildingLevel(building);
+    const capacity = level > 0 ? (definition.slots[level - 1] ?? 0) : 0;
+    const alive = animals.filter((animal) => animal !== null && animal !== undefined).length;
+    const penSlots = (index: number): number =>
+      (definition.slots[index] ?? 0) - (index > 0 ? (definition.slots[index - 1] ?? 0) : 0);
+    wrap.append(
+      lineBlock(
+        `// ${t(`farm.${building}`)} · ${t("animalTab.pens", { count: level, max: maxLevel })} · ${alive}/${capacity} ${t("farm.slots")}`,
+      ),
+    );
+
+    // One plot cell per small pen; the next locked pen is the build/upgrade action.
+    const pens = div("garden-pen-row");
+    for (let index = 0; index < maxLevel; index += 1) {
+      const penLevel = index + 1;
+      const slots = penSlots(index);
+      if (penLevel <= level) {
+        pens.append(
+          buildRebornAction({
+            id: `pen:${building}:${penLevel}`,
+            label: t("animalTab.pen", { index: penLevel }),
+            glyph: "#",
+            note: `${slots} ${t("farm.slots")}`,
+            tone: "harvest",
+            act: "animalPenInfo",
+            data: { building, level: String(penLevel) },
+            title: `${t(`farm.${building}`)} · ${t("animalTab.pen", { index: penLevel })} · +${slots} ${t("farm.slots")} · ${t("animalTab.built")}`,
+            active: penLevel === level,
+          }),
+        );
+        continue;
+      }
+      if (penLevel === level + 1) {
+        const cost = level === 0 ? definition.price : buildingUpgradeCost(building);
+        pens.append(
+          buildRebornAction({
+            id: `pen:${building}:${penLevel}`,
+            label: t("animalTab.buildPen"),
+            glyph: "+",
+            note: `${formatCompact(cost)}c`,
+            tone: "money",
+            act: level === 0 ? "buildBuilding" : "upgradeBuilding",
+            data: { building, level: String(penLevel) },
+            title: `${t("animalTab.pen", { index: penLevel })} · +${slots} ${t("farm.slots")} · ${formatCompact(cost)}c`,
+            disabled: (state.coins ?? 0) < cost,
+          }),
+        );
+        continue;
+      }
+      pens.append(
+        buildRebornAction({
+          id: `pen:${building}:${penLevel}`,
+          label: t("animalTab.pen", { index: penLevel }),
+          glyph: "x",
+          note: t("animalTab.locked"),
+          tone: "soil",
+          act: "animalPenInfo",
+          data: { building, level: String(penLevel) },
+          disabled: true,
+        }),
+      );
+    }
+    wrap.append(pens);
+
+    wrap.append(lineBlock(`// ${t("animalTab.animals")} · ${animals.length}/${capacity}`));
+    const grid = div("garden-animal-grid");
+    for (let slot = 0; slot < capacity; slot += 1) grid.append(animalCell(building, slot));
+    wrap.append(grid);
+    if (farmsPickerOpen(building)) wrap.append(buildAnimalPicker(building, farmPicker?.slot ?? 0));
+    wrap.append(lineBlock(t("animalTab.hint")));
+    return wrap;
+  }
+
+  /** @brief Whether the animal purchase picker is open for one building. */
+  function farmsPickerOpen(building: BuildingId): boolean {
+    return farmPicker !== null && farmPicker.building === building;
   }
 
   /** @brief One clickable inventory row that sells a whole stack. */
@@ -7395,6 +7498,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (root !== null) root.dataset.stealth = stealth ? "on" : "off";
         target.classList.toggle("is-active", stealth);
         return;
+      case "animalPenInfo": {
+        const building = target.dataset.building as BuildingId | undefined;
+        const penRaw = Number(target.dataset.level);
+        if (building === undefined || !Number.isInteger(penRaw)) return;
+        const definition = buildingById(building);
+        const slots =
+          definition === undefined
+            ? 0
+            : (definition.slots[penRaw - 1] ?? 0) - (penRaw > 1 ? (definition.slots[penRaw - 2] ?? 0) : 0);
+        message = {
+          text: t("animalTab.penInfo", { index: penRaw, count: slots }),
+          kind: "info",
+        };
+        render();
+        return;
+      }
       case "townBoard": {
         const board = target.dataset.board;
         if (board !== "rank" && board !== "chart") return;

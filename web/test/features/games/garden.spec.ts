@@ -2831,6 +2831,9 @@ describe("reborn sub-tabs", () => {
       "gardenTab:mushroom",
       "gardenTab:greenhouse",
       "gardenTab:nursery",
+      "gardenTab:barn",
+      "gardenTab:coop",
+      "gardenTab:pond",
       "gardenTab:shipping",
     ]);
     expect(host.querySelector(".garden-section-tab.is-active")?.textContent).toContain("vườn chính");
@@ -3227,6 +3230,69 @@ describe("reborn staff cells", () => {
     expect(
       api.calls.some((call) => call.action?.kind === "setStaffRole" && call.action.role === "saleHunt"),
     ).toBe(true);
+  });
+});
+
+describe("animal building tabs", () => {
+  /** One chicken in the coop's first slot. */
+  const chicken = {
+    kind: "chicken" as const,
+    bornAt: CLOCK - 60_000,
+    pats: 1,
+    lastProduceAt: CLOCK,
+  };
+
+  it("shows four small pens with the built ones and the animal grid", async () => {
+    const coopAnimals = [chicken, ...new Array(5).fill(null)];
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 100_000_000,
+        buildings: { coop: 2, barn: 0, pond: 0 },
+        animals: { coop: coopAnimals, barn: [], pond: [] },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:coop"]')?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-animal-tab")).not.toBeNull();
+    // One cell per small pen, max four pens in the old progression.
+    expect(host.querySelectorAll(".garden-pen-row .garden-reborn-action")).toHaveLength(4);
+    // Level 2 = six animal slots, still opened through the legacy cell flow.
+    expect(host.querySelectorAll(".garden-animal-cell")).toHaveLength(6);
+    const build = host.querySelector<HTMLButtonElement>('[data-act="upgradeBuilding"]');
+    expect(build).not.toBeNull();
+    build?.click();
+    await settle();
+    expect(
+      api.calls.some((call) => call.action?.kind === "upgradeBuilding" && call.action.building === "coop"),
+    ).toBe(true);
+  });
+
+  it("offers the first pen for an unbuilt barn and pond", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 100_000_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    for (const [tab, building] of [
+      ["barn", "barn"],
+      ["pond", "pond"],
+    ] as const) {
+      host.querySelector<HTMLButtonElement>(`[data-act="gardenTab:${tab}"]`)?.click();
+      await settle();
+      const build = host.querySelector<HTMLButtonElement>('[data-act="buildBuilding"]');
+      expect(build?.textContent).toContain("Xây");
+      build?.click();
+      await settle();
+      expect(
+        api.calls.some((call) => call.action?.kind === "buildBuilding" && call.action.building === building),
+      ).toBe(true);
+    }
   });
 });
 

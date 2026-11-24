@@ -2214,3 +2214,19 @@ button.garden-rank-row:hover {
   padding-top: 8px;
   border-top: 1px solid var(--border-subtle);
 }
+
+/* Animal tabs: one plot cell per small pen, then the legacy animal grid. */
+.garden-animal-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.garden-pen-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
