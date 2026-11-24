@@ -2504,10 +2504,14 @@ export class GardenHub extends DurableObject<Env> {
     return json({ ok: true });
   }
 
-  /** @brief Latest public sales for the log tab. */
+  /**
+   * @brief Latest public sales for the log tab.
+   * @param url Incoming request URL containing query parameters such as limit.
+   * @return Response containing array of global sale entries.
+   */
   private sales(url: URL): Response {
     const raw = Number(url.searchParams.get("limit") ?? "100");
-    const limit = Number.isInteger(raw) ? Math.min(200, Math.max(1, raw)) : 100;
+    const limit = Number.isInteger(raw) ? Math.min(1000, Math.max(1, raw)) : 100;
     const rows = this.sql
       .exec<
         SqlRow<{

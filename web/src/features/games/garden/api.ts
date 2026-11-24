@@ -361,9 +361,13 @@ export class GardenApi {
     });
   }
 
-  /** @brief Reads the public global sale log for the log tab. */
-  async sales(): Promise<{ entries: GlobalSaleEntry[] }> {
-    return this.request<{ entries: GlobalSaleEntry[] }>("/api/garden/sales?limit=100", {
+  /**
+   * @brief Reads the public global sale log for the log tab.
+   * @param limit Maximum number of recent sale records to retrieve (default: 500).
+   * @return Promise resolving to array of global sale entries.
+   */
+  async sales(limit = 500): Promise<{ entries: GlobalSaleEntry[] }> {
+    return this.request<{ entries: GlobalSaleEntry[] }>(`/api/garden/sales?limit=${limit}`, {
       method: "GET",
     });
   }

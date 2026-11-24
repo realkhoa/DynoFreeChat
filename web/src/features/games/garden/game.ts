@@ -151,6 +151,7 @@ import {
   type HybridFishDefinition,
   type RaidSnapshot,
   type GlobalSaleEntry,
+  type TimelineEvent,
   type LeaderboardEntry,
   type PlotState,
   type SeasonSnapshot,
@@ -229,7 +230,7 @@ type Tab =
 type GardenView = "legacy" | "reborn";
 
 /** One tab inside the rebuilt view. */
-type RebornTab = "garden" | "townhall" | "weather" | "dynopedia";
+type RebornTab = "garden" | "townhall" | "weather" | "dynopedia" | "log";
 
 /** @brief Tabs of the rebuilt view, in strip order. */
 const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string }[] = [
@@ -237,6 +238,7 @@ const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string 
   { id: "townhall", labelKey: "reborn.tabTownhall" },
   { id: "weather", labelKey: "reborn.tabWeather" },
   { id: "dynopedia", labelKey: "reborn.tabDynopedia" },
+  { id: "log", labelKey: "reborn.tabLog" },
 ];
 
 /** One tab inside the garden tab of the rebuilt view. */
@@ -428,6 +430,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let guildDonateDraft = "1000000";
   let globalSales: GlobalSaleEntry[] = [];
   let globalSalesStatus: "idle" | "loading" | "error" = "idle";
+  /** Filter selection for reborn log view: all, global server sales, or personal timeline. */
+  let logFilter: "all" | "global" | "timeline" = "all";
+  /** Search string filter for reborn log items. */
+  let logQuery = "";
   let dynopediaCategory = "effects";
   let recipeInputs: string[] = ["roe", "milk"];
   let recipeResult = "";
@@ -1360,7 +1366,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       gview: view === "legacy" ? null : view,
       grtab:
         view === "reborn" &&
-        (rebornTab === "townhall" || rebornTab === "weather" || rebornTab === "dynopedia")
+        (rebornTab === "townhall" ||
+          rebornTab === "weather" ||
+          rebornTab === "dynopedia" ||
+          rebornTab === "log")
           ? rebornTab
           : null,
       gstab: view === "reborn" && rebornTab === "garden" && gardenTab !== "main" ? gardenTab : null,
@@ -1378,7 +1387,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const savedRebornTab = readParam("grtab");
     if (
       visitCode === null &&
-      (savedRebornTab === "townhall" || savedRebornTab === "weather" || savedRebornTab === "dynopedia")
+      (savedRebornTab === "townhall" ||
+        savedRebornTab === "weather" ||
+        savedRebornTab === "dynopedia" ||
+        savedRebornTab === "log")
     ) {
       rebornTab = savedRebornTab;
     }
@@ -5179,6 +5191,227 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return wrap;
   }
 
+  /**
+   * @brief Builds the reborn log view displaying complete server actions and personal timeline.
+   * @details Renders an interactive log dashboard for the reborn UI containing:
+   * 1. Overview summary metrics: server action count, total volume in coins, personal timeline count.
+   * 2. Filter tabs: All, Global Server, Personal Timeline.
+   * 3. Instant search bar: filter by player name, code #, action type, crop, or item name.
+   * 4. Complete, un-truncated list of global server transactions and personal events.
+   * @return HTMLElement representing the reborn log view.
+   */
+  function buildRebornLog(): HTMLElement {
+    const wrap = div("garden-reborn-log");
+
+    const header = div("garden-reborn-log-header");
+    const title = div("garden-reborn-log-title");
+    title.textContent = t("log.rebornTitle");
+    header.append(title);
+
+    const stats = div("garden-reborn-log-stats");
+    const totalVolume = globalSales.reduce((acc, s) => acc + (s.net ?? 0), 0);
+    const timeline = state?.timeline ?? [];
+
+    const statServer = div("garden-reborn-log-stat");
+    statServer.textContent = t("log.statsTotal", { count: globalSales.length });
+    const statVolume = div("garden-reborn-log-stat");
+    statVolume.textContent = t("log.statsVolume", { amount: formatCompact(totalVolume) });
+    const statPersonal = div("garden-reborn-log-stat");
+    statPersonal.textContent = t("log.statsTimeline", { count: timeline.length });
+
+    stats.append(statServer, statVolume, statPersonal);
+    header.append(stats);
+    wrap.append(header);
+
+    const toolbar = div("garden-reborn-log-toolbar");
+    const filterGroup = div("garden-reborn-log-filters");
+
+    const filters: readonly { readonly id: "all" | "global" | "timeline"; readonly label: string }[] = [
+      { id: "all", label: t("log.filterAll") },
+      { id: "global", label: t("log.filterGlobal") },
+      { id: "timeline", label: t("log.filterTimeline") },
+    ];
+
+    for (const f of filters) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `stage-btn garden-reborn-log-filter-btn${logFilter === f.id ? " is-active" : ""}`;
+      btn.dataset.act = `logFilter:${f.id}`;
+      btn.textContent = logFilter === f.id ? `[ ${f.label} ]` : f.label;
+      filterGroup.append(btn);
+    }
+    toolbar.append(filterGroup);
+
+    const refreshBtn = actionButton(t("log.refresh"), "logRefresh", globalSalesStatus !== "loading");
+    toolbar.append(refreshBtn);
+    wrap.append(toolbar);
+
+    const searchWrap = div("garden-reborn-log-search-wrap");
+    const searchInput = document.createElement("input");
+    searchInput.type = "text";
+    searchInput.className = "stage-input garden-reborn-log-search";
+    searchInput.dataset.role = "logSearch";
+    searchInput.placeholder = t("log.searchPlaceholder");
+    searchInput.value = logQuery;
+    searchWrap.append(searchInput);
+    wrap.append(searchWrap);
+
+    const list = div("garden-reborn-log-list");
+
+    if (globalSalesStatus === "loading") {
+      const loadingBox = div("garden-reborn-log-empty");
+      loadingBox.textContent = t("common.loading");
+      list.append(loadingBox);
+      wrap.append(list);
+      return wrap;
+    }
+
+    if (globalSalesStatus === "error") {
+      const errorBox = div("garden-reborn-log-empty");
+      errorBox.textContent = t("log.error");
+      list.append(errorBox);
+      wrap.append(list);
+      return wrap;
+    }
+
+    type LogEntryItem =
+      | { type: "global"; ts: number; sale: GlobalSaleEntry }
+      | { type: "timeline"; ts: number; event: TimelineEvent };
+
+    const items: LogEntryItem[] = [];
+
+    if (logFilter === "all" || logFilter === "global") {
+      for (const sale of globalSales) {
+        items.push({ type: "global", ts: sale.ts, sale });
+      }
+    }
+
+    if (logFilter === "all" || logFilter === "timeline") {
+      for (const event of timeline) {
+        items.push({ type: "timeline", ts: event.ts, event });
+      }
+    }
+
+    items.sort((a, b) => b.ts - a.ts);
+
+    const query = logQuery.trim();
+    const queryLower = query.toLowerCase();
+    const queryFolded = foldDiacritics(query);
+    let visibleCount = 0;
+
+    for (const item of items) {
+      const row = div("garden-reborn-log-row");
+      row.dataset.type = item.type;
+
+      const dateObj = new Date(item.ts);
+      const timeStr = dateObj.toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      const dateStr = dateObj.toLocaleDateString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+      });
+      const stampStr = `${timeStr} ${dateStr}`;
+
+      if (item.type === "global") {
+        const sale = item.sale;
+        const name =
+          sale.kind === "crop"
+            ? itemName(sale.item as ItemId)
+            : sale.kind === "animal"
+              ? t(`animals.${sale.item}`)
+              : sale.kind === "contract"
+                ? sale.item
+                : t(`products.${sale.item}`);
+
+        const kindBadge =
+          sale.kind === "crop"
+            ? "[Cây]"
+            : sale.kind === "animal"
+              ? "[Thú]"
+              : sale.kind === "contract"
+                ? "[HĐ]"
+                : "[Sp]";
+
+        const starStr = sale.star !== undefined && sale.star > 0 ? ` ${sale.star}★` : "";
+        const effectStr = effectBadge(sale.effects ?? []);
+        const effectsPlain = (sale.effects ?? []).map((e) => t(`effects.${e}`)).join(" ");
+        const searchCorpus = `${stampStr} ${sale.nick} #${sale.code} P${sale.prestige} ${kindBadge} ${name} ${effectsPlain} ${sale.qty} ${sale.net}c ${sale.gross}c global server`;
+
+        row.dataset.search = searchCorpus;
+
+        const timeSpan = div("garden-reborn-log-time");
+        timeSpan.textContent = stampStr;
+
+        const scopeBadge = div("garden-reborn-log-scope scope-global");
+        scopeBadge.textContent = "SERVER";
+
+        const playerSpan = div("garden-reborn-log-player");
+        playerSpan.textContent = `[P${sale.prestige}] ${sale.nick} #${sale.code}`;
+
+        const descSpan = div("garden-reborn-log-desc");
+        descSpan.textContent = `${kindBadge} ${name}${starStr} ${effectStr ? effectStr + " " : ""}×${sale.qty}`;
+
+        const amountSpan = div("garden-reborn-log-amount amount-plus");
+        amountSpan.textContent = `+${formatCompact(sale.net)}c`;
+
+        row.append(timeSpan, scopeBadge, playerSpan, descSpan, amountSpan);
+      } else {
+        const ev = item.event;
+        const kindLabel = t(`timeline.${ev.kind}`);
+        const target =
+          ev.item === undefined || ev.kind === "skill" ? "" : ` · ${itemName(ev.item as ItemId)}`;
+        const qtyStr = ev.qty === undefined ? "" : ` ×${ev.qty}`;
+        const amountStr = ev.coins === undefined ? "" : ` · ${formatCompact(ev.coins)}c`;
+        const searchCorpus = `${stampStr} cá nhân personal timeline ${kindLabel} ${target} ${qtyStr} ${amountStr}`;
+
+        row.dataset.search = searchCorpus;
+
+        const timeSpan = div("garden-reborn-log-time");
+        timeSpan.textContent = stampStr;
+
+        const scopeBadge = div("garden-reborn-log-scope scope-personal");
+        scopeBadge.textContent = "BẠN";
+
+        const playerSpan = div("garden-reborn-log-player player-self");
+        playerSpan.textContent = `[${kindLabel}]`;
+
+        const descSpan = div("garden-reborn-log-desc");
+        descSpan.textContent = `${target}${qtyStr}`.trim() || kindLabel;
+
+        const amountSpan = div("garden-reborn-log-amount");
+        if (ev.coins !== undefined) {
+          amountSpan.textContent = `${ev.coins >= 0 ? "+" : ""}${formatCompact(ev.coins)}c`;
+          amountSpan.classList.add(ev.coins >= 0 ? "amount-plus" : "amount-minus");
+        } else {
+          amountSpan.textContent = "—";
+        }
+
+        row.append(timeSpan, scopeBadge, playerSpan, descSpan, amountSpan);
+      }
+
+      const text = row.dataset.search ?? row.textContent ?? "";
+      const matchesQuery =
+        query.length === 0 ||
+        text.toLowerCase().includes(queryLower) ||
+        foldDiacritics(text).includes(queryFolded);
+
+      row.hidden = !matchesQuery;
+      if (matchesQuery) visibleCount += 1;
+      list.append(row);
+    }
+
+    const emptyBox = div("garden-reborn-log-empty");
+    emptyBox.textContent = t("log.emptyFilter");
+    emptyBox.hidden = visibleCount > 0;
+    list.append(emptyBox);
+
+    wrap.append(list);
+    return wrap;
+  }
+
   /** @brief Loads the public AI-discovered recipe list. */
   async function loadGlobalRecipes(): Promise<void> {
     try {
@@ -6264,6 +6497,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       wrap.append(buildDynopedia());
       return wrap;
     }
+    if (rebornTab === "log") {
+      wrap.append(buildRebornLog());
+      return wrap;
+    }
     wrap.append(buildGardenTabStrip());
     if (gardenTab !== "main") {
       // The main garden's quick actions stay available in every garden tab:
@@ -6545,7 +6782,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return bar;
   }
 
-  /** @brief Switches the rebuilt view between garden, townhall, weather, and dynopedia. */
+  /** @brief Switches the rebuilt view between garden, townhall, weather, dynopedia, and log. */
   function switchRebornTab(next: RebornTab): void {
     if (rebornTab === next) return;
     rebornTab = next;
@@ -6554,6 +6791,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (next === "dynopedia") {
       void loadGlobalRecipes();
       void loadGlobalHybrids();
+    }
+    if (next === "log") {
+      void loadGlobalSales();
     }
 
     syncGardenQuery();
@@ -8360,6 +8600,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       switchRebornTab(action.slice(10) as RebornTab);
       return;
     }
+    if (action.startsWith("logFilter:")) {
+      const nextFilter = action.slice(10) as "all" | "global" | "timeline";
+      if (nextFilter === "all" || nextFilter === "global" || nextFilter === "timeline") {
+        logFilter = nextFilter;
+        render();
+      }
+      return;
+    }
     if (action.startsWith("view:")) {
       closeMenu();
       switchView(action.slice(5) as GardenView);
@@ -10119,6 +10367,28 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (isVisible) visibleCount += 1;
       }
       const emptyNotice = root?.querySelector<HTMLElement>(".garden-kitchen-empty-filter");
+      if (emptyNotice) {
+        emptyNotice.hidden = visibleCount > 0;
+      }
+    }
+    if (target.dataset.role === "logSearch") {
+      logQuery = target.value;
+      const query = logQuery.trim();
+      const queryLower = query.toLowerCase();
+      const queryFolded = foldDiacritics(query);
+      let visibleCount = 0;
+      for (const row of root?.querySelectorAll<HTMLElement>(".garden-reborn-log-row") ?? []) {
+        const text = row.dataset.search ?? row.textContent ?? "";
+        const matchesQuery =
+          query.length === 0 ||
+          text.toLowerCase().includes(queryLower) ||
+          foldDiacritics(text).includes(queryFolded);
+        const matchesFilter = logFilter === "all" || row.dataset.type === logFilter;
+        const isVisible = matchesQuery && matchesFilter;
+        row.hidden = !isVisible;
+        if (isVisible) visibleCount += 1;
+      }
+      const emptyNotice = root?.querySelector<HTMLElement>(".garden-reborn-log-empty");
       if (emptyNotice) {
         emptyNotice.hidden = visibleCount > 0;
       }

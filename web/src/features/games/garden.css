@@ -2717,3 +2717,208 @@ button.garden-rank-row:hover {
     grid-template-columns: repeat(3, max-content);
   }
 }
+
+/* Reborn log & server activity dashboard */
+.garden-reborn-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(100%, 1100px);
+  margin: 0 auto;
+  padding: 6px 0 24px;
+}
+
+.garden-reborn-log-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.garden-reborn-log-title {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--text-normal);
+}
+
+.garden-reborn-log-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.garden-reborn-log-stat {
+  padding: 3px 8px;
+  background: var(--bg-surface-raised, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.garden-reborn-log-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.garden-reborn-log-filters {
+  display: flex;
+  gap: 4px;
+}
+
+.garden-reborn-log-filter-btn {
+  padding: 3px 8px;
+  font-size: 0.85rem;
+}
+
+.garden-reborn-log-filter-btn.is-active {
+  font-weight: 600;
+  color: var(--brand-accent, #68d391);
+  border-color: currentColor;
+}
+
+.garden-reborn-log-search-wrap {
+  width: 100%;
+}
+
+.garden-reborn-log-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--bg-input, rgba(0, 0, 0, 0.2));
+  color: var(--text-normal);
+}
+
+.garden-reborn-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 650px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 4px;
+  background: var(--bg-surface, rgba(0, 0, 0, 0.15));
+}
+
+.garden-reborn-log-row {
+  display: grid;
+  grid-template-columns: 140px 65px 170px 1fr 100px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  font-family: var(--font-mono, monospace);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.garden-reborn-log-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.garden-reborn-log-time {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.garden-reborn-log-scope {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.garden-reborn-log-scope.scope-global {
+  background: rgba(99, 179, 237, 0.2);
+  color: #63b3ed;
+  border: 1px solid rgba(99, 179, 237, 0.4);
+}
+
+.garden-reborn-log-scope.scope-personal {
+  background: rgba(72, 187, 120, 0.2);
+  color: #48bb78;
+  border: 1px solid rgba(72, 187, 120, 0.4);
+}
+
+.garden-reborn-log-player {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.garden-reborn-log-player.player-self {
+  color: #48bb78;
+}
+
+.garden-reborn-log-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-normal);
+}
+
+.garden-reborn-log-amount {
+  text-align: right;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.garden-reborn-log-amount.amount-plus {
+  color: #68d391;
+}
+
+.garden-reborn-log-amount.amount-minus {
+  color: #fc8181;
+}
+
+.garden-reborn-log-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 760px) {
+  .garden-reborn-log-row {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto auto;
+    gap: 2px 6px;
+    padding: 6px;
+  }
+
+  .garden-reborn-log-time {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .garden-reborn-log-amount {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .garden-reborn-log-scope {
+    display: inline-block;
+    width: fit-content;
+  }
+
+  .garden-reborn-log-player {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .garden-reborn-log-desc {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+}

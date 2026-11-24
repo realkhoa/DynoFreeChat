@@ -2813,19 +2813,21 @@ describe("reborn sub-tabs", () => {
     host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
     await settle();
 
-    // The rebuilt view owns four sub-tabs; the garden is the default one.
+    // The rebuilt view owns five sub-tabs; the garden is the default one.
     const tabs = Array.from(host.querySelectorAll<HTMLButtonElement>(".garden-reborn-tab"));
     expect(tabs.map((tab) => tab.dataset.act)).toEqual([
       "rebornTab:garden",
       "rebornTab:townhall",
       "rebornTab:weather",
       "rebornTab:dynopedia",
+      "rebornTab:log",
     ]);
     expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("vườn");
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
     expect(host.querySelector(".garden-townhall")).toBeNull();
     expect(host.querySelector(".garden-reborn-weather")).toBeNull();
     expect(host.querySelector(".garden-dynopedia")).toBeNull();
+    expect(host.querySelector(".garden-reborn-log")).toBeNull();
     expect(window.location.search).not.toContain("grtab=");
 
     host.querySelector<HTMLButtonElement>('[data-act="rebornTab:townhall"]')?.click();
@@ -2852,12 +2854,22 @@ describe("reborn sub-tabs", () => {
     expect(host.querySelector(".garden-reborn-row")).toBeNull();
     expect(window.location.search).toContain("grtab=dynopedia");
 
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:log"]')?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("nhật ký");
+    expect(host.querySelector(".garden-reborn .garden-reborn-log")).not.toBeNull();
+    expect(host.querySelector(".garden-reborn-row")).toBeNull();
+    expect(window.location.search).toContain("grtab=log");
+
     host.querySelector<HTMLButtonElement>('[data-act="rebornTab:garden"]')?.click();
     await settle();
     expect(host.querySelector(".garden-townhall")).toBeNull();
     expect(host.querySelector(".garden-reborn-weather")).toBeNull();
     expect(host.querySelector(".garden-dynopedia")).toBeNull();
+    expect(host.querySelector(".garden-reborn-log")).toBeNull();
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
+    expect(window.location.search).not.toContain("grtab=");
     expect(window.location.search).not.toContain("grtab=");
   });
 
@@ -4101,6 +4113,120 @@ describe("quick uproot clears dead plants", () => {
     for (const btn of seedBtns) {
       expect(btn.disabled).toBe(true);
     }
+  });
+
+  it("renders the reborn log tab with all server actions, personal timeline, filters and search", async () => {
+    const initialState = makeState();
+    const stateWithTimeline: GardenSnapshot = {
+      ...initialState,
+      timeline: [
+        { ts: CLOCK - 1000, kind: "plant", item: "carrot", qty: 3 },
+        { ts: CLOCK - 500, kind: "harvest", item: "carrot", qty: 3 },
+        { ts: CLOCK, kind: "sale", item: "carrot", qty: 3, coins: 1500 },
+      ],
+    };
+    const api = new FakeGardenApi(stateWithTimeline);
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    // Switch to reborn view
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // Click on reborn log tab
+    const logTabBtn = host.querySelector<HTMLButtonElement>('[data-act="rebornTab:log"]');
+    expect(logTabBtn).not.toBeNull();
+    logTabBtn?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-reborn-log")).not.toBeNull();
+    expect(window.location.search).toContain("grtab=log");
+
+    // Overview statistics metrics
+    const stats = host.querySelectorAll(".garden-reborn-log-stat");
+    expect(stats.length).toBe(3);
+    expect(stats[0]?.textContent).toContain("Toàn server: 1 hành động");
+    expect(stats[1]?.textContent).toContain("Tổng giao dịch: 900c");
+    expect(stats[2]?.textContent).toContain("Cá nhân: 3 sự kiện");
+
+    // All rows rendered (1 server sale + 3 personal timeline events = 4 total rows)
+    let rows = host.querySelectorAll<HTMLElement>(".garden-reborn-log-row");
+    expect(rows.length).toBe(4);
+
+    // Filter by Global only
+    const globalFilterBtn = host.querySelector<HTMLButtonElement>('[data-act="logFilter:global"]');
+    expect(globalFilterBtn).not.toBeNull();
+    globalFilterBtn?.click();
+    await settle();
+
+    rows = host.querySelectorAll<HTMLElement>(".garden-reborn-log-row");
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.dataset.type).toBe("global");
+    expect(rows[0]?.textContent).toContain("Khoa");
+    expect(rows[0]?.textContent).toContain("#3N0K8P");
+    expect(rows[0]?.textContent).toContain("+900c");
+
+    // Filter by Timeline only
+    const timelineFilterBtn = host.querySelector<HTMLButtonElement>('[data-act="logFilter:timeline"]');
+    expect(timelineFilterBtn).not.toBeNull();
+    timelineFilterBtn?.click();
+    await settle();
+
+    rows = host.querySelectorAll<HTMLElement>(".garden-reborn-log-row");
+    expect(rows.length).toBe(3);
+    for (const r of rows) {
+      expect(r.dataset.type).toBe("timeline");
+    }
+
+    // Switch back to All filter
+    host.querySelector<HTMLButtonElement>('[data-act="logFilter:all"]')?.click();
+    await settle();
+
+    rows = host.querySelectorAll<HTMLElement>(".garden-reborn-log-row");
+    expect(rows.length).toBe(4);
+
+    // Test real-time search filtering
+    const searchInput = host.querySelector<HTMLInputElement>(".garden-reborn-log-search");
+    expect(searchInput).not.toBeNull();
+    if (searchInput) {
+      searchInput.value = "Khoa";
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await settle();
+
+      const visibleRows = Array.from(host.querySelectorAll<HTMLElement>(".garden-reborn-log-row")).filter(
+        (r) => !r.hidden,
+      );
+      expect(visibleRows.length).toBe(1);
+      expect(visibleRows[0]?.textContent).toContain("Khoa");
+
+      // Non-matching search shows empty notice
+      searchInput.value = "nonexistent_player_or_crop";
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await settle();
+
+      const visibleNone = Array.from(host.querySelectorAll<HTMLElement>(".garden-reborn-log-row")).filter(
+        (r) => !r.hidden,
+      );
+      expect(visibleNone.length).toBe(0);
+      expect(host.querySelector<HTMLElement>(".garden-reborn-log-empty")?.hidden).toBe(false);
+
+      // Clearing search restores all
+      searchInput.value = "";
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await settle();
+
+      const restoredRows = Array.from(host.querySelectorAll<HTMLElement>(".garden-reborn-log-row")).filter(
+        (r) => !r.hidden,
+      );
+      expect(restoredRows.length).toBe(4);
+    }
+
+    // Test refresh button
+    const prevCalls = api.calls.filter((c) => c.method === "sales").length;
+    host.querySelector<HTMLButtonElement>('[data-act="logRefresh"]')?.click();
+    await settle();
+    const afterCalls = api.calls.filter((c) => c.method === "sales").length;
+    expect(afterCalls).toBe(prevCalls + 1);
   });
 });
 
