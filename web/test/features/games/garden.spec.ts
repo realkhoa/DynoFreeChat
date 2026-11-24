@@ -19,6 +19,7 @@ import {
   SEEDS,
   TREES,
   TREES_PER_TAB,
+  initialMineState,
   seasonAt,
   type ExtrasSnapshot,
   type GardenAction,
@@ -202,7 +203,7 @@ class FakeGardenApi {
   calls: Array<{ method: string; action?: GardenAction }> = [];
   session = { playerId: PLAYER_ID, token: "a".repeat(64), recovery: "ABCD-EFGH-JKMN" };
 
-  constructor(stateValue: GardenSnapshot) {
+  constructor(stateValue: GardenSnapshot = makeState()) {
     this.stateValue = stateValue;
   }
 
@@ -2853,6 +2854,7 @@ describe("reborn sub-tabs", () => {
       "gardenTab:coop",
       "gardenTab:pond",
       "gardenTab:warehouse",
+      "gardenTab:mine",
       "gardenTab:shipping",
     ]);
     expect(host.querySelector(".garden-section-tab.is-active")?.textContent).toContain("vườn chính");
@@ -3251,7 +3253,7 @@ describe("reborn staff cells", () => {
     await settle();
     const panel = host.querySelector(".garden-staff-panel");
     expect(panel?.textContent).toContain("Nhiệm vụ");
-    expect(panel?.querySelectorAll('[data-act="staffTask"]')).toHaveLength(5);
+    expect(panel?.querySelectorAll('[data-act="staffTask"]')).toHaveLength(6);
     // The panel spells out how the run interval is computed.
     expect(panel?.textContent).toContain("phút/lần = max(10");
     expect(panel?.textContent).toContain("quality");
@@ -3516,6 +3518,31 @@ describe("quick uproot clears dead plants", () => {
     expect(host.querySelector(".garden-warehouse")).not.toBeNull();
     const rows = host.querySelectorAll(".garden-warehouse-row");
     expect(rows.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("renders the mine tab with 5x5 rock grid and dedicated staff miner slot", async () => {
+    const api = new FakeGardenApi();
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // Click on the mine sub-tab
+    const mineTabBtn = host.querySelector<HTMLButtonElement>('[data-act="gardenTab:mine"]');
+    expect(mineTabBtn).not.toBeNull();
+    mineTabBtn?.click();
+    await settle();
+
+    // Verify mine container, 5x5 rock grid, and dedicated miner slot
+    expect(host.querySelector(".garden-mine-reborn")).not.toBeNull();
+    const minerSlot = host.querySelector<HTMLButtonElement>('[data-action-id="minerSlot"]');
+    expect(minerSlot).not.toBeNull();
+
+    const mineGrid = host.querySelector(".garden-mine-grid");
+    expect(mineGrid).not.toBeNull();
+    const cells = host.querySelectorAll(".garden-mine-grid .garden-reborn-action");
+    expect(cells.length).toBe(25);
   });
 });
 

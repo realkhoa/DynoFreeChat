@@ -962,7 +962,22 @@ export type ProductId =
   | "mushOyster"
   | "mushButton"
   | "mushShiitake"
-  | "mushReishi";
+  | "mushReishi"
+  | "stone"
+  | "coal"
+  | "copperOre"
+  | "ironOre"
+  | "goldOre"
+  | "iridiumOre"
+  | "copperBar"
+  | "ironBar"
+  | "goldBar"
+  | "iridiumBar"
+  | "amethyst"
+  | "ruby"
+  | "emerald"
+  | "diamond"
+  | "prismaticShard";
 
 /** One animal definition. */
 export interface AnimalDefinition {
@@ -1097,6 +1112,24 @@ export const PRODUCTS: readonly ProductDefinition[] = [
   { id: "mushButton", base: 5_000 },
   { id: "mushShiitake", base: 12_000 },
   { id: "mushReishi", base: 40_000 },
+  // Mining resources: ores, coal, stone, and gems
+  { id: "stone", base: 10 },
+  { id: "coal", base: 50 },
+  { id: "copperOre", base: 100 },
+  { id: "ironOre", base: 250 },
+  { id: "goldOre", base: 750 },
+  { id: "iridiumOre", base: 3_000 },
+  // Smelted metal bars
+  { id: "copperBar", base: 800 },
+  { id: "ironBar", base: 2_000 },
+  { id: "goldBar", base: 6_000 },
+  { id: "iridiumBar", base: 25_000 },
+  // Precious gems
+  { id: "amethyst", base: 1_200 },
+  { id: "ruby", base: 3_500 },
+  { id: "emerald", base: 5_000 },
+  { id: "diamond", base: 15_000 },
+  { id: "prismaticShard", base: 100_000 },
 ];
 
 /** Mushroom house: every tray grows one batch per planting. */
@@ -1207,7 +1240,8 @@ export type MachineId =
   | "juicer"
   | "jamMaker"
   | "butterChurn"
-  | "caviarFermenter";
+  | "caviarFermenter"
+  | "smelter";
 
 /** Extra product-to-product recipe on a converter. */
 export interface MachineRecipe {
@@ -1373,6 +1407,19 @@ export const MACHINES: readonly MachineDefinition[] = [
     allProduce: true,
     gradeByPrice: true,
     queued: true,
+  },
+  {
+    id: "smelter",
+    input: { kind: "product", product: "copperOre" },
+    output: { kind: "product", product: "copperBar" },
+    multiplier: 8,
+    cooldownCycles: 3,
+    queued: true,
+    recipes: [
+      { input: "ironOre", output: "ironBar", multiplier: 8 },
+      { input: "goldOre", output: "goldBar", multiplier: 8 },
+      { input: "iridiumOre", output: "iridiumBar", multiplier: 8 },
+    ],
   },
 ];
 
@@ -2611,10 +2658,17 @@ export function rollPet(
 /* ------------------------------------------------------------------ staff */
 
 /** Chores a hired hand can be assigned to. */
-export type StaffRole = "water" | "plant" | "harvest" | "harvestMushroom" | "saleHunt";
+export type StaffRole = "water" | "plant" | "harvest" | "harvestMushroom" | "saleHunt" | "mine";
 
 /** Every assignable staff chore, in strip order. */
-export const STAFF_ROLES: readonly StaffRole[] = ["water", "plant", "harvest", "harvestMushroom", "saleHunt"];
+export const STAFF_ROLES: readonly StaffRole[] = [
+  "water",
+  "plant",
+  "harvest",
+  "harvestMushroom",
+  "saleHunt",
+  "mine",
+];
 
 /** Staff personality traits. */
 export type StaffTrait = "lazy" | "slow" | "clumsy" | "greedy" | "diligent" | "greenThumb";
@@ -2839,6 +2893,246 @@ export const SKILL_PERKS: Readonly<Record<SkillId, readonly number[]>> = {
   ranching: [2, 5, 8, 10],
   artisaning: [2, 5, 8, 10],
 };
+
+/* ------------------------------------------------------------------ mine */
+
+/** Total rock cells in one mine floor grid (5x5). */
+export const MINE_FLOOR_CELLS = 25;
+
+/** Possible states of a rock cell inside a mine floor. */
+export type MineRockKind =
+  "stone" | "gravel" | "copper" | "iron" | "gold" | "iridium" | "gem" | "chest" | "ladder" | "empty";
+
+/**
+ * @brief Representation of a single rock/cell on the mine floor grid.
+ */
+export interface MineRockCell {
+  /** Kind of rock or deposit. */
+  readonly kind: MineRockKind;
+  /** Current remaining hit points. */
+  readonly hp: number;
+  /** Maximum hit points required to break. */
+  readonly maxHp: number;
+  /** Primary ore product dropped when broken. */
+  readonly oreDrop?: ProductId;
+  /** Quantity of product dropped (defaults to 1). */
+  readonly dropQty?: number;
+  /** Whether clearing this rock reveals the descending ladder. */
+  readonly hasLadder?: boolean;
+}
+
+/**
+ * @brief Tier definition for player pickaxes.
+ */
+export interface PickaxeTier {
+  /** Pickaxe level index (0 = Rusty, 4 = Iridium). */
+  readonly level: number;
+  /** Damage dealt per strike to rock cells. */
+  readonly damage: number;
+  /** Type of metal bar required to craft this tier. */
+  readonly barType?: ProductId;
+  /** Count of metal bars required. */
+  readonly barCount?: number;
+  /** Coin cost for upgrading to this tier. */
+  readonly cost: number;
+}
+
+/** Pickaxe progression ladder. */
+export const PICKAXE_TIERS: readonly PickaxeTier[] = [
+  { level: 0, damage: 1, cost: 0 },
+  { level: 1, damage: 2, barType: "copperBar", barCount: 5, cost: 50_000 },
+  { level: 2, damage: 3, barType: "ironBar", barCount: 5, cost: 250_000 },
+  { level: 3, damage: 4, barType: "goldBar", barCount: 5, cost: 1_000_000 },
+  { level: 4, damage: 6, barType: "iridiumBar", barCount: 5, cost: 5_000_000 },
+];
+
+/**
+ * @brief State of the player's mine expedition.
+ */
+export interface MineState {
+  /** Current floor depth (1-based index). */
+  readonly currentFloor: number;
+  /** Deepest floor reached (unlocks elevator checkpoints). */
+  readonly maxFloor: number;
+  /** Current pickaxe upgrade level (0..4). */
+  readonly pickaxeLevel: number;
+  /** Current available stamina points. */
+  readonly stamina: number;
+  /** Maximum stamina pool (default 100). */
+  readonly maxStamina: number;
+  /** Last server timestamp stamina was regenerated or settled. */
+  readonly lastStaminaAt: number;
+  /** Current 5x5 rock cells grid on the floor. */
+  readonly grid: readonly MineRockCell[];
+  /** Staff slot index assigned to mine chore, or null if unassigned. */
+  readonly assignedStaffSlot: number | null;
+}
+
+/**
+ * @brief Generates a deterministic 5x5 mine floor grid for a specific depth.
+ * @param floor Floor depth (1..100+).
+ * @param seed Random seed for determinism.
+ * @return 25 rock cells with appropriate ores, HP, and a hidden ladder.
+ */
+export function generateMineFloor(floor: number, seed: number): readonly MineRockCell[] {
+  const rng = createRng(Math.abs(seed) || 12345);
+  const ladderSlot = Math.floor(rng() * MINE_FLOOR_CELLS);
+  const cells: MineRockCell[] = [];
+
+  for (let slot = 0; slot < MINE_FLOOR_CELLS; slot += 1) {
+    const roll = rng();
+    const hasLadder = slot === ladderSlot;
+
+    if (floor <= 15) {
+      if (roll < 0.5) {
+        cells.push({
+          kind: "stone",
+          hp: 1,
+          maxHp: 1,
+          oreDrop: "stone",
+          dropQty: 1 + Math.floor(rng() * 2),
+          hasLadder,
+        });
+      } else if (roll < 0.75) {
+        cells.push({
+          kind: "gravel",
+          hp: 1,
+          maxHp: 1,
+          oreDrop: rng() < 0.5 ? "coal" : "stone",
+          dropQty: 1,
+          hasLadder,
+        });
+      } else if (roll < 0.94) {
+        cells.push({
+          kind: "copper",
+          hp: 2,
+          maxHp: 2,
+          oreDrop: "copperOre",
+          dropQty: 1 + Math.floor(rng() * 2),
+          hasLadder,
+        });
+      } else if (roll < 0.98) {
+        cells.push({ kind: "gem", hp: 3, maxHp: 3, oreDrop: "amethyst", dropQty: 1, hasLadder });
+      } else {
+        cells.push({ kind: "chest", hp: 1, maxHp: 1, hasLadder });
+      }
+    } else if (floor <= 35) {
+      if (roll < 0.35) {
+        cells.push({ kind: "stone", hp: 2, maxHp: 2, oreDrop: "stone", dropQty: 2, hasLadder });
+      } else if (roll < 0.55) {
+        cells.push({
+          kind: "gravel",
+          hp: 1,
+          maxHp: 1,
+          oreDrop: "coal",
+          dropQty: 1 + Math.floor(rng() * 2),
+          hasLadder,
+        });
+      } else if (roll < 0.75) {
+        cells.push({ kind: "copper", hp: 2, maxHp: 2, oreDrop: "copperOre", dropQty: 2, hasLadder });
+      } else if (roll < 0.92) {
+        cells.push({
+          kind: "iron",
+          hp: 3,
+          maxHp: 3,
+          oreDrop: "ironOre",
+          dropQty: 1 + Math.floor(rng() * 2),
+          hasLadder,
+        });
+      } else if (roll < 0.98) {
+        cells.push({
+          kind: "gem",
+          hp: 3,
+          maxHp: 3,
+          oreDrop: rng() < 0.5 ? "amethyst" : "ruby",
+          dropQty: 1,
+          hasLadder,
+        });
+      } else {
+        cells.push({ kind: "chest", hp: 1, maxHp: 1, hasLadder });
+      }
+    } else if (floor <= 65) {
+      if (roll < 0.3) {
+        cells.push({ kind: "stone", hp: 2, maxHp: 2, oreDrop: "stone", dropQty: 2, hasLadder });
+      } else if (roll < 0.45) {
+        cells.push({ kind: "gravel", hp: 1, maxHp: 1, oreDrop: "coal", dropQty: 2, hasLadder });
+      } else if (roll < 0.65) {
+        cells.push({ kind: "iron", hp: 3, maxHp: 3, oreDrop: "ironOre", dropQty: 2, hasLadder });
+      } else if (roll < 0.88) {
+        cells.push({
+          kind: "gold",
+          hp: 4,
+          maxHp: 4,
+          oreDrop: "goldOre",
+          dropQty: 1 + Math.floor(rng() * 2),
+          hasLadder,
+        });
+      } else if (roll < 0.97) {
+        const gemPick = rng();
+        const gem: ProductId = gemPick < 0.4 ? "ruby" : gemPick < 0.8 ? "emerald" : "diamond";
+        cells.push({ kind: "gem", hp: 4, maxHp: 4, oreDrop: gem, dropQty: 1, hasLadder });
+      } else {
+        cells.push({ kind: "chest", hp: 1, maxHp: 1, hasLadder });
+      }
+    } else {
+      if (roll < 0.25) {
+        cells.push({ kind: "stone", hp: 3, maxHp: 3, oreDrop: "stone", dropQty: 3, hasLadder });
+      } else if (roll < 0.4) {
+        cells.push({ kind: "gravel", hp: 1, maxHp: 1, oreDrop: "coal", dropQty: 2, hasLadder });
+      } else if (roll < 0.6) {
+        cells.push({ kind: "gold", hp: 4, maxHp: 4, oreDrop: "goldOre", dropQty: 2, hasLadder });
+      } else if (roll < 0.82) {
+        cells.push({
+          kind: "iridium",
+          hp: 5,
+          maxHp: 5,
+          oreDrop: "iridiumOre",
+          dropQty: 1 + Math.floor(rng() * 2),
+          hasLadder,
+        });
+      } else if (roll < 0.96) {
+        const gemPick = rng();
+        const gem: ProductId = gemPick < 0.4 ? "emerald" : gemPick < 0.8 ? "diamond" : "prismaticShard";
+        cells.push({ kind: "gem", hp: 5, maxHp: 5, oreDrop: gem, dropQty: 1, hasLadder });
+      } else {
+        cells.push({ kind: "chest", hp: 1, maxHp: 1, hasLadder });
+      }
+    }
+  }
+
+  return cells;
+}
+
+/**
+ * @brief Constructs a fresh mine state.
+ * @param seed Optional random seed.
+ * @return Initialized MineState at Floor 1.
+ */
+export function initialMineState(seed = 12345): MineState {
+  return {
+    currentFloor: 1,
+    maxFloor: 1,
+    pickaxeLevel: 0,
+    stamina: 100,
+    maxStamina: 100,
+    lastStaminaAt: 0,
+    grid: generateMineFloor(1, seed),
+    assignedStaffSlot: null,
+  };
+}
+
+/**
+ * @brief Computes list of elevator checkpoint floors unlocked by the player.
+ * @param maxFloor Deepest floor reached.
+ * @return Array of floor numbers (e.g. [1, 5, 10, 15...]).
+ */
+export function mineElevatorCheckpoints(maxFloor: number): readonly number[] {
+  const checkpoints: number[] = [1];
+  for (let f = 5; f <= maxFloor; f += 5) {
+    checkpoints.push(f);
+  }
+  return checkpoints;
+}
 
 /** One NPC produce contract. */
 export interface ContractOffer {
@@ -3256,6 +3550,8 @@ export interface GardenSnapshot {
   readonly mushroomSpawn: Readonly<Partial<Record<MushroomId, number>>>;
   /** Warehouse and built machines. */
   readonly warehouse: WarehouseState;
+  /** Mine floor state, depth, and pickaxe progression. */
+  readonly mine?: MineState;
   /** Fertility percent per crop cell, index = absolute slot. */
   readonly soil: readonly number[];
   /** All extra systems: streak, achievements, wheel, contracts, etc. */
@@ -3312,6 +3608,8 @@ export interface VisitSnapshot {
   readonly specialPlots: readonly (PlotState | null)[];
   /** Warehouse and its machines. */
   readonly warehouse: WarehouseState;
+  /** Mine floor state, depth, and pickaxe progression. */
+  readonly mine?: MineState;
   /** Fertility percent per crop cell. */
   readonly soil: readonly number[];
   /** Extra systems snapshot. */
@@ -3945,6 +4243,12 @@ export type GardenAction = (
       readonly qty: number;
     }
   | { readonly kind: "giftTool"; readonly code: string; readonly tool: ToolId; readonly qty: number }
+  | { readonly kind: "mineHit"; readonly slot: number }
+  | { readonly kind: "mineDescend" }
+  | { readonly kind: "mineElevator"; readonly targetFloor: number }
+  | { readonly kind: "upgradePickaxe" }
+  | { readonly kind: "mineEat"; readonly item: ProductId }
+  | { readonly kind: "assignMiner"; readonly staffSlot: number | null }
 ) & { readonly auto?: boolean };
 
 /** Error codes; the client localizes them, the server never sends prose. */
@@ -4011,7 +4315,13 @@ export type GardenErrorCode =
   | "PRESTIGE_LOCKED"
   | "PLOT_DAMAGED"
   | "WRONG_AREA"
-  | "KITCHEN_LOCKED";
+  | "KITCHEN_LOCKED"
+  | "NO_STAMINA"
+  | "LADDER_LOCKED"
+  | "FLOOR_LOCKED"
+  | "NO_BARS"
+  | "MAX_PICKAXE"
+  | "ROCK_EMPTY";
 
 /** Successful response to a garden action. */
 export interface GardenActResponse {

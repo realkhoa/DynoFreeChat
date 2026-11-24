@@ -36,6 +36,14 @@ import {
   STAFF_SLOTS,
   STAFF_ROLES,
   type StaffRole,
+  MINE_FLOOR_CELLS,
+  PICKAXE_TIERS,
+  mineElevatorCheckpoints,
+  initialMineState,
+  type MineRockKind,
+  type MineRockCell,
+  type MineState,
+  type PickaxeTier,
   staffHireCost,
   staffXpToLevel,
   staffMarketAt,
@@ -228,7 +236,16 @@ const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string 
 
 /** One tab inside the garden tab of the rebuilt view. */
 type GardenTab =
-  "main" | "mushroom" | "greenhouse" | "nursery" | "barn" | "coop" | "pond" | "warehouse" | "shipping";
+  | "main"
+  | "mushroom"
+  | "greenhouse"
+  | "nursery"
+  | "barn"
+  | "coop"
+  | "pond"
+  | "warehouse"
+  | "mine"
+  | "shipping";
 
 /** @brief Garden tabs, in strip order. */
 const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string }[] = [
@@ -240,6 +257,7 @@ const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string 
   { id: "coop", labelKey: "gardenTab.coop" },
   { id: "pond", labelKey: "gardenTab.pond" },
   { id: "warehouse", labelKey: "gardenTab.warehouse" },
+  { id: "mine", labelKey: "gardenTab.mine" },
   { id: "shipping", labelKey: "gardenTab.shipping" },
 ];
 
@@ -391,6 +409,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let machineMenu: { id: MachineId; x: number; y: number; anchorTop: number } | null = null;
   let specialPicker: number | null = null;
   let specialMenu: { slot: number; x: number; y: number } | null = null;
+  let minerMenuOpen = false;
   let machineQty = 1;
   let chartSort: "roi" | "income" | "pressure" = "roi";
   let raidSnapshot: RaidSnapshot | null = null;
@@ -1295,6 +1314,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       savedGardenTab === "coop" ||
       savedGardenTab === "pond" ||
       savedGardenTab === "warehouse" ||
+      savedGardenTab === "mine" ||
       savedGardenTab === "shipping"
     ) {
       gardenTab = savedGardenTab;
@@ -2541,7 +2561,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function buildSidebar(at: number): HTMLElement {
     const side = div("garden-side");
     const view = mode === "visit" ? visiting : state;
-    if (view === null) return side;
+    if (!view) return side;
 
     side.append(span("garden-side-title", `// ${t("side.bag")}`));
     const seeds = Object.values(view.bag.seeds).reduce((sum, qty) => sum + (qty ?? 0), 0);
@@ -2681,7 +2701,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     plots: readonly (PlotState | null)[];
   } | null {
     const view = mode === "visit" ? visiting : state;
-    if (view === null) return null;
+    if (!view) return null;
     return {
       owned: Math.min(SPECIAL_SLOTS, view.specialOwned ?? 0),
       plots: view.specialPlots ?? [],
@@ -3941,6 +3961,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     jamMaker: "@",
     butterChurn: "=",
     keg: "U",
+    smelter: "^",
   };
 
   /**
@@ -4067,6 +4088,238 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       );
     }
     wrap.append(kitchenGrid);
+    return wrap;
+  }
+
+  /**
+   * @brief Builds the reborn mine tab: 5x5 rock grid, ladder, checkpoint elevators,
+   * pickaxe upgrades, stamina pool, and dedicated staff miner slot.
+   * @param at Server-clock timestamp.
+   * @return Mine container element.
+   */
+  function buildMineReborn(at: number): HTMLElement {
+    const wrap = div("garden-mine-reborn");
+    if (!state) return lineBlock(t("common.loading"));
+
+    const mine: MineState = state.mine ?? initialMineState(at);
+    const tier: PickaxeTier = PICKAXE_TIERS[mine.pickaxeLevel] ?? (PICKAXE_TIERS[0] as PickaxeTier);
+
+    // 1. Header with Depth, Max Depth, Stamina
+    wrap.append(
+      lineBlock(
+        `// ${t("mine.title")} · ${t("mine.floor")} ${mine.currentFloor} · (Max: ${mine.maxFloor}) · ⚡ ${mine.stamina}/${mine.maxStamina} · ${t(`pickaxe.${mine.pickaxeLevel}`)} (DMG: ${tier.damage})`,
+      ),
+    );
+
+    // 2. Control bar: Elevator Checkpoints & Pickaxe Upgrade & Eat Stamina
+    const controls = div("garden-mine-controls");
+
+    // Elevator buttons
+    const checkpoints = mineElevatorCheckpoints(mine.maxFloor);
+    if (checkpoints.length > 1) {
+      const elevatorBar = div("garden-mine-elevators");
+      elevatorBar.append(span("garden-hint", `[ ${t("mine.elevator")} ]: `));
+      for (const f of checkpoints) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `garden-action-btn ${f === mine.currentFloor ? "is-active" : ""}`;
+        btn.dataset.act = "mineElevator";
+        btn.dataset.targetFloor = String(f);
+        btn.textContent = `T${f}`;
+        elevatorBar.append(btn);
+      }
+      controls.append(elevatorBar);
+    }
+
+    // Top action row: Miner Slot cell & Pickaxe Upgrade & Eat Stamina
+    const topRow = div("garden-mine-top-row");
+
+    // Dedicated Staff Miner Slot cell
+    const assignedWorkerIndex = mine.assignedStaffSlot;
+    const staffList = state.extras?.staff ?? [];
+    const assignedWorker =
+      typeof assignedWorkerIndex === "number" && assignedWorkerIndex >= 0
+        ? staffList[assignedWorkerIndex]
+        : null;
+
+    if (assignedWorker) {
+      topRow.append(
+        buildRebornAction({
+          id: "minerSlot",
+          label: assignedWorker.name,
+          glyph: "M",
+          note: `Lv.${assignedWorker.level} · Đang đào`,
+          tone: "tool",
+          act: "minerSlotToggle",
+          title: `Thợ mỏ: ${assignedWorker.name} (Lv.${assignedWorker.level}) · Bấm để đổi/gỡ`,
+        }),
+      );
+    } else {
+      topRow.append(
+        buildRebornAction({
+          id: "minerSlot",
+          label: t("mine.minerSlot"),
+          glyph: "+",
+          note: t("mine.assignMiner"),
+          tone: "money",
+          act: "minerSlotToggle",
+          title: t("mine.assignMiner"),
+        }),
+      );
+    }
+
+    // Pickaxe upgrade cell
+    const nextTier = PICKAXE_TIERS[mine.pickaxeLevel + 1];
+    if (nextTier) {
+      let haveBars = 0;
+      if (nextTier.barType) {
+        for (const p of state.bag.products ?? []) {
+          if (p.product === nextTier.barType) haveBars += p.qty;
+        }
+      }
+      const canUpgrade =
+        (state.coins ?? 0) >= nextTier.cost && (!nextTier.barCount || haveBars >= nextTier.barCount);
+      const barLabel = nextTier.barType ? t(`products.${nextTier.barType}`) : "";
+      topRow.append(
+        buildRebornAction({
+          id: "upgradePickaxe",
+          label: t(`pickaxe.${nextTier.level}`),
+          glyph: "^",
+          note: nextTier.barCount
+            ? `${haveBars}/${nextTier.barCount} ${barLabel} · ${formatCompact(nextTier.cost)}c`
+            : `${formatCompact(nextTier.cost)}c`,
+          tone: canUpgrade ? "money" : "default",
+          act: "upgradePickaxe",
+          title: `${t("mine.upgradePickaxe")} (DMG: ${nextTier.damage})`,
+          disabled: !canUpgrade,
+        }),
+      );
+    }
+
+    // Eat produce to restore stamina cell
+    if (mine.stamina < mine.maxStamina) {
+      const edibleProduct = (state.bag.products ?? []).find((p) => p.qty > 0);
+      if (edibleProduct) {
+        topRow.append(
+          buildRebornAction({
+            id: "mineEat",
+            label: t("mine.eatToRestore"),
+            glyph: "E",
+            note: `${t(`products.${edibleProduct.product}`)} (${edibleProduct.qty})`,
+            tone: "harvest",
+            act: "mineEat",
+            data: { item: edibleProduct.product },
+            title: `Ăn ${t(`products.${edibleProduct.product}`)} để hồi thể lực`,
+          }),
+        );
+      }
+    }
+
+    controls.append(topRow);
+    wrap.append(controls);
+
+    // Miner assignment popover / picker
+    if (minerMenuOpen) {
+      const pickerWrap = div("garden-miner-picker");
+      pickerWrap.append(lineBlock(`// ${t("mine.assignMiner")}`));
+      if (staffList.length === 0) {
+        pickerWrap.append(lineBlock("Chưa có nhân viên nào. Vào Chợ lao động để thuê!"));
+      } else {
+        staffList.forEach((worker, idx) => {
+          const isCurrent = idx === mine.assignedStaffSlot;
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = `garden-action-btn ${isCurrent ? "is-active" : ""}`;
+          btn.dataset.act = "assignMinerSlot";
+          btn.dataset.staffSlot = String(idx);
+          btn.textContent = `${isCurrent ? "✓ " : ""}${worker.name} (Lv.${worker.level} · ${t(`staffRole.${worker.role}`)})`;
+          pickerWrap.append(btn);
+        });
+        if (mine.assignedStaffSlot !== null) {
+          const unassignBtn = document.createElement("button");
+          unassignBtn.type = "button";
+          unassignBtn.className = "garden-action-btn is-danger";
+          unassignBtn.dataset.act = "unassignMinerSlot";
+          unassignBtn.textContent = `[ ${t("mine.unassignMiner")} ]`;
+          pickerWrap.append(unassignBtn);
+        }
+      }
+      wrap.append(pickerWrap);
+    }
+
+    // 3. 5x5 Mine Rock Grid
+    const grid = div("garden-mine-grid");
+    const ROCK_GLYPHS: Record<MineRockKind, string> = {
+      stone: "#",
+      gravel: ".",
+      copper: "c",
+      iron: "i",
+      gold: "g",
+      iridium: "I",
+      gem: "♦",
+      chest: "?",
+      ladder: "v",
+      empty: " ",
+    };
+
+    const ROCK_TONES: Record<MineRockKind, string> = {
+      stone: "default",
+      gravel: "default",
+      copper: "warning",
+      iron: "tool",
+      gold: "money",
+      iridium: "rare",
+      gem: "rare",
+      chest: "rainbow",
+      ladder: "harvest",
+      empty: "default",
+    };
+
+    mine.grid.forEach((cell, slot) => {
+      if (cell.kind === "ladder") {
+        grid.append(
+          buildRebornAction({
+            id: `mine-cell-${slot}`,
+            label: t("mine.descend"),
+            glyph: "v",
+            note: `T${mine.currentFloor + 1} ↓`,
+            tone: "harvest",
+            act: "mineDescend",
+            title: t("mine.descend"),
+          }),
+        );
+      } else if (cell.kind === "empty") {
+        const emptyCell = buildRebornAction({
+          id: `mine-cell-${slot}`,
+          label: "",
+          glyph: " ",
+          note: "",
+          tone: "default",
+          act: "noop",
+          title: "",
+          disabled: true,
+        });
+        emptyCell.classList.add("is-empty-mine-cell");
+        grid.append(emptyCell);
+      } else {
+        const name =
+          cell.kind === "chest" ? "Rương báu" : cell.oreDrop ? t(`products.${cell.oreDrop}`) : cell.kind;
+        const cellAction = buildRebornAction({
+          id: `mine-cell-${slot}`,
+          label: name,
+          glyph: ROCK_GLYPHS[cell.kind] ?? "#",
+          note: `${cell.hp}/${cell.maxHp} HP`,
+          tone: ROCK_TONES[cell.kind] ?? "default",
+          act: "mineHit",
+          data: { slot: String(slot) },
+          title: `${name} · ${cell.hp}/${cell.maxHp} HP · Tiêu hao 2 thể lực`,
+          disabled: mine.stamina < 2,
+        });
+        grid.append(cellAction);
+      }
+    });
+
+    wrap.append(grid);
     return wrap;
   }
 
@@ -6104,6 +6357,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return buildAnimalTab(gardenTab);
     }
     if (gardenTab === "warehouse") return buildWarehouse();
+    if (gardenTab === "mine") return buildMineReborn(at);
     if (gardenTab === "shipping") return buildShippingBin();
     return buildGardenTabPlaceholder();
   }
@@ -7694,6 +7948,49 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "visitBot": {
         const code = target.dataset.code;
         if (code !== undefined) openVisit(code);
+        return;
+      }
+      case "minerSlotToggle":
+        minerMenuOpen = !minerMenuOpen;
+        render();
+        return;
+      case "assignMinerSlot": {
+        const staffSlot = Number(target.dataset.staffSlot);
+        if (Number.isInteger(staffSlot)) {
+          minerMenuOpen = false;
+          void runAction({ kind: "assignMiner", staffSlot }, t("mine.minerSlot"));
+        }
+        return;
+      }
+      case "unassignMinerSlot":
+        minerMenuOpen = false;
+        void runAction({ kind: "assignMiner", staffSlot: null }, t("mine.unassignMiner"));
+        return;
+      case "mineHit": {
+        const slot = Number(target.dataset.slot);
+        if (Number.isInteger(slot)) {
+          void runAction({ kind: "mineHit", slot }, "");
+        }
+        return;
+      }
+      case "mineDescend":
+        void runAction({ kind: "mineDescend" }, t("mine.descend"));
+        return;
+      case "mineElevator": {
+        const targetFloor = Number(target.dataset.targetFloor);
+        if (Number.isInteger(targetFloor)) {
+          void runAction({ kind: "mineElevator", targetFloor }, `${t("mine.elevator")} T${targetFloor}`);
+        }
+        return;
+      }
+      case "upgradePickaxe":
+        void runAction({ kind: "upgradePickaxe" }, t("mine.upgradePickaxe"));
+        return;
+      case "mineEat": {
+        const item = target.dataset.item as ProductId | undefined;
+        if (item !== undefined) {
+          void runAction({ kind: "mineEat", item }, t("mine.eatToRestore"));
+        }
         return;
       }
       case "buildWarehouse":

@@ -178,6 +178,14 @@ import {
   nextPatchPrice,
   nextTabPrice,
   canonicalEffects,
+  MINE_FLOOR_CELLS,
+  generateMineFloor,
+  initialMineState,
+  mineElevatorCheckpoints,
+  PICKAXE_TIERS,
+  type PickaxeTier,
+  type MineState,
+  type MineRockCell,
   rollEffects,
   resolvedCropEffects,
   resolvedTreeEffects,
@@ -255,6 +263,18 @@ export interface LedgerStats {
   tax: number;
 }
 
+/** Mutable mine state stored in the ledger. */
+export interface LedgerMineState {
+  currentFloor: number;
+  maxFloor: number;
+  pickaxeLevel: number;
+  stamina: number;
+  maxStamina: number;
+  lastStaminaAt: number;
+  grid: MineRockCell[];
+  assignedStaffSlot: number | null;
+}
+
 /** Everything the rules need to know about one garden. */
 export interface GardenLedger {
   /** Stable player id; also the Durable Object name. */
@@ -295,6 +315,8 @@ export interface GardenLedger {
   farmSettledAt: number;
   /** Fish pond growth in percent. */
   pondGrowth: number;
+  /** Mine floor state, depth, and pickaxe progression. */
+  mine?: LedgerMineState;
   attachments: Partial<Record<AttachmentSlot, AttachmentId>>;
   attachmentSettledAt: number;
   /** Last automatic-tool settlement. */
@@ -530,6 +552,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     lastHarvested: 0,
     warehouse: 0,
     machines: {},
+    mine: initialMineState(input.now) as unknown as LedgerMineState,
     rev: 1,
     createdAt: input.now,
     updatedAt: input.now,
@@ -667,6 +690,18 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
         ]),
       ) as Partial<Record<MachineId, MachineState>>,
     },
+    mine: ledger.mine
+      ? {
+          currentFloor: ledger.mine.currentFloor,
+          maxFloor: ledger.mine.maxFloor,
+          pickaxeLevel: ledger.mine.pickaxeLevel,
+          stamina: ledger.mine.stamina,
+          maxStamina: ledger.mine.maxStamina,
+          lastStaminaAt: ledger.mine.lastStaminaAt,
+          grid: ledger.mine.grid.map((cell) => ({ ...cell })),
+          assignedStaffSlot: ledger.mine.assignedStaffSlot,
+        }
+      : undefined,
     stats: { ...ledger.stats },
     sales: (ledger.sales ?? []).map((entry) => ({ ...entry })),
     rev: ledger.rev,
@@ -895,6 +930,18 @@ export function applyGardenAction(
       );
     case "sellAll":
       return sellAll(ledger, season, now);
+    case "mineHit":
+      return mineHit(ledger, action.slot, now, rng);
+    case "mineDescend":
+      return mineDescend(ledger, now, rng);
+    case "mineElevator":
+      return mineElevator(ledger, action.targetFloor, now, rng);
+    case "upgradePickaxe":
+      return upgradePickaxe(ledger, now);
+    case "mineEat":
+      return mineEat(ledger, action.item, now);
+    case "assignMiner":
+      return assignMiner(ledger, action.staffSlot, now);
     default:
       return { ok: false, code: "BAD_REQUEST" };
   }
@@ -3530,6 +3577,88 @@ function staffWater(ledger: GardenLedger, now: number, rng: () => number): Garde
   }
   return worked ? current : null;
 }
+
+/**
+ * @brief Automates mining chores for an assigned staff member.
+ * @details Checks if a ladder is uncovered to descend, or chips away at rocks/ores.
+ * Drops are collected into the warehouse bag and codex discoveries are logged.
+ * @param ledger Garden before mining action.
+ * @param now Current server timestamp.
+ * @param rng Deterministic random generator.
+ * @return Updated GardenLedger if work occurred, or null if idle.
+ */
+function staffMine(ledger: GardenLedger, now: number, _rng: () => number): GardenLedger | null {
+  const next = clone(ledger);
+  const mine = ensureMineState(next, now);
+  next.mine = mine;
+
+  // 1. If ladder is already visible, descend!
+  const hasLadder = mine.grid.some((c) => c.kind === "ladder");
+  if (hasLadder) {
+    const nextFloor = mine.currentFloor + 1;
+    mine.currentFloor = nextFloor;
+    mine.maxFloor = Math.max(mine.maxFloor, nextFloor);
+    const floorSeed = hash32(`${next.playerId}:${nextFloor}:${now}`);
+    mine.grid = [...generateMineFloor(nextFloor, floorSeed)];
+    return next;
+  }
+
+  // 2. Find target rock to hit
+  const intactIndices: number[] = [];
+  for (let i = 0; i < mine.grid.length; i++) {
+    const c = mine.grid[i];
+    if (c && c.kind !== "empty" && c.kind !== "ladder") {
+      intactIndices.push(i);
+    }
+  }
+  if (intactIndices.length === 0) return null;
+
+  // Sort by priority: gems / chests / high ores first
+  const kindPriority: Record<string, number> = {
+    iridium: 10,
+    gem: 9,
+    chest: 8,
+    gold: 7,
+    iron: 6,
+    copper: 5,
+    gravel: 4,
+    stone: 3,
+  };
+  intactIndices.sort((a, b) => {
+    const pA = kindPriority[mine.grid[a]?.kind ?? ""] ?? 0;
+    const pB = kindPriority[mine.grid[b]?.kind ?? ""] ?? 0;
+    return pB - pA;
+  });
+
+  const targetSlot = intactIndices[0];
+  if (targetSlot === undefined) return null;
+  const targetCell = mine.grid[targetSlot];
+  if (!targetCell) return null;
+
+  const tier = PICKAXE_TIERS[mine.pickaxeLevel] ?? (PICKAXE_TIERS[0] as PickaxeTier);
+  const dmg = tier.damage;
+  const nextHp = Math.max(0, targetCell.hp - dmg);
+
+  if (nextHp > 0) {
+    mine.grid[targetSlot] = { ...targetCell, hp: nextHp };
+  } else {
+    if (targetCell.kind === "chest") {
+      const bonusCoins = 1_000 * Math.max(1, Math.floor(mine.currentFloor / 5));
+      next.coins += bonusCoins;
+      next.stats.earned += bonusCoins;
+      addProduct(next.bag.products, "coal", 1, 3);
+      collect(next, "product:coal");
+    } else if (targetCell.oreDrop) {
+      addProduct(next.bag.products, targetCell.oreDrop, 1, targetCell.dropQty ?? 1);
+      collect(next, `product:${targetCell.oreDrop}`);
+    }
+    mine.grid[targetSlot] = targetCell.hasLadder
+      ? { kind: "ladder", hp: 0, maxHp: 0 }
+      : { kind: "empty", hp: 0, maxHp: 0 };
+  }
+
+  return next;
+}
 /**
  * @brief Settles staff wages and slow automated work.
  * @details Workers act at most once per settlement, so they never outpace the
@@ -3590,6 +3719,8 @@ export function settleStaff(ledger: GardenLedger, now: number): GardenLedger {
             return staffMushroomHarvest(base, now, rng);
           case "saleHunt":
             return staffSaleHunt(base, now, rng);
+          case "mine":
+            return staffMine(base, now, rng);
         }
       };
       const next = chore(worked);
@@ -3611,6 +3742,250 @@ export function settleStaff(ledger: GardenLedger, now: number): GardenLedger {
     current = after;
   }
   return current;
+}
+
+/* ------------------------------------------------------------------ mine */
+
+/**
+ * @brief Ensures the mine state exists and regenerates player stamina.
+ * @details Every 30 seconds of elapsed time restores +1 stamina point.
+ * @param ledger Stored garden ledger.
+ * @param now Current server timestamp.
+ * @return Deep-cloned or initialized MineState with updated stamina.
+ */
+function ensureMineState(ledger: GardenLedger, now: number): LedgerMineState {
+  const base = ledger.mine ?? initialMineState(now);
+  const mine: LedgerMineState = {
+    currentFloor: base.currentFloor,
+    maxFloor: base.maxFloor,
+    pickaxeLevel: base.pickaxeLevel,
+    stamina: base.stamina,
+    maxStamina: base.maxStamina,
+    lastStaminaAt: base.lastStaminaAt,
+    grid: base.grid.map((cell) => ({ ...cell })),
+    assignedStaffSlot: base.assignedStaffSlot,
+  };
+
+  if (mine.stamina < mine.maxStamina && mine.lastStaminaAt > 0) {
+    const elapsed = Math.max(0, now - mine.lastStaminaAt);
+    const regen = Math.floor(elapsed / 30_000);
+    if (regen > 0) {
+      mine.stamina = Math.min(mine.maxStamina, mine.stamina + regen);
+      mine.lastStaminaAt = now;
+    }
+  } else if (mine.stamina >= mine.maxStamina) {
+    mine.lastStaminaAt = now;
+  }
+
+  return mine;
+}
+
+/**
+ * @brief Executes a manual pickaxe strike against a rock cell in the mine.
+ * @details Deducts 2 stamina, deals pickaxe damage, and reveals ladders or drops.
+ * @param ledger Garden before strike.
+ * @param slot Index of the target rock (0..24).
+ * @param now Current server timestamp.
+ * @param _rng Deterministic random generator.
+ * @return RuleResult indicating success or failure.
+ */
+function mineHit(ledger: GardenLedger, slot: number, now: number, _rng: () => number): RuleResult {
+  if (slot < 0 || slot >= MINE_FLOOR_CELLS) return { ok: false, code: "BAD_REQUEST" };
+
+  const next = clone(ledger);
+  const mine = ensureMineState(next, now);
+  next.mine = mine;
+
+  if (mine.stamina < 2) return { ok: false, code: "NO_STAMINA" };
+
+  const cell = mine.grid[slot];
+  if (!cell || cell.kind === "empty" || cell.kind === "ladder") {
+    return { ok: false, code: "ROCK_EMPTY" };
+  }
+
+  mine.stamina -= 2;
+  mine.lastStaminaAt = now;
+
+  const tier = PICKAXE_TIERS[mine.pickaxeLevel] ?? (PICKAXE_TIERS[0] as PickaxeTier);
+  const dmg = tier.damage;
+  const nextHp = Math.max(0, cell.hp - dmg);
+
+  if (nextHp > 0) {
+    mine.grid[slot] = { ...cell, hp: nextHp };
+  } else {
+    if (cell.kind === "chest") {
+      const bonusCoins = 1_000 * Math.max(1, Math.floor(mine.currentFloor / 5));
+      next.coins += bonusCoins;
+      next.stats.earned += bonusCoins;
+      addProduct(next.bag.products, "coal", 1, 3);
+      collect(next, "product:coal");
+    } else if (cell.oreDrop) {
+      addProduct(next.bag.products, cell.oreDrop, 1, cell.dropQty ?? 1);
+      collect(next, `product:${cell.oreDrop}`);
+    }
+    mine.grid[slot] = cell.hasLadder
+      ? { kind: "ladder", hp: 0, maxHp: 0 }
+      : { kind: "empty", hp: 0, maxHp: 0 };
+  }
+
+  return { ok: true, ledger: next, changed: true };
+}
+
+/**
+ * @brief Descends to the next deeper mine floor via an exposed ladder.
+ * @param ledger Garden before descent.
+ * @param now Current server timestamp.
+ * @param _rng Deterministic random generator.
+ * @return RuleResult indicating success or failure.
+ */
+function mineDescend(ledger: GardenLedger, now: number, _rng: () => number): RuleResult {
+  const next = clone(ledger);
+  const mine = ensureMineState(next, now);
+  next.mine = mine;
+
+  const hasLadder = mine.grid.some((c) => c.kind === "ladder");
+  if (!hasLadder) return { ok: false, code: "LADDER_LOCKED" };
+
+  const nextFloor = mine.currentFloor + 1;
+  mine.currentFloor = nextFloor;
+  mine.maxFloor = Math.max(mine.maxFloor, nextFloor);
+  const floorSeed = hash32(`${next.playerId}:${nextFloor}:${now}`);
+  mine.grid = [...generateMineFloor(nextFloor, floorSeed)];
+
+  return { ok: true, ledger: next, changed: true };
+}
+
+/**
+ * @brief Fast-travels to an unlocked checkpoint elevator floor.
+ * @param ledger Garden before fast travel.
+ * @param targetFloor Selected checkpoint floor depth.
+ * @param now Current server timestamp.
+ * @param _rng Deterministic random generator.
+ * @return RuleResult indicating success or failure.
+ */
+function mineElevator(
+  ledger: GardenLedger,
+  targetFloor: number,
+  now: number,
+  _rng: () => number,
+): RuleResult {
+  const next = clone(ledger);
+  const mine = ensureMineState(next, now);
+  next.mine = mine;
+
+  const checkpoints = mineElevatorCheckpoints(mine.maxFloor);
+  if (!checkpoints.includes(targetFloor)) return { ok: false, code: "FLOOR_LOCKED" };
+
+  mine.currentFloor = targetFloor;
+  const floorSeed = hash32(`${next.playerId}:${targetFloor}:${now}`);
+  mine.grid = [...generateMineFloor(targetFloor, floorSeed)];
+
+  return { ok: true, ledger: next, changed: true };
+}
+
+/**
+ * @brief Upgrades player pickaxe to the next tier using smelted metal bars and coins.
+ * @param ledger Garden before upgrade.
+ * @param now Current server timestamp.
+ * @return RuleResult indicating success or failure.
+ */
+function upgradePickaxe(ledger: GardenLedger, now: number): RuleResult {
+  const next = clone(ledger);
+  const mine = ensureMineState(next, now);
+  next.mine = mine;
+
+  const currentTier = mine.pickaxeLevel;
+  if (currentTier >= PICKAXE_TIERS.length - 1) return { ok: false, code: "MAX_PICKAXE" };
+
+  const nextTier = PICKAXE_TIERS[currentTier + 1];
+  if (!nextTier) return { ok: false, code: "MAX_PICKAXE" };
+
+  if (next.coins < nextTier.cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  if (nextTier.barType && nextTier.barCount) {
+    let availableBars = 0;
+    for (const stack of next.bag.products) {
+      if (stack.product === nextTier.barType) availableBars += stack.qty;
+    }
+    if (availableBars < nextTier.barCount) return { ok: false, code: "NO_BARS" };
+
+    let needed = nextTier.barCount;
+    next.bag.products = next.bag.products
+      .map((stack) => {
+        if (needed <= 0 || stack.product !== nextTier.barType) return stack;
+        const take = Math.min(needed, stack.qty);
+        needed -= take;
+        return { ...stack, qty: stack.qty - take };
+      })
+      .filter((stack) => stack.qty > 0);
+  }
+
+  next.coins -= nextTier.cost;
+  next.stats.spent += nextTier.cost;
+  mine.pickaxeLevel += 1;
+
+  return { ok: true, ledger: next, changed: true };
+}
+
+/**
+ * @brief Consumes a food product from the warehouse bag to replenish stamina.
+ * @param ledger Garden before consuming.
+ * @param item Product identifier consumed.
+ * @param now Current server timestamp.
+ * @return RuleResult indicating success or failure.
+ */
+function mineEat(ledger: GardenLedger, item: ProductId, now: number): RuleResult {
+  const next = clone(ledger);
+  const mine = ensureMineState(next, now);
+  next.mine = mine;
+
+  if (mine.stamina >= mine.maxStamina) return { ok: false, code: "NOTHING_TO_DO" };
+
+  const stackIndex = next.bag.products.findIndex((s) => s.product === item && s.qty > 0);
+  if (stackIndex < 0) return { ok: false, code: "NO_PRODUCT" };
+
+  const stack = next.bag.products[stackIndex];
+  if (!stack) return { ok: false, code: "NO_PRODUCT" };
+
+  if (stack.qty <= 1) {
+    next.bag.products.splice(stackIndex, 1);
+  } else {
+    next.bag.products[stackIndex] = { ...stack, qty: stack.qty - 1 };
+  }
+
+  const def = productById(item);
+  const restore = Math.max(10, Math.min(50, Math.floor((def?.base ?? 50) / 10)));
+  mine.stamina = Math.min(mine.maxStamina, mine.stamina + restore);
+
+  return { ok: true, ledger: next, changed: true };
+}
+
+/**
+ * @brief Assigns or unassigns a hired staff member to the dedicated mine slot.
+ * @param ledger Garden before assignment.
+ * @param staffSlot Index of the staff member in ledger.staff, or null to unassign.
+ * @param now Current server timestamp.
+ * @return RuleResult indicating success or failure.
+ */
+function assignMiner(ledger: GardenLedger, staffSlot: number | null, now: number): RuleResult {
+  const next = clone(ledger);
+  const mine = ensureMineState(next, now);
+  next.mine = mine;
+
+  if (staffSlot !== null) {
+    if (staffSlot < 0 || staffSlot >= next.staff.length) {
+      return { ok: false, code: "SLOT_OUT_OF_RANGE" };
+    }
+    const currentWorker = next.staff[staffSlot];
+    if (!currentWorker) return { ok: false, code: "SLOT_OUT_OF_RANGE" };
+
+    next.staff[staffSlot] = { ...currentWorker, role: "mine" };
+    mine.assignedStaffSlot = staffSlot;
+  } else {
+    mine.assignedStaffSlot = null;
+  }
+
+  return { ok: true, ledger: next, changed: true };
 }
 
 /**
@@ -4628,6 +5003,18 @@ function clone(ledger: GardenLedger): GardenLedger {
     contractClaims: [...ledger.contractClaims],
     merchantClaims: [...ledger.merchantClaims],
     warehouse: ledger.warehouse,
+    mine: ledger.mine
+      ? {
+          currentFloor: ledger.mine.currentFloor,
+          maxFloor: ledger.mine.maxFloor,
+          pickaxeLevel: ledger.mine.pickaxeLevel,
+          stamina: ledger.mine.stamina,
+          maxStamina: ledger.mine.maxStamina,
+          lastStaminaAt: ledger.mine.lastStaminaAt,
+          grid: ledger.mine.grid.map((cell) => ({ ...cell })),
+          assignedStaffSlot: ledger.mine.assignedStaffSlot,
+        }
+      : undefined,
     machines: Object.fromEntries(
       Object.entries(ledger.machines).map(([id, machine]) => [
         id,

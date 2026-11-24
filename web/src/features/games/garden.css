@@ -1566,6 +1566,61 @@
   }
 }
 
+/* Reborn mine: 5x5 rock grid, elevators, stamina and dedicated miner slot */
+.garden-mine-reborn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.garden-mine-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.garden-mine-elevators {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.garden-mine-top-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.garden-miner-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-surface, #1e1e1e);
+  border: 1px dashed var(--border-color, #444);
+  border-radius: 4px;
+}
+
+.garden-mine-grid {
+  display: grid;
+  grid-template-columns: repeat(5, max-content);
+  gap: 6px;
+  justify-content: flex-start;
+  max-width: 100%;
+}
+
+@media (max-width: 760px) {
+  .garden-mine-grid {
+    gap: 4px;
+  }
+}
+
 /* Sell-all confirmation: centered on desktop, full width on phones. */
 .garden-sell-all-dialog {
   width: 340px;
