@@ -2195,68 +2195,8 @@ function patAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now
   return changed(next, now);
 }
 
-/**
- * @brief Breeds fish within a 9-slot pond basin.
- * @details Purebred reproduction when all fish in the basin share one species;
- * cross-breeding into an AI hybrid fish when multiple species coexist.
- * @param ledger Current garden ledger.
- * @param slot Absolute animal slot in the pond.
- * @param now Current server timestamp.
- * @return RuleResult indicating success or error.
- */
-function breedPondFish(ledger: GardenLedger, slot: number, now: number): RuleResult {
-  if (ledger.buildings.pond <= 0) return { ok: false, code: "BUILDING_LOCKED" };
-  const animal = ledger.animals.pond?.[slot] ?? null;
-  if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
-  if (animalIsIncubating(animal, now)) return { ok: false, code: "ALREADY_BREEDING" };
-
-  const basinIndex = pondBasinIndex(slot);
-  const basin = inspectPondBasin(ledger.animals.pond ?? [], basinIndex);
-
-  if (basin.fish.length < 2) return { ok: false, code: "NEED_MORE_FISH" };
-  if (basin.freeSlots.length === 0) return { ok: false, code: "POND_BASIN_FULL" };
-
-  const targetSlot = basin.freeSlots[0];
-  if (targetSlot === undefined) return { ok: false, code: "POND_BASIN_FULL" };
-  const next = clone(ledger);
-  next.animals.pond ??= [];
-
-  if (basin.isSingleSpecies) {
-    const kind = basin.species[0] ?? animal.kind;
-    next.animals.pond[targetSlot] = {
-      kind,
-      bornAt: now,
-      pats: 0,
-      lastProduceAt: now,
-    };
-    collect(next, `animal:${kind}`);
-    collect(next, `fish:${kind}`);
-    grantXp(next, "ranching", 35);
-    logTimeline(next, "purchase", now, { item: kind, qty: 1 });
-  } else {
-    // Cross-breeding: pick another distinct fish species from this basin
-    const others = basin.species.filter((s) => s !== animal.kind);
-    const parentB = (others.length > 0 ? others[0] : animal.kind) ?? animal.kind;
-    const seed = hash32(`manual_hybrid:${ledger.playerId}:${now}:${targetSlot}`);
-    const hybrid = generateDeterministicHybridFish(animal.kind, parentB, seed);
-
-    next.animals.pond[targetSlot] = {
-      ...hybrid.state,
-      bornAt: now,
-      lastProduceAt: now,
-    };
-    collect(next, "animal:hybridFish");
-    collect(next, `hybrid:${hybrid.id}`);
-    grantXp(next, "ranching", 75);
-    logTimeline(next, "codex", now, { item: hybrid.name, qty: 1 });
-  }
-
-  return changed(next, now);
-}
-
-/** @brief Keeps one egg warm so it hatches into a free coop slot, or breeds fish within a pond basin. */
+/** @brief Keeps one egg warm so it hatches into a free coop slot. Pond fish breed automatically every 10 cycles. */
 function breedAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now: number): RuleResult {
-  if (building === "pond") return breedPondFish(ledger, slot, now);
   if (building !== "coop") return { ok: false, code: "NOT_BREEDABLE" };
   const animal = ledger.animals.coop?.[slot] ?? null;
   if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
@@ -2712,16 +2652,17 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
     const cycleStart = Math.floor(startedAt / FARM_CYCLE_MS);
 
     for (let step = 0; step < cycles; step += 1) {
+      // Fish pond reproduction triggers automatically after every 10 cycles (POND_GROWTH_CYCLES = 10)
+      if ((step + 1) % POND_GROWTH_CYCLES !== 0) continue;
+
       for (let k = 0; k < basins; k += 1) {
         const basin = inspectPondBasin(next.animals.pond ?? [], k);
         if (basin.fish.length < 2 || basin.freeSlots.length === 0) continue;
 
-        const rng = createRng(hash32(`pond_birth:${ledger.playerId}:${cycleStart + step}:${k}`));
-        if (rng() >= 0.08) continue; // POND_BIRTH_CHANCE = 8%
-
         const targetSlot = basin.freeSlots[0];
         if (targetSlot === undefined) continue;
         const bornAt = startedAt + (step + 1) * FARM_CYCLE_MS;
+        const rng = createRng(hash32(`pond_birth:${ledger.playerId}:${cycleStart + step}:${k}`));
 
         if (basin.isSingleSpecies) {
           const kind = basin.species[0] ?? "fish";

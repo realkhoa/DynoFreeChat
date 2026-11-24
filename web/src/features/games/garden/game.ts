@@ -1554,6 +1554,23 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       );
     }
     lines.push("", labelValue(t("farm.meat"), `${formatCompact(meat)}c`));
+    if (animalMenu.building === "pond") {
+      const basinIndex = pondBasinIndex(animalMenu.slot);
+      const basin = inspectPondBasin(animals, basinIndex);
+      lines.push(
+        "",
+        labelValue(t("farm.pondBasin", { index: basinIndex + 1 }), `${basin.fish.length}/${POND_MAX_SLOTS}`),
+        labelValue(
+          t("farm.pondBasinMode"),
+          basin.isSingleSpecies
+            ? t("farm.pondModePure", { species: t(`animals.${basin.species[0] ?? "fish"}`) })
+            : basin.isMixedSpecies
+              ? t("farm.pondModeHybrid")
+              : t("farm.pondModeIdle"),
+        ),
+        labelValue(t("farm.pondBreedStatus"), t("farm.pondAutoBreed")),
+      );
+    }
     const info = document.createElement("pre");
     info.className = "garden-menu-info";
     info.textContent = lines.join("\n");
@@ -1561,17 +1578,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     const rows = div("garden-menu-rows");
     rows.append(menuRow(t("farm.pat"), "animalMenuPat"));
-    if (animalMenu.building === "pond") {
-      const basinIndex = pondBasinIndex(animalMenu.slot);
-      const basin = inspectPondBasin(animals, basinIndex);
-      const canBreed = basin.fish.length >= 2 && basin.freeSlots.length > 0;
-      const breedLabel = basin.isSingleSpecies ? t("farm.breedPond") : `${t("farm.breedPond")} (AI Lai)`;
-      rows.append(
-        menuRow(breedLabel, "animalMenuBreed", {
-          disabled: !canBreed,
-        }),
-      );
-    }
     if (animalMenu.building === "coop" && definition !== undefined) {
       const egg = breedEggProduct(animal.kind);
       const eggs =

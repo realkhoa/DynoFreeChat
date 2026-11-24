@@ -958,7 +958,7 @@ describe("garden ledger rules", () => {
     expect(meat.ledger.coins).toBeGreaterThan(before);
   });
 
-  it("breeds single-species pond basin into the exact same fish species", () => {
+  it("rejects manual breeding for fish ponds (breeding occurs automatically every 10 cycles)", () => {
     const ledger = makeLedger();
     ledger.coins = 50_000_000;
     const built = run(ledger, { kind: "buildBuilding", building: "pond" });
@@ -969,17 +969,35 @@ describe("garden ledger rules", () => {
     const fish2 = run(fish1.ledger, { kind: "buyAnimal", building: "pond", slot: 1, animal: "carp" });
     if (!fish2.ok) throw new Error("carp 2 failed");
 
-    const bred = run(fish2.ledger, { kind: "breedAnimal", building: "pond", slot: 0 });
-    expect(bred.ok).toBe(true);
-    if (!bred.ok) return;
-
-    const child = bred.ledger.animals.pond[2];
-    expect(child).not.toBeNull();
-    expect(child?.kind).toBe("carp");
-    expect(bred.ledger.collection).toContain("fish:carp");
+    const manualAttempt = run(fish2.ledger, { kind: "breedAnimal", building: "pond", slot: 0 });
+    expect(manualAttempt.ok).toBe(false);
+    if (!manualAttempt.ok) expect(manualAttempt.code).toBe("NOT_BREEDABLE");
   });
 
-  it("cross-breeds mixed-species pond basin into an AI hybrid fish with codex registration", () => {
+  it("automatically breeds single-species pond basin into the exact same fish species after 10 cycles", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "pond" });
+    if (!built.ok) throw new Error("pond failed");
+
+    const fish1 = run(built.ledger, { kind: "buyAnimal", building: "pond", slot: 0, animal: "carp" });
+    if (!fish1.ok) throw new Error("carp 1 failed");
+    const fish2 = run(fish1.ledger, { kind: "buyAnimal", building: "pond", slot: 1, animal: "carp" });
+    if (!fish2.ok) throw new Error("carp 2 failed");
+
+    // Settle 9 cycles -> no breeding yet
+    const before10 = settleFarm(fish2.ledger, NOW + 9 * FARM_CYCLE_MS);
+    expect(before10.animals.pond[2]).toBeNull();
+
+    // Settle 10 cycles -> triggers automatic purebred reproduction
+    const after10 = settleFarm(fish2.ledger, NOW + 10 * FARM_CYCLE_MS);
+    const child = after10.animals.pond[2];
+    expect(child).not.toBeNull();
+    expect(child?.kind).toBe("carp");
+    expect(after10.collection).toContain("fish:carp");
+  });
+
+  it("automatically cross-breeds mixed-species pond basin into an AI hybrid fish after 10 cycles", () => {
     const ledger = makeLedger();
     ledger.coins = 50_000_000;
     const built = run(ledger, { kind: "buildBuilding", building: "pond" });
@@ -990,22 +1008,19 @@ describe("garden ledger rules", () => {
     const fish2 = run(fish1.ledger, { kind: "buyAnimal", building: "pond", slot: 1, animal: "pike" });
     if (!fish2.ok) throw new Error("pike failed");
 
-    const bred = run(fish2.ledger, { kind: "breedAnimal", building: "pond", slot: 0 });
-    expect(bred.ok).toBe(true);
-    if (!bred.ok) return;
-
-    const child = bred.ledger.animals.pond[2];
+    const settled = settleFarm(fish2.ledger, NOW + 10 * FARM_CYCLE_MS);
+    const child = settled.animals.pond[2];
     expect(child).not.toBeNull();
     expect(child?.kind).toBe("hybridFish");
     expect(child?.hybridId).toBeDefined();
     expect(child?.hybridName).toBeDefined();
     expect(child?.hybridTier).toMatch(/^(inferior|superior)$/);
     expect(child?.hybridPrice).toBeGreaterThan(0);
-    expect(bred.ledger.collection).toContain(`hybrid:${child?.hybridId}`);
-    expect(bred.ledger.collection).toContain("animal:hybridFish");
+    expect(settled.collection).toContain(`hybrid:${child?.hybridId}`);
+    expect(settled.collection).toContain("animal:hybridFish");
   });
 
-  it("enforces 9-slot basin bounds: rejects breeding when basin is full or has < 2 fish", () => {
+  it("enforces basin bounds: does not breed when basin has only 1 fish or is completely full", () => {
     const ledger = makeLedger();
     ledger.coins = 50_000_000;
     const built = run(ledger, { kind: "buildBuilding", building: "pond" });
@@ -1014,10 +1029,11 @@ describe("garden ledger rules", () => {
     const fish1 = run(built.ledger, { kind: "buyAnimal", building: "pond", slot: 0, animal: "goby" });
     if (!fish1.ok) throw new Error("goby failed");
 
-    const deniedSingle = run(fish1.ledger, { kind: "breedAnimal", building: "pond", slot: 0 });
-    expect(deniedSingle.ok).toBe(false);
-    if (!deniedSingle.ok) expect(deniedSingle.code).toBe("NEED_MORE_FISH");
+    // Only 1 fish -> does not breed
+    const settledSingle = settleFarm(fish1.ledger, NOW + 10 * FARM_CYCLE_MS);
+    expect(settledSingle.animals.pond[1]).toBeNull();
 
+    // Fill all 9 slots in basin 0
     let fullLedger = fish1.ledger;
     for (let slot = 1; slot < 9; slot += 1) {
       const added = run(fullLedger, { kind: "buyAnimal", building: "pond", slot, animal: "goby" });
@@ -1025,9 +1041,9 @@ describe("garden ledger rules", () => {
       fullLedger = added.ledger;
     }
 
-    const deniedFull = run(fullLedger, { kind: "breedAnimal", building: "pond", slot: 0 });
-    expect(deniedFull.ok).toBe(false);
-    if (!deniedFull.ok) expect(deniedFull.code).toBe("POND_BASIN_FULL");
+    const settledFull = settleFarm(fullLedger, NOW + 10 * FARM_CYCLE_MS);
+    const count = settledFull.animals.pond.slice(0, 9).filter((f) => f !== null).length;
+    expect(count).toBe(9);
   });
 
   it("sells premium plots sequentially and grows brainrot crops at x2", () => {
