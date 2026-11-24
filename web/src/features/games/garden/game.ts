@@ -778,6 +778,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (visitCode !== null) {
         mode = "visit";
         tab = "garden";
+        rebornTab = "garden";
+        gardenTab = "main";
+        townNpc = null;
+        townBoard = null;
         const bundle = await api.visit(visitCode);
         visiting = bundle.garden;
         season = bundle.season;
@@ -1207,6 +1211,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     page = 0;
     restoreDraft = "";
     tab = "garden";
+    rebornTab = "garden";
+    gardenTab = "main";
+    townNpc = null;
+    townBoard = null;
+    syncGardenQuery();
     if (typeof history !== "undefined") {
       history.replaceState(null, "", `${location.pathname}${location.search}#garden=${code}`);
     }
@@ -1221,6 +1230,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     selectedSlot = null;
     page = 0;
     tab = "garden";
+    rebornTab = "garden";
+    gardenTab = "main";
+    townNpc = null;
+    townBoard = null;
+    syncGardenQuery();
     if (typeof history !== "undefined") {
       history.replaceState(null, "", `${location.pathname}${location.search}`);
     }
@@ -1306,20 +1320,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     // An old ?gview=townhall bookmark now lands on reborn, which hosts the town.
     if (savedView === "reborn" || savedView === "townhall") view = "reborn";
     const savedRebornTab = readParam("grtab");
-    if (savedRebornTab === "townhall" || savedRebornTab === "weather") {
+    if (visitCode === null && (savedRebornTab === "townhall" || savedRebornTab === "weather")) {
       rebornTab = savedRebornTab;
     }
     const savedGardenTab = readParam("gstab");
     if (
-      savedGardenTab === "mushroom" ||
-      savedGardenTab === "greenhouse" ||
-      savedGardenTab === "nursery" ||
-      savedGardenTab === "barn" ||
-      savedGardenTab === "coop" ||
-      savedGardenTab === "pond" ||
-      savedGardenTab === "warehouse" ||
-      savedGardenTab === "mine" ||
-      savedGardenTab === "shipping"
+      visitCode === null &&
+      (savedGardenTab === "mushroom" ||
+        savedGardenTab === "greenhouse" ||
+        savedGardenTab === "nursery" ||
+        savedGardenTab === "barn" ||
+        savedGardenTab === "coop" ||
+        savedGardenTab === "pond" ||
+        savedGardenTab === "warehouse" ||
+        savedGardenTab === "mine" ||
+        savedGardenTab === "shipping")
     ) {
       gardenTab = savedGardenTab;
     }

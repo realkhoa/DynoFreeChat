@@ -3589,6 +3589,46 @@ describe("quick uproot clears dead plants", () => {
     expect(forecastCards.length).toBeGreaterThan(0);
     expect(window.location.search).toContain("grtab=weather");
   });
+
+  it("switches to reborn garden view when visiting a player from reborn townhall rank board and allows returning home", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    // Switch to reborn view and navigate to townhall
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:townhall"]')?.click();
+    await settle();
+
+    // Open rank board
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="rank"]')?.click();
+    await settle();
+    await settle();
+    expect(host.querySelector(".garden-rank")).not.toBeNull();
+
+    // Click on another player in the rank list to visit
+    const playerRow = host.querySelector<HTMLElement>('[data-act="rankVisit"][data-code="ZZZZZZ"]');
+    expect(playerRow).not.toBeNull();
+    playerRow?.click();
+    await settle();
+    await settle();
+
+    // View must transition away from townhall and render the visited garden
+    expect(host.querySelector(".garden-townhall")).toBeNull();
+    expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("vườn");
+    expect(host.querySelector(".garden-reborn-garden")).not.toBeNull();
+    expect(host.querySelector('[data-act="home"]')).not.toBeNull();
+
+    // Clicking home returns cleanly to the owner garden
+    host.querySelector<HTMLButtonElement>('[data-act="home"]')?.click();
+    await settle();
+    await settle();
+    expect(host.querySelector('[data-act="home"]')).toBeNull();
+    expect(host.querySelector(".garden-townhall")).toBeNull();
+    expect(host.querySelector(".garden-reborn-garden")).not.toBeNull();
+    expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("vườn");
+  });
 });
 
 describe("reborn row responsiveness", () => {
