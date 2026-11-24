@@ -57,6 +57,7 @@ describe("ai bot config", () => {
     const config = aiConfig(makeEnv({ AI_BOT_API_BASE: undefined, AI_BOT_MODEL: undefined }));
     expect(config?.base).toBe("https://opencode.ai/inference/go/v1");
     expect(config?.model).toBe("beam-free");
+    expect(config?.fallbackModel).toBe("glm-5.3-flash");
   });
 });
 
@@ -275,7 +276,7 @@ describe("ai planning", () => {
       failing as unknown as typeof fetch,
     );
     expect(failed.actions).toEqual([]);
-    expect(failed.error).toContain("model HTTP 500");
+    expect(failed.error).toContain("HTTP 500");
   });
 
   it("retries once when a reasoning model burns the budget and returns no content", async () => {
@@ -308,6 +309,50 @@ describe("ai planning", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(plan.actions.map((action) => action.kind)).toEqual(["sellAll"]);
     expect(plan.error).toBeNull();
+  });
+
+  it("falls back to the fast model when the reasoning model rambles twice", async () => {
+    let call = 0;
+    const fetchImpl = vi.fn(async (_input: unknown) => {
+      call += 1;
+      if (call <= 2) {
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                finish_reason: "length",
+                message: { content: "", reasoning_content: "Let me think again about every plot..." },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({ reasoning: "Bán túi rồi tưới.", actions: [{ kind: "sellAll" }] }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    const plan = await planAiActions(
+      makeEnv(),
+      makeLedger(),
+      seasonAt(NOW),
+      NOW,
+      {},
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(plan.model).toBe("glm-5.3-flash");
+    expect(plan.actions.map((action) => action.kind)).toEqual(["sellAll"]);
+    expect(plan.reasoning).toContain("Bán túi");
   });
 
   it("recovers the plan from reasoning_content when the content field is empty", async () => {

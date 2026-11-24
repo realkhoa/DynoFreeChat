@@ -404,74 +404,25 @@ export class BotManager extends DurableObject<Env> {
     const survey = this.readSurvey();
     const nextSurvey: Record<string, number> = {};
     let actions = 0;
-    for (const bot of bots) {
-      try {
-        const garden = this.env.GARDEN.get(this.env.GARDEN.idFromName(bot.playerId));
-        const headers: Record<string, string> = {
-          "content-type": "application/json",
-          [GARDEN_TOKEN_HEADER]: bot.token,
-        };
-        if (market !== null) headers[MARKET_HEADER] = market.header;
-        if (this.env.BOT_SECRET !== undefined) headers[BOT_HEADER] = this.env.BOT_SECRET;
-        const response = await garden.fetch("https://garden/bot-tick", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ focus: bot.focus, survey, ai: bot.ai === true }),
-        });
-        if (!response.ok) continue;
-        const result = (await response.json()) as {
-          actions?: number;
-          coins?: number;
-          earned?: number;
-          harvested?: number;
-          bag?: number;
-          sold?: Record<string, number>;
-          bought?: Record<string, number>;
-          planted?: Record<string, number>;
-          ai?: {
-            used?: boolean;
-            model?: string;
-            reasoning?: string;
-            actions?: string[];
-            cot?: string;
-            error?: string;
-          };
-        };
-        actions += result.actions ?? 0;
-        if (typeof result.coins === "number") bot.coins = result.coins;
-        if (typeof result.earned === "number") bot.earned = result.earned;
-        if (typeof result.harvested === "number") bot.harvested = result.harvested;
-        if (typeof result.bag === "number") bot.bag = result.bag;
-        if (bot.ai === true) {
-          bot.thought = {
-            at: Date.now(),
-            ...(result.ai?.model === undefined ? {} : { model: result.ai.model }),
-            ...(result.ai?.reasoning === undefined ? {} : { reasoning: result.ai.reasoning }),
-            ...(result.ai?.cot === undefined ? {} : { cot: result.ai.cot }),
-            ...(result.ai?.actions === undefined ? {} : { actions: result.ai.actions }),
-            ...(result.ai?.error === undefined ? {} : { error: result.ai.error }),
-            fallback: result.ai?.used !== true,
-          };
-        }
-        for (const [id, count] of Object.entries(result.planted ?? {})) {
-          if (count < 1) continue;
-          nextSurvey[id] = (nextSurvey[id] ?? 0) + count;
-        }
 
-        // Aggregate first: one market request per item instead of one per bot,
-        // which keeps a 50-bot tick well under the subrequest limit.
-        for (const [item, qty] of Object.entries(result.sold ?? {})) {
-          if (qty < 1) continue;
-          soldTotals[item] = (soldTotals[item] ?? 0) + qty;
-        }
-        for (const [item, qty] of Object.entries(result.bought ?? {})) {
-          if (qty < 1) continue;
-          boughtTotals[item] = (boughtTotals[item] ?? 0) + qty;
-        }
+    /** Runs one bot, swallowing its errors so the rest of the tick survives. */
+    const runBot = async (bot: BotRecord): Promise<number> => {
+      try {
+        return await this.tickBot(bot, market, survey, soldTotals, boughtTotals, nextSurvey);
       } catch {
-        // One failing bot must not stop the rest of the tick.
+        return 0;
       }
+    };
+
+    for (const bot of bots.filter((entry) => entry.ai !== true)) {
+      actions += await runBot(bot);
     }
+    // The five AI bots each wait on a model call; run them in parallel so one
+    // slow reasoning model cannot stall the whole cron tick.
+    const aiBots = bots.filter((entry) => entry.ai === true);
+    const aiCounts = await Promise.all(aiBots.map((bot) => runBot(bot)));
+    for (const count of aiCounts) actions += count;
+
     this.writeBots(bots);
     this.writeSurvey(nextSurvey);
     for (const [item, qty] of Object.entries(soldTotals)) {
@@ -497,5 +448,79 @@ export class BotManager extends DurableObject<Env> {
       }
     }
     return json({ ok: true, bots: bots.length, actions });
+  }
+
+  /**
+   * @brief Advances one bot by one bounded step.
+   * @details Mutates the shared bot record and the tick-wide aggregation maps.
+   */
+  private async tickBot(
+    bot: BotRecord,
+    market: { header: string; snapshot: MarketSnapshot } | null,
+    survey: Readonly<Record<string, number>>,
+    soldTotals: Record<string, number>,
+    boughtTotals: Record<string, number>,
+    nextSurvey: Record<string, number>,
+  ): Promise<number> {
+    const garden = this.env.GARDEN.get(this.env.GARDEN.idFromName(bot.playerId));
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      [GARDEN_TOKEN_HEADER]: bot.token,
+    };
+    if (market !== null) headers[MARKET_HEADER] = market.header;
+    if (this.env.BOT_SECRET !== undefined) headers[BOT_HEADER] = this.env.BOT_SECRET;
+    const response = await garden.fetch("https://garden/bot-tick", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ focus: bot.focus, survey, ai: bot.ai === true }),
+    });
+    if (!response.ok) return 0;
+    const result = (await response.json()) as {
+      actions?: number;
+      coins?: number;
+      earned?: number;
+      harvested?: number;
+      bag?: number;
+      sold?: Record<string, number>;
+      bought?: Record<string, number>;
+      planted?: Record<string, number>;
+      ai?: {
+        used?: boolean;
+        model?: string;
+        reasoning?: string;
+        actions?: string[];
+        cot?: string;
+        error?: string;
+      };
+    };
+    if (typeof result.coins === "number") bot.coins = result.coins;
+    if (typeof result.earned === "number") bot.earned = result.earned;
+    if (typeof result.harvested === "number") bot.harvested = result.harvested;
+    if (typeof result.bag === "number") bot.bag = result.bag;
+    if (bot.ai === true) {
+      bot.thought = {
+        at: Date.now(),
+        ...(result.ai?.model === undefined ? {} : { model: result.ai.model }),
+        ...(result.ai?.reasoning === undefined ? {} : { reasoning: result.ai.reasoning }),
+        ...(result.ai?.cot === undefined ? {} : { cot: result.ai.cot }),
+        ...(result.ai?.actions === undefined ? {} : { actions: result.ai.actions }),
+        ...(result.ai?.error === undefined ? {} : { error: result.ai.error }),
+        fallback: result.ai?.used !== true,
+      };
+    }
+    for (const [id, count] of Object.entries(result.planted ?? {})) {
+      if (count < 1) continue;
+      nextSurvey[id] = (nextSurvey[id] ?? 0) + count;
+    }
+    // Aggregate first: one market request per item instead of one per bot.
+    for (const [item, qty] of Object.entries(result.sold ?? {})) {
+      if (qty < 1) continue;
+      soldTotals[item] = (soldTotals[item] ?? 0) + qty;
+    }
+    for (const [item, qty] of Object.entries(result.bought ?? {})) {
+      if (qty < 1) continue;
+      boughtTotals[item] = (boughtTotals[item] ?? 0) + qty;
+    }
+    return result.actions ?? 0;
   }
 }

@@ -27,6 +27,8 @@ export interface Env {
   AI_BOT_API_KEY?: string;
   /** OpenAI-compatible base URL, e.g. https://openrouter.ai/api/v1. */
   AI_BOT_API_BASE?: string;
-  /** Chat model id, e.g. meta-llama/llama-3.3-70b-instruct:free. */
+  /** Chat model id, e.g. beam-free. */
   AI_BOT_MODEL?: string;
+  /** Fast non-reasoning model used when the free reasoning model rambles. */
+  AI_BOT_FALLBACK_MODEL?: string;
 }

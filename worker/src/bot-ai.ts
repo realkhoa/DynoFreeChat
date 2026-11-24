@@ -36,6 +36,9 @@ export const DEFAULT_AI_BASE = "https://opencode.ai/inference/go/v1";
 /** Default model; any free OpenAI-compatible chat model works. */
 export const DEFAULT_AI_MODEL = "beam-free";
 
+/** Faster non-reasoning model used when the free reasoning model rambles. */
+export const DEFAULT_AI_FALLBACK_MODEL = "glm-5.3-flash";
+
 /** Actions the model may choose. Gifts, prestige and insurance are excluded. */
 export const AI_ALLOWED_ACTIONS: ReadonlySet<string> = new Set([
   "water",
@@ -140,7 +143,9 @@ export interface AiGardenContext {
   };
 }
 /** @brief Reads the AI model configuration, or `null` when unconfigured. */
-export function aiConfig(env: Env): { base: string; model: string; key: string } | null {
+export function aiConfig(
+  env: Env,
+): { base: string; model: string; fallbackModel: string; key: string } | null {
   const direct = typeof env.AI_BOT_API_KEY === "string" ? env.AI_BOT_API_KEY.trim() : "";
   // The recipe lab already ships an OpenCode Go key; reuse it when the bot key is unset.
   const shared = typeof env.OPENCODE_API_KEY === "string" ? env.OPENCODE_API_KEY.trim() : "";
@@ -154,7 +159,11 @@ export function aiConfig(env: Env): { base: string; model: string; key: string }
     typeof env.AI_BOT_MODEL === "string" && env.AI_BOT_MODEL.trim().length > 0
       ? env.AI_BOT_MODEL.trim()
       : DEFAULT_AI_MODEL;
-  return { base: base.replace(/\/+$/, ""), model, key: raw };
+  const fallbackModel =
+    typeof env.AI_BOT_FALLBACK_MODEL === "string" && env.AI_BOT_FALLBACK_MODEL.trim().length > 0
+      ? env.AI_BOT_FALLBACK_MODEL.trim()
+      : DEFAULT_AI_FALLBACK_MODEL;
+  return { base: base.replace(/\/+$/, ""), model, fallbackModel, key: raw };
 }
 
 /** @brief Builds the lean, pre-counted context the model reasons over. */
@@ -356,40 +365,46 @@ export async function planAiActions(
   }
   const context = summarizeGarden(ledger, season, now, neighbourhood);
   const messages = buildAiMessages(context);
-  try {
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-      authorization: `Bearer ${config.key}`,
-      "user-agent": "DynoFreeChat/1.0",
-    };
-    if (config.base.includes("opencode.ai")) {
-      headers["x-opencode-session"] = `${session}-${Date.now()}`;
-    } else {
-      headers["http-referer"] = "https://realkhoa.github.io/DynoFreeChat/";
-      headers["x-title"] = "DynoFreeChat AI bots";
-    }
-    type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
-    type ChatReply = {
-      content: string | null;
-      reasoning: string;
-      finish: string;
-    };
-    const callModel = async (
-      input: ChatMessage[],
-      maxTokens: number,
-    ): Promise<{ ok: true; reply: ChatReply } | { ok: false; status: number }> => {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    authorization: `Bearer ${config.key}`,
+    "user-agent": "DynoFreeChat/1.0",
+  };
+  if (config.base.includes("opencode.ai")) {
+    headers["x-opencode-session"] = `${session}-${Date.now()}`;
+  } else {
+    headers["http-referer"] = "https://realkhoa.github.io/DynoFreeChat/";
+    headers["x-title"] = "DynoFreeChat AI bots";
+  }
+
+  type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+  type ChatReply = { content: string | null; reasoning: string; finish: string };
+  type CallResult = { ok: true; reply: ChatReply } | { ok: false; status: number; detail: string };
+
+  /** One chat completion with its own model, budget and timeout. */
+  const callModel = async (
+    model: string,
+    input: ChatMessage[],
+    maxTokens: number,
+    timeoutMs: number,
+    effort: "low" | null,
+  ): Promise<CallResult> => {
+    try {
       const response = await fetchImpl(`${config.base}/chat/completions`, {
         method: "POST",
         headers,
         body: JSON.stringify({
-          model: config.model,
+          model,
           messages: input,
-          temperature: 0.3,
+          temperature: 0.2,
           max_tokens: maxTokens,
+          ...(effort === null ? {} : { reasoning_effort: effort }),
         }),
-        signal: AbortSignal.timeout(25_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) return { ok: false, status: response.status };
+      if (!response.ok) {
+        return { ok: false, status: response.status, detail: `HTTP ${response.status}` };
+      }
       const payload = (await response.json()) as {
         choices?: Array<{
           finish_reason?: unknown;
@@ -409,74 +424,78 @@ export async function planAiActions(
           finish: typeof choice?.finish_reason === "string" ? choice.finish_reason : "",
         },
       };
-    };
-
-    let result = await callModel(messages, 3_000);
-    if (!result.ok) {
-      return {
-        actions: [],
-        reasoning: null,
-        rawReasoning: null,
-        model: config.model,
-        error: `model HTTP ${result.status}`,
-      };
+    } catch (error) {
+      return { ok: false, status: 0, detail: (error as Error).message };
     }
-    // A reasoning model can burn the whole budget on chain-of-thought and return
-    // empty content; retry once with a bigger budget and an explicit "JSON only".
-    if (result.reply.content === null) {
-      const fromReasoning = parseAiPlan(result.reply.reasoning);
-      if (fromReasoning.actions.length > 0) {
+  };
+
+  const strictMessages: ChatMessage[] = [
+    ...messages,
+    { role: "user", content: "Answer now with ONLY the JSON object. No prose and no markdown." },
+  ];
+  const attempts: Array<{
+    model: string;
+    input: ChatMessage[];
+    maxTokens: number;
+    timeoutMs: number;
+    effort: "low" | null;
+  }> = [
+    { model: config.model, input: messages, maxTokens: 4_000, timeoutMs: 25_000, effort: "low" },
+    { model: config.model, input: strictMessages, maxTokens: 4_000, timeoutMs: 25_000, effort: "low" },
+    // Free reasoning models occasionally ramble past every budget: ask a fast
+    // non-reasoning model for the decision instead of falling back to heuristics.
+    { model: config.fallbackModel, input: strictMessages, maxTokens: 1_200, timeoutMs: 20_000, effort: null },
+  ];
+  const errors: string[] = [];
+  for (const attempt of attempts) {
+    const result = await callModel(
+      attempt.model,
+      attempt.input,
+      attempt.maxTokens,
+      attempt.timeoutMs,
+      attempt.effort,
+    );
+    if (!result.ok) {
+      errors.push(`${attempt.model}: ${result.detail}`);
+      continue;
+    }
+    const { content, reasoning, finish } = result.reply;
+    if (content !== null) {
+      const plan = parseAiPlan(content);
+      const rawReasoning = reasoning.length > 0 ? trimReasoning(reasoning) : null;
+      if (plan.actions.length > 0) {
         return {
-          actions: fromReasoning.actions,
-          reasoning: fromReasoning.reasoning ?? trimReasoning(result.reply.reasoning),
-          rawReasoning: trimReasoning(result.reply.reasoning),
-          model: config.model,
+          actions: plan.actions,
+          reasoning: plan.reasoning ?? rawReasoning,
+          rawReasoning,
+          model: attempt.model,
           error: null,
         };
       }
-      const retryMessages: ChatMessage[] = [
-        ...messages,
-        { role: "user", content: "Answer now with ONLY the JSON object. No prose and no markdown." },
-      ];
-      result = await callModel(retryMessages, 4_000);
-      if (!result.ok) {
-        return {
-          actions: [],
-          reasoning: null,
-          rawReasoning: null,
-          model: config.model,
-          error: `model HTTP ${result.status}`,
-        };
-      }
+      errors.push(`${attempt.model}: no usable actions`);
+      continue;
     }
-    if (result.reply.content === null) {
+    const fromReasoning = parseAiPlan(reasoning);
+    if (fromReasoning.actions.length > 0) {
       return {
-        actions: [],
-        reasoning: null,
-        rawReasoning: trimReasoning(result.reply.reasoning) || null,
-        model: config.model,
-        error: `model returned no content (finish=${result.reply.finish || "?"}, reasoning=${result.reply.reasoning.length} chars)`,
+        actions: fromReasoning.actions,
+        reasoning: fromReasoning.reasoning ?? trimReasoning(reasoning),
+        rawReasoning: trimReasoning(reasoning),
+        model: attempt.model,
+        error: null,
       };
     }
-    const plan = parseAiPlan(result.reply.content);
-    // Prefer the short plan summary; keep the raw chain of thought as an excerpt.
-    const rawReasoning = result.reply.reasoning.length > 0 ? trimReasoning(result.reply.reasoning) : null;
-    return {
-      actions: plan.actions,
-      reasoning: plan.reasoning ?? rawReasoning,
-      rawReasoning,
-      model: config.model,
-      error: plan.actions.length === 0 ? "model returned no usable actions" : null,
-    };
-  } catch (error) {
-    return {
-      actions: [],
-      reasoning: null,
-      rawReasoning: null,
-      model: config.model,
-      error: (error as Error).message,
-    };
+    errors.push(
+      `${attempt.model}: no content (finish=${finish || "?"}, reasoning=${reasoning.length} chars)`,
+    );
   }
+  return {
+    actions: [],
+    reasoning: null,
+    rawReasoning: null,
+    model: config.model,
+    error: errors.join("; ") || "model failed",
+  };
 }
 
 /** @brief Seeds suggested to the model as a cheap fallback hint. */
