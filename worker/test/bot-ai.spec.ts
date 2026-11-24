@@ -234,6 +234,68 @@ describe("ai planning", () => {
     expect(failed.error).toContain("model HTTP 500");
   });
 
+  it("retries once when a reasoning model burns the budget and returns no content", async () => {
+    let call = 0;
+    const fetchImpl = vi.fn(async () => {
+      call += 1;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                finish_reason: "length",
+                message: { content: "", reasoning_content: "Let me think about the whole garden first..." },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return modelReply(JSON.stringify({ actions: [{ kind: "sellAll" }] }));
+    });
+    const plan = await planAiActions(
+      makeEnv(),
+      makeLedger(),
+      seasonAt(NOW),
+      NOW,
+      {},
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(plan.actions.map((action) => action.kind)).toEqual(["sellAll"]);
+    expect(plan.error).toBeNull();
+  });
+
+  it("recovers the plan from reasoning_content when the content field is empty", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: null,
+                  reasoning_content: 'Plan: sell the bag now. {"actions":[{"kind":"sellAll"}]}',
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const plan = await planAiActions(
+      makeEnv(),
+      makeLedger(),
+      seasonAt(NOW),
+      NOW,
+      {},
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(plan.actions.map((action) => action.kind)).toEqual(["sellAll"]);
+    expect(plan.reasoning).toContain("sell the bag");
+  });
+
   it("returns a helpful error when the model replies with prose", async () => {
     const fetchImpl = vi.fn(async () => modelReply("Water everything, then sell."));
     const plan = await planAiActions(

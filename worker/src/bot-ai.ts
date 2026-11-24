@@ -122,6 +122,13 @@ export interface AiGardenContext {
   }[];
   readonly bag: { seeds: Record<string, number>; crops: number; products: number };
   readonly trays: { empty: number; ripe: number; growing: number };
+  readonly totals?: {
+    plots: number;
+    ready: number;
+    dry: number;
+    dead: number;
+    trees: number;
+  };
   readonly staff: readonly { role: string; level: number }[];
   readonly shop: readonly { seed: string; price: number; stock: number }[];
   readonly neighbourhood: Record<string, number>;
@@ -181,6 +188,13 @@ export function summarizeGarden(
       dead: tree.dead === true,
     });
   }
+  // Keep the prompt small: list the most urgent cells only (ready, then dead/dry).
+  const plotPriority = (entry: AiGardenContext["plots"][number]): number =>
+    entry.readyInSec === 0 ? 0 : entry.dead ? 1 : entry.watered ? 3 : 2;
+  const listedPlots = [...plots].sort((left, right) => plotPriority(left) - plotPriority(right)).slice(0, 30);
+  const listedTrees = [...trees]
+    .sort((left, right) => (left.readyInSec === 0 ? 0 : 1) - (right.readyInSec === 0 ? 0 : 1))
+    .slice(0, 10);
   let traysEmpty = 0;
   let traysRipe = 0;
   let traysGrowing = 0;
@@ -192,8 +206,8 @@ export function summarizeGarden(
   return {
     coins: ledger.coins,
     prestige: ledger.prestige,
-    plots,
-    trees,
+    plots: listedPlots,
+    trees: listedTrees,
     bag: {
       seeds: Object.fromEntries(
         Object.entries(ledger.bag.seeds).filter((entry): entry is [string, number] => (entry[1] ?? 0) > 0),
@@ -203,11 +217,18 @@ export function summarizeGarden(
     },
     trays: { empty: traysEmpty, ripe: traysRipe, growing: traysGrowing },
     staff: ledger.staff.map((worker) => ({ role: worker.role, level: worker.level })),
-    shop: season.shop.offers.map((offer) => ({
+    shop: season.shop.offers.slice(0, 12).map((offer) => ({
       seed: offer.seed,
       price: offer.price,
       stock: offer.stock,
     })),
+    totals: {
+      plots: plots.length,
+      ready: plots.filter((entry) => entry.readyInSec === 0).length,
+      dry: plots.filter((entry) => !entry.watered && entry.readyInSec > 0).length,
+      dead: plots.filter((entry) => entry.dead).length,
+      trees: trees.length,
+    },
     neighbourhood,
     planted,
   };
@@ -313,28 +334,86 @@ export async function planAiActions(
       headers["http-referer"] = "https://realkhoa.github.io/DynoFreeChat/";
       headers["x-title"] = "DynoFreeChat AI bots";
     }
-    const response = await fetchImpl(`${config.base}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ model: config.model, messages, temperature: 0.4, max_tokens: 700 }),
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!response.ok) {
-      return { actions: [], reasoning: null, model: config.model, error: `model HTTP ${response.status}` };
-    }
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: unknown; reasoning_content?: unknown } }>;
+    type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+    type ChatReply = {
+      content: string | null;
+      reasoning: string;
+      finish: string;
     };
-    const message = payload.choices?.[0]?.message;
-    const content = message?.content;
-    if (typeof content !== "string") {
-      return { actions: [], reasoning: null, model: config.model, error: "model returned no content" };
+    const callModel = async (
+      input: ChatMessage[],
+      maxTokens: number,
+    ): Promise<{ ok: true; reply: ChatReply } | { ok: false; status: number }> => {
+      const response = await fetchImpl(`${config.base}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: config.model,
+          messages: input,
+          temperature: 0.3,
+          max_tokens: maxTokens,
+        }),
+        signal: AbortSignal.timeout(25_000),
+      });
+      if (!response.ok) return { ok: false, status: response.status };
+      const payload = (await response.json()) as {
+        choices?: Array<{
+          finish_reason?: unknown;
+          message?: { content?: unknown; reasoning_content?: unknown };
+        }>;
+      };
+      const choice = payload.choices?.[0];
+      const message = choice?.message;
+      return {
+        ok: true,
+        reply: {
+          content:
+            typeof message?.content === "string" && message.content.trim().length > 0
+              ? message.content
+              : null,
+          reasoning: typeof message?.reasoning_content === "string" ? message.reasoning_content.trim() : "",
+          finish: typeof choice?.finish_reason === "string" ? choice.finish_reason : "",
+        },
+      };
+    };
+
+    let result = await callModel(messages, 3_000);
+    if (!result.ok) {
+      return { actions: [], reasoning: null, model: config.model, error: `model HTTP ${result.status}` };
     }
-    const plan = parseAiPlan(content);
+    // A reasoning model can burn the whole budget on chain-of-thought and return
+    // empty content; retry once with a bigger budget and an explicit "JSON only".
+    if (result.reply.content === null) {
+      const fromReasoning = parseAiPlan(result.reply.reasoning);
+      if (fromReasoning.actions.length > 0) {
+        return {
+          actions: fromReasoning.actions,
+          reasoning: result.reply.reasoning.slice(0, 600),
+          model: config.model,
+          error: null,
+        };
+      }
+      const retryMessages: ChatMessage[] = [
+        ...messages,
+        { role: "user", content: "Answer now with ONLY the JSON object. No prose and no markdown." },
+      ];
+      result = await callModel(retryMessages, 4_000);
+      if (!result.ok) {
+        return { actions: [], reasoning: null, model: config.model, error: `model HTTP ${result.status}` };
+      }
+    }
+    if (result.reply.content === null) {
+      return {
+        actions: [],
+        reasoning: null,
+        model: config.model,
+        error: `model returned no content (finish=${result.reply.finish || "?"}, reasoning=${result.reply.reasoning.length} chars)`,
+      };
+    }
+    const plan = parseAiPlan(result.reply.content);
     // OpenCode's beam-free model exposes its raw chain of thought separately.
-    const rawReasoning =
-      typeof message?.reasoning_content === "string" ? message.reasoning_content.trim() : "";
-    const reasoning = rawReasoning.length > 0 ? rawReasoning.slice(0, 600) : plan.reasoning;
+    const reasoning =
+      result.reply.reasoning.length > 0 ? result.reply.reasoning.slice(0, 600) : plan.reasoning;
     return {
       actions: plan.actions,
       reasoning,
