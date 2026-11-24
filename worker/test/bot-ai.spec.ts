@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file bot-ai.spec.ts
  * @brief LLM bot brain: prompt context, decision parsing and model failures.
  */
@@ -10,6 +10,7 @@ import {
   aiConfig,
   buildAiMessages,
   parseAiDecisions,
+  parseAiPlan,
   planAiActions,
   summarizeGarden,
   type AiGardenContext,
@@ -123,6 +124,19 @@ describe("ai decision parsing", () => {
     });
     const actions = parseAiDecisions(raw);
     expect(actions).toEqual([{ kind: "uprootBulk", dead: true }]);
+  });
+
+  it("keeps the model's short reasoning with the actions", () => {
+    const plan = parseAiPlan(
+      JSON.stringify({
+        reasoning: "Thu hoạch trước rồi tưới.",
+        actions: [{ kind: "harvest", slot: 1, tree: false }],
+      }),
+    );
+    expect(plan.reasoning).toBe("Thu hoạch trước rồi tưới.");
+    expect(plan.actions).toHaveLength(1);
+    expect(parseAiPlan("not json").reasoning).toBeNull();
+    expect(parseAiDecisions(JSON.stringify({ actions: [{ kind: "sellAll" }] }))).toHaveLength(1);
   });
 
   it("caps the plan and survives non-JSON replies", () => {

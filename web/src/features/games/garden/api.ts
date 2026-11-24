@@ -40,6 +40,15 @@ export interface GardenBot {
   readonly focus?: string;
   /** True for the five LLM-driven bots. */
   readonly ai?: boolean;
+  /** Last AI decision, shown in the garden thought feed. */
+  readonly thought?: {
+    readonly at: number;
+    readonly model?: string;
+    readonly reasoning?: string;
+    readonly actions?: readonly string[];
+    readonly fallback?: boolean;
+    readonly error?: string;
+  };
 }
 
 /** Credentials the browser keeps for this player. */

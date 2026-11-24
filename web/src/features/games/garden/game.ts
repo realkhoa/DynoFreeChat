@@ -5313,6 +5313,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const at = now();
     const wrap = div("garden-reborn");
     wrap.append(buildRebornTabStrip());
+    // Owner views keep the AI thought feed fresh; the loader has its own TTL.
+    if (mode === "owner") void loadBots();
     if (rebornTab === "townhall") {
       wrap.append(buildTownhallSection());
       return wrap;
@@ -5355,6 +5357,38 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (popover !== null) wrap.append(popover);
     }
     wrap.append(buildRebornGarden(at));
+    if (mode === "owner") wrap.append(buildAiThoughts());
+    return wrap;
+  }
+
+  /**
+   * @brief Thought feed for the five AI bots, under the garden.
+   * @details Shows the short plan the model wrote, the action kinds it ran and
+   * whether the deterministic fallback had to take over.
+   */
+  function buildAiThoughts(): HTMLElement {
+    const wrap = div("garden-ai-thoughts");
+    wrap.append(lineBlock(`// ${t("aiBots.title")}`));
+    const bots = botGardens.filter((bot) => bot.ai === true);
+    if (bots.length === 0) {
+      wrap.append(lineBlock(t("aiBots.empty")));
+      return wrap;
+    }
+    for (const bot of bots) {
+      const thought = bot.thought;
+      if (thought === undefined) {
+        wrap.append(lineBlock(`${bot.nick} · ${t("aiBots.waiting")}`));
+        continue;
+      }
+      const ago = formatDuration(Math.max(0, Date.now() - thought.at), "short");
+      const label = thought.fallback === true ? t("aiBots.fallback") : (thought.model ?? t("aiBots.noModel"));
+      wrap.append(lineBlock(`${bot.nick} · ${ago} · ${label}`));
+      if (thought.reasoning !== undefined) wrap.append(lineBlock(`  → ${thought.reasoning}`));
+      if (thought.actions !== undefined && thought.actions.length > 0) {
+        wrap.append(lineBlock(`  ${t("aiBots.actions")}: ${thought.actions.join(", ")}`));
+      }
+      if (thought.error !== undefined) wrap.append(lineBlock(`  ! ${thought.error}`));
+    }
     return wrap;
   }
 

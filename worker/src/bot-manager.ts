@@ -45,6 +45,24 @@ interface BotRecord {
   focus?: "carrot";
   /** True for the five LLM-driven bots. */
   ai?: boolean;
+  /** Last decision the AI made, shown in the garden UI. */
+  thought?: BotThought;
+}
+
+/** Last AI decision, as displayed under the garden. */
+export interface BotThought {
+  /** Server time of the decision. */
+  at: number;
+  /** Model id used, when one was configured. */
+  model?: string;
+  /** Short model-written plan summary (chain of thought). */
+  reasoning?: string;
+  /** Action kinds the bot ran this tick. */
+  actions?: readonly string[];
+  /** True when the deterministic heuristic planned instead of the model. */
+  fallback?: boolean;
+  /** Why the model produced nothing, when it failed. */
+  error?: string;
 }
 
 type MetaRow = SqlRow<{ value: string }>;
@@ -61,6 +79,8 @@ export interface BotSummary {
   focus?: string;
   /** True for the five LLM-driven bots. */
   ai?: boolean;
+  /** Last AI decision for the thought feed. */
+  thought?: BotThought;
   online: boolean;
 }
 
@@ -150,6 +170,7 @@ export class BotManager extends DurableObject<Env> {
       bag: bot.bag ?? 0,
       focus: bot.focus,
       ai: bot.ai === true,
+      thought: bot.thought,
       online: true,
     }));
   }
@@ -405,12 +426,29 @@ export class BotManager extends DurableObject<Env> {
           sold?: Record<string, number>;
           bought?: Record<string, number>;
           planted?: Record<string, number>;
+          ai?: {
+            used?: boolean;
+            model?: string;
+            reasoning?: string;
+            actions?: string[];
+            error?: string;
+          };
         };
         actions += result.actions ?? 0;
         if (typeof result.coins === "number") bot.coins = result.coins;
         if (typeof result.earned === "number") bot.earned = result.earned;
         if (typeof result.harvested === "number") bot.harvested = result.harvested;
         if (typeof result.bag === "number") bot.bag = result.bag;
+        if (bot.ai === true) {
+          bot.thought = {
+            at: Date.now(),
+            ...(result.ai?.model === undefined ? {} : { model: result.ai.model }),
+            ...(result.ai?.reasoning === undefined ? {} : { reasoning: result.ai.reasoning }),
+            ...(result.ai?.actions === undefined ? {} : { actions: result.ai.actions }),
+            ...(result.ai?.error === undefined ? {} : { error: result.ai.error }),
+            fallback: result.ai?.used !== true,
+          };
+        }
         for (const [id, count] of Object.entries(result.planted ?? {})) {
           if (count < 1) continue;
           nextSurvey[id] = (nextSurvey[id] ?? 0) + count;

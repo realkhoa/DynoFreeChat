@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file bot-ai.ts
  * @brief LLM brain for the five AI bot gardens.
  * @details The model only proposes decisions; the worker validates every action
@@ -93,6 +93,8 @@ export const AI_ALLOWED_ACTIONS: ReadonlySet<string> = new Set([
 export interface AiPlan {
   /** Validated actions to run, in order. */
   readonly actions: GardenAction[];
+  /** Short model-written plan summary, shown in the garden UI. */
+  readonly reasoning: string | null;
   /** Model id used, for the bot tick response. */
   readonly model: string;
   /** Why an empty plan happened, if it did. */
@@ -212,7 +214,8 @@ export function summarizeGarden(
 export function buildAiMessages(context: AiGardenContext): { role: "system" | "user"; content: string }[] {
   const system = [
     "You are an expert player of a farming game. Reply with STRICT JSON only:",
-    '{"actions":[{"kind":"...", ...fields}]} — at most 8 actions, in execution order.',
+    '{"reasoning":"one or two short sentences explaining the plan", "actions":[{"kind":"...", ...fields}]}.',
+    "Keep reasoning under 200 characters; actions at most 8, in execution order.",
     "Allowed action kinds and fields:",
     "water {slot,tree}, waterAll {}, harvest {slot,tree}, harvestAll {},",
     "harvestMushroom {slot}, plant {slot,seed}, plantAll {seed}, buySeed {seed,qty},",
@@ -251,12 +254,17 @@ export function extractJson(raw: string): unknown {
   }
 }
 
-/** @brief Validates model decisions into real garden actions. */
-export function parseAiDecisions(raw: string, limit = 8): GardenAction[] {
+/** @brief Validates a model reply into a plan summary plus real actions. */
+export function parseAiPlan(raw: string, limit = 8): { reasoning: string | null; actions: GardenAction[] } {
   const parsed = extractJson(raw);
-  if (parsed === null || typeof parsed !== "object") return [];
-  const list = (parsed as { actions?: unknown }).actions;
-  if (!Array.isArray(list)) return [];
+  if (parsed === null || typeof parsed !== "object") return { reasoning: null, actions: [] };
+  const record = parsed as { actions?: unknown; reasoning?: unknown };
+  const reasoning =
+    typeof record.reasoning === "string" && record.reasoning.trim().length > 0
+      ? record.reasoning.trim().slice(0, 400)
+      : null;
+  const list = record.actions;
+  if (!Array.isArray(list)) return { reasoning, actions: [] };
   const actions: GardenAction[] = [];
   for (const entry of list) {
     if (actions.length >= limit) break;
@@ -266,7 +274,12 @@ export function parseAiDecisions(raw: string, limit = 8): GardenAction[] {
     const action = parseGardenAction(entry);
     if (action !== null) actions.push(action);
   }
-  return actions;
+  return { reasoning, actions };
+}
+
+/** @brief Validates model decisions into real garden actions. */
+export function parseAiDecisions(raw: string, limit = 8): GardenAction[] {
+  return parseAiPlan(raw, limit).actions;
 }
 
 /** @brief Asks the model to plan one round; never throws. */
@@ -279,7 +292,9 @@ export async function planAiActions(
   fetchImpl: typeof fetch = fetch,
 ): Promise<AiPlan> {
   const config = aiConfig(env);
-  if (config === null) return { actions: [], model: "none", error: "AI_BOT_API_KEY is not configured" };
+  if (config === null) {
+    return { actions: [], reasoning: null, model: "none", error: "AI_BOT_API_KEY is not configured" };
+  }
   const context = summarizeGarden(ledger, season, now, neighbourhood);
   const messages = buildAiMessages(context);
   try {
@@ -295,23 +310,24 @@ export async function planAiActions(
       signal: AbortSignal.timeout(20_000),
     });
     if (!response.ok) {
-      return { actions: [], model: config.model, error: `model HTTP ${response.status}` };
+      return { actions: [], reasoning: null, model: config.model, error: `model HTTP ${response.status}` };
     }
     const payload = (await response.json()) as {
       choices?: Array<{ message?: { content?: unknown } }>;
     };
     const content = payload.choices?.[0]?.message?.content;
     if (typeof content !== "string") {
-      return { actions: [], model: config.model, error: "model returned no content" };
+      return { actions: [], reasoning: null, model: config.model, error: "model returned no content" };
     }
-    const actions = parseAiDecisions(content);
+    const plan = parseAiPlan(content);
     return {
-      actions,
+      actions: plan.actions,
+      reasoning: plan.reasoning,
       model: config.model,
-      error: actions.length === 0 ? "model returned no usable actions" : null,
+      error: plan.actions.length === 0 ? "model returned no usable actions" : null,
     };
   } catch (error) {
-    return { actions: [], model: config.model, error: (error as Error).message };
+    return { actions: [], reasoning: null, model: config.model, error: (error as Error).message };
   }
 }
 

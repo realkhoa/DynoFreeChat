@@ -2230,3 +2230,15 @@ button.garden-rank-row:hover {
   justify-content: center;
   gap: 8px;
 }
+
+/* AI chain-of-thought feed under the garden. */
+.garden-ai-thoughts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: min(100%, 1100px);
+  margin: 8px auto 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}

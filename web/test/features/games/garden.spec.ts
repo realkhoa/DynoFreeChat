@@ -237,6 +237,23 @@ class FakeGardenApi {
           harvested: 3,
           online: true,
         },
+        {
+          code: "AI0001",
+          nick: "Bot AI 01",
+          color: "#d7ba7d",
+          coins: 12,
+          earned: 4,
+          harvested: 1,
+          ai: true,
+          thought: {
+            at: CLOCK - 120_000,
+            model: "free-model",
+            reasoning: "Thu hoạch 3 cây chín trước, rồi tưới phần còn lại.",
+            actions: ["harvest", "harvest", "waterAll"],
+            fallback: false,
+          },
+          online: true,
+        },
       ],
     };
   }
@@ -3230,6 +3247,25 @@ describe("reborn staff cells", () => {
     expect(
       api.calls.some((call) => call.action?.kind === "setStaffRole" && call.action.role === "saleHunt"),
     ).toBe(true);
+  });
+});
+
+describe("ai bot thoughts", () => {
+  it("shows the latest AI chain of thought under the garden", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 1_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    await settle();
+
+    const feed = host.querySelector(".garden-ai-thoughts");
+    expect(feed).not.toBeNull();
+    expect(feed?.textContent).toContain("chain of thought");
+    expect(feed?.textContent).toContain("Bot AI 01");
+    expect(feed?.textContent).toContain("Thu hoạch 3 cây chín");
+    expect(feed?.textContent).toContain("harvest");
+    expect(feed?.textContent).toContain("free-model");
   });
 });
 

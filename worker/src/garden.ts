@@ -1117,12 +1117,19 @@ export class Garden extends DurableObject<Env> {
     const rng = createRng(hash32(`bot:${ledger.playerId}:${Math.floor(now / 60_000)}`));
     // The five AI bots ask an LLM for a plan first; invalid plans fall back to
     // the deterministic heuristic so a bad model day never stalls the market.
-    let aiMeta: { used: boolean; model?: string; error?: string } = { used: false };
+    let aiMeta: {
+      used: boolean;
+      model?: string;
+      error?: string;
+      reasoning?: string;
+      actions?: string[];
+    } = { used: false };
     let planned: GardenAction[] | null = null;
     if (body.ai === true) {
       const aiPlan = await planAiActions(this.env, ledger, season, now, survey);
       aiMeta = { used: aiPlan.actions.length > 0, model: aiPlan.model };
       if (aiPlan.error !== null) aiMeta.error = aiPlan.error;
+      if (aiPlan.reasoning !== null) aiMeta.reasoning = aiPlan.reasoning;
       if (aiPlan.actions.length > 0) planned = aiPlan.actions;
     }
     const heuristic = planBotActions(ledger, season, now, rng, BOT_ACTION_LIMIT, focus, survey);
@@ -1164,7 +1171,7 @@ export class Garden extends DurableObject<Env> {
       sold,
       bought,
       planted: plantedNow(current),
-      ai: aiMeta,
+      ai: { ...aiMeta, actions: actions.map((action) => action.kind) },
     });
   }
 
