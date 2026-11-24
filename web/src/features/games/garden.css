@@ -2199,3 +2199,11 @@ button.garden-rank-row:hover {
   flex-direction: column;
   gap: 4px;
 }
+
+/* Townhall boards: a soft rule between the NPC row and the ranking/chart. */
+.garden-town-sep {
+  height: 1px;
+  margin: 10px auto;
+  width: min(100%, 960px);
+  background: var(--border-subtle);
+}

@@ -815,7 +815,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     } finally {
       leaderboardBusy = false;
     }
-    if (!disposed && (tab === "event" || tab === "rank")) render();
+    if (!disposed && (tab === "event" || tab === "rank" || rebornTab === "townhall")) render();
   }
 
   // ---------------------------------------------------------------- mutations
@@ -5055,7 +5055,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
   /** @brief Loads the global market board for the chart tab. */
   async function loadChart(force = false): Promise<void> {
-    if (mode !== "owner" || disposed || chartBusy) return;
+    if (disposed || chartBusy) return;
     if (!force && chartAt !== 0 && Date.now() - chartAt < DATA_TTL_MS) return;
     chartBusy = true;
     try {
@@ -5305,6 +5305,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const wrap = div("garden-reborn");
     wrap.append(buildRebornTabStrip());
     if (rebornTab === "townhall") {
+      // Leaderboard and the market chart live in the town square now.
+      void loadLeaderboard();
+      void loadChart();
       wrap.append(buildTownhallSection());
       return wrap;
     }
@@ -5559,6 +5562,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (rebornTab === next) return;
     rebornTab = next;
     townNpc = null;
+    if (next === "townhall") {
+      void loadLeaderboard();
+      void loadChart();
+    }
     syncGardenQuery();
     render();
   }
@@ -6111,6 +6118,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     } else {
       wrap.append(lineBlock(mode === "owner" ? t("town.hint") : t("town.visitHint")));
     }
+    // The town square also carries the public boards: ranking and market trend.
+    wrap.append(div("garden-town-sep"), buildRank(), div("garden-town-sep"), buildChart());
     return wrap;
   }
 

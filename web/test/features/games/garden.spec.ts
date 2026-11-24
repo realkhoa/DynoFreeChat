@@ -2974,6 +2974,23 @@ describe("townhall tab", () => {
     expect(api.calls.some((call) => call.action?.kind === "buyTool")).toBe(true);
   });
 
+  it("shows the leaderboard and the market chart in the town square", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 1_000 }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:townhall"]')?.click();
+    await settle();
+    await settle();
+
+    expect(host.querySelector(".garden-rank")).not.toBeNull();
+    expect(host.querySelectorAll(".garden-rank-row").length).toBeGreaterThan(1);
+    expect(host.querySelector(".garden-chart")).not.toBeNull();
+    expect(host.querySelector(".garden-chart-cycle")?.textContent).toContain("Chu kỳ");
+    expect(api.calls.some((call) => call.method === "leaderboard")).toBe(true);
+  });
+
   it("keeps the town read-only while visiting", async () => {
     const api = new FakeGardenApi(makeState());
     const { host, game } = await mountGame(api, "ABCDEF");
