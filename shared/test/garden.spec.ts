@@ -1245,6 +1245,30 @@ describe("garden wire parsing", () => {
     });
     expect(parseGardenAction({ kind: "buyTab" })).toEqual({ kind: "buyTab" });
     expect(parseGardenAction({ kind: "sellAll" })).toEqual({ kind: "sellAll" });
+    expect(parseGardenAction({ kind: "mineHit", slot: 12 })).toEqual({ kind: "mineHit", slot: 12 });
+    expect(parseGardenAction({ kind: "mineHit", slot: -1 })).toBeNull();
+    expect(parseGardenAction({ kind: "mineHit", slot: 25 })).toBeNull();
+    expect(parseGardenAction({ kind: "mineDescend" })).toEqual({ kind: "mineDescend" });
+    expect(parseGardenAction({ kind: "mineElevator", targetFloor: 5 })).toEqual({
+      kind: "mineElevator",
+      targetFloor: 5,
+    });
+    expect(parseGardenAction({ kind: "mineElevator", targetFloor: 0 })).toBeNull();
+    expect(parseGardenAction({ kind: "upgradePickaxe" })).toEqual({ kind: "upgradePickaxe" });
+    expect(parseGardenAction({ kind: "mineEat", item: "dried" })).toEqual({
+      kind: "mineEat",
+      item: "dried",
+    });
+    expect(parseGardenAction({ kind: "mineEat", item: "invalidItem" })).toBeNull();
+    expect(parseGardenAction({ kind: "assignMiner", staffSlot: 1 })).toEqual({
+      kind: "assignMiner",
+      staffSlot: 1,
+    });
+    expect(parseGardenAction({ kind: "assignMiner", staffSlot: null })).toEqual({
+      kind: "assignMiner",
+      staffSlot: null,
+    });
+    expect(parseGardenAction({ kind: "assignMiner", staffSlot: 4 })).toBeNull();
     expect(parseGardenAction({ kind: "explode" })).toBeNull();
   });
 

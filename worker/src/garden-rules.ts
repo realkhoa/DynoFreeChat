@@ -3771,7 +3771,7 @@ function ensureMineState(ledger: GardenLedger, now: number): LedgerMineState {
     const regen = Math.floor(elapsed / 30_000);
     if (regen > 0) {
       mine.stamina = Math.min(mine.maxStamina, mine.stamina + regen);
-      mine.lastStaminaAt = now;
+      mine.lastStaminaAt = mine.stamina >= mine.maxStamina ? now : mine.lastStaminaAt + regen * 30_000;
     }
   } else if (mine.stamina >= mine.maxStamina) {
     mine.lastStaminaAt = now;
@@ -4097,6 +4097,18 @@ export function settleExtras(ledger: GardenLedger, now: number): GardenLedger {
     next.stats = { ...next.stats, spent: next.stats.spent + tax };
     next.taxDay = today;
     next.taxLast = tax;
+    changedAny = true;
+  }
+
+  // Mine state initialization & stamina passive regeneration.
+  if (next.mine) {
+    const mine = ensureMineState(next, now);
+    if (mine.stamina !== next.mine.stamina || mine.lastStaminaAt !== next.mine.lastStaminaAt) {
+      next.mine = mine;
+      changedAny = true;
+    }
+  } else {
+    next.mine = initialMineState(now) as unknown as LedgerMineState;
     changedAny = true;
   }
 

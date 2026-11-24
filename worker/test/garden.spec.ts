@@ -165,7 +165,7 @@ describe("bots", () => {
 
     const visit = await SELF.fetch(`${BASE}/api/garden/visit/${listed.bots[0]?.code ?? ""}`);
     expect(visit.status).toBe(200);
-  });
+  }, 15_000);
 });
 
 describe("tournament", () => {

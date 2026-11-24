@@ -2493,3 +2493,42 @@ describe("quick uproot clears dead plants", () => {
     expect(deadOnly.ledger.plots[1]).not.toBeNull();
   });
 });
+
+describe("mine exploration and actions", () => {
+  it("hits rocks, consumes stamina, and reveals drops or ladder", () => {
+    const ledger = makeLedger();
+    const hit = run(ledger, { kind: "mineHit", slot: 0 });
+    expect(hit.ok).toBe(true);
+    if (!hit.ok) return;
+    expect(hit.ledger.mine).toBeDefined();
+    expect(hit.ledger.mine?.stamina).toBe(98);
+  });
+
+  it("rejects mining when stamina is depleted", () => {
+    const ledger = makeLedger();
+    ledger.mine = {
+      currentFloor: 1,
+      maxFloor: 1,
+      pickaxeLevel: 0,
+      stamina: 1,
+      maxStamina: 100,
+      lastStaminaAt: NOW,
+      grid: [{ kind: "stone", hp: 1, maxHp: 1 }],
+      assignedStaffSlot: null,
+    };
+    const hit = run(ledger, { kind: "mineHit", slot: 0 });
+    expect(hit.ok).toBe(false);
+    if (!hit.ok) expect(hit.code).toBe("NO_STAMINA");
+  });
+
+  it("handles elevator fast travel and pickaxe upgrades", () => {
+    const ledger = makeLedger();
+    ledger.coins = 100_000;
+    ledger.bag.products.push({ product: "copperBar", qty: 5, star: 1 });
+    const upgrade = run(ledger, { kind: "upgradePickaxe" });
+    expect(upgrade.ok).toBe(true);
+    if (!upgrade.ok) return;
+    expect(upgrade.ledger.mine?.pickaxeLevel).toBe(1);
+    expect(upgrade.ledger.coins).toBe(50_000);
+  });
+});

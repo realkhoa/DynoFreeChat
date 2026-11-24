@@ -5038,6 +5038,40 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   }
   if (kind === "sellAll") return { kind };
   if (kind === "quickPlan") return { kind };
+  if (kind === "mineHit") {
+    const slot = value.slot;
+    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= MINE_FLOOR_CELLS) {
+      return null;
+    }
+    return { kind, slot };
+  }
+  if (kind === "mineDescend") return { kind };
+  if (kind === "mineElevator") {
+    const targetFloor = value.targetFloor;
+    if (typeof targetFloor !== "number" || !Number.isInteger(targetFloor) || targetFloor < 1) {
+      return null;
+    }
+    return { kind, targetFloor };
+  }
+  if (kind === "upgradePickaxe") return { kind };
+  if (kind === "mineEat") {
+    const item = typeof value.item === "string" ? productById(value.item) : undefined;
+    if (item === undefined) return null;
+    return { kind, item: item.id };
+  }
+  if (kind === "assignMiner") {
+    const staffSlot = value.staffSlot;
+    if (staffSlot === null) return { kind, staffSlot: null };
+    if (
+      typeof staffSlot !== "number" ||
+      !Number.isInteger(staffSlot) ||
+      staffSlot < 0 ||
+      staffSlot >= STAFF_SLOTS
+    ) {
+      return null;
+    }
+    return { kind, staffSlot };
+  }
   return null;
 }
 
