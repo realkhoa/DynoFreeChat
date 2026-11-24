@@ -86,6 +86,12 @@ import {
   BREED_CYCLES,
   FARM_CYCLE_MS,
   PLANT_THIRST_MS,
+  POND_MAX_SLOTS,
+  BASE_FISH_SPECIES,
+  pondBasinIndex,
+  pondBasinSlot,
+  pondBasinSlotRange,
+  inspectPondBasin,
   animalById,
   animalIntervalMs,
   animalIsIncubating,
@@ -130,6 +136,7 @@ import {
   type GardenAction,
   type GardenSnapshot,
   type GuildSnapshot,
+  type HybridFishDefinition,
   type RaidSnapshot,
   type GlobalSaleEntry,
   type LeaderboardEntry,
@@ -400,6 +407,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     price: number;
     createdAt: number;
   }> = [];
+  let globalHybrids: HybridFishDefinition[] = [];
   let dynopediaQuery = "";
   let machineLimitDraft = "";
   let specialSupplyPicker: { kind: "fertilize" | "spray"; slot: number } | null = null;
@@ -1232,7 +1240,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       void loadGuilds();
     }
     if (next === "log") void loadGlobalSales();
-    if (next === "dynopedia") void loadGlobalRecipes();
+    if (next === "dynopedia") {
+      void loadGlobalRecipes();
+      void loadGlobalHybrids();
+    }
     if (next === "event") void loadRaid();
   }
 
@@ -1469,10 +1480,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     const wrap = div("garden-menu garden-animal-menu");
     const head = div("garden-menu-head");
+    const displayName = animal.hybridName ?? t(`animals.${animal.kind}`);
+    const locationText =
+      animalMenu.building === "pond"
+        ? `${t("farm.pondBasin", { index: pondBasinIndex(animalMenu.slot) + 1 })} · ${t("farm.slots")} ${pondBasinSlot(animalMenu.slot) + 1}`
+        : `${t(`farm.${animalMenu.building}`)} · ${t("farm.slots")} ${animalMenu.slot + 1}`;
     head.append(
       span(
         "garden-menu-title",
-        `${t(`animals.${animal.kind}`)} · ${t(`farm.${animalMenu.building}`)} · ${t("farm.slots")} ${animalMenu.slot + 1}`,
+        `${displayName} · ${locationText}`,
       ),
     );
     const coins = state.coins;
@@ -1492,7 +1508,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const definition = animalById(animal.kind);
     const readyAt = animal.lastProduceAt + animalIntervalMs(animal.kind);
     const incubation = animal.incubatingUntil ?? 0;
-    const meat = animalMeatPrice(animal.kind, stars, state.pondGrowth ?? 0);
+    const meat = animalMeatPrice(animal.kind, stars, state.pondGrowth ?? 0, animal.hybridPrice);
     const lines = [
       `// ${t("farm.stats")}`,
       labelValue(t("farm.quality"), `${"*".repeat(stars)} ${stars}/5`),
@@ -1502,6 +1518,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         `${animal.pats} · ${t("farm.age")} ${formatDuration(Math.max(0, at - animal.bornAt))}`,
       ),
     ];
+    if (animal.hybridTier !== undefined) {
+      lines.push(
+        labelValue("Tier", animal.hybridTier === "superior" ? t("dynopedia.superior") : t("dynopedia.inferior")),
+      );
+    }
+    if (animal.hybridLore !== undefined && animal.hybridLore.length > 0) {
+      lines.push(labelValue("Lore", animal.hybridLore));
+    }
     if (definition !== undefined) {
       lines.push(labelValue(t("farm.product"), t(`products.${definition.product}`)));
       lines.push(
@@ -1539,6 +1563,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
 
     const rows = div("garden-menu-rows");
     rows.append(menuRow(t("farm.pat"), "animalMenuPat"));
+    if (animalMenu.building === "pond") {
+      const basinIndex = pondBasinIndex(animalMenu.slot);
+      const basin = inspectPondBasin(animals, basinIndex);
+      const canBreed = basin.fish.length >= 2 && basin.freeSlots.length > 0;
+      const breedLabel = basin.isSingleSpecies ? t("farm.breedPond") : `${t("farm.breedPond")} (AI Lai)`;
+      rows.append(
+        menuRow(breedLabel, "animalMenuBreed", {
+          disabled: !canBreed,
+        }),
+      );
+    }
     if (animalMenu.building === "coop" && definition !== undefined) {
       const egg = breedEggProduct(animal.kind);
       const eggs =
@@ -3354,7 +3389,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function buildAnimalPicker(building: BuildingId, slot: number): HTMLElement {
     const wrap = div("garden-seeds");
     wrap.append(span("garden-hint", t("farm.pickAnimal", { slot: slot + 1 })));
-    for (const animal of ANIMALS.filter((entry) => entry.building === building)) {
+    for (const animal of ANIMALS.filter((entry) => entry.building === building && entry.id !== "hybridFish")) {
       const row = document.createElement("button");
       row.type = "button";
       row.className = "garden-row";
@@ -3417,9 +3452,24 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       upgrade.dataset.building = building;
       actions.append(upgrade);
       panel.append(actions);
-      const grid = div("garden-animal-grid");
-      for (let slot = 0; slot < animals.length; slot += 1) grid.append(animalCell(building, slot));
-      panel.append(grid);
+      if (building === "pond") {
+        const basins = Math.max(1, Math.floor(animals.length / POND_MAX_SLOTS));
+        for (let b = 0; b < basins; b += 1) {
+          const [start, end] = pondBasinSlotRange(b);
+          const basinHeader = div("garden-board-title garden-pond-basin-header");
+          basinHeader.textContent = t("farm.pondBasin", { index: b + 1 });
+          panel.append(basinHeader);
+          const grid = div("garden-animal-grid garden-pond-grid");
+          for (let slot = start; slot < end; slot += 1) {
+            grid.append(animalCell(building, slot));
+          }
+          panel.append(grid);
+        }
+      } else {
+        const grid = div("garden-animal-grid");
+        for (let slot = 0; slot < animals.length; slot += 1) grid.append(animalCell(building, slot));
+        panel.append(grid);
+      }
       if (farmPicker !== null && farmPicker.building === building) {
         panel.append(buildAnimalPicker(building, farmPicker.slot));
       }
@@ -4333,6 +4383,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
   }
 
+  /**
+   * @brief Loads the public AI-discovered hybrid fish catalog.
+   * @return Promise resolving when the catalog is loaded and UI re-rendered.
+   */
+  async function loadGlobalHybrids(): Promise<void> {
+    try {
+      globalHybrids = (await api.globalHybrids()).hybrids;
+      render();
+    } catch {
+      // The list stays empty while offline.
+    }
+  }
+
   /** @brief Builds the Dynopedia wiki tab: catalogs and search. */
   function buildDynopedia(): HTMLElement {
     const wrap = div("garden-dynopedia garden-market");
@@ -4435,6 +4498,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       "seeds",
       "trees",
       "animals",
+      "fish",
       "products",
       "machines",
       "supplies",
@@ -4485,10 +4549,76 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
     } else if (dynopediaCategory === "animals") {
       for (const animal of ANIMALS) {
+        if (animal.building === "pond") continue;
         rows.push({
           id: animal.id,
           title: t(`animals.${animal.id}`),
           detail: `${t(`farm.${animal.building}`)} · ${formatCompact(animal.buy)}c · ${formatDuration(animalIntervalMs(animal.id))} · ${t(`products.${animal.product}`)}`,
+        });
+      }
+    } else if (dynopediaCategory === "fish") {
+      for (const fishId of BASE_FISH_SPECIES) {
+        const def = animalById(fishId);
+        if (def === undefined) continue;
+        rows.push({
+          id: fishId,
+          title: t(`animals.${fishId}`),
+          detail: `${formatCompact(def.buy)}c · ${formatDuration(animalIntervalMs(fishId))} · ${t(`products.${def.product}`)}`,
+        });
+      }
+      const hybridMap = new Map<
+        string,
+        { id: string; name: string; tier: string; glyph: string; price: number; lore: string }
+      >();
+
+      for (const animal of state?.animals?.pond ?? []) {
+        if (animal !== null && animal.hybridId && animal.hybridName) {
+          hybridMap.set(animal.hybridId, {
+            id: animal.hybridId,
+            name: animal.hybridName,
+            tier: animal.hybridTier === "inferior" ? t("dynopedia.inferior") : t("dynopedia.superior"),
+            glyph: animal.hybridGlyph ?? "Ж",
+            price: animal.hybridPrice ?? 0,
+            lore: animal.hybridLore ?? "",
+          });
+        }
+      }
+
+      for (const hybrid of globalHybrids) {
+        if (!hybridMap.has(hybrid.id)) {
+          hybridMap.set(hybrid.id, {
+            id: hybrid.id,
+            name: hybrid.name,
+            tier: hybrid.tier === "inferior" ? t("dynopedia.inferior") : t("dynopedia.superior"),
+            glyph: hybrid.glyph || "Ж",
+            price: hybrid.buy || 0,
+            lore: hybrid.lore || "",
+          });
+        }
+      }
+
+      for (const key of state?.collection ?? []) {
+        if (key.startsWith("hybrid:")) {
+          const hid = key.slice("hybrid:".length);
+          if (!hybridMap.has(hid)) {
+            hybridMap.set(hid, {
+              id: hid,
+              name: hid,
+              tier: t("dynopedia.superior"),
+              glyph: "Ж",
+              price: 0,
+              lore: "",
+            });
+          }
+        }
+      }
+
+      for (const [hid, hybrid] of hybridMap) {
+        const fullKey = hid.startsWith("hybrid:") ? hid : `hybrid:${hid}`;
+        rows.push({
+          id: fullKey,
+          title: `${hybrid.glyph} ${hybrid.name} [${hybrid.tier}]`,
+          detail: `${hybrid.price > 0 ? formatCompact(hybrid.price) + "c" : ""}${hybrid.lore ? ` · ${hybrid.lore}` : ""}`,
         });
       }
     } else if (dynopediaCategory === "products") {
@@ -4588,6 +4718,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       if (dynopediaCategory === "effects") return `effect:${id}`;
       if (dynopediaCategory === "seeds") return `seed:${id}`;
       if (dynopediaCategory === "animals") return `animal:${id}`;
+      if (dynopediaCategory === "fish") return id.startsWith("hybrid:") ? id : `fish:${id}`;
       if (dynopediaCategory === "products") return `product:${id}`;
       if (dynopediaCategory === "machines") return `machine:${id}`;
       if (dynopediaCategory === "pets") return `pet:${id}`;

@@ -1888,6 +1888,20 @@ export class GardenHub extends DurableObject<Env> {
         created_by TEXT NOT NULL,
         created_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS global_hybrids (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        parents TEXT NOT NULL,
+        tier TEXT NOT NULL,
+        lore TEXT NOT NULL,
+        glyph TEXT NOT NULL,
+        buy INTEGER NOT NULL,
+        upkeep INTEGER NOT NULL,
+        interval_cycles INTEGER NOT NULL,
+        product TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS guilds (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1961,6 +1975,8 @@ export class GardenHub extends DurableObject<Env> {
     if (request.method === "GET" && url.pathname === "/raid") return this.raid();
     if (request.method === "GET" && url.pathname === "/recipes") return this.globalRecipes();
     if (request.method === "POST" && url.pathname === "/recipes") return this.saveGlobalRecipe(request);
+    if (request.method === "GET" && url.pathname === "/fish/hybrids") return this.globalHybrids();
+    if (request.method === "POST" && url.pathname === "/fish/hybrids") return this.saveGlobalHybrid(request);
     if (request.method === "POST" && url.pathname === "/guild/create") return this.guildCreate(request);
     if (request.method === "POST" && url.pathname === "/guild/join") return this.guildJoin(request);
     if (request.method === "POST" && url.pathname === "/guild/leave") return this.guildLeave(request);
@@ -2155,6 +2171,96 @@ export class GardenHub extends DurableObject<Env> {
     return json({
       ok: true,
       recipe: { id, inputs, output, price, createdAt: Date.now() },
+    });
+  }
+
+  /**
+   * @brief Retrieves the public list of AI-discovered global hybrid fish.
+   * @return JSON response containing the hybrid fish catalog.
+   */
+  private globalHybrids(): Response {
+    const rows = this.sql
+      .exec<
+        SqlRow<{
+          id: string;
+          name: string;
+          parents: string;
+          tier: string;
+          lore: string;
+          glyph: string;
+          buy: number;
+          upkeep: number;
+          interval_cycles: number;
+          product: string;
+          created_by: string;
+          created_at: number;
+        }>
+      >(
+        "SELECT id, name, parents, tier, lore, glyph, buy, upkeep, interval_cycles, product, created_by, created_at FROM global_hybrids ORDER BY created_at DESC LIMIT 60",
+      )
+      .toArray();
+    return json({
+      hybrids: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        parents: JSON.parse(row.parents) as [string, string],
+        tier: row.tier as "inferior" | "superior",
+        lore: row.lore,
+        glyph: row.glyph,
+        buy: row.buy,
+        upkeep: row.upkeep,
+        intervalCycles: row.interval_cycles,
+        product: row.product,
+        createdBy: row.created_by,
+        createdAt: row.created_at,
+      })),
+    });
+  }
+
+  /**
+   * @brief Stores one AI-discovered global hybrid fish into the registry.
+   * @param request HTTP request containing hybrid fish definition.
+   * @return JSON response confirming storage.
+   */
+  private async saveGlobalHybrid(request: Request): Promise<Response> {
+    const body = (await readJson(request)) as Record<string, unknown>;
+    const id = typeof body.id === "string" ? body.id : "";
+    const name = typeof body.name === "string" ? body.name.trim().slice(0, 50) : "";
+    const parents = Array.isArray(body.parents) ? body.parents.slice(0, 2) : [];
+    const tier = body.tier === "inferior" ? "inferior" : "superior";
+    const lore = typeof body.lore === "string" ? body.lore.trim().slice(0, 200) : "";
+    const glyph = typeof body.glyph === "string" ? body.glyph.slice(0, 4) : "X";
+    const buy = typeof body.buy === "number" ? Math.max(1, Math.floor(body.buy)) : 30_000;
+    const upkeep = typeof body.upkeep === "number" ? Math.max(0, Math.floor(body.upkeep)) : 50;
+    const intervalCycles =
+      typeof body.intervalCycles === "number" ? Math.max(1, Math.floor(body.intervalCycles)) : 2;
+    const product = typeof body.product === "string" ? body.product : "roe";
+    const createdBy = typeof body.createdBy === "string" ? body.createdBy : "";
+    const createdAt = typeof body.createdAt === "number" ? body.createdAt : Date.now();
+
+    if (id.length === 0 || name.length === 0 || parents.length < 2) {
+      return json({ code: "BAD_REQUEST" }, 400);
+    }
+
+    this.sql.exec(
+      "INSERT OR REPLACE INTO global_hybrids (id, name, parents, tier, lore, glyph, buy, upkeep, interval_cycles, product, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      id,
+      name,
+      JSON.stringify(parents),
+      tier,
+      lore,
+      glyph,
+      buy,
+      upkeep,
+      intervalCycles,
+      product,
+      createdBy,
+      createdAt,
+    );
+
+    return json({
+      ok: true,
+      hybrid: { id, name, parents, tier, lore, glyph, buy, upkeep, intervalCycles, product, createdAt },
     });
   }
 

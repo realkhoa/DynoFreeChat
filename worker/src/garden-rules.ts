@@ -110,6 +110,13 @@ import {
   POND_GROWTH_CYCLES,
   POND_GROWTH_MAX,
   POND_GROWTH_STEP,
+  POND_MAX_SLOTS,
+  BASE_FISH_SPECIES,
+  pondBasinIndex,
+  pondBasinSlot,
+  inspectPondBasin,
+  generateDeterministicHybridFish,
+  isFishKind,
   animalById,
   animalIntervalMs,
   animalIsIncubating,
@@ -2142,6 +2149,9 @@ function buyAnimal(
   next.stats.spent += definition.buy;
   next.animals[building][slot] = { kind: animalId, bornAt: now, pats: 0, lastProduceAt: now };
   collect(next, `animal:${animalId}`);
+  if (definition.building === "pond") {
+    collect(next, `fish:${animalId}`);
+  }
   const anyAnimal = BUILDING_IDS.some((id) => next.animals[id].some((entry) => entry !== null));
   if (!anyAnimal) next.farmSettledAt = now;
   return changed(next, now);
@@ -2173,8 +2183,68 @@ function patAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now
   return changed(next, now);
 }
 
-/** @brief Keeps one egg warm so it hatches into a free coop slot. */
+/**
+ * @brief Breeds fish within a 9-slot pond basin.
+ * @details Purebred reproduction when all fish in the basin share one species;
+ * cross-breeding into an AI hybrid fish when multiple species coexist.
+ * @param ledger Current garden ledger.
+ * @param slot Absolute animal slot in the pond.
+ * @param now Current server timestamp.
+ * @return RuleResult indicating success or error.
+ */
+function breedPondFish(ledger: GardenLedger, slot: number, now: number): RuleResult {
+  if (ledger.buildings.pond <= 0) return { ok: false, code: "BUILDING_LOCKED" };
+  const animal = ledger.animals.pond?.[slot] ?? null;
+  if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
+  if (animalIsIncubating(animal, now)) return { ok: false, code: "ALREADY_BREEDING" };
+
+  const basinIndex = pondBasinIndex(slot);
+  const basin = inspectPondBasin(ledger.animals.pond ?? [], basinIndex);
+
+  if (basin.fish.length < 2) return { ok: false, code: "NEED_MORE_FISH" };
+  if (basin.freeSlots.length === 0) return { ok: false, code: "POND_BASIN_FULL" };
+
+  const targetSlot = basin.freeSlots[0];
+  if (targetSlot === undefined) return { ok: false, code: "POND_BASIN_FULL" };
+  const next = clone(ledger);
+  (next.animals.pond ??= []);
+
+  if (basin.isSingleSpecies) {
+    const kind = basin.species[0] ?? animal.kind;
+    next.animals.pond[targetSlot] = {
+      kind,
+      bornAt: now,
+      pats: 0,
+      lastProduceAt: now,
+    };
+    collect(next, `animal:${kind}`);
+    collect(next, `fish:${kind}`);
+    grantXp(next, "ranching", 35);
+    logTimeline(next, "purchase", now, { item: kind, qty: 1 });
+  } else {
+    // Cross-breeding: pick another distinct fish species from this basin
+    const others = basin.species.filter((s) => s !== animal.kind);
+    const parentB = (others.length > 0 ? others[0] : animal.kind) ?? animal.kind;
+    const seed = hash32(`manual_hybrid:${ledger.playerId}:${now}:${targetSlot}`);
+    const hybrid = generateDeterministicHybridFish(animal.kind, parentB, seed);
+
+    next.animals.pond[targetSlot] = {
+      ...hybrid.state,
+      bornAt: now,
+      lastProduceAt: now,
+    };
+    collect(next, "animal:hybridFish");
+    collect(next, `hybrid:${hybrid.id}`);
+    grantXp(next, "ranching", 75);
+    logTimeline(next, "codex", now, { item: hybrid.name, qty: 1 });
+  }
+
+  return changed(next, now);
+}
+
+/** @brief Keeps one egg warm so it hatches into a free coop slot, or breeds fish within a pond basin. */
 function breedAnimal(ledger: GardenLedger, building: BuildingId, slot: number, now: number): RuleResult {
+  if (building === "pond") return breedPondFish(ledger, slot, now);
   if (building !== "coop") return { ok: false, code: "NOT_BREEDABLE" };
   const animal = ledger.animals.coop?.[slot] ?? null;
   if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
@@ -2212,7 +2282,7 @@ function sellAnimal(ledger: GardenLedger, building: BuildingId, slot: number, no
   if (animal === null) return { ok: false, code: "SLOT_EMPTY" };
   if (animalIsIncubating(animal, now)) return { ok: false, code: "ALREADY_BREEDING" };
   const gross = Math.round(
-    animalMeatPrice(animal.kind, animalQuality(animal, now), ledger.pondGrowth ?? 0) *
+    animalMeatPrice(animal.kind, animalQuality(animal, now), ledger.pondGrowth ?? 0, animal.hybridPrice) *
       weeklyModifier(now).sellScale,
   );
   const tax = Math.round(gross * SELL_TAX_RATE);
@@ -2622,6 +2692,56 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
     }
   }
 
+  // Pond: rolls for reproduction in each 9-slot basin that has at least 2 fish and free slots.
+  // Single species in the basin -> purebred spawn. Multiple species -> cross-breeding into AI hybrid.
+  if (next.buildings.pond > 0) {
+    const totalPondSlots = buildingSlots("pond", next.buildings.pond);
+    const basins = Math.max(1, Math.floor(totalPondSlots / POND_MAX_SLOTS));
+    const cycleStart = Math.floor(startedAt / FARM_CYCLE_MS);
+
+    for (let step = 0; step < cycles; step += 1) {
+      for (let k = 0; k < basins; k += 1) {
+        const basin = inspectPondBasin(next.animals.pond ?? [], k);
+        if (basin.fish.length < 2 || basin.freeSlots.length === 0) continue;
+
+        const rng = createRng(hash32(`pond_birth:${ledger.playerId}:${cycleStart + step}:${k}`));
+        if (rng() >= 0.08) continue; // POND_BIRTH_CHANCE = 8%
+
+        const targetSlot = basin.freeSlots[0];
+        if (targetSlot === undefined) continue;
+        const bornAt = startedAt + (step + 1) * FARM_CYCLE_MS;
+
+        if (basin.isSingleSpecies) {
+          const kind = basin.species[0] ?? "fish";
+          next.animals.pond[targetSlot] = {
+            kind,
+            bornAt,
+            pats: 0,
+            lastProduceAt: bornAt,
+          };
+          collect(next, `animal:${kind}`);
+          collect(next, `fish:${kind}`);
+          logTimeline(next, "purchase", bornAt, { item: kind, qty: 1 });
+        } else {
+          const parentA = basin.species[Math.floor(rng() * basin.species.length)] ?? "fish";
+          const others = basin.species.filter((s) => s !== parentA);
+          const parentB = (others.length > 0 ? others[Math.floor(rng() * others.length)] : parentA) ?? parentA;
+          const seed = hash32(`pond_hybrid:${ledger.playerId}:${bornAt}:${targetSlot}`);
+          const hybrid = generateDeterministicHybridFish(parentA, parentB, seed);
+
+          next.animals.pond[targetSlot] = {
+            ...hybrid.state,
+            bornAt,
+            lastProduceAt: bornAt,
+          };
+          collect(next, "animal:hybridFish");
+          collect(next, `hybrid:${hybrid.id}`);
+          logTimeline(next, "codex", bornAt, { item: hybrid.name, qty: 1 });
+        }
+      }
+    }
+  }
+
   return next;
 }
 
@@ -2911,7 +3031,12 @@ function liquidationValue(ledger: GardenLedger, season: SeasonSnapshot, now: num
   for (const building of BUILDING_IDS) {
     for (const animal of ledger.animals[building] ?? []) {
       if (animal === null) continue;
-      total += animalMeatPrice(animal.kind, animalQuality(animal, now), ledger.pondGrowth ?? 0);
+      total += animalMeatPrice(
+        animal.kind,
+        animalQuality(animal, now),
+        ledger.pondGrowth ?? 0,
+        animal.hybridPrice,
+      );
     }
   }
   return total;

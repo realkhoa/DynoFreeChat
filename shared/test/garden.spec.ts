@@ -335,7 +335,7 @@ describe("farm buildings", () => {
   });
 
   it("has a four-to-eighty-one slot ladder that doubles every upgrade", () => {
-    for (const building of BUILDINGS) {
+    for (const building of BUILDINGS.filter((b) => b.id !== "pond")) {
       expect(building.slots[0]).toBe(4);
       expect(building.slots.at(-1)).toBe(81);
       expect(building.slots).toHaveLength(8);
@@ -343,6 +343,10 @@ describe("farm buildings", () => {
       expect(buildingUpgradeCost(building.id, 2)).toBe(building.upgrade * 2);
       expect(buildingUpgradeCost(building.id, 8)).toBe(building.upgrade * 2 ** 7);
     }
+    const pond = BUILDINGS.find((b) => b.id === "pond");
+    expect(pond?.slots[0]).toBe(9);
+    expect(pond?.slots.at(-1)).toBe(72);
+    expect(pond?.slots).toHaveLength(8);
     expect(buildingSlots("coop", 0)).toBe(0);
     expect(buildingSlots("coop", 1)).toBe(4);
     expect(buildingSlots("coop", 8)).toBe(81);
@@ -370,10 +374,18 @@ describe("farm buildings", () => {
 
   it("adds a fish pond with fish and snails", () => {
     const pond = BUILDINGS.find((building) => building.id === "pond");
-    expect(pond?.animals).toEqual(["fish", "snail"]);
-    expect(pond?.slots).toEqual([4, 9, 16, 25, 36, 49, 64, 81]);
+    expect(pond?.animals).toContain("fish");
+    expect(pond?.animals).toContain("snail");
+    expect(pond?.animals).toContain("sturgeon");
+    expect(pond?.animals).toContain("tilapia");
+    expect(pond?.animals).toContain("bass");
+    expect(pond?.animals).toContain("pike");
+    expect(pond?.animals).toContain("carp");
+    expect(pond?.animals).toContain("goby");
+    expect(pond?.slots).toEqual([9, 18, 27, 36, 45, 54, 63, 72]);
     expect(ANIMALS.find((animal) => animal.id === "fish")?.product).toBe("roe");
     expect(ANIMALS.find((animal) => animal.id === "snail")?.product).toBe("snailMeat");
+    expect(ANIMALS.find((animal) => animal.id === "sturgeon")?.product).toBe("caviar");
   });
 
   it("stacks the same mutation with rarer extra copies", () => {

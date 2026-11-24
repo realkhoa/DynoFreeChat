@@ -20,6 +20,12 @@ import {
   seedById,
   treeById,
   seasonAt,
+  generateDeterministicHybridFish,
+  isFishKind,
+  hash32,
+  type AnimalId,
+  type HybridFishDefinition,
+  type ProductId,
   type GardenCredentials,
   type MarketSnapshot,
 } from "@dyno/shared/garden";
@@ -60,6 +66,9 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   if (name === "leaderboard" && request.method === "GET") return leaderboard(env, url);
   if (name === "raid" && request.method === "GET") return hubStub(env).fetch("https://hub/raid");
   if (name === "recipes" && request.method === "GET") return hubStub(env).fetch("https://hub/recipes");
+  if (name === "fish" && parts[3] === "hybrids" && request.method === "GET") {
+    return hubStub(env).fetch("https://hub/fish/hybrids");
+  }
   if (name === "guild" && request.method === "GET" && parts[3] === "list") {
     return hubStub(env).fetch("https://hub/guild/list");
   }
@@ -98,6 +107,9 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
     return suggestLearnRoute(env, auth, request);
   }
   if (name === "recipe" && request.method === "POST") return recipeRoute(env, auth, request);
+  if (name === "fish" && parts[3] === "breed" && request.method === "POST") {
+    return suggestHybridFishRoute(env, auth, request);
+  }
 
   if (name === "raid" && request.method === "POST") return forwardOwner(env, auth, "/raid", "POST", request);
   if (name === "guild") {
@@ -233,6 +245,166 @@ async function suggestRecipeRoute(env: Env, auth: GardenCredentials, request: Re
   } catch {
     return json({ code: "RECIPE_AI_ERROR" }, 502);
   }
+}
+
+/**
+ * @brief Requests the OpenCode AI model to invent an ASCII hybrid fish.
+ * @param prompt Prompt describing the parent species and expected format.
+ * @param key OpenCode API authorization key.
+ * @return Parsed JSON record from the LLM or null on failure.
+ */
+async function askHybridFishJson(prompt: string, key: string): Promise<Record<string, unknown> | null> {
+  for (const model of ["beam-free", "longcat-2.5-free"]) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await fetch("https://opencode.ai/inference/go/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${key}`,
+            "content-type": "application/json",
+            "x-opencode-session": `dynofreechat-hybrid-${model}`,
+            "user-agent": "DynoFreeChat/1.0",
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: attempt === 0 ? 800 : 1200,
+          }),
+        });
+        if (!response.ok) continue;
+        const payload = (await response.json()) as {
+          choices?: Array<{
+            message?: { content?: string | null; reasoning_content?: string | null };
+          }>;
+        };
+        const raw =
+          payload.choices?.[0]?.message?.content ?? payload.choices?.[0]?.message?.reasoning_content ?? "";
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (match === null) continue;
+        return JSON.parse(match[0]) as Record<string, unknown>;
+      } catch {
+        // Try the next model/attempt.
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * @brief Invent a hybrid fish from two parent species using AI with deterministic fallback.
+ * @details Prompts the LLM to invent a hybrid fish with custom lore, glyph, tier ("inferior" vs "superior"),
+ * and price, registering it into the hub catalog and the caller's garden.
+ * @param env Cloudflare worker environment.
+ * @param auth Authenticated player credentials.
+ * @param request HTTP request containing parent species and optional slot.
+ * @return JSON response containing the hybrid fish definition.
+ */
+async function suggestHybridFishRoute(
+  env: Env,
+  auth: GardenCredentials,
+  request: Request,
+): Promise<Response> {
+  const body = (await readJson(request)) as Record<string, unknown>;
+  const parentA =
+    typeof body.parentA === "string" && isFishKind(body.parentA as AnimalId)
+      ? (body.parentA as AnimalId)
+      : "carp";
+  const parentB =
+    typeof body.parentB === "string" && isFishKind(body.parentB as AnimalId)
+      ? (body.parentB as AnimalId)
+      : "sturgeon";
+
+  const key = env.OPENCODE_API_KEY;
+  let hybridData: HybridFishDefinition;
+
+  if (typeof key === "string" && key.length > 0) {
+    const prompt = [
+      `You invent a creative hybrid fish created by cross-breeding two parent fish species: "${parentA}" and "${parentB}".`,
+      'Reply with JSON only: {"valid":true,"name":"string","tier":"inferior"|"superior","lore":"string","glyph":"string","suggestedBuy":number,"upkeep":number,"intervalCycles":number}',
+      "name must be a short fish name (max 4 words) in Vietnamese or English (e.g. 'Cá Chép Tầm Hoàng Gia' or 'Cá Rô Pike Gầy Gò').",
+      "tier: 'inferior' (cá đểu: comical flop, high upkeep, bony, cheap) or 'superior' (cá ngon: majestic mutant, fast, valuable).",
+      "glyph: one single ASCII/Unicode symbol representing this fish (e.g. Ж, ♦, §, ★, x, d, b).",
+    ].join("\n");
+
+    const parsed = await askHybridFishJson(prompt, key);
+    if (parsed !== null && parsed.valid === true && typeof parsed.name === "string") {
+      const isSuperior = parsed.tier === "superior";
+      const name = parsed.name.trim().slice(0, 50);
+      const tier: "inferior" | "superior" = isSuperior ? "superior" : "inferior";
+      const lore = typeof parsed.lore === "string" ? parsed.lore.trim().slice(0, 200) : "";
+      const glyph =
+        typeof parsed.glyph === "string" ? parsed.glyph.trim().slice(0, 4) : isSuperior ? "Ж" : "x";
+      const hexHash = Math.abs(hash32(`${parentA}:${parentB}:${name}:${Date.now()}`) % 0xfffffff)
+        .toString(16)
+        .padStart(7, "0");
+      const id = `hybrid:${parentA}:${parentB}:${hexHash}`;
+      const buy =
+        typeof parsed.suggestedBuy === "number" ? Math.max(1, Math.floor(parsed.suggestedBuy)) : 50_000;
+      const upkeep = typeof parsed.upkeep === "number" ? Math.max(0, Math.floor(parsed.upkeep)) : 40;
+      const intervalCycles =
+        typeof parsed.intervalCycles === "number"
+          ? Math.max(1, Math.min(10, Math.floor(parsed.intervalCycles)))
+          : 2;
+      const product: ProductId =
+        isSuperior && (parentA === "sturgeon" || parentB === "sturgeon") ? "caviar" : "roe";
+
+      hybridData = {
+        id,
+        name,
+        parents: [parentA, parentB],
+        tier,
+        lore,
+        glyph,
+        buy,
+        upkeep,
+        intervalCycles,
+        product,
+        createdAt: Date.now(),
+        discoveredBy: auth.playerId,
+      };
+    } else {
+      const fallback = generateDeterministicHybridFish(parentA, parentB, Date.now());
+      hybridData = {
+        id: fallback.id,
+        name: fallback.name,
+        parents: [parentA, parentB],
+        tier: fallback.tier,
+        lore: fallback.lore,
+        glyph: fallback.glyph,
+        buy: fallback.buy,
+        upkeep: fallback.upkeep,
+        intervalCycles: fallback.intervalCycles,
+        product: fallback.product,
+        createdAt: Date.now(),
+        discoveredBy: auth.playerId,
+      };
+    }
+  } else {
+    const fallback = generateDeterministicHybridFish(parentA, parentB, Date.now());
+    hybridData = {
+      id: fallback.id,
+      name: fallback.name,
+      parents: [parentA, parentB],
+      tier: fallback.tier,
+      lore: fallback.lore,
+      glyph: fallback.glyph,
+      buy: fallback.buy,
+      upkeep: fallback.upkeep,
+      intervalCycles: fallback.intervalCycles,
+      product: fallback.product,
+      createdAt: Date.now(),
+      discoveredBy: auth.playerId,
+    };
+  }
+
+  // Save to Hub global hybrids catalog
+  await hubStub(env).fetch("https://hub/fish/hybrids", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(hybridData),
+  });
+
+  return json({ ok: true, hybrid: hybridData });
 }
 
 /** @brief Copies a global recipe into the caller's garden. */

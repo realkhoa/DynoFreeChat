@@ -920,7 +920,21 @@ export type BuildingId = "coop" | "barn" | "pond";
 export const BUILDING_IDS: readonly BuildingId[] = ["coop", "barn", "pond"];
 
 /** Animals a building can host. */
-export type AnimalId = "chicken" | "duck" | "cow" | "goat" | "sheep" | "fish" | "snail";
+export type AnimalId =
+  | "chicken"
+  | "duck"
+  | "cow"
+  | "goat"
+  | "sheep"
+  | "fish"
+  | "snail"
+  | "sturgeon"
+  | "tilapia"
+  | "bass"
+  | "pike"
+  | "carp"
+  | "goby"
+  | "hybridFish";
 
 /** Products animals produce. */
 export type ProductId =
@@ -995,6 +1009,25 @@ export interface BuildingDefinition {
  */
 export const BUILDING_SLOT_LADDER: readonly number[] = [4, 9, 16, 25, 36, 49, 64, 81];
 
+/** Maximum number of slots per individual fish pond basin. */
+export const POND_MAX_SLOTS = 9;
+
+/**
+ * Slot ladder for the fish pond: each level unlocks one distinct 9-slot pond basin.
+ * @details Level 1 has 1 basin (9 slots), Level 2 has 2 basins (18 slots), etc.
+ */
+export const POND_SLOT_LADDER: readonly number[] = [9, 18, 27, 36, 45, 54, 63, 72];
+
+/** The six base fish species initially available for the fish pond. */
+export const BASE_FISH_SPECIES: readonly AnimalId[] = [
+  "sturgeon",
+  "tilapia",
+  "bass",
+  "pike",
+  "carp",
+  "goby",
+];
+
 /** Every building upgrade costs this multiple of the previous step. */
 export const BUILDING_UPGRADE_FACTOR = 2;
 
@@ -1018,8 +1051,18 @@ export const BUILDINGS: readonly BuildingDefinition[] = [
     id: "pond",
     price: 6_000_000,
     upgrade: 3_000_000,
-    slots: BUILDING_SLOT_LADDER,
-    animals: ["fish", "snail"],
+    slots: POND_SLOT_LADDER,
+    animals: [
+      "fish",
+      "snail",
+      "sturgeon",
+      "tilapia",
+      "bass",
+      "pike",
+      "carp",
+      "goby",
+      "hybridFish",
+    ],
   },
 ];
 
@@ -1030,9 +1073,16 @@ export const ANIMALS: readonly AnimalDefinition[] = [
   { id: "cow", building: "barn", upkeep: 100, intervalCycles: 1, product: "milk", buy: 20_000 },
   { id: "goat", building: "barn", upkeep: 100, intervalCycles: 3, product: "goatMilk", buy: 25_000 },
   { id: "sheep", building: "barn", upkeep: 100, intervalCycles: 7, product: "wool", buy: 40_000 },
-  // Pond stock: fish drop roe, snails are slow meat; both can be sold for meat.
+  // Pond stock: base fish and hybrid fish definitions
   { id: "fish", building: "pond", upkeep: 60, intervalCycles: 2, product: "roe", buy: 30_000 },
   { id: "snail", building: "pond", upkeep: 30, intervalCycles: 6, product: "snailMeat", buy: 12_000 },
+  { id: "sturgeon", building: "pond", upkeep: 120, intervalCycles: 4, product: "caviar", buy: 150_000 },
+  { id: "tilapia", building: "pond", upkeep: 25, intervalCycles: 1, product: "roe", buy: 12_000 },
+  { id: "bass", building: "pond", upkeep: 50, intervalCycles: 2, product: "roe", buy: 45_000 },
+  { id: "pike", building: "pond", upkeep: 75, intervalCycles: 3, product: "roe", buy: 65_000 },
+  { id: "carp", building: "pond", upkeep: 40, intervalCycles: 2, product: "roe", buy: 30_000 },
+  { id: "goby", building: "pond", upkeep: 15, intervalCycles: 1, product: "roe", buy: 8_000 },
+  { id: "hybridFish", building: "pond", upkeep: 80, intervalCycles: 2, product: "roe", buy: 100_000 },
 ];
 
 /** Product base prices; every quality star doubles the value. */
@@ -1599,6 +1649,270 @@ export interface AnimalState {
   readonly lastProduceAt: number;
   /** Server time the kept egg hatches; `0` or absent when nothing is incubating. */
   readonly incubatingUntil?: number;
+  /** AI-generated hybrid fish unique identifier. */
+  readonly hybridId?: string;
+  /** Custom display name for this hybrid fish. */
+  readonly hybridName?: string;
+  /** The two parent species that were cross-bred. */
+  readonly hybridParents?: readonly [AnimalId, AnimalId];
+  /** Quality tier: "inferior" (đểu) or "superior" (ngon). */
+  readonly hybridTier?: "inferior" | "superior";
+  /** AI lore / description. */
+  readonly hybridLore?: string;
+  /** Custom buy / evaluation price. */
+  readonly hybridPrice?: number;
+  /** ASCII glyph symbol override. */
+  readonly hybridGlyph?: string;
+}
+
+/**
+ * @brief Metadata definition for an AI-generated hybrid fish.
+ */
+export interface HybridFishDefinition {
+  /** Stable identifier (e.g. hybrid:sturgeon:carp:abc12345). */
+  readonly id: string;
+  /** Display name created by AI. */
+  readonly name: string;
+  /** The two parent species that were cross-bred. */
+  readonly parents: readonly [AnimalId, AnimalId];
+  /** Quality tier: "inferior" (đểu) or "superior" (ngon) compared to parents. */
+  readonly tier: "inferior" | "superior";
+  /** AI-generated lore and description of the hybrid fish. */
+  readonly lore: string;
+  /** ASCII glyph representing the hybrid fish (e.g. "X", "Ж", "§", "♦"). */
+  readonly glyph: string;
+  /** Upkeep per cycle in coins. */
+  readonly upkeep: number;
+  /** Production interval in farm cycles. */
+  readonly intervalCycles: number;
+  /** Purchase/market base price in coins. */
+  readonly buy: number;
+  /** Product it produces. */
+  readonly product: ProductId;
+  /** Server timestamp when first discovered/created. */
+  readonly createdAt: number;
+  /** Player ID who discovered it. */
+  readonly discoveredBy?: string;
+}
+
+/**
+ * @brief Calculates which distinct 9-slot pond basin hosts the given animal slot index.
+ * @param slot Absolute animal slot inside the pond (0..71).
+ * @return Zero-based pond basin index (0, 1, 2, ...).
+ */
+export function pondBasinIndex(slot: number): number {
+  return Math.floor(Math.max(0, slot) / POND_MAX_SLOTS);
+}
+
+/**
+ * @brief Calculates the local slot index (0..8) within a 9-slot pond basin.
+ * @param slot Absolute animal slot inside the pond (0..71).
+ * @return Local slot index within the 9-slot basin (0..8).
+ */
+export function pondBasinSlot(slot: number): number {
+  return Math.max(0, slot) % POND_MAX_SLOTS;
+}
+
+/**
+ * @brief Returns the start and end absolute slot indices for a pond basin.
+ * @param basinIndex Zero-based pond basin index.
+ * @return Tuple of [startSlot, endSlotExclusive].
+ */
+export function pondBasinSlotRange(basinIndex: number): [number, number] {
+  const start = Math.max(0, basinIndex) * POND_MAX_SLOTS;
+  return [start, start + POND_MAX_SLOTS];
+}
+
+/**
+ * @brief Inspects a pond basin slice to determine whether it contains a single fish species or multiple species.
+ * @param animals All pond animals.
+ * @param basinIndex Zero-based basin index.
+ * @return Summary containing fish count, free slots, species list, and whether it qualifies as single-species or mixed.
+ */
+export function inspectPondBasin(
+  animals: readonly (AnimalState | null)[],
+  basinIndex: number,
+): {
+  readonly basinIndex: number;
+  readonly fish: readonly AnimalState[];
+  readonly freeSlots: readonly number[];
+  readonly species: readonly AnimalId[];
+  readonly isSingleSpecies: boolean;
+  readonly isMixedSpecies: boolean;
+} {
+  const [start, end] = pondBasinSlotRange(basinIndex);
+  const fish: AnimalState[] = [];
+  const freeSlots: number[] = [];
+  const speciesSet = new Set<AnimalId>();
+
+  for (let slot = start; slot < end; slot += 1) {
+    const animal = animals[slot] ?? null;
+    if (animal === null) {
+      freeSlots.push(slot);
+    } else {
+      fish.push(animal);
+      speciesSet.add(animal.kind);
+    }
+  }
+
+  const species = Array.from(speciesSet);
+  return {
+    basinIndex,
+    fish,
+    freeSlots,
+    species,
+    isSingleSpecies: species.length === 1 && fish.length >= 2,
+    isMixedSpecies: species.length >= 2,
+  };
+}
+
+/**
+ * @brief Tests whether an animal kind belongs to the fish family.
+ * @param kind Animal species ID.
+ * @return True if the animal is a base, generic or hybrid fish.
+ */
+export function isFishKind(kind: AnimalId): boolean {
+  return (
+    kind === "fish" ||
+    kind === "hybridFish" ||
+    (BASE_FISH_SPECIES as readonly string[]).includes(kind)
+  );
+}
+
+/**
+ * @brief Generates a deterministic hybrid fish from two parent species.
+ * @param parentA First parent species.
+ * @param parentB Second parent species.
+ * @param seed Pseudo-random seed for determinism.
+ * @return Definition and living AnimalState of the hybrid fish.
+ */
+export function generateDeterministicHybridFish(
+  parentA: AnimalId,
+  parentB: AnimalId,
+  seed: number,
+): {
+  readonly id: string;
+  readonly name: string;
+  readonly tier: "inferior" | "superior";
+  readonly lore: string;
+  readonly glyph: string;
+  readonly buy: number;
+  readonly upkeep: number;
+  readonly intervalCycles: number;
+  readonly product: ProductId;
+  readonly state: AnimalState;
+} {
+  const rng = createRng(Math.abs(seed) || 12345);
+  const sorted = [parentA, parentB].sort();
+
+  const defA = animalById(parentA);
+  const defB = animalById(parentB);
+  const baseA = defA?.buy ?? 30_000;
+  const baseB = defB?.buy ?? 30_000;
+  const avgBuy = Math.round((baseA + baseB) / 2);
+
+  const rollTier = rng();
+  const isSuperior = rollTier >= 0.45; // 55% superior (ngon), 45% inferior (đểu)
+  const tier: "inferior" | "superior" = isSuperior ? "superior" : "inferior";
+
+  const VIET_NAMES: Record<AnimalId, string> = {
+    sturgeon: "Tầm",
+    tilapia: "Rô",
+    bass: "Vược",
+    pike: "Pike",
+    carp: "Chép",
+    goby: "Bống",
+    fish: "Cá",
+    snail: "Ốc",
+    chicken: "Gà",
+    duck: "Vịt",
+    cow: "Bò",
+    goat: "Dê",
+    sheep: "Cừu",
+    hybridFish: "Lai",
+  };
+
+  const nameA = VIET_NAMES[parentA] ?? "Cá";
+  const nameB = VIET_NAMES[parentB] ?? "Cá";
+
+  const SUPERIOR_TITLES = [
+    "Hoàng Gia",
+    "Hoàng Kim",
+    "Bá Vương",
+    "Thần Long",
+    "Kỳ Lân",
+    "Cẩm Tú",
+    "Đại Dương",
+  ];
+  const INFERIOR_TITLES = [
+    "Còi Cọc",
+    "Gầy Gò",
+    "Xương Xẩu",
+    "Tí Nị",
+    "Đột Biến Lỗi",
+    "Ngáo Ngơ",
+    "Tật Nguyền",
+  ];
+
+  const title = isSuperior
+    ? SUPERIOR_TITLES[Math.floor(rng() * SUPERIOR_TITLES.length)] ?? "Hoàng Gia"
+    : INFERIOR_TITLES[Math.floor(rng() * INFERIOR_TITLES.length)] ?? "Còi Cọc";
+
+  const name = `Cá ${nameA} ${nameB} ${title}`;
+  const hexHash = Math.abs(seed % 0xfffffff).toString(16).padStart(7, "0");
+  const id = `hybrid:${sorted[0]}:${sorted[1]}:${hexHash}`;
+
+  const buy = isSuperior
+    ? Math.round(avgBuy * (1.8 + rng() * 1.5))
+    : Math.round(avgBuy * (0.35 + rng() * 0.35));
+
+  const upkeep = isSuperior
+    ? Math.round(((defA?.upkeep ?? 40) + (defB?.upkeep ?? 40)) * 0.4)
+    : Math.round(((defA?.upkeep ?? 40) + (defB?.upkeep ?? 40)) * 0.9);
+
+  const intervalCycles = isSuperior
+    ? Math.max(1, Math.min(defA?.intervalCycles ?? 2, defB?.intervalCycles ?? 2))
+    : Math.max(3, (defA?.intervalCycles ?? 2) + 1);
+
+  const product: ProductId =
+    isSuperior && (parentA === "sturgeon" || parentB === "sturgeon") ? "caviar" : "roe";
+
+  const SUPERIOR_GLYPHS = ["Ж", "♦", "§", "★", "Ω", "Ψ"];
+  const INFERIOR_GLYPHS = ["x", "d", "b", "z", "o"];
+  const glyph = isSuperior
+    ? SUPERIOR_GLYPHS[Math.floor(rng() * SUPERIOR_GLYPHS.length)] ?? "Ж"
+    : INFERIOR_GLYPHS[Math.floor(rng() * INFERIOR_GLYPHS.length)] ?? "x";
+
+  const lore = isSuperior
+    ? `Thừa hưởng gen vượt trội giữa ${nameA} và ${nameB}. Thân hình lấp lánh, sinh trưởng mạnh mẽ và cho phẩm cấp cực kỳ giá trị!`
+    : `Đột biến gen dở khóc dở cười giữa ${nameA} và ${nameB}. Thịt nhạt nhẽo, xương nhiều ăn tốn cám nhưng bơi lội trông rất giải trí.`;
+
+  const state: AnimalState = {
+    kind: "hybridFish",
+    bornAt: 0,
+    pats: 0,
+    lastProduceAt: 0,
+    hybridId: id,
+    hybridName: name,
+    hybridParents: [parentA, parentB],
+    hybridTier: tier,
+    hybridLore: lore,
+    hybridPrice: buy,
+    hybridGlyph: glyph,
+  };
+
+  return {
+    id,
+    name,
+    tier,
+    lore,
+    glyph,
+    buy,
+    upkeep,
+    intervalCycles,
+    product,
+    state,
+  };
 }
 
 /** Heritable animal stat block. */
@@ -1689,13 +2003,30 @@ export const ANIMAL_MEAT_RATIO = 0.5;
  * @details Slaughtering is a way out of a full building, never a profit: even a
  * five-star animal returns less than it cost, unless pond growth lifted it.
  */
-export function animalMeatPrice(kind: AnimalId, stars: number, growth = 0): number {
+/**
+ * @brief Evaluates the meat sell price of an animal.
+ * @param kind Animal species ID.
+ * @param stars Animal quality stars (1..5).
+ * @param growth Pond water growth bonus.
+ * @param basePriceOverride Optional custom evaluation price (used for AI hybrids).
+ * @return Meat sale price in coins.
+ */
+export function animalMeatPrice(
+  kind: AnimalId,
+  stars: number,
+  growth = 0,
+  basePriceOverride?: number,
+): number {
   const definition = animalById(kind);
   if (definition === undefined) return 0;
   const clamped = Math.max(1, Math.min(5, stars));
   const quality = 1 + 0.2 * (clamped - 1);
   const pond = definition.building === "pond" ? pondGrowthFactor(growth) : 1;
-  return Math.round(definition.buy * ANIMAL_MEAT_RATIO * quality * pond);
+  const buyPrice =
+    typeof basePriceOverride === "number" && basePriceOverride > 0
+      ? basePriceOverride
+      : definition.buy;
+  return Math.round(buyPrice * ANIMAL_MEAT_RATIO * quality * pond);
 }
 
 /** @brief Sell value of one product stack, after quality and event bonus. */
@@ -1862,6 +2193,8 @@ export function codexReward(key: string): number {
   if (key.startsWith("tool:")) return 100_000;
   if (key.startsWith("pet:")) return 1_000_000;
   if (key.startsWith("animal:")) return 150_000;
+  if (key.startsWith("fish:")) return 200_000;
+  if (key.startsWith("hybrid:")) return 500_000;
   if (key.startsWith("machine:")) return 500_000;
   if (key === "star:5") return 500_000;
   return 0;
@@ -3556,6 +3889,8 @@ export type GardenErrorCode =
   | "ALREADY_BREEDING"
   | "NO_EGG"
   | "NO_FREE_SLOT"
+  | "NEED_MORE_FISH"
+  | "POND_BASIN_FULL"
   | "NO_PRODUCT"
   | "NO_TOOL"
   | "FAVORITE_LOCKED"
@@ -4260,14 +4595,16 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const animal = typeof value.animal === "string" ? animalById(value.animal) : undefined;
     const slot = value.slot;
     if (building === undefined || animal === undefined || animal.building !== building.id) return null;
-    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= 12) return null;
+    const limit = building.id === "coop" ? 12 : 81;
+    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= limit) return null;
     return { kind, building: building.id, slot, animal: animal.id };
   }
   if (kind === "patAnimal" || kind === "breedAnimal" || kind === "sellAnimal") {
     const building = typeof value.building === "string" ? buildingById(value.building) : undefined;
     const slot = value.slot;
     if (building === undefined) return null;
-    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= 12) return null;
+    const limit = building.id === "coop" ? 12 : 81;
+    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= limit) return null;
     return { kind, building: building.id, slot };
   }
   if (kind === "sellProduct") {

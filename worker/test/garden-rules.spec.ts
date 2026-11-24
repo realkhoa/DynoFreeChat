@@ -958,6 +958,78 @@ describe("garden ledger rules", () => {
     expect(meat.ledger.coins).toBeGreaterThan(before);
   });
 
+  it("breeds single-species pond basin into the exact same fish species", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "pond" });
+    if (!built.ok) throw new Error("pond failed");
+
+    const fish1 = run(built.ledger, { kind: "buyAnimal", building: "pond", slot: 0, animal: "carp" });
+    if (!fish1.ok) throw new Error("carp 1 failed");
+    const fish2 = run(fish1.ledger, { kind: "buyAnimal", building: "pond", slot: 1, animal: "carp" });
+    if (!fish2.ok) throw new Error("carp 2 failed");
+
+    const bred = run(fish2.ledger, { kind: "breedAnimal", building: "pond", slot: 0 });
+    expect(bred.ok).toBe(true);
+    if (!bred.ok) return;
+
+    const child = bred.ledger.animals.pond[2];
+    expect(child).not.toBeNull();
+    expect(child?.kind).toBe("carp");
+    expect(bred.ledger.collection).toContain("fish:carp");
+  });
+
+  it("cross-breeds mixed-species pond basin into an AI hybrid fish with codex registration", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "pond" });
+    if (!built.ok) throw new Error("pond failed");
+
+    const fish1 = run(built.ledger, { kind: "buyAnimal", building: "pond", slot: 0, animal: "sturgeon" });
+    if (!fish1.ok) throw new Error("sturgeon failed");
+    const fish2 = run(fish1.ledger, { kind: "buyAnimal", building: "pond", slot: 1, animal: "pike" });
+    if (!fish2.ok) throw new Error("pike failed");
+
+    const bred = run(fish2.ledger, { kind: "breedAnimal", building: "pond", slot: 0 });
+    expect(bred.ok).toBe(true);
+    if (!bred.ok) return;
+
+    const child = bred.ledger.animals.pond[2];
+    expect(child).not.toBeNull();
+    expect(child?.kind).toBe("hybridFish");
+    expect(child?.hybridId).toBeDefined();
+    expect(child?.hybridName).toBeDefined();
+    expect(child?.hybridTier).toMatch(/^(inferior|superior)$/);
+    expect(child?.hybridPrice).toBeGreaterThan(0);
+    expect(bred.ledger.collection).toContain(`hybrid:${child?.hybridId}`);
+    expect(bred.ledger.collection).toContain("animal:hybridFish");
+  });
+
+  it("enforces 9-slot basin bounds: rejects breeding when basin is full or has < 2 fish", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "pond" });
+    if (!built.ok) throw new Error("pond failed");
+
+    const fish1 = run(built.ledger, { kind: "buyAnimal", building: "pond", slot: 0, animal: "goby" });
+    if (!fish1.ok) throw new Error("goby failed");
+
+    const deniedSingle = run(fish1.ledger, { kind: "breedAnimal", building: "pond", slot: 0 });
+    expect(deniedSingle.ok).toBe(false);
+    if (!deniedSingle.ok) expect(deniedSingle.code).toBe("NEED_MORE_FISH");
+
+    let fullLedger = fish1.ledger;
+    for (let slot = 1; slot < 9; slot += 1) {
+      const added = run(fullLedger, { kind: "buyAnimal", building: "pond", slot, animal: "goby" });
+      if (!added.ok) throw new Error(`buy slot ${slot} failed`);
+      fullLedger = added.ledger;
+    }
+
+    const deniedFull = run(fullLedger, { kind: "breedAnimal", building: "pond", slot: 0 });
+    expect(deniedFull.ok).toBe(false);
+    if (!deniedFull.ok) expect(deniedFull.code).toBe("POND_BASIN_FULL");
+  });
+
   it("sells premium plots sequentially and grows brainrot crops at x2", () => {
     const ledger = makeLedger();
     ledger.coins = 100_000_000_000;

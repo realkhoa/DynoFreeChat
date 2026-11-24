@@ -11,6 +11,7 @@ import type {
   GardenActResponse,
   GardenSnapshot,
   GuildSnapshot,
+  HybridFishDefinition,
   RaidSnapshot,
   GlobalSaleEntry,
   GardenStateResponse,
@@ -298,6 +299,41 @@ export class GardenApi {
     return this.request<{
       recipes: Array<{ id: string; inputs: string[]; output: string; price: number; createdAt: number }>;
     }>("/api/garden/recipes", { method: "GET" });
+  }
+
+  /**
+   * @brief Reads the public list of discovered hybrid fish definitions.
+   * @return Promise resolving to array of global hybrid fish.
+   */
+  async globalHybrids(): Promise<{
+    hybrids: HybridFishDefinition[];
+  }> {
+    return this.request<{
+      hybrids: HybridFishDefinition[];
+    }>("/api/garden/fish/hybrids", { method: "GET" });
+  }
+
+  /**
+   * @brief Breeds two parent fish using AI generation on the server.
+   * @param parentA Primary parent fish kind.
+   * @param parentB Secondary parent fish kind.
+   * @return Promise resolving to server-generated hybrid fish.
+   */
+  async breedHybridFish(
+    parentA: string,
+    parentB: string,
+  ): Promise<{
+    ok: boolean;
+    hybrid: HybridFishDefinition;
+  }> {
+    return this.request<{
+      ok: boolean;
+      hybrid: HybridFishDefinition;
+    }>("/api/garden/fish/breed", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parentA, parentB }),
+    });
   }
 
   /** @brief Copies one global recipe into this garden. */

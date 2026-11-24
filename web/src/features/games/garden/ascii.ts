@@ -290,6 +290,13 @@ const ANIMAL_GLYPH: Readonly<Record<AnimalId, string>> = {
   sheep: "S",
   fish: "f",
   snail: "s",
+  sturgeon: "T",
+  tilapia: "R",
+  bass: "V",
+  pike: "P",
+  carp: "K",
+  goby: "B",
+  hybridFish: "Ж",
 };
 
 /** One rendered animal cell. */
@@ -339,11 +346,13 @@ export function animalCellRender(animal: AnimalState | null, now: number, slot =
     : ready
       ? t("farm.due")
       : formatDuration(remainingMs, "short");
+  const glyph = animal.hybridGlyph ?? ANIMAL_GLYPH[animal.kind] ?? "f";
+  const displayName = animal.hybridName ?? t(`animals.${animal.kind}`);
   return {
     lines: [
       top,
-      row(ANIMAL_GLYPH[animal.kind], "center"),
-      row(t(`animals.${animal.kind}`)),
+      row(glyph, "center"),
+      row(displayName.slice(0, 8)),
       row("*".repeat(stars)),
       row(tail),
       bottom,
