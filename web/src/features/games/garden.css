@@ -2216,19 +2216,40 @@ button.garden-rank-row:hover {
 }
 
 /* Animal tabs: one plot cell per small pen, then the legacy animal grid. */
+/* Animal tabs read like the main garden: one wide board of pen cells and a
+   9-column animal grid, grouped in 3x3 patches like the crop board. */
 .garden-animal-tab {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   padding: 4px 0;
+  width: max-content;
+  max-width: 100%;
 }
 
 .garden-pen-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(9, max-content);
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
+}
+
+.garden-animal-tab .garden-animal-grid {
+  display: grid;
+  grid-template-columns: repeat(9, max-content);
+  gap: 2px;
+  justify-content: center;
+  margin: 0;
+}
+
+/* Patch gutters every third column, like the garden's 3x3 patches. */
+.garden-animal-tab .garden-animal-grid .garden-animal-cell:nth-child(3n) {
+  margin-right: 6px;
+}
+
+.garden-animal-tab .garden-animal-grid .garden-animal-cell:nth-child(9n) {
+  margin-right: 0;
 }
 
 /* AI chain-of-thought feed under the garden. */
@@ -2241,4 +2262,20 @@ button.garden-rank-row:hover {
   margin: 8px auto 0;
   padding-top: 8px;
   border-top: 1px solid var(--border-subtle);
+}
+
+/* Phones: keep the animal board readable instead of nine columns. */
+@media (max-width: 760px) {
+  .garden-animal-tab {
+    width: 100%;
+  }
+
+  .garden-pen-row {
+    grid-template-columns: repeat(4, max-content);
+    gap: 4px;
+  }
+
+  .garden-animal-tab .garden-animal-grid {
+    grid-template-columns: repeat(3, max-content);
+  }
 }
