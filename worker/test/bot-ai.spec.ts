@@ -61,15 +61,10 @@ describe("ai bot config", () => {
 });
 
 describe("ai bot context", () => {
-  it("summarises plots, trees, trays and the shop", () => {
+  it("pre-counts ready, dry, dead and empty slot lists", () => {
     const ledger = makeLedger();
-    ledger.plots[0] = {
-      slot: 0,
-      seed: "carrot",
-      plantedAt: NOW - 60_000,
-      readyAt: NOW + 60_000,
+    const base = {
       effects: [],
-      watered: false,
       fertilized: false,
       harvests: 0,
       fertilizer: null,
@@ -77,22 +72,58 @@ describe("ai bot context", () => {
       pest: false,
       protectedUntil: 0,
     };
+    ledger.plots[0] = {
+      ...base,
+      slot: 0,
+      seed: "carrot",
+      plantedAt: NOW - 600_000,
+      readyAt: NOW - 1_000,
+      watered: true,
+    };
+    ledger.plots[1] = {
+      ...base,
+      slot: 1,
+      seed: "potato",
+      plantedAt: NOW - 60_000,
+      readyAt: NOW + 60_000,
+      watered: false,
+    };
+    ledger.plots[2] = {
+      ...base,
+      slot: 2,
+      seed: "carrot",
+      plantedAt: NOW - 60_000,
+      readyAt: NOW + 60_000,
+      watered: true,
+      dead: true,
+    };
+    ledger.trees[0] = {
+      ...base,
+      slot: 0,
+      tree: "apple",
+      plantedAt: NOW - 600_000,
+      readyAt: NOW - 1_000,
+      watered: true,
+    };
     const context = summarizeGarden(ledger, seasonAt(NOW), NOW, { carrot: 3 });
-    expect(context.plots).toHaveLength(1);
-    expect(context.plots[0]?.readyInSec).toBe(60);
-    expect(context.plots[0]?.watered).toBe(false);
+    expect(context.readySlots).toEqual([0]);
+    expect(context.drySlots).toEqual([1]);
+    expect(context.deadSlots).toEqual([2]);
+    expect(context.treeReadySlots).toEqual([0]);
+    expect(context.emptySlots.length).toBeGreaterThan(0);
+    expect(context.totals).toMatchObject({ ready: 1, dry: 1, dead: 1 });
     expect(context.trays.empty).toBe(27);
     expect(context.shop.length).toBeGreaterThan(0);
     expect(context.neighbourhood).toEqual({ carrot: 3 });
-    expect(context.planted.carrot).toBe(1);
+    expect(context.planted.carrot).toBe(2);
   });
-
   it("asks for strict JSON and lists the allowed actions", () => {
     const context = summarizeGarden(makeLedger(), seasonAt(NOW), NOW, {});
     const messages = buildAiMessages(context);
     expect(messages[0]?.content).toContain("STRICT JSON");
-    expect(messages[0]?.content).toContain("uproot every dead or loss-making plant");
-    expect(messages[1]?.content).toContain("Current garden state");
+    expect(messages[0]?.content).toContain("Do NOT recount");
+    expect(messages[0]?.content).toContain("readySlots");
+    expect(messages[1]?.content).toContain("State:");
   });
 });
 

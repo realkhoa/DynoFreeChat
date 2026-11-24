@@ -103,40 +103,42 @@ export interface AiPlan {
   readonly error: string | null;
 }
 
-/** Compact, model-friendly context for one prompt. */
+/**
+ * Compact, model-friendly context for one prompt.
+ * @details Pre-computes the candidate slot lists so the model never has to count
+ * garden cells: it only picks actions from the lists we hand it.
+ */
 export interface AiGardenContext {
   readonly coins: number;
   readonly prestige: number;
-  readonly plots: readonly {
-    slot: number;
-    seed: SeedId;
-    readyInSec: number;
-    watered: boolean;
-    dead: boolean;
-    pest: boolean;
-  }[];
-  readonly trees: readonly {
-    slot: number;
-    tree: string;
-    readyInSec: number;
-    watered: boolean;
-    dead: boolean;
-  }[];
+  /** Slots whose crop is ripe and can be harvested now. */
+  readonly readySlots: readonly number[];
+  /** Growing crop slots that still need water. */
+  readonly drySlots: readonly number[];
+  /** Dead crop slots waiting to be uprooted. */
+  readonly deadSlots: readonly number[];
+  /** Growing crop slots that would sell for less than their seed cost. */
+  readonly lossSlots: readonly number[];
+  /** Free, unlocked and undamaged crop slots. */
+  readonly emptySlots: readonly number[];
+  /** Tree slots with ripe fruit. */
+  readonly treeReadySlots: readonly number[];
+  /** Dead tree slots. */
+  readonly treeDeadSlots: readonly number[];
   readonly bag: { seeds: Record<string, number>; crops: number; products: number };
-  readonly trays: { empty: number; ripe: number; growing: number };
-  readonly totals?: {
+  readonly trays: { empty: number; ripe: number };
+  readonly staff: readonly string[];
+  readonly shop: readonly { seed: string; price: number; stock: number }[];
+  readonly neighbourhood: Record<string, number>;
+  readonly planted: Record<string, number>;
+  readonly totals: {
     plots: number;
     ready: number;
     dry: number;
     dead: number;
     trees: number;
   };
-  readonly staff: readonly { role: string; level: number }[];
-  readonly shop: readonly { seed: string; price: number; stock: number }[];
-  readonly neighbourhood: Record<string, number>;
-  readonly planted: Record<string, number>;
 }
-
 /** @brief Reads the AI model configuration, or `null` when unconfigured. */
 export function aiConfig(env: Env): { base: string; model: string; key: string } | null {
   const direct = typeof env.AI_BOT_API_KEY === "string" ? env.AI_BOT_API_KEY.trim() : "";
@@ -155,61 +157,73 @@ export function aiConfig(env: Env): { base: string; model: string; key: string }
   return { base: base.replace(/\/+$/, ""), model, key: raw };
 }
 
-/** @brief Builds the lean context the model reasons over. */
+/** @brief Builds the lean, pre-counted context the model reasons over. */
 export function summarizeGarden(
   ledger: GardenLedger,
   season: SeasonSnapshot,
   now: number,
   neighbourhood: Readonly<Record<string, number>>,
 ): AiGardenContext {
-  const plots: AiGardenContext["plots"][number][] = [];
+  const readySlots: number[] = [];
+  const drySlots: number[] = [];
+  const deadSlots: number[] = [];
+  const lossSlots: number[] = [];
+  const emptySlots: number[] = [];
   const planted: Record<string, number> = {};
+  let occupied = 0;
   for (let slot = 0; slot < ledger.plots.length; slot += 1) {
     const plot = ledger.plots[slot] ?? null;
-    if (plot === null) continue;
+    if (plot === null) {
+      // Only open, undamaged cells are plantable.
+      const tab = Math.floor(slot / CROPS_PER_TAB);
+      const patch = Math.floor((slot % CROPS_PER_TAB) / PLOTS_PER_PATCH);
+      if (tab < ledger.tabs && patch < (ledger.unlockedPatches[tab] ?? 0)) {
+        if (ledger.damagedPlots?.[slot] !== true) emptySlots.push(slot);
+      }
+      continue;
+    }
+    occupied += 1;
     planted[plot.seed] = (planted[plot.seed] ?? 0) + 1;
-    plots.push({
-      slot,
-      seed: plot.seed,
-      readyInSec: Math.max(0, Math.ceil((plot.readyAt - now) / 1_000)),
-      watered: plot.watered,
-      dead: plot.dead === true,
-      pest: plot.pest,
-    });
+    if (plot.dead === true) {
+      deadSlots.push(slot);
+      continue;
+    }
+    if (now >= plot.readyAt) {
+      readySlots.push(slot);
+      continue;
+    }
+    if (!plot.watered) drySlots.push(slot);
+    const sell = season.prices[plot.seed] ?? 0;
+    const cost = season.buyPrices?.[plot.seed] ?? SEEDS.find((seed) => seed.id === plot.seed)?.buy ?? 0;
+    if (cost > 0 && sell > 0 && sell <= cost) lossSlots.push(slot);
   }
-  const trees: AiGardenContext["trees"][number][] = [];
+  const treeReadySlots: number[] = [];
+  const treeDeadSlots: number[] = [];
+  let treeCount = 0;
   for (let slot = 0; slot < ledger.trees.length; slot += 1) {
     const tree = ledger.trees[slot] ?? null;
     if (tree === null) continue;
+    treeCount += 1;
     planted[tree.tree] = (planted[tree.tree] ?? 0) + 1;
-    trees.push({
-      slot,
-      tree: tree.tree,
-      readyInSec: Math.max(0, Math.ceil((tree.readyAt - now) / 1_000)),
-      watered: tree.watered,
-      dead: tree.dead === true,
-    });
+    if (tree.dead === true) treeDeadSlots.push(slot);
+    else if (now >= tree.readyAt) treeReadySlots.push(slot);
   }
-  // Keep the prompt small: list the most urgent cells only (ready, then dead/dry).
-  const plotPriority = (entry: AiGardenContext["plots"][number]): number =>
-    entry.readyInSec === 0 ? 0 : entry.dead ? 1 : entry.watered ? 3 : 2;
-  const listedPlots = [...plots].sort((left, right) => plotPriority(left) - plotPriority(right)).slice(0, 30);
-  const listedTrees = [...trees]
-    .sort((left, right) => (left.readyInSec === 0 ? 0 : 1) - (right.readyInSec === 0 ? 0 : 1))
-    .slice(0, 10);
   let traysEmpty = 0;
   let traysRipe = 0;
-  let traysGrowing = 0;
   for (const tray of ledger.mushroomTrays ?? []) {
     if (tray === null) traysEmpty += 1;
     else if (now >= tray.readyAt) traysRipe += 1;
-    else traysGrowing += 1;
   }
   return {
     coins: ledger.coins,
     prestige: ledger.prestige,
-    plots: listedPlots,
-    trees: listedTrees,
+    readySlots,
+    drySlots,
+    deadSlots,
+    lossSlots,
+    emptySlots,
+    treeReadySlots,
+    treeDeadSlots,
     bag: {
       seeds: Object.fromEntries(
         Object.entries(ledger.bag.seeds).filter((entry): entry is [string, number] => (entry[1] ?? 0) > 0),
@@ -217,53 +231,48 @@ export function summarizeGarden(
       crops: ledger.bag.crops.reduce((sum, stack) => sum + stack.qty, 0),
       products: (ledger.bag.products ?? []).reduce((sum, stack) => sum + stack.qty, 0),
     },
-    trays: { empty: traysEmpty, ripe: traysRipe, growing: traysGrowing },
-    staff: ledger.staff.map((worker) => ({ role: worker.role, level: worker.level })),
-    shop: season.shop.offers.slice(0, 12).map((offer) => ({
+    trays: { empty: traysEmpty, ripe: traysRipe },
+    staff: ledger.staff.map((worker) => `${worker.role}:${worker.level}`),
+    shop: season.shop.offers.slice(0, 8).map((offer) => ({
       seed: offer.seed,
       price: offer.price,
       stock: offer.stock,
     })),
-    totals: {
-      plots: plots.length,
-      ready: plots.filter((entry) => entry.readyInSec === 0).length,
-      dry: plots.filter((entry) => !entry.watered && entry.readyInSec > 0).length,
-      dead: plots.filter((entry) => entry.dead).length,
-      trees: trees.length,
-    },
     neighbourhood,
-    planted,
+    planted: Object.fromEntries(Object.entries(planted).slice(0, 12)),
+    totals: {
+      plots: occupied,
+      ready: readySlots.length,
+      dry: drySlots.length,
+      dead: deadSlots.length,
+      trees: treeCount,
+    },
   };
 }
-
 /** @brief Builds the system and user messages for one planning call. */
 export function buildAiMessages(context: AiGardenContext): { role: "system" | "user"; content: string }[] {
   const system = [
-    "You are an expert player of a farming game. Reply with STRICT JSON only:",
-    '{"reasoning":"one or two short sentences explaining the plan", "actions":[{"kind":"...", ...fields}]}.',
-    "Keep reasoning under 200 characters; actions at most 8, in execution order.",
-    "Allowed action kinds and fields:",
-    "water {slot,tree}, waterAll {}, harvest {slot,tree}, harvestAll {},",
-    "harvestMushroom {slot}, plant {slot,seed}, plantAll {seed}, buySeed {seed,qty},",
-    "plantTree {slot,tree}, buyTree {tree}, uproot {slot,tree}, uprootBulk {dead?,priceBelow?,profit?},",
-    "sellAll {}, sellCrop {item,effects,star,qty}, plantMushroom {slot,mushroom},",
-    "buyMushroomSpawn {mushroom,qty}, quickPlan {}, fertilize {slot,supply,tree},",
-    "spray {slot,supply,tree}, buySupply {supply,qty}, buyPatch {tab}, buyTab {},",
-    "buyTool {tool,qty}, hireStaff {id}, setStaffRole {index,role},",
-    "collectMachine {machine}, queueMachine {machine,item?,qty?}, patAnimal {building,slot},",
-    "buyAnimal {building,slot,animal}, sellAnimal {building,slot}, claimQuest {id}, spinWheel {}.",
-    "Priorities: 1) uproot every dead or loss-making plant, 2) harvest ripe plants,",
-    "3) sell the finished bag, 4) water dry plants, 5) plant every empty cell with",
-    "profitable seeds while diversifying away from the neighbourhood survey,",
-    "6) open land when coins pile up. Never uproot a ripe or healthy profitable plant.",
+    "You run a farm. Reply with STRICT JSON only, nothing else:",
+    '{"reasoning":"one short sentence", "actions":[{"kind":"...", ...fields}]} — at most 8 actions, execution order.',
+    "The state already contains exact slot lists: readySlots, drySlots, deadSlots, lossSlots, emptySlots, treeReadySlots, treeDeadSlots.",
+    "Do NOT recount or dump the state. Pick slots directly from those lists.",
+    "Allowed actions:",
+    "harvest {slot,tree}, harvestAll {}, water {slot,tree}, waterAll {}, harvestMushroom {slot},",
+    "plant {slot,seed}, plantAll {seed}, buySeed {seed,qty}, plantTree {slot,tree},",
+    "uproot {slot,tree}, uprootBulk {dead?,priceBelow?,profit?}, sellAll {}, sellCrop {item,effects,star,qty},",
+    "quickPlan {}, plantMushroom {slot,mushroom}, buyMushroomSpawn {mushroom,qty},",
+    "buySupply {supply,qty}, buyPatch {tab}, buyTab {}, setStaffRole {index,role}.",
+    "Priority: 1) uprootBulk {dead:true} and uproot lossSlots, 2) harvest readySlots",
+    "and treeReadySlots (or harvestAll), 3) sellAll when bag.crops>0, 4) water drySlots,",
+    "5) plant emptySlots with profitable seeds while diversifying from neighbourhood,",
+    "6) open land when coins are high. Keep reasoning to one sentence, then the actions.",
   ].join("\n");
-  const user = ["Current garden state:", JSON.stringify(context), "Return only the JSON object."].join("\n");
+  const user = ["State:", JSON.stringify(context), "Reply with the JSON object only."].join("\n");
   return [
     { role: "system", content: system },
     { role: "user", content: user },
   ];
 }
-
 /** @brief Extracts the first JSON object from a model reply, tolerating fences. */
 export function extractJson(raw: string): unknown {
   const cleaned = raw
