@@ -593,6 +593,133 @@ describe("garden ledger rules", () => {
     expect(mayo?.effects).toEqual(["golden", "golden", "diamond"]);
   });
 
+  it("produces oil from sunflower seeds and coconut tree fruit in oilPress", () => {
+    const ledger = makeLedger();
+    ledger.coins = 20_000_000;
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const machine = run(built.ledger, { kind: "buildMachine", machine: "oilPress" });
+    if (!machine.ok) throw new Error("oil press failed");
+
+    // 1. Sunflower crop -> oil
+    machine.ledger.bag.crops = [{ item: "sunflower", effects: [], qty: 1 }];
+    const craftSunflower = run(machine.ledger, {
+      kind: "craftMachine",
+      machine: "oilPress",
+      item: "sunflower",
+    });
+    expect(craftSunflower.ok).toBe(true);
+    if (!craftSunflower.ok) return;
+    expect(craftSunflower.ledger.bag.products?.some((p) => p.product === "oil")).toBe(true);
+
+    // 2. Coconut tree fruit -> oil (after cooldown)
+    craftSunflower.ledger.machines.oilPress = { level: 1, lastCraftAt: 0 };
+    craftSunflower.ledger.bag.crops = [{ item: "coconut", effects: [], qty: 1 }];
+    const craftCoconut = run(craftSunflower.ledger, {
+      kind: "craftMachine",
+      machine: "oilPress",
+      item: "coconut",
+    });
+    expect(craftCoconut.ok).toBe(true);
+    if (!craftCoconut.ok) return;
+    const oilStack = craftCoconut.ledger.bag.products?.find((p) => p.product === "oil");
+    expect(oilStack).toBeDefined();
+    expect(oilStack?.qty).toBeGreaterThanOrEqual(2);
+  });
+
+  it("produces butter from cow milk, goat milk, and vegetable oil in butterChurn", () => {
+    const ledger = makeLedger();
+    ledger.coins = 20_000_000;
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const machine = run(built.ledger, { kind: "buildMachine", machine: "butterChurn" });
+    if (!machine.ok) throw new Error("butter churn failed");
+
+    // Milk -> butter
+    machine.ledger.bag.products = [{ product: "milk", star: 1, qty: 1 }];
+    const fromMilk = run(machine.ledger, { kind: "craftMachine", machine: "butterChurn", item: "milk" });
+    expect(fromMilk.ok).toBe(true);
+    if (!fromMilk.ok) return;
+    expect(fromMilk.ledger.bag.products?.some((p) => p.product === "butter")).toBe(true);
+
+    // Goat milk -> butter
+    fromMilk.ledger.machines.butterChurn = { level: 1, lastCraftAt: 0 };
+    fromMilk.ledger.bag.products = [{ product: "goatMilk", star: 1, qty: 1 }];
+    const fromGoat = run(fromMilk.ledger, { kind: "craftMachine", machine: "butterChurn", item: "goatMilk" });
+    expect(fromGoat.ok).toBe(true);
+    if (!fromGoat.ok) return;
+
+    // Vegetable oil -> butter
+    fromGoat.ledger.machines.butterChurn = { level: 1, lastCraftAt: 0 };
+    fromGoat.ledger.bag.products = [{ product: "oil", star: 1, qty: 1 }];
+    const fromOil = run(fromGoat.ledger, { kind: "craftMachine", machine: "butterChurn", item: "oil" });
+    expect(fromOil.ok).toBe(true);
+    if (!fromOil.ok) return;
+  });
+
+  it("pickles various crops in pickleJar and ferments snail meat in caviarFermenter", () => {
+    const ledger = makeLedger();
+    ledger.coins = 20_000_000;
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+
+    // Pickle jar with cabbage and carrot
+    const pickleMachine = run(built.ledger, { kind: "buildMachine", machine: "pickleJar" });
+    if (!pickleMachine.ok) throw new Error("pickle jar failed");
+    pickleMachine.ledger.bag.crops = [
+      { item: "cabbage", effects: [], qty: 1 },
+      { item: "carrot", effects: [], qty: 1 },
+    ];
+    const pickleCabbage = run(pickleMachine.ledger, {
+      kind: "craftMachine",
+      machine: "pickleJar",
+      item: "cabbage",
+    });
+    expect(pickleCabbage.ok).toBe(true);
+    if (!pickleCabbage.ok) return;
+    expect(pickleCabbage.ledger.bag.products?.some((p) => p.product === "pickles")).toBe(true);
+
+    // Fermenter with snailMeat
+    const fermenter = run(pickleCabbage.ledger, { kind: "buildMachine", machine: "caviarFermenter" });
+    if (!fermenter.ok) throw new Error("fermenter failed");
+    fermenter.ledger.bag.products = [{ product: "snailMeat", star: 2, qty: 1 }];
+    const started = run(fermenter.ledger, {
+      kind: "craftMachine",
+      machine: "caviarFermenter",
+      item: "snailMeat",
+    });
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+    const collected = run(
+      started.ledger,
+      { kind: "collectMachine", machine: "caviarFermenter" },
+      NOW + 6 * FARM_CYCLE_MS,
+    );
+    expect(collected.ok).toBe(true);
+    if (!collected.ok) return;
+    expect(collected.ledger.bag.products?.some((p) => p.product === "caviar")).toBe(true);
+  });
+
+  it("weaves wool into fabric in loom with queue support", () => {
+    const ledger = makeLedger();
+    ledger.coins = 20_000_000;
+    const built = run(ledger, { kind: "buildWarehouse" });
+    if (!built.ok) throw new Error("warehouse failed");
+    const loom = run(built.ledger, { kind: "buildMachine", machine: "loom" });
+    if (!loom.ok) throw new Error("loom failed");
+
+    loom.ledger.bag.products = [{ product: "wool", star: 1, qty: 3 }];
+    const crafted = run(loom.ledger, { kind: "craftMachine", machine: "loom", item: "wool" });
+    expect(crafted.ok).toBe(true);
+    if (!crafted.ok) return;
+    expect(crafted.ledger.bag.products?.some((p) => p.product === "fabric")).toBe(true);
+
+    const queued = run(crafted.ledger, { kind: "queueMachine", machine: "loom", item: "wool", qty: 2 });
+    expect(queued.ok).toBe(true);
+    if (!queued.ok) return;
+    expect(queued.ledger.machines.loom?.queue).toHaveLength(2);
+  });
+
   it("keeps reharvest plants after picking and regrows the fruit", () => {
     const tomato = makeLedger();
     tomato.bag.seeds.tomato = 1;

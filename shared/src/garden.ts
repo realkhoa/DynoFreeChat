@@ -1225,7 +1225,7 @@ export interface MachineDefinition {
   readonly id: MachineId;
   /** What it consumes. */
   readonly input:
-    | { readonly kind: "seedCrop"; readonly seeds?: readonly SeedId[] }
+    | { readonly kind: "seedCrop"; readonly seeds?: readonly (SeedId | TreeId)[] }
     | { readonly kind: "product"; readonly product: ProductId };
   /** What it produces. */
   readonly output: { readonly kind: "seeds" } | { readonly kind: "product"; readonly product: ProductId };
@@ -1282,12 +1282,11 @@ export const MACHINES: readonly MachineDefinition[] = [
     cooldownCycles: 2,
   },
   {
-    id: "mayoMaker",
-    input: { kind: "product", product: "egg" },
-    output: { kind: "product", product: "mayo" },
-    multiplier: 10,
+    id: "loom",
+    input: { kind: "product", product: "wool" },
+    output: { kind: "product", product: "fabric" },
+    multiplier: 100,
     cooldownCycles: 2,
-    recipes: [{ input: "duckEgg", output: "duckMayo", multiplier: 10 }],
   },
   {
     id: "cheesePress",
@@ -1298,25 +1297,36 @@ export const MACHINES: readonly MachineDefinition[] = [
     recipes: [{ input: "goatMilk", output: "goatCheese", multiplier: 100 }],
   },
   {
+    id: "mayoMaker",
+    input: { kind: "product", product: "egg" },
+    output: { kind: "product", product: "mayo" },
+    multiplier: 10,
+    cooldownCycles: 2,
+    recipes: [{ input: "duckEgg", output: "duckMayo", multiplier: 10 }],
+  },
+  {
     id: "pickleJar",
-    input: { kind: "seedCrop", seeds: ["cucumber"] },
+    input: { kind: "seedCrop" },
     output: { kind: "product", product: "pickles" },
     multiplier: 10,
     cooldownCycles: 2,
   },
   {
+    id: "caviarFermenter",
+    input: { kind: "product", product: "roe" },
+    output: { kind: "product", product: "caviar" },
+    multiplier: 100,
+    cooldownCycles: 6,
+    queued: true,
+    recipes: [{ input: "snailMeat", output: "caviar", multiplier: 100 }],
+  },
+  {
     id: "oilPress",
-    input: { kind: "seedCrop", seeds: ["sunflower"] },
+    input: { kind: "seedCrop", seeds: ["sunflower", "coconut", "olive", "corn", "avocado"] },
     output: { kind: "product", product: "oil" },
     multiplier: 20,
     cooldownCycles: 2,
-  },
-  {
-    id: "loom",
-    input: { kind: "product", product: "wool" },
-    output: { kind: "product", product: "fabric" },
-    multiplier: 100,
-    cooldownCycles: 2,
+    allProduce: true,
   },
   {
     id: "dryer",
@@ -1326,16 +1336,6 @@ export const MACHINES: readonly MachineDefinition[] = [
     cooldownCycles: 3,
     allProduce: true,
     gradeByPrice: true,
-  },
-  {
-    id: "keg",
-    input: { kind: "seedCrop" },
-    output: { kind: "product", product: "wine" },
-    multiplier: 20,
-    cooldownCycles: 4,
-    allProduce: true,
-    gradeByPrice: true,
-    queued: true,
   },
   {
     id: "juicer",
@@ -1359,14 +1359,19 @@ export const MACHINES: readonly MachineDefinition[] = [
     output: { kind: "product", product: "butter" },
     multiplier: 20,
     cooldownCycles: 2,
+    recipes: [
+      { input: "goatMilk", output: "butter", multiplier: 20 },
+      { input: "oil", output: "butter", multiplier: 20 },
+    ],
   },
-
   {
-    id: "caviarFermenter",
-    input: { kind: "product", product: "roe" },
-    output: { kind: "product", product: "caviar" },
-    multiplier: 100,
-    cooldownCycles: 6,
+    id: "keg",
+    input: { kind: "seedCrop" },
+    output: { kind: "product", product: "wine" },
+    multiplier: 20,
+    cooldownCycles: 4,
+    allProduce: true,
+    gradeByPrice: true,
     queued: true,
   },
 ];

@@ -4039,10 +4039,11 @@ function machineInput(
   } else if (seed === undefined) {
     return null;
   }
-  const allowed = definition.input.kind === "seedCrop" ? definition.input.seeds : undefined;
-  if (allowed !== undefined && (seed === undefined || !allowed.includes(seed.id))) return null;
   const key = seed?.id ?? fruit?.id;
-  return key === undefined ? null : { key, sell: seed?.sell ?? fruit?.sell ?? 0 };
+  if (key === undefined) return null;
+  const allowed = definition.input.kind === "seedCrop" ? definition.input.seeds : undefined;
+  if (allowed !== undefined && !allowed.includes(key as never)) return null;
+  return { key, sell: seed?.sell ?? fruit?.sell ?? 0 };
 }
 
 /** One input already removed from the bag and held by a machine. */
@@ -4121,7 +4122,9 @@ function takeMachineInput(
       output: recipeOutputFor(definition, stack.product as unknown as ItemId),
     };
   }
-  const input = machineInput(definition, item as ItemId | undefined);
+  const candidate =
+    item ?? next.bag.crops.find((entry) => machineInput(definition, entry.item) !== null)?.item;
+  const input = machineInput(definition, candidate as ItemId | undefined);
   if (input === null) return null;
   const stack = next.bag.crops.find((entry) => entry.item === input.key);
   if (stack === undefined || stack.qty < 1) return null;

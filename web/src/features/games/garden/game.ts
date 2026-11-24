@@ -226,7 +226,8 @@ const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string 
 ];
 
 /** One tab inside the garden tab of the rebuilt view. */
-type GardenTab = "main" | "mushroom" | "greenhouse" | "nursery" | "barn" | "coop" | "pond" | "shipping";
+type GardenTab =
+  "main" | "mushroom" | "greenhouse" | "nursery" | "barn" | "coop" | "pond" | "warehouse" | "shipping";
 
 /** @brief Garden tabs, in strip order. */
 const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string }[] = [
@@ -237,6 +238,7 @@ const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string 
   { id: "barn", labelKey: "gardenTab.barn" },
   { id: "coop", labelKey: "gardenTab.coop" },
   { id: "pond", labelKey: "gardenTab.pond" },
+  { id: "warehouse", labelKey: "gardenTab.warehouse" },
   { id: "shipping", labelKey: "gardenTab.shipping" },
 ];
 
@@ -1291,6 +1293,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       savedGardenTab === "barn" ||
       savedGardenTab === "coop" ||
       savedGardenTab === "pond" ||
+      savedGardenTab === "warehouse" ||
       savedGardenTab === "shipping"
     ) {
       gardenTab = savedGardenTab;
@@ -3685,7 +3688,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         .filter(
           (stack) => seedById(stack.item) !== undefined || (allowFruit && treeById(stack.item) !== undefined),
         )
-        .filter((stack) => allowed === undefined || allowed.includes(stack.item as SeedId))
+        .filter((stack) => allowed === undefined || allowed.includes(stack.item as never))
         .map((stack) => stack.item);
       for (const item of [...new Set(items)]) {
         const pair = div("garden-machine-row");
@@ -5950,6 +5953,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (gardenTab === "barn" || gardenTab === "coop" || gardenTab === "pond") {
       return buildAnimalTab(gardenTab);
     }
+    if (gardenTab === "warehouse") return buildWarehouse();
     if (gardenTab === "shipping") return buildShippingBin();
     return buildGardenTabPlaceholder();
   }

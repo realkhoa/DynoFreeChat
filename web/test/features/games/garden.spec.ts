@@ -2852,6 +2852,7 @@ describe("reborn sub-tabs", () => {
       "gardenTab:barn",
       "gardenTab:coop",
       "gardenTab:pond",
+      "gardenTab:warehouse",
       "gardenTab:shipping",
     ]);
     expect(host.querySelector(".garden-section-tab.is-active")?.textContent).toContain("vườn chính");
@@ -3485,6 +3486,36 @@ describe("quick uproot clears dead plants", () => {
     expect(api.calls.some((call) => call.action?.kind === "uprootBulk" && call.action.dead === true)).toBe(
       true,
     );
+  });
+  it("switches to the warehouse tab in reborn mode and displays machines", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 10_000_000,
+        warehouse: {
+          level: 1,
+          machines: {
+            loom: { level: 1, lastCraftAt: 0, queue: [] },
+            oilPress: { level: 2, lastCraftAt: 0 },
+          },
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // Click on the warehouse sub-tab
+    const warehouseTabBtn = host.querySelector<HTMLButtonElement>('[data-act="gardenTab:warehouse"]');
+    expect(warehouseTabBtn).not.toBeNull();
+    warehouseTabBtn?.click();
+    await settle();
+
+    // Verify warehouse container and machines are rendered
+    expect(host.querySelector(".garden-warehouse")).not.toBeNull();
+    const rows = host.querySelectorAll(".garden-warehouse-row");
+    expect(rows.length).toBeGreaterThanOrEqual(2);
   });
 });
 
