@@ -2664,7 +2664,7 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
         const bornAt = startedAt + (step + 1) * FARM_CYCLE_MS;
         const rng = createRng(hash32(`pond_birth:${ledger.playerId}:${cycleStart + step}:${k}`));
 
-        if (basin.isSingleSpecies) {
+        if (basin.isPurebred) {
           const kind = basin.species[0] ?? "fish";
           next.animals.pond[targetSlot] = {
             kind,
@@ -2676,12 +2676,23 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
           collect(next, `fish:${kind}`);
           logTimeline(next, "purchase", bornAt, { item: kind, qty: 1 });
         } else {
-          const parentA = basin.species[Math.floor(rng() * basin.species.length)] ?? "fish";
-          const others = basin.species.filter((s) => s !== parentA);
-          const parentB =
-            (others.length > 0 ? others[Math.floor(rng() * others.length)] : parentA) ?? parentA;
+          // Cross-breeding: pick 2 distinct individual fish from the basin
+          const fishList = basin.fish;
+          const idxA = Math.floor(rng() * fishList.length);
+          let idxB = Math.floor(rng() * (fishList.length - 1));
+          if (idxB >= idxA) idxB += 1;
+
+          const fishA = fishList[idxA] ?? fishList[0];
+          const fishB = fishList[idxB] ?? fishList[1] ?? fishA;
+
           const seed = hash32(`pond_hybrid:${ledger.playerId}:${bornAt}:${targetSlot}`);
-          const hybrid = generateDeterministicHybridFish(parentA, parentB, seed);
+          const hybrid = generateDeterministicHybridFish(
+            fishA?.kind ?? "carp",
+            fishB?.kind ?? "sturgeon",
+            seed,
+            fishA,
+            fishB,
+          );
 
           next.animals.pond[targetSlot] = {
             ...hybrid.state,

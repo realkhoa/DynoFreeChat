@@ -1517,6 +1517,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         `${animal.pats} · ${t("farm.age")} ${formatDuration(Math.max(0, at - animal.bornAt))}`,
       ),
     ];
+    if (animal.hybridParents !== undefined && animal.hybridParents.length >= 2) {
+      const parentNameA = t(`animals.${animal.hybridParents[0]}`) || animal.hybridParents[0];
+      const parentNameB = t(`animals.${animal.hybridParents[1]}`) || animal.hybridParents[1];
+      lines.push(labelValue(t("dynopedia.parents"), `${parentNameA} × ${parentNameB}`));
+    }
     if (animal.hybridTier !== undefined) {
       lines.push(
         labelValue(
@@ -1566,9 +1571,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         labelValue(t("farm.pondBasin", { index: basinIndex + 1 }), `${basin.fish.length}/${POND_MAX_SLOTS}`),
         labelValue(
           t("farm.pondBasinMode"),
-          basin.isSingleSpecies
+          basin.isPurebred
             ? t("farm.pondModePure", { species: t(`animals.${basin.species[0] ?? "fish"}`) })
-            : basin.isMixedSpecies
+            : basin.fish.length >= 2
               ? t("farm.pondModeHybrid")
               : t("farm.pondModeIdle"),
         ),
@@ -3382,14 +3387,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const tail = render.breeding
       ? `${t("farm.breeding")} · ${formatDuration(Math.max(0, (animal.incubatingUntil ?? 0) - at), "short")}`
       : `${productName} · ${render.ready ? t("farm.due") : formatDuration(render.remainingMs, "short")}`;
+    const displayName = animal.hybridName ?? t(`animals.${animal.kind}`);
     cell.title = [
-      `${t(`animals.${animal.kind}`)} · ${t("farm.quality")} ${render.stars}/5`,
+      `${displayName} · ${t("farm.quality")} ${render.stars}/5`,
       `${t("farm.pats")} ${animal.pats}`,
       tail,
     ].join(" · ");
     cell.setAttribute(
       "aria-label",
-      `${t(`farm.${building}`)} · ${t("farm.slots")} ${slot + 1}: ${t(`animals.${animal.kind}`)}`,
+      `${t(`farm.${building}`)} · ${t("farm.slots")} ${slot + 1}: ${displayName}`,
     );
   }
 

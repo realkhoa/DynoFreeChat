@@ -24,6 +24,7 @@ import {
   nextTabPrice,
   resolvedCropEffects,
   resolvedTreeEffects,
+  generateDeterministicHybridFish,
   rollEffectsFor,
   seasonAt as seasonFor,
   sprayById,
@@ -1145,6 +1146,32 @@ describe("garden ledger rules", () => {
     expect(child?.hybridPrice).toBeGreaterThan(0);
     expect(settled.collection).toContain(`hybrid:${child?.hybridId}`);
     expect(settled.collection).toContain("animal:hybridFish");
+  });
+
+  it("cross-breeds two hybrid fish in a pond basin into a distinct F2 hybrid fish", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000_000;
+    const built = run(ledger, { kind: "buildBuilding", building: "pond" });
+    if (!built.ok) throw new Error("pond failed");
+
+    // Put 2 hybrid fish into basin 0
+    const h1 = generateDeterministicHybridFish("sturgeon", "carp", 55555);
+    const h2 = generateDeterministicHybridFish("tilapia", "bass", 66666);
+    built.ledger.animals.pond[0] = { ...h1.state, bornAt: NOW, lastProduceAt: NOW };
+    built.ledger.animals.pond[1] = { ...h2.state, bornAt: NOW, lastProduceAt: NOW };
+
+    const settled = settleFarm(built.ledger, NOW + 10 * FARM_CYCLE_MS);
+    const child = settled.animals.pond[2];
+    expect(child).not.toBeNull();
+    expect(child?.kind).toBe("hybridFish");
+    expect(child?.hybridId).toBeDefined();
+    expect(child?.hybridName).toBeDefined();
+    expect(child?.hybridName).not.toBe("Cá Lai");
+    expect(child?.hybridName).not.toContain("Lai Lai");
+    expect(child?.hybridTier).toMatch(/^(inferior|superior)$/);
+    expect(child?.hybridPrice).toBeGreaterThan(0);
+    expect(child?.hybridParents).toEqual(["hybridFish", "hybridFish"]);
+    expect(settled.collection).toContain(`hybrid:${child?.hybridId}`);
   });
 
   it("enforces basin bounds: does not breed when basin has only 1 fish or is completely full", () => {

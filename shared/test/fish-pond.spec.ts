@@ -195,8 +195,8 @@ describe("deterministic hybrid fish generation", () => {
     expect(inferiors.length).toBeGreaterThan(0);
     expect(superiors.length).toBeGreaterThan(0);
 
-    const INFERIOR_GLYPHS = ["x", "d", "b", "z", "o"];
-    const SUPERIOR_GLYPHS = ["Ж", "♦", "§", "★", "Ω", "Ψ"];
+    const INFERIOR_GLYPHS = ["x", "d", "b", "z", "o", "v", "c", "¿"];
+    const SUPERIOR_GLYPHS = ["Ж", "♦", "§", "★", "Ω", "Ψ", "♠", "✦", "✪", "♛"];
 
     for (const inf of inferiors) {
       expect(inf.tier).toBe("inferior");
@@ -218,6 +218,43 @@ describe("deterministic hybrid fish generation", () => {
     } else {
       expect(hybrid.product).toBe("roe");
     }
+  });
+
+  it("crossbreeds two hybrid fish into a distinct F2 hybrid without generic names", () => {
+    const parentA = generateDeterministicHybridFish("sturgeon", "carp", 11111);
+    const parentB = generateDeterministicHybridFish("tilapia", "bass", 22222);
+
+    const child = generateDeterministicHybridFish(
+      "hybridFish",
+      "hybridFish",
+      33333,
+      parentA.state,
+      parentB.state,
+    );
+
+    expect(child.name).not.toBe("Cá Lai");
+    expect(child.name).not.toBe("Cá Lai Lai");
+    expect(child.name).not.toContain("Lai Lai");
+    expect(child.name.length).toBeGreaterThan(5);
+    expect(child.id).toMatch(/^hybrid:/);
+    expect(child.tier).toMatch(/^(inferior|superior)$/);
+    expect(child.state.hybridParents).toEqual(["hybridFish", "hybridFish"]);
+    expect(child.state.hybridPrice).toBeGreaterThan(0);
+    expect(child.lore.length).toBeGreaterThan(10);
+  });
+
+  it("treats basin with 2 hybrid fish as crossbreeding rather than purebred", () => {
+    const animals: (AnimalState | null)[] = new Array(18).fill(null);
+    const h1 = generateDeterministicHybridFish("sturgeon", "carp", 101);
+    const h2 = generateDeterministicHybridFish("bass", "pike", 202);
+    animals[0] = h1.state;
+    animals[1] = h2.state;
+
+    const info = inspectPondBasin(animals, 0);
+    expect(info.isPurebred).toBe(false);
+    expect(info.isCrossbreeding).toBe(true);
+    expect(info.isSingleSpecies).toBe(false);
+    expect(info.isMixedSpecies).toBe(true);
   });
 });
 

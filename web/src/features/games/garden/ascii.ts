@@ -348,15 +348,12 @@ export function animalCellRender(animal: AnimalState | null, now: number, slot =
       : formatDuration(remainingMs, "short");
   const glyph = animal.hybridGlyph ?? ANIMAL_GLYPH[animal.kind] ?? "f";
   const displayName = animal.hybridName ?? t(`animals.${animal.kind}`);
+  const cellLabel =
+    displayName.startsWith("Cá ") && displayName.length > 8
+      ? displayName.slice(3, 11).trim()
+      : displayName.slice(0, 8);
   return {
-    lines: [
-      top,
-      row(glyph, "center"),
-      row(displayName.slice(0, 8)),
-      row("*".repeat(stars)),
-      row(tail),
-      bottom,
-    ],
+    lines: [top, row(glyph, "center"), row(cellLabel), row("*".repeat(stars)), row(tail), bottom],
     ready,
     empty: false,
     stars,

@@ -1715,7 +1715,7 @@ export function pondBasinSlotRange(basinIndex: number): [number, number] {
  * @brief Inspects a pond basin slice to determine whether it contains a single fish species or multiple species.
  * @param animals All pond animals.
  * @param basinIndex Zero-based basin index.
- * @return Summary containing fish count, free slots, species list, and whether it qualifies as single-species or mixed.
+ * @return Summary containing fish count, free slots, species list, and whether it qualifies as purebred or crossbreeding.
  */
 export function inspectPondBasin(
   animals: readonly (AnimalState | null)[],
@@ -1727,6 +1727,8 @@ export function inspectPondBasin(
   readonly species: readonly AnimalId[];
   readonly isSingleSpecies: boolean;
   readonly isMixedSpecies: boolean;
+  readonly isPurebred: boolean;
+  readonly isCrossbreeding: boolean;
 } {
   const [start, end] = pondBasinSlotRange(basinIndex);
   const fish: AnimalState[] = [];
@@ -1744,13 +1746,20 @@ export function inspectPondBasin(
   }
 
   const species = Array.from(speciesSet);
+  // Purebred ONLY applies when all fish in the basin are the exact same BASE species (not hybridFish or generic fish).
+  const isPurebred =
+    species.length === 1 && fish.length >= 2 && species[0] !== "hybridFish" && species[0] !== "fish";
+  const isCrossbreeding = fish.length >= 2 && !isPurebred;
+
   return {
     basinIndex,
     fish,
     freeSlots,
     species,
-    isSingleSpecies: species.length === 1 && fish.length >= 2,
-    isMixedSpecies: species.length >= 2,
+    isSingleSpecies: isPurebred,
+    isMixedSpecies: isCrossbreeding,
+    isPurebred,
+    isCrossbreeding,
   };
 }
 
@@ -1764,16 +1773,20 @@ export function isFishKind(kind: AnimalId): boolean {
 }
 
 /**
- * @brief Generates a deterministic hybrid fish from two parent species.
+ * @brief Generates a deterministic hybrid fish from two parent species or living parent animals.
  * @param parentA First parent species.
  * @param parentB Second parent species.
  * @param seed Pseudo-random seed for determinism.
+ * @param parentStateA Optional living parent state of the first fish.
+ * @param parentStateB Optional living parent state of the second fish.
  * @return Definition and living AnimalState of the hybrid fish.
  */
 export function generateDeterministicHybridFish(
   parentA: AnimalId,
   parentB: AnimalId,
   seed: number,
+  parentStateA?: AnimalState | null,
+  parentStateB?: AnimalState | null,
 ): {
   readonly id: string;
   readonly name: string;
@@ -1787,17 +1800,36 @@ export function generateDeterministicHybridFish(
   readonly state: AnimalState;
 } {
   const rng = createRng(Math.abs(seed) || 12345);
-  const sorted = [parentA, parentB].sort();
+
+  const isHybridParentA = parentA === "hybridFish" || parentStateA?.kind === "hybridFish";
+  const isHybridParentB = parentB === "hybridFish" || parentStateB?.kind === "hybridFish";
+  const isBothHybrids = isHybridParentA && isHybridParentB;
+  const isMultiGen = isHybridParentA || isHybridParentB;
 
   const defA = animalById(parentA);
   const defB = animalById(parentB);
-  const baseA = defA?.buy ?? 30_000;
-  const baseB = defB?.buy ?? 30_000;
+  const baseA = parentStateA?.hybridPrice ?? defA?.buy ?? 30_000;
+  const baseB = parentStateB?.hybridPrice ?? defB?.buy ?? 30_000;
   const avgBuy = Math.round((baseA + baseB) / 2);
 
   const rollTier = rng();
   const isSuperior = rollTier >= 0.45; // 55% superior (ngon), 45% inferior (đểu)
   const tier: "inferior" | "superior" = isSuperior ? "superior" : "inferior";
+
+  // Ancestor tracking to see if caviar is appropriate
+  const ancestorSpecies: AnimalId[] = [];
+  if (parentStateA?.hybridParents && parentStateA.hybridParents.length > 0) {
+    ancestorSpecies.push(...parentStateA.hybridParents);
+  } else if (parentA !== "hybridFish") {
+    ancestorSpecies.push(parentA);
+  }
+  if (parentStateB?.hybridParents && parentStateB.hybridParents.length > 0) {
+    ancestorSpecies.push(...parentStateB.hybridParents);
+  } else if (parentB !== "hybridFish") {
+    ancestorSpecies.push(parentB);
+  }
+  const hasSturgeon =
+    ancestorSpecies.includes("sturgeon") || parentA === "sturgeon" || parentB === "sturgeon";
 
   const VIET_NAMES: Record<AnimalId, string> = {
     sturgeon: "Tầm",
@@ -1816,8 +1848,43 @@ export function generateDeterministicHybridFish(
     hybridFish: "Lai",
   };
 
-  const nameA = VIET_NAMES[parentA] ?? "Cá";
-  const nameB = VIET_NAMES[parentB] ?? "Cá";
+  const F2_SUPERIOR_NAMES = [
+    "Cá Rồng Huyết Long",
+    "Cá Rồng Kim Long",
+    "Cá Rồng Bạch Long",
+    "Cá Hải Tượng Hoàng Kim",
+    "Cá Hải Tượng Cổ Đại",
+    "Cá Kỳ Lân Ngũ Sắc",
+    "Cá Thần Long Đại Dương",
+    "Cá Thái Hổ Bá Vương",
+    "Cá Koi Ngũ Phước",
+    "Cá Koi Kim Quy",
+    "Cá Bách Niên Thần Ngư",
+    "Cá Huyết Anh Vũ",
+    "Cá Hắc Long Huyền Thoại",
+    "Cá Kim Ngân Phúc Lộc",
+    "Cá Thiên Nga Ngọc Bích",
+    "Cá Phượng Hoàng Lửa",
+    "Cá Cửu Vĩ Ngư Thần",
+    "Cá Tinh Vân Vô Song",
+  ];
+
+  const F2_INFERIOR_NAMES = [
+    "Cá Đột Biến Lỗi F2",
+    "Cá Còi Cọc Dị Dạng",
+    "Cá Lòi Mắt Ngáo Ngơ",
+    "Cá Bụng Bự Hao Cám",
+    "Cá Xương Xẩu Không Thịt",
+    "Cá Ngủ Gật Bơi Lùi",
+    "Cá Quái Dị Nhăn Nheo",
+    "Cá Lác Mắt Tí Nị",
+    "Cá Teo Tó Đuôi Cụt",
+    "Cá Dị Hợm Đột Biến",
+    "Cá Lười Biếng Ăn Hại",
+    "Cá Mõm Nhọn Nhầy Nhụa",
+    "Cá Móp Đầu Xiêu Vẹo",
+    "Cá Vô Danh Dị Tật",
+  ];
 
   const SUPERIOR_TITLES = [
     "Hoàng Gia",
@@ -1827,7 +1894,11 @@ export function generateDeterministicHybridFish(
     "Kỳ Lân",
     "Cẩm Tú",
     "Đại Dương",
+    "Hải Vương",
+    "Kim Quy",
+    "Hắc Mã",
   ];
+
   const INFERIOR_TITLES = [
     "Còi Cọc",
     "Gầy Gò",
@@ -1836,21 +1907,62 @@ export function generateDeterministicHybridFish(
     "Đột Biến Lỗi",
     "Ngáo Ngơ",
     "Tật Nguyền",
+    "Hao Cám",
+    "Bơi Lùi",
+    "Lác Mắt",
   ];
 
-  const title = isSuperior
-    ? (SUPERIOR_TITLES[Math.floor(rng() * SUPERIOR_TITLES.length)] ?? "Hoàng Gia")
-    : (INFERIOR_TITLES[Math.floor(rng() * INFERIOR_TITLES.length)] ?? "Còi Cọc");
+  let name: string;
+  let lore: string;
 
-  const name = `Cá ${nameA} ${nameB} ${title}`;
+  if (isBothHybrids) {
+    // Both parents are already hybrids ("2 loại cá đã lai") -> Generates a completely new distinct F2 hybrid!
+    if (isSuperior) {
+      name = F2_SUPERIOR_NAMES[Math.floor(rng() * F2_SUPERIOR_NAMES.length)] ?? "Cá Rồng Huyết Long";
+      lore =
+        "Thế hệ F2 siêu đột biến kết tinh tinh hoa từ cả hai dòng cá lai. Thân hình vạm vỡ, hào quang lấp lánh và cho phẩm cấp cực kỳ giá trị!";
+    } else {
+      name = F2_INFERIOR_NAMES[Math.floor(rng() * F2_INFERIOR_NAMES.length)] ?? "Cá Đột Biến Lỗi F2";
+      lore =
+        "Hậu quả của việc lai ghép gen hỗn loạn đời F2. Dáng bơi xiêu vẹo, ăn tốn thức ăn nhưng bơi lội tấu hài giải trí vô cùng!";
+    }
+  } else if (isMultiGen) {
+    // One hybrid + one base fish -> Backcross hybrid
+    const baseKind = isHybridParentA ? parentB : parentA;
+    const baseName = VIET_NAMES[baseKind] ?? "Cá";
+    const hybridParent = isHybridParentA ? parentStateA : parentStateB;
+    const parentTitle = hybridParent?.hybridName ? hybridParent.hybridName.replace(/^Cá\s+/, "") : "Lai";
+    const title = isSuperior
+      ? (SUPERIOR_TITLES[Math.floor(rng() * SUPERIOR_TITLES.length)] ?? "Bá Vương")
+      : (INFERIOR_TITLES[Math.floor(rng() * INFERIOR_TITLES.length)] ?? "Còi Cọc");
+    name = `Cá ${baseName} ${parentTitle.slice(0, 6)} ${title}`;
+    lore = isSuperior
+      ? `Đột biến lai ngược ưu việt giữa cá ${baseName} thuần chủng và dòng cá lai ${parentTitle}. Tố chất vượt bậc!`
+      : `Lai ngược không thành công giữa cá ${baseName} và cá lai. Gen lặn bộc phát làm cá gầy còi xương xẩu.`;
+  } else {
+    // Both are base species -> F1 hybrid
+    const nameA = VIET_NAMES[parentA] ?? "Cá";
+    const nameB = VIET_NAMES[parentB] ?? "Cá";
+    const title = isSuperior
+      ? (SUPERIOR_TITLES[Math.floor(rng() * SUPERIOR_TITLES.length)] ?? "Hoàng Gia")
+      : (INFERIOR_TITLES[Math.floor(rng() * INFERIOR_TITLES.length)] ?? "Còi Cọc");
+    name = `Cá ${nameA} ${nameB} ${title}`;
+    lore = isSuperior
+      ? `Thừa hưởng gen vượt trội giữa ${nameA} và ${nameB}. Thân hình lấp lánh, sinh trưởng mạnh mẽ và cho phẩm cấp cực kỳ giá trị!`
+      : `Đột biến gen dở khóc dở cười giữa ${nameA} và ${nameB}. Thịt nhạt nhẽo, xương nhiều ăn tốn cám nhưng bơi lội trông rất giải trí.`;
+  }
+
   const hexHash = Math.abs(seed % 0xfffffff)
     .toString(16)
     .padStart(7, "0");
-  const id = `hybrid:${sorted[0]}:${sorted[1]}:${hexHash}`;
+  const tagA = parentStateA?.hybridId ? (parentStateA.hybridId.split(":")[1] ?? "hyb") : parentA;
+  const tagB = parentStateB?.hybridId ? (parentStateB.hybridId.split(":")[1] ?? "hyb") : parentB;
+  const sortedTags = [tagA, tagB].sort();
+  const id = `hybrid:${sortedTags[0]}:${sortedTags[1]}:${hexHash}`;
 
   const buy = isSuperior
-    ? Math.round(avgBuy * (1.8 + rng() * 1.5))
-    : Math.round(avgBuy * (0.35 + rng() * 0.35));
+    ? Math.round(avgBuy * (isBothHybrids ? 2.5 + rng() * 2.0 : 1.8 + rng() * 1.5))
+    : Math.round(avgBuy * (isBothHybrids ? 0.25 + rng() * 0.35 : 0.35 + rng() * 0.35));
 
   const upkeep = isSuperior
     ? Math.round(((defA?.upkeep ?? 40) + (defB?.upkeep ?? 40)) * 0.4)
@@ -1861,17 +1973,18 @@ export function generateDeterministicHybridFish(
     : Math.max(3, (defA?.intervalCycles ?? 2) + 1);
 
   const product: ProductId =
-    isSuperior && (parentA === "sturgeon" || parentB === "sturgeon") ? "caviar" : "roe";
+    (isSuperior && hasSturgeon) || (isSuperior && isBothHybrids && rng() >= 0.4) ? "caviar" : "roe";
 
-  const SUPERIOR_GLYPHS = ["Ж", "♦", "§", "★", "Ω", "Ψ"];
-  const INFERIOR_GLYPHS = ["x", "d", "b", "z", "o"];
+  const SUPERIOR_GLYPHS = ["Ж", "♦", "§", "★", "Ω", "Ψ", "♠", "✦", "✪", "♛"];
+  const INFERIOR_GLYPHS = ["x", "d", "b", "z", "o", "v", "c", "¿"];
   const glyph = isSuperior
     ? (SUPERIOR_GLYPHS[Math.floor(rng() * SUPERIOR_GLYPHS.length)] ?? "Ж")
     : (INFERIOR_GLYPHS[Math.floor(rng() * INFERIOR_GLYPHS.length)] ?? "x");
 
-  const lore = isSuperior
-    ? `Thừa hưởng gen vượt trội giữa ${nameA} và ${nameB}. Thân hình lấp lánh, sinh trưởng mạnh mẽ và cho phẩm cấp cực kỳ giá trị!`
-    : `Đột biến gen dở khóc dở cười giữa ${nameA} và ${nameB}. Thịt nhạt nhẽo, xương nhiều ăn tốn cám nhưng bơi lội trông rất giải trí.`;
+  const resolvedParents: readonly [AnimalId, AnimalId] = [
+    parentStateA?.kind ?? parentA,
+    parentStateB?.kind ?? parentB,
+  ];
 
   const state: AnimalState = {
     kind: "hybridFish",
@@ -1880,7 +1993,7 @@ export function generateDeterministicHybridFish(
     lastProduceAt: 0,
     hybridId: id,
     hybridName: name,
-    hybridParents: [parentA, parentB],
+    hybridParents: resolvedParents,
     hybridTier: tier,
     hybridLore: lore,
     hybridPrice: buy,
