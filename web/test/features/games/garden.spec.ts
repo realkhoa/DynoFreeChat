@@ -2879,6 +2879,7 @@ describe("reborn sub-tabs", () => {
       "gardenTab:coop",
       "gardenTab:pond",
       "gardenTab:warehouse",
+      "gardenTab:kitchen",
       "gardenTab:mine",
       "gardenTab:shipping",
     ]);
@@ -3543,6 +3544,102 @@ describe("quick uproot clears dead plants", () => {
     expect(host.querySelector(".garden-warehouse")).not.toBeNull();
     const rows = host.querySelectorAll(".garden-warehouse-row");
     expect(rows.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("renders the kitchen tab with build gate when kitchen is not built", async () => {
+    const api = new FakeGardenApi(makeState({ extras: { ...makeState().extras, kitchen: false } }));
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // Click on the kitchen sub-tab
+    const kitchenTabBtn = host.querySelector<HTMLButtonElement>('[data-act="gardenTab:kitchen"]');
+    expect(kitchenTabBtn).not.toBeNull();
+    kitchenTabBtn?.click();
+    await settle();
+
+    // Verify kitchen container and build button
+    expect(host.querySelector(".garden-kitchen-reborn")).not.toBeNull();
+    const buildBtn = host.querySelector<HTMLButtonElement>('[data-action-id="buildKitchen"]');
+    expect(buildBtn).not.toBeNull();
+    expect(window.location.search).toContain("gstab=kitchen");
+  });
+
+  it("renders the kitchen tab with cooking workstation, ingredient checks and AI lab when built", async () => {
+    const state = makeState({
+      extras: {
+        ...makeState().extras,
+        kitchen: true,
+        recipes: [
+          { id: "apple_pie", inputs: ["apple", "wheat"], output: "Apple Pie", price: 250000, createdAt: 0 },
+        ],
+      },
+      bag: {
+        ...makeState().bag,
+        crops: [{ item: "apple", qty: 5, effects: [] }],
+      },
+    });
+    const api = new FakeGardenApi(state);
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:kitchen"]')?.click();
+    await settle();
+
+    // Verify kitchen container
+    expect(host.querySelector(".garden-kitchen-reborn")).not.toBeNull();
+
+    // Verify recipe card, dish name, price tag
+    expect(host.textContent).toContain("Apple Pie");
+    expect(host.textContent).toContain("250.000c");
+
+    // Verify ingredient stock tags (apple is enough, wheat is missing)
+    const enoughTags = host.querySelectorAll(".garden-kitchen-ing-tag.is-enough");
+    expect(enoughTags.length).toBeGreaterThanOrEqual(1);
+    const missingTags = host.querySelectorAll(".garden-kitchen-ing-tag.is-missing");
+    expect(missingTags.length).toBeGreaterThanOrEqual(1);
+
+    // Verify cook button is present and disabled due to missing wheat
+    const cookBtn = host.querySelector<HTMLButtonElement>('button[data-act="cookRecipe"]');
+    expect(cookBtn).not.toBeNull();
+    expect(cookBtn?.disabled).toBe(true);
+
+    // Verify AI recipe lab input and suggest button
+    expect(host.querySelector('input[data-role="recipeInput"]')).not.toBeNull();
+    expect(host.querySelector('button[data-act="recipeSuggest"]')).not.toBeNull();
+  });
+
+  it("navigates to kitchen from warehouse kitchenInfo button", async () => {
+    const state = makeState({
+      warehouse: { level: 1, machines: {} },
+      extras: { ...makeState().extras, kitchen: true },
+    });
+    const api = new FakeGardenApi(state);
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // Navigate to warehouse tab
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:warehouse"]')?.click();
+    await settle();
+
+    // Click on the open kitchen button
+    const openKitchenBtn = host.querySelector<HTMLButtonElement>('button[data-act="kitchenInfo"]');
+    expect(openKitchenBtn).not.toBeNull();
+    openKitchenBtn?.click();
+    await settle();
+
+    // Must have navigated to kitchen tab
+    expect(host.querySelector(".garden-kitchen-reborn")).not.toBeNull();
+    expect(host.querySelector(".garden-section-tab.is-active")?.textContent).toContain("bếp");
+    expect(window.location.search).toContain("gstab=kitchen");
   });
 
   it("renders the mine tab with 5x5 rock grid and dedicated staff miner slot", async () => {

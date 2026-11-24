@@ -66,6 +66,7 @@ import {
   FINAL_SHOP_PRESTIGE,
   PRESTIGE_SHOP,
   KITCHEN_PRICE,
+  DAY_MS,
   prestigeGrowScale,
   weeklyModifier,
   weekEndsAt,
@@ -246,6 +247,7 @@ type GardenTab =
   | "coop"
   | "pond"
   | "warehouse"
+  | "kitchen"
   | "mine"
   | "shipping";
 
@@ -259,6 +261,7 @@ const GARDEN_TABS: readonly { readonly id: GardenTab; readonly labelKey: string 
   { id: "coop", labelKey: "gardenTab.coop" },
   { id: "pond", labelKey: "gardenTab.pond" },
   { id: "warehouse", labelKey: "gardenTab.warehouse" },
+  { id: "kitchen", labelKey: "gardenTab.kitchen" },
   { id: "mine", labelKey: "gardenTab.mine" },
   { id: "shipping", labelKey: "gardenTab.shipping" },
 ];
@@ -602,7 +605,26 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Display name for a crop, fruit or product id. */
   function materialName(id: string): string {
     if (seedById(id) !== undefined || treeById(id) !== undefined) return itemName(id as ItemId);
-    return t(`products.${id}`);
+    const key = `products.${id}`;
+    const translated = t(key);
+    return translated === key ? id : translated;
+  }
+
+  /**
+   * @brief Counts the total quantity of a crop, fruit or product across the bag.
+   * @param id Identifier of the crop or product.
+   * @return Available quantity in player's crops or products stacks.
+   */
+  function countMaterialInBag(id: string): number {
+    if (state === null) return 0;
+    let total = 0;
+    for (const stack of state.bag.crops) {
+      if (stack.item === id) total += stack.qty;
+    }
+    for (const stack of state.bag.products ?? []) {
+      if (stack.product === id) total += stack.qty;
+    }
+    return total;
   }
 
   /** @brief Compact mutation badge: strongest name plus a `+n` counter. */
@@ -791,8 +813,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         mode = "owner";
         visiting = null;
         await loadOwner();
-        if (view === "reborn" && rebornTab === "dynopedia") {
+        if (view === "reborn" && (rebornTab === "dynopedia" || gardenTab === "kitchen")) {
           void loadGlobalRecipes();
+        }
+        if (view === "reborn" && rebornTab === "dynopedia") {
           void loadGlobalHybrids();
         }
       }
@@ -1345,6 +1369,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         savedGardenTab === "coop" ||
         savedGardenTab === "pond" ||
         savedGardenTab === "warehouse" ||
+        savedGardenTab === "kitchen" ||
         savedGardenTab === "mine" ||
         savedGardenTab === "shipping")
     ) {
@@ -3914,6 +3939,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(lineBlock(`// ${t("kitchen.title")}`));
     if (state.extras.kitchen === true) {
       wrap.append(lineBlock(t("kitchen.built")));
+      wrap.append(actionButton(`🍳 ${t("kitchen.openKitchen")}`, "kitchenInfo"));
     } else {
       wrap.append(
         actionButton(
@@ -4119,6 +4145,182 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       );
     }
     wrap.append(kitchenGrid);
+    if (state.extras.kitchen === true) {
+      wrap.append(actionButton(`🍳 ${t("kitchen.openKitchen")}`, "kitchenInfo"));
+    }
+    return wrap;
+  }
+
+  /**
+   * @brief Builds the reborn kitchen tab: cooking stove, cooldown timers, ingredient checks,
+   * AI recipe creation lab, and global community cookbook.
+   * @param at Server-clock timestamp.
+   * @return Kitchen container element with all cooking and recipe workflows.
+   */
+  function buildKitchenTab(at: number): HTMLElement {
+    const wrap = div("garden-kitchen-reborn");
+    if (state === null) return lineBlock(t("common.loading"));
+
+    // 1. Header
+    wrap.append(lineBlock(`// ${t("kitchen.title")} · ${t("gardenTab.kitchen")}`));
+
+    // 2. Kitchen Status / Build Gate
+    if (state.extras.kitchen !== true) {
+      wrap.append(
+        buildRebornAction({
+          id: "buildKitchen",
+          label: t("kitchen.title"),
+          glyph: "+",
+          note: `${formatCompact(KITCHEN_PRICE)}c`,
+          tone: "money",
+          act: "buildKitchen",
+          title: t("kitchen.build", { cost: formatCompact(KITCHEN_PRICE) }),
+          disabled: (state.coins ?? 0) < KITCHEN_PRICE,
+        }),
+      );
+      wrap.append(lineBlock(t("kitchen.hint")));
+      wrap.append(lineBlock(t("kitchen.required")));
+      return wrap;
+    }
+
+    wrap.append(lineBlock(`🍳 ${t("kitchen.built")}`));
+
+    // 3. Cooking Stove & Learned Recipes
+    const stoveSection = div("garden-kitchen-section");
+    stoveSection.append(lineBlock(`// ${t("kitchen.stove")} (${(state.extras.recipes ?? []).length})`));
+
+    const recipes = state.extras.recipes ?? [];
+    if (recipes.length === 0) {
+      stoveSection.append(lineBlock(t("kitchen.noRecipes")));
+    } else {
+      for (const recipe of recipes) {
+        const card = div("garden-kitchen-card");
+
+        // Head: Dish name & Base value
+        const head = div("garden-kitchen-card-head");
+        head.append(span("garden-farm-title", `🍲 ${recipe.output}`));
+        head.append(span("garden-gold-tag", `${formatCompact(recipe.price)}c`));
+        card.append(head);
+
+        // Ingredients with real-time stock from crops & products
+        const ingContainer = div("garden-kitchen-card-ingredients");
+        let hasAll = true;
+        for (const input of recipe.inputs) {
+          const count = countMaterialInBag(input);
+          const name = materialName(input);
+          const isEnough = count >= 1;
+          if (!isEnough) hasAll = false;
+          const tag = span(
+            `garden-kitchen-ing-tag ${isEnough ? "is-enough" : "is-missing"}`,
+            `${name} (${count >= 1 ? `x${count}` : t("kitchen.missingIng")})`,
+          );
+          ingContainer.append(tag);
+        }
+        card.append(ingContainer);
+
+        // Foot: Cooldown timer & Cook button
+        const foot = div("garden-kitchen-card-foot");
+        const lastCooked = state.extras.recipeCookedAt?.[recipe.id] ?? 0;
+        const elapsed = at - lastCooked;
+        const remaining = Math.max(0, DAY_MS - elapsed);
+        const inCooldown = remaining > 0;
+
+        const statusLabel = span(
+          "garden-kitchen-status",
+          inCooldown
+            ? `⏳ ${t("kitchen.cooldown", { time: formatDuration(remaining, "short") })}`
+            : hasAll
+              ? `✨ ${t("kitchen.ready")}`
+              : `⚠️ ${t("kitchen.missingIng")}`,
+        );
+        foot.append(statusLabel);
+
+        const canCook = hasAll && !inCooldown && state.extras.kitchen === true;
+        const cookBtn = actionButton(
+          inCooldown ? formatDuration(remaining, "short") : t("recipe.cook"),
+          "cookRecipe",
+          canCook,
+        );
+        cookBtn.dataset.id = recipe.id;
+        foot.append(cookBtn);
+
+        card.append(foot);
+        stoveSection.append(card);
+      }
+    }
+    wrap.append(stoveSection);
+
+    // 4. AI Recipe Creation Lab
+    const labSection = div("garden-kitchen-section garden-market-panel");
+    const ingredientList = document.createElement("datalist");
+    ingredientList.id = "kitchen-recipe-ingredients";
+    for (const seed of SEEDS) {
+      const option = document.createElement("option");
+      option.value = seed.id;
+      option.label = t(`seeds.${seed.id}`);
+      ingredientList.append(option);
+    }
+    for (const tree of TREES) {
+      const option = document.createElement("option");
+      option.value = tree.id;
+      option.label = t(`trees.${tree.id}`);
+      ingredientList.append(option);
+    }
+    for (const product of PRODUCTS) {
+      const option = document.createElement("option");
+      option.value = product.id;
+      option.label = t(`products.${product.id}`);
+      ingredientList.append(option);
+    }
+    labSection.append(ingredientList);
+
+    labSection.append(lineBlock(`// ${t("recipe.title")}`));
+    const recipeRow = div("garden-restore-row");
+    recipeInputs.forEach((value, index) => {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "stage-input";
+      input.value = value;
+      input.placeholder = t("recipe.ingredient", { index: index + 1 });
+      input.dataset.role = "recipeInput";
+      input.dataset.index = String(index);
+      input.setAttribute("list", "kitchen-recipe-ingredients");
+      input.setAttribute("aria-label", t("recipe.ingredient", { index: index + 1 }));
+      recipeRow.append(input);
+      if (recipeInputs.length > 2) {
+        const remove = actionButton("×", "recipeRemoveInput");
+        remove.dataset.index = String(index);
+        recipeRow.append(remove);
+      }
+    });
+    if (recipeInputs.length < 6) {
+      recipeRow.append(actionButton(t("recipe.addIngredient"), "recipeAddInput"));
+    }
+    labSection.append(recipeRow, actionButton(t("recipe.suggest"), "recipeSuggest"));
+    if (recipeResult.length > 0) labSection.append(lineBlock(recipeResult));
+    wrap.append(labSection);
+
+    // 5. Global Community Recipes
+    if (globalRecipes.length > 0) {
+      const globalSection = div("garden-kitchen-section");
+      globalSection.append(lineBlock(`// ${t("recipe.global")} (${globalRecipes.length})`));
+      for (const recipe of globalRecipes) {
+        const row = div("garden-machine-row");
+        const formattedInputs = recipe.inputs.map(materialName).join(" + ");
+        row.append(lineBlock(`${formattedInputs} → ${recipe.output} · ${formatCompact(recipe.price)}c`));
+        const alreadyLearned = (state.extras.recipes ?? []).some((r) => r.id === recipe.id);
+        if (alreadyLearned) {
+          row.append(span("garden-learned-tag", `[ ${t("recipe.learned")} ]`));
+        } else {
+          const learn = actionButton(t("recipe.learn"), "recipeLearn");
+          learn.dataset.id = recipe.id;
+          row.append(learn);
+        }
+        globalSection.append(row);
+      }
+      wrap.append(globalSection);
+    }
+
     return wrap;
   }
 
@@ -6224,6 +6426,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     staffPanel = null;
     quickPlanPreview = null;
     quickMenu = null;
+    if (next === "kitchen") {
+      void loadGlobalRecipes();
+    }
     syncGardenQuery();
     render();
   }
@@ -6400,6 +6605,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return buildAnimalTab(gardenTab);
     }
     if (gardenTab === "warehouse") return buildWarehouse();
+    if (gardenTab === "kitchen") return buildKitchenTab(at);
     if (gardenTab === "mine") return buildMineReborn(at);
     if (gardenTab === "shipping") return buildShippingBin();
     return buildGardenTabPlaceholder();
@@ -8568,6 +8774,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "staffMenuWaterer":
       case "buildKitchen":
         void runAction({ kind: "buildKitchen" }, t("kitchen.builtToast"));
+        return;
+      case "kitchenInfo":
+        switchGardenTab("kitchen");
         return;
       case "guildCreate": {
         if (state === null) return;

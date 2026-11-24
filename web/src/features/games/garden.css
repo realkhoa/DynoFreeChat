@@ -1566,6 +1566,91 @@
   }
 }
 
+/* Reborn kitchen: cooking workstation, AI recipe lab and global cookbook */
+.garden-kitchen-reborn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.garden-kitchen-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 680px;
+  background: var(--bg-surface, #1e1e1e);
+  border: 1px solid var(--border-subtle, #333);
+  padding: 8px 10px;
+}
+
+.garden-kitchen-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--bg-card, #252526);
+  border: 1px solid var(--border-subtle, #3a3a3a);
+}
+
+.garden-kitchen-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.garden-kitchen-card-ingredients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.85em;
+  color: var(--text-muted, #888);
+}
+
+.garden-kitchen-ing-tag {
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: var(--bg-tag, #2d2d2d);
+}
+
+.garden-kitchen-ing-tag.is-enough {
+  color: #4ec9b0;
+  border: 1px solid #2e594f;
+}
+
+.garden-kitchen-ing-tag.is-missing {
+  color: #ce9178;
+  border: 1px solid #6b3e34;
+}
+
+.garden-kitchen-card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.garden-kitchen-status {
+  font-size: 0.85em;
+  color: var(--text-subtle, #aaa);
+}
+
+.garden-gold-tag {
+  font-size: 0.9em;
+  color: #dcdcaa;
+  font-weight: bold;
+}
+
+.garden-learned-tag {
+  font-size: 0.85em;
+  color: #4ec9b0;
+  padding: 2px 6px;
+}
+
 /* Reborn mine: 5x5 rock grid, elevators, stamina and dedicated miner slot */
 .garden-mine-reborn {
   display: flex;
