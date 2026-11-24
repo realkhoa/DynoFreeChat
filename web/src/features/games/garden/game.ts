@@ -1485,12 +1485,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       animalMenu.building === "pond"
         ? `${t("farm.pondBasin", { index: pondBasinIndex(animalMenu.slot) + 1 })} · ${t("farm.slots")} ${pondBasinSlot(animalMenu.slot) + 1}`
         : `${t(`farm.${animalMenu.building}`)} · ${t("farm.slots")} ${animalMenu.slot + 1}`;
-    head.append(
-      span(
-        "garden-menu-title",
-        `${displayName} · ${locationText}`,
-      ),
-    );
+    head.append(span("garden-menu-title", `${displayName} · ${locationText}`));
     const coins = state.coins;
     const balanceChip = span("garden-menu-balance", `$ ${formatCompact(coins)}c`);
     balanceChip.title = `${formatNumber(coins)} coins`;
@@ -1520,7 +1515,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     ];
     if (animal.hybridTier !== undefined) {
       lines.push(
-        labelValue("Tier", animal.hybridTier === "superior" ? t("dynopedia.superior") : t("dynopedia.inferior")),
+        labelValue(
+          "Tier",
+          animal.hybridTier === "superior" ? t("dynopedia.superior") : t("dynopedia.inferior"),
+        ),
       );
     }
     if (animal.hybridLore !== undefined && animal.hybridLore.length > 0) {
@@ -3389,7 +3387,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function buildAnimalPicker(building: BuildingId, slot: number): HTMLElement {
     const wrap = div("garden-seeds");
     wrap.append(span("garden-hint", t("farm.pickAnimal", { slot: slot + 1 })));
-    for (const animal of ANIMALS.filter((entry) => entry.building === building && entry.id !== "hybridFish")) {
+    for (const animal of ANIMALS.filter(
+      (entry) => entry.building === building && entry.id !== "hybridFish",
+    )) {
       const row = document.createElement("button");
       row.type = "button";
       row.className = "garden-row";

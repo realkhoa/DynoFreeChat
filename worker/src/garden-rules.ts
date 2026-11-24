@@ -2207,7 +2207,7 @@ function breedPondFish(ledger: GardenLedger, slot: number, now: number): RuleRes
   const targetSlot = basin.freeSlots[0];
   if (targetSlot === undefined) return { ok: false, code: "POND_BASIN_FULL" };
   const next = clone(ledger);
-  (next.animals.pond ??= []);
+  next.animals.pond ??= [];
 
   if (basin.isSingleSpecies) {
     const kind = basin.species[0] ?? animal.kind;
@@ -2725,7 +2725,8 @@ export function settleFarm(ledger: GardenLedger, now: number): GardenLedger {
         } else {
           const parentA = basin.species[Math.floor(rng() * basin.species.length)] ?? "fish";
           const others = basin.species.filter((s) => s !== parentA);
-          const parentB = (others.length > 0 ? others[Math.floor(rng() * others.length)] : parentA) ?? parentA;
+          const parentB =
+            (others.length > 0 ? others[Math.floor(rng() * others.length)] : parentA) ?? parentA;
           const seed = hash32(`pond_hybrid:${ledger.playerId}:${bornAt}:${targetSlot}`);
           const hybrid = generateDeterministicHybridFish(parentA, parentB, seed);
 

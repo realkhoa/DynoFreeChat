@@ -1019,14 +1019,7 @@ export const POND_MAX_SLOTS = 9;
 export const POND_SLOT_LADDER: readonly number[] = [9, 18, 27, 36, 45, 54, 63, 72];
 
 /** The six base fish species initially available for the fish pond. */
-export const BASE_FISH_SPECIES: readonly AnimalId[] = [
-  "sturgeon",
-  "tilapia",
-  "bass",
-  "pike",
-  "carp",
-  "goby",
-];
+export const BASE_FISH_SPECIES: readonly AnimalId[] = ["sturgeon", "tilapia", "bass", "pike", "carp", "goby"];
 
 /** Every building upgrade costs this multiple of the previous step. */
 export const BUILDING_UPGRADE_FACTOR = 2;
@@ -1052,17 +1045,7 @@ export const BUILDINGS: readonly BuildingDefinition[] = [
     price: 6_000_000,
     upgrade: 3_000_000,
     slots: POND_SLOT_LADDER,
-    animals: [
-      "fish",
-      "snail",
-      "sturgeon",
-      "tilapia",
-      "bass",
-      "pike",
-      "carp",
-      "goby",
-      "hybridFish",
-    ],
+    animals: ["fish", "snail", "sturgeon", "tilapia", "bass", "pike", "carp", "goby", "hybridFish"],
   },
 ];
 
@@ -1772,11 +1755,7 @@ export function inspectPondBasin(
  * @return True if the animal is a base, generic or hybrid fish.
  */
 export function isFishKind(kind: AnimalId): boolean {
-  return (
-    kind === "fish" ||
-    kind === "hybridFish" ||
-    (BASE_FISH_SPECIES as readonly string[]).includes(kind)
-  );
+  return kind === "fish" || kind === "hybridFish" || (BASE_FISH_SPECIES as readonly string[]).includes(kind);
 }
 
 /**
@@ -1855,11 +1834,13 @@ export function generateDeterministicHybridFish(
   ];
 
   const title = isSuperior
-    ? SUPERIOR_TITLES[Math.floor(rng() * SUPERIOR_TITLES.length)] ?? "Hoàng Gia"
-    : INFERIOR_TITLES[Math.floor(rng() * INFERIOR_TITLES.length)] ?? "Còi Cọc";
+    ? (SUPERIOR_TITLES[Math.floor(rng() * SUPERIOR_TITLES.length)] ?? "Hoàng Gia")
+    : (INFERIOR_TITLES[Math.floor(rng() * INFERIOR_TITLES.length)] ?? "Còi Cọc");
 
   const name = `Cá ${nameA} ${nameB} ${title}`;
-  const hexHash = Math.abs(seed % 0xfffffff).toString(16).padStart(7, "0");
+  const hexHash = Math.abs(seed % 0xfffffff)
+    .toString(16)
+    .padStart(7, "0");
   const id = `hybrid:${sorted[0]}:${sorted[1]}:${hexHash}`;
 
   const buy = isSuperior
@@ -1880,8 +1861,8 @@ export function generateDeterministicHybridFish(
   const SUPERIOR_GLYPHS = ["Ж", "♦", "§", "★", "Ω", "Ψ"];
   const INFERIOR_GLYPHS = ["x", "d", "b", "z", "o"];
   const glyph = isSuperior
-    ? SUPERIOR_GLYPHS[Math.floor(rng() * SUPERIOR_GLYPHS.length)] ?? "Ж"
-    : INFERIOR_GLYPHS[Math.floor(rng() * INFERIOR_GLYPHS.length)] ?? "x";
+    ? (SUPERIOR_GLYPHS[Math.floor(rng() * SUPERIOR_GLYPHS.length)] ?? "Ж")
+    : (INFERIOR_GLYPHS[Math.floor(rng() * INFERIOR_GLYPHS.length)] ?? "x");
 
   const lore = isSuperior
     ? `Thừa hưởng gen vượt trội giữa ${nameA} và ${nameB}. Thân hình lấp lánh, sinh trưởng mạnh mẽ và cho phẩm cấp cực kỳ giá trị!`
@@ -2023,9 +2004,7 @@ export function animalMeatPrice(
   const quality = 1 + 0.2 * (clamped - 1);
   const pond = definition.building === "pond" ? pondGrowthFactor(growth) : 1;
   const buyPrice =
-    typeof basePriceOverride === "number" && basePriceOverride > 0
-      ? basePriceOverride
-      : definition.buy;
+    typeof basePriceOverride === "number" && basePriceOverride > 0 ? basePriceOverride : definition.buy;
   return Math.round(buyPrice * ANIMAL_MEAT_RATIO * quality * pond);
 }
 
