@@ -31,7 +31,12 @@ import {
   type VisitSnapshot,
 } from "@dyno/shared/garden";
 import { createAsciiGardenGame } from "@/features/games/garden/game";
-import { createChillMusicPlayer, resolveWeatherAmbience } from "@/features/games/garden/music";
+import {
+  CHILL_TRACKS,
+  createChillMusicPlayer,
+  resolveWeatherAmbience,
+  sectionForBar,
+} from "@/features/games/garden/music";
 import type { GardenApi } from "@/features/games/garden/api";
 import { wrapCellLabel } from "@/features/games/garden/reborn";
 import { setLocale } from "@/shared/i18n";
@@ -4924,6 +4929,23 @@ describe("reborn legacy parity features", () => {
     const player = createChillMusicPlayer();
     player.setWeather(["snowfall"]);
     expect(player.getAmbience()).toBe("frost");
+    player.dispose();
+  });
+
+  it("rotates across 10 chill tracks with intro, verse, climax, outro, and quiet rest phases", () => {
+    expect(CHILL_TRACKS).toHaveLength(10);
+    expect(sectionForBar(0)).toBe("intro");
+    expect(sectionForBar(5)).toBe("verse");
+    expect(sectionForBar(9)).toBe("climax");
+    expect(sectionForBar(13)).toBe("outro");
+    expect(sectionForBar(16)).toBe("rest");
+
+    const player = createChillMusicPlayer();
+    player.start();
+    const firstTitle = player.getTrackTitle();
+    expect(firstTitle).toBe(CHILL_TRACKS[0]?.title);
+    player.nextTrack();
+    expect(player.getTrackTitle()).toBe(CHILL_TRACKS[1]?.title);
     player.dispose();
   });
 });

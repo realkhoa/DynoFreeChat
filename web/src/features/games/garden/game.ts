@@ -2008,6 +2008,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       music.isPlaying() ? t("garden.musicOn") : t("garden.musicOff"),
       "toggleMusic",
     );
+    const trackTitle = music.getTrackTitle();
+    if (trackTitle !== null) musicButton.title = trackTitle;
     if (music.isPlaying()) musicButton.classList.add("is-active");
     bar.append(stealthButton, musicButton);
     if (mode === "visit") bar.append(actionButton(t("garden.backHome"), "home"));

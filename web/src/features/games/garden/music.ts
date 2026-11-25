@@ -1,9 +1,9 @@
 /**
  * @file music.ts
  * @brief Procedural Web Audio API chill & fresh ambient soundtrack for ASCII Garden.
- * @details Synthesizes warm Rhodes-like maj9/m7 chords, soft pentatonic kalimba
- * droplets, a gentle sub-bass, and a subtle filtered breeze pad with zero
- * external audio dependencies. Safe in headless/jsdom test environments.
+ * @details Features a 10-track rotating playlist of distinct lo-fi/fresh progressions,
+ * a 16-bar song arc (Intro -> Verse -> Climax -> Outro), natural silent breathing
+ * gaps between tracks, and subtle weather-reactive ambient SFX.
  */
 
 import type { EventId } from "@dyno/shared/garden";
@@ -11,16 +11,36 @@ import type { EventId } from "@dyno/shared/garden";
 /** Weather soundscape category mapped from active game events. */
 export type WeatherAmbience = "calm" | "rain" | "storm" | "frost" | "night" | "golden" | "wind";
 
+/** Section within a track's 16-bar arrangement. */
+export type SongSection = "intro" | "verse" | "climax" | "outro" | "rest";
+
+/** Definition of one procedural chill track in the 10-song rotation. */
+export interface ChillTrack {
+  readonly id: string;
+  readonly title: string;
+  readonly stepMs: number;
+  readonly chords: readonly { readonly bass: number; readonly notes: readonly number[] }[];
+  readonly melody: readonly number[];
+}
+
 /** Controller handle for the ambient garden music engine. */
 export interface ChillMusicPlayer {
-  /** Whether the soundtrack is currently playing. */
+  /** Whether the soundtrack is currently enabled/playing. */
   isPlaying(): boolean;
+  /** Whether the player is currently in a quiet breathing gap between tracks. */
+  isResting(): boolean;
+  /** Returns the current track title, or null if stopped. */
+  getTrackTitle(): string | null;
+  /** Returns the current 16-bar arrangement section. */
+  getSection(): SongSection;
   /** Starts or resumes playback (must be called from or after a user gesture). */
   start(): void;
   /** Pauses playback and silences active voices cleanly. */
   stop(): void;
   /** Toggles playback and returns the new playing state. */
   toggle(): boolean;
+  /** Advances immediately to the next track in the 10-song rotation. */
+  nextTrack(): void;
   /** Updates the active weather event ids to blend subtle ambient SFX. */
   setWeather(events: readonly EventId[]): void;
   /** Returns the currently resolved weather ambience category. */
@@ -29,23 +49,132 @@ export interface ChillMusicPlayer {
   dispose(): void;
 }
 
-interface ChordVoicing {
-  readonly bass: number;
-  readonly notes: readonly number[];
-}
-
-// Warm, breezy lo-fi progression in C major / A minor (Fmaj7 -> Em7 -> Dm9 -> Cmaj9).
-const CHORD_PROGRESSION: readonly ChordVoicing[] = [
-  { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] }, // Fmaj7
-  { bass: 82.41, notes: [164.81, 196.0, 246.94, 293.66] }, // Em7
-  { bass: 73.42, notes: [146.83, 174.61, 220.0, 329.63] }, // Dm9
-  { bass: 65.41, notes: [130.81, 196.0, 246.94, 293.66] }, // Cmaj9
+/** 10 distinct chill & fresh tracks with varied keys, tempos, and voicings. */
+export const CHILL_TRACKS: readonly ChillTrack[] = [
+  {
+    id: "morningDew",
+    title: "Morning Dew",
+    stepMs: 3000,
+    chords: [
+      { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] }, // Fmaj7
+      { bass: 82.41, notes: [164.81, 196.0, 246.94, 293.66] }, // Em7
+      { bass: 73.42, notes: [146.83, 174.61, 220.0, 329.63] }, // Dm9
+      { bass: 65.41, notes: [130.81, 196.0, 246.94, 293.66] }, // Cmaj9
+    ],
+    melody: [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5],
+  },
+  {
+    id: "bambooBreeze",
+    title: "Bamboo Breeze",
+    stepMs: 2800,
+    chords: [
+      { bass: 73.42, notes: [146.83, 185.0, 220.0, 277.18] }, // Dmaj7
+      { bass: 98.0, notes: [196.0, 246.94, 293.66, 369.99] }, // Gmaj7
+      { bass: 82.41, notes: [164.81, 196.0, 246.94, 329.63] }, // Em9
+      { bass: 110.0, notes: [220.0, 277.18, 329.63, 392.0] }, // A9sus4
+    ],
+    melody: [587.33, 659.25, 739.99, 880.0, 987.77, 1174.66],
+  },
+  {
+    id: "sunlitKoi",
+    title: "Sunlit Koi",
+    stepMs: 3100,
+    chords: [
+      { bass: 98.0, notes: [196.0, 246.94, 293.66, 369.99] }, // Gmaj7
+      { bass: 82.41, notes: [164.81, 196.0, 246.94, 293.66] }, // Em7
+      { bass: 65.41, notes: [130.81, 164.81, 196.0, 246.94] }, // Cmaj7
+      { bass: 73.42, notes: [146.83, 196.0, 220.0, 293.66] }, // D6/9
+    ],
+    melody: [392.0, 440.0, 493.88, 587.33, 659.25, 783.99],
+  },
+  {
+    id: "terracottaRain",
+    title: "Terracotta Rain",
+    stepMs: 3200,
+    chords: [
+      { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] }, // Am7
+      { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] }, // Fmaj7
+      { bass: 65.41, notes: [130.81, 164.81, 196.0, 246.94] }, // Cmaj7
+      { bass: 98.0, notes: [196.0, 246.94, 293.66, 349.23] }, // G13
+    ],
+    melody: [440.0, 523.25, 587.33, 659.25, 783.99, 880.0],
+  },
+  {
+    id: "mistyGreenhouse",
+    title: "Misty Greenhouse",
+    stepMs: 2950,
+    chords: [
+      { bass: 77.78, notes: [155.56, 196.0, 233.08, 293.66] }, // Ebmaj7
+      { bass: 69.3, notes: [138.59, 174.61, 207.65, 261.63] }, // Dbmaj7
+      { bass: 65.41, notes: [130.81, 155.56, 196.0, 233.08] }, // Cm7
+      { bass: 116.54, notes: [233.08, 293.66, 349.23, 415.3] }, // Bb9sus4
+    ],
+    melody: [466.16, 523.25, 587.33, 698.46, 783.99, 932.33],
+  },
+  {
+    id: "goldenOrchard",
+    title: "Golden Orchard",
+    stepMs: 2750,
+    chords: [
+      { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] }, // Fmaj7
+      { bass: 98.0, notes: [196.0, 246.94, 293.66, 329.63] }, // G6
+      { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] }, // Am7
+      { bass: 65.41, notes: [130.81, 164.81, 196.0, 293.66] }, // Cadd9
+    ],
+    melody: [523.25, 659.25, 698.46, 783.99, 880.0, 1046.5],
+  },
+  {
+    id: "lanternDusk",
+    title: "Lantern Dusk",
+    stepMs: 3300,
+    chords: [
+      { bass: 82.41, notes: [164.81, 207.65, 246.94, 311.13] }, // Emaj7
+      { bass: 69.3, notes: [138.59, 164.81, 207.65, 246.94] }, // C#m7
+      { bass: 110.0, notes: [220.0, 277.18, 329.63, 415.3] }, // Amaj7
+      { bass: 123.47, notes: [246.94, 311.13, 369.99, 440.0] }, // B13
+    ],
+    melody: [493.88, 554.37, 659.25, 739.99, 830.61, 987.77],
+  },
+  {
+    id: "starlightSoil",
+    title: "Starlight Soil",
+    stepMs: 3150,
+    chords: [
+      { bass: 116.54, notes: [233.08, 293.66, 349.23, 440.0] }, // Bbmaj7
+      { bass: 98.0, notes: [196.0, 233.08, 293.66, 349.23] }, // Gm7
+      { bass: 77.78, notes: [155.56, 196.0, 233.08, 293.66] }, // Ebmaj7
+      { bass: 87.31, notes: [174.61, 220.0, 261.63, 349.23] }, // Fadd9
+    ],
+    melody: [466.16, 523.25, 587.33, 698.46, 783.99, 932.33],
+  },
+  {
+    id: "emeraldBrook",
+    title: "Emerald Brook",
+    stepMs: 2850,
+    chords: [
+      { bass: 65.41, notes: [130.81, 164.81, 196.0, 246.94] }, // Cmaj7
+      { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] }, // Am7
+      { bass: 73.42, notes: [146.83, 174.61, 220.0, 261.63] }, // Dm7
+      { bass: 98.0, notes: [196.0, 246.94, 293.66, 349.23] }, // G7
+    ],
+    melody: [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5],
+  },
+  {
+    id: "cloudburstCalm",
+    title: "Cloudburst Calm",
+    stepMs: 3050,
+    chords: [
+      { bass: 103.83, notes: [207.65, 261.63, 311.13, 392.0] }, // Abmaj7
+      { bass: 87.31, notes: [174.61, 207.65, 261.63, 311.13] }, // Fm7
+      { bass: 69.3, notes: [138.59, 174.61, 207.65, 261.63] }, // Dbmaj7
+      { bass: 77.78, notes: [155.56, 196.0, 233.08, 311.13] }, // Eb9
+    ],
+    melody: [415.3, 466.16, 523.25, 622.25, 698.46, 830.61],
+  },
 ];
 
-// Bright C major pentatonic notes for fresh kalimba/water-drop sparkles.
-const SPARKLE_NOTES: readonly number[] = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
-
-const STEP_MS = 3200; // ~75 BPM bar feel, relaxed and unhurried
+const BARS_PER_TRACK = 16;
+const REST_BARS_BETWEEN_TRACKS = 5; // ~15s quiet ambient breather before next song
 
 /**
  * @brief Maps active weather event ids to a cohesive chill ambient soundscape.
@@ -109,7 +238,20 @@ export function resolveWeatherAmbience(events: readonly EventId[]): WeatherAmbie
 }
 
 /**
- * @brief Creates a procedural chill ambient soundtrack player.
+ * @brief Resolves the arrangement section for a bar index within a 16-bar track + rest cycle.
+ * @param barInCycle Zero-based bar counter within the track cycle.
+ * @return SongSection (`intro`, `verse`, `climax`, `outro`, or `rest`).
+ */
+export function sectionForBar(barInCycle: number): SongSection {
+  if (barInCycle < 4) return "intro";
+  if (barInCycle < 8) return "verse";
+  if (barInCycle < 12) return "climax";
+  if (barInCycle < BARS_PER_TRACK) return "outro";
+  return "rest";
+}
+
+/**
+ * @brief Creates a procedural 10-track rotating chill ambient soundtrack player.
  * @return A ChillMusicPlayer handle safe to call in both browsers and tests.
  */
 export function createChillMusicPlayer(): ChillMusicPlayer {
@@ -118,11 +260,12 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
   let noiseBuffer: AudioBuffer | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   let playing = false;
-  let step = 0;
+  let trackIndex = 0;
+  let barInCycle = 0;
   let ambience: WeatherAmbience = "calm";
 
   /**
-   * @brief Lazily initializes the Web Audio context and master lowpass/gain chain.
+   * @brief Lazily initializes the Web Audio context and master gain node.
    * @return True when Web Audio is available, false in headless/jsdom environments.
    */
   function ensureContext(): boolean {
@@ -147,12 +290,13 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
   }
 
   /**
-   * @brief Schedules one soft electric-piano tone with warm lowpass filtering.
+   * @brief Schedules one soft electric-piano or shimmer tone with warm lowpass filtering.
    * @param freq Frequency in Hz.
    * @param startTime AudioContext start time in seconds.
    * @param duration Sustain + release duration in seconds.
    * @param peakGain Peak linear gain.
    * @param type Oscillator waveform.
+   * @param cutoff Lowpass filter cutoff frequency in Hz.
    */
   function playTone(
     freq: number,
@@ -160,6 +304,7 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
     duration: number,
     peakGain: number,
     type: OscillatorType,
+    cutoff = 1400,
   ): void {
     if (ctx === null || master === null) return;
     const osc = ctx.createOscillator();
@@ -170,7 +315,7 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
     osc.frequency.setValueAtTime(freq, startTime);
 
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(1400, startTime);
+    filter.frequency.setValueAtTime(cutoff, startTime);
     filter.Q.setValueAtTime(0.7, startTime);
 
     env.gain.setValueAtTime(0.0001, startTime);
@@ -210,12 +355,6 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
 
   /**
    * @brief Schedules a gentle filtered noise swell for rain, wind, or distant thunder.
-   * @param startTime AudioContext start time in seconds.
-   * @param duration Duration in seconds.
-   * @param filterType BiquadFilter type (`bandpass` or `lowpass`).
-   * @param freq Filter center/cutoff frequency in Hz.
-   * @param q Filter Q resonance.
-   * @param peakGain Subtle peak gain (kept low so music stays chill).
    */
   function playNoiseSwell(
     startTime: number,
@@ -253,73 +392,114 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
 
   /**
    * @brief Blends subtle, in-key weather SFX for the current bar without overpowering the music.
-   * @param now AudioContext bar start time in seconds.
    */
-  function scheduleWeatherLayer(now: number): void {
+  function scheduleWeatherLayer(now: number, durationSec: number): void {
     if (ambience === "rain") {
-      playNoiseSwell(now, 3.1, "bandpass", 1100, 0.5, 0.024);
-      playTone(1046.5, now + 0.7, 0.45, 0.012, "sine");
-      playTone(1318.5, now + 2.1, 0.45, 0.01, "sine");
+      playNoiseSwell(now, durationSec, "bandpass", 1100, 0.5, 0.022);
+      playTone(1046.5, now + 0.7, 0.45, 0.011, "sine");
+      playTone(1318.5, now + 2.0, 0.45, 0.009, "sine");
       return;
     }
     if (ambience === "storm") {
-      playNoiseSwell(now, 3.1, "bandpass", 950, 0.6, 0.022);
-      if (step % 2 === 0) {
-        playNoiseSwell(now + 0.6, 2.2, "lowpass", 95, 1.2, 0.038);
+      playNoiseSwell(now, durationSec, "bandpass", 950, 0.6, 0.02);
+      if (barInCycle % 2 === 0) {
+        playNoiseSwell(now + 0.5, 2.2, "lowpass", 95, 1.2, 0.034);
       }
       return;
     }
     if (ambience === "frost") {
-      playNoiseSwell(now, 3.1, "bandpass", 2200, 1.1, 0.012);
-      playTone(1567.98, now + 0.5, 1.1, 0.014, "sine");
-      playTone(1975.53, now + 1.8, 1.1, 0.012, "sine");
+      playNoiseSwell(now, durationSec, "bandpass", 2200, 1.1, 0.011);
+      playTone(1567.98, now + 0.5, 1.1, 0.013, "sine");
+      playTone(1975.53, now + 1.8, 1.1, 0.011, "sine");
       return;
     }
     if (ambience === "night") {
-      playTone(523.25, now + 0.2, 2.6, 0.012, "sine");
-      playTone(783.99, now + 0.35, 2.5, 0.01, "sine");
+      playTone(523.25, now + 0.2, 2.5, 0.011, "sine");
+      playTone(783.99, now + 0.35, 2.4, 0.009, "sine");
       return;
     }
     if (ambience === "golden") {
-      playNoiseSwell(now, 3.1, "lowpass", 650, 0.5, 0.011);
-      playTone(880.0, now + 0.9, 1.0, 0.014, "triangle");
+      playNoiseSwell(now, durationSec, "lowpass", 650, 0.5, 0.01);
+      playTone(880.0, now + 0.9, 1.0, 0.013, "triangle");
       return;
     }
     if (ambience === "wind") {
-      playNoiseSwell(now, 3.1, "bandpass", 520, 1.3, 0.016);
+      playNoiseSwell(now, durationSec, "bandpass", 520, 1.3, 0.015);
       return;
     }
-    // Calm: ultra-soft fresh garden breeze
-    playNoiseSwell(now, 3.1, "lowpass", 500, 0.5, 0.007);
+    playNoiseSwell(now, durationSec, "lowpass", 500, 0.5, 0.006);
   }
 
   /**
-   * @brief Schedules one bar of chords, sub-bass, and breezy pentatonic droplets.
+   * @brief Resets the interval timer to match the current track's tempo.
+   */
+  function restartTimer(): void {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+    if (!playing) return;
+    const track = CHILL_TRACKS[trackIndex % CHILL_TRACKS.length] ?? CHILL_TRACKS[0]!;
+    timer = setInterval(scheduleBar, track.stepMs);
+  }
+
+  /**
+   * @brief Schedules one bar according to the 16-bar arrangement (Intro -> Verse -> Climax -> Outro -> Rest).
    */
   function scheduleBar(): void {
-    if (!playing || ctx === null || master === null) return;
-    const now = ctx.currentTime + 0.05;
-    const chord = CHORD_PROGRESSION[step % CHORD_PROGRESSION.length] ?? CHORD_PROGRESSION[0]!;
+    if (!playing) return;
+    const track = CHILL_TRACKS[trackIndex % CHILL_TRACKS.length] ?? CHILL_TRACKS[0]!;
+    const section = sectionForBar(barInCycle);
+    const stepSec = track.stepMs / 1000;
 
-    // Warm sub-bass root
-    playTone(chord.bass, now, 3.0, 0.14, "sine");
+    if (ctx !== null && master !== null) {
+      const now = ctx.currentTime + 0.05;
+      scheduleWeatherLayer(now, stepSec);
 
-    // Soft Rhodes chord voicing with slight strum stagger
-    chord.notes.forEach((freq, idx) => {
-      playTone(freq, now + idx * 0.045, 2.9, 0.055, "triangle");
-    });
+      if (section !== "rest") {
+        const chord = track.chords[barInCycle % track.chords.length] ?? track.chords[0]!;
+        const isClimax = section === "climax";
+        const isIntroOrOutro = section === "intro" || section === "outro";
 
-    // Fresh pentatonic water-drop sparkles across the bar
-    const offsets = [0.4, 1.15, 1.9, 2.55];
-    offsets.forEach((offset, idx) => {
-      const noteIndex = (step * 3 + idx * 2) % SPARKLE_NOTES.length;
-      const freq = SPARKLE_NOTES[noteIndex] ?? 523.25;
-      playTone(freq, now + offset, 0.85, 0.032, "sine");
-    });
+        // 1. Sub-bass (deeper & warmer during verse/climax, gentle pulse on climax)
+        const bassGain = isClimax ? 0.17 : isIntroOrOutro ? 0.09 : 0.13;
+        playTone(chord.bass, now, stepSec * 0.92, bassGain, "sine", 900);
+        if (isClimax) {
+          playTone(chord.bass * 2, now + stepSec * 0.5, stepSec * 0.45, 0.06, "sine", 1100);
+        }
 
-    scheduleWeatherLayer(now);
+        // 2. Rhodes chord voicing (richer + octave shimmer during climax)
+        const chordGain = isClimax ? 0.072 : isIntroOrOutro ? 0.04 : 0.055;
+        const cutoff = isClimax ? 2100 : 1350;
+        chord.notes.forEach((freq, idx) => {
+          playTone(freq, now + idx * 0.045, stepSec * 0.9, chordGain, "triangle", cutoff);
+          if (isClimax && idx >= 2) {
+            playTone(freq * 2, now + idx * 0.06, stepSec * 0.75, 0.024, "sine", 2400);
+          }
+        });
 
-    step += 1;
+        // 3. Melodic droplets (sparse in intro/outro, flowing in verse, soaring arpeggio in climax)
+        const offsets = isClimax
+          ? [0.25, 0.65, 1.05, 1.45, 1.85, 2.25]
+          : isIntroOrOutro
+            ? [0.6, 1.75]
+            : [0.4, 1.1, 1.8, 2.4];
+        offsets.forEach((offset, idx) => {
+          if (offset >= stepSec - 0.15) return;
+          const noteIdx = (barInCycle * 3 + idx * 2) % track.melody.length;
+          const freq = track.melody[noteIdx] ?? 523.25;
+          const melGain = isClimax ? 0.044 : 0.028;
+          playTone(freq, now + offset, isClimax ? 1.05 : 0.85, melGain, "sine", isClimax ? 2600 : 1800);
+        });
+      }
+    }
+
+    barInCycle += 1;
+    if (barInCycle >= BARS_PER_TRACK + REST_BARS_BETWEEN_TRACKS) {
+      barInCycle = 0;
+      trackIndex = (trackIndex + 1) % CHILL_TRACKS.length;
+      restartTimer();
+    }
   }
 
   return {
@@ -327,23 +507,32 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
       return playing;
     },
 
+    isResting(): boolean {
+      return playing && sectionForBar(barInCycle) === "rest";
+    },
+
+    getTrackTitle(): string | null {
+      if (!playing) return null;
+      return (CHILL_TRACKS[trackIndex % CHILL_TRACKS.length] ?? CHILL_TRACKS[0]!).title;
+    },
+
+    getSection(): SongSection {
+      return sectionForBar(barInCycle);
+    },
+
     start(): void {
       if (playing) return;
-      if (!ensureContext() || ctx === null || master === null) {
-        playing = true;
-        return;
-      }
+      playing = true;
+      if (!ensureContext() || ctx === null || master === null) return;
       if (ctx.state === "suspended") {
         void ctx.resume().catch(() => {});
       }
-      playing = true;
       const now = ctx.currentTime;
       master.gain.cancelScheduledValues(now);
       master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), now);
       master.gain.linearRampToValueAtTime(0.45, now + 0.6);
       scheduleBar();
-      if (timer !== null) clearInterval(timer);
-      timer = setInterval(scheduleBar, STEP_MS);
+      restartTimer();
     },
 
     stop(): void {
@@ -364,6 +553,15 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
       if (playing) this.stop();
       else this.start();
       return playing;
+    },
+
+    nextTrack(): void {
+      trackIndex = (trackIndex + 1) % CHILL_TRACKS.length;
+      barInCycle = 0;
+      if (playing) {
+        scheduleBar();
+        restartTimer();
+      }
     },
 
     setWeather(events: readonly EventId[]): void {
