@@ -2913,6 +2913,7 @@ describe("reborn sub-tabs", () => {
       "rebornTab:dynopedia",
       "rebornTab:log",
       "rebornTab:levels",
+      "rebornTab:restore",
     ]);
     expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("vườn");
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
@@ -4967,5 +4968,31 @@ describe("reborn legacy parity features", () => {
     player.nextTrack();
     expect(player.getTrackTitle()).toBe(tracksForPhase("night")[1]?.title);
     player.dispose();
+  });
+
+  it("exposes a dedicated top-level restore tab alongside garden and town", async () => {
+    const api = new FakeGardenApi(makeState());
+    api.session = { playerId: "p1", token: "T1", recovery: "ABCD-1234" };
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    const topTabs = Array.from(
+      host.querySelectorAll<HTMLElement>(".garden-tabs-reborn .garden-reborn-tab"),
+    ).map((btn) => btn.dataset.act);
+    expect(topTabs).toContain("rebornTab:garden");
+    expect(topTabs).toContain("rebornTab:townhall");
+    expect(topTabs).toContain("rebornTab:restore");
+
+    const restoreTabBtn = host.querySelector<HTMLButtonElement>('[data-act="rebornTab:restore"]');
+    expect(restoreTabBtn).not.toBeNull();
+    restoreTabBtn?.click();
+    await settle();
+
+    expect(host.textContent).toContain("ABCD-1234");
+    expect(host.querySelector('[data-role="restore"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="restore"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="rotate"]')).not.toBeNull();
   });
 });

@@ -266,7 +266,7 @@ type Tab =
 type GardenView = "legacy" | "reborn";
 
 /** One tab inside the rebuilt view. */
-type RebornTab = "garden" | "townhall" | "weather" | "event" | "dynopedia" | "log" | "levels";
+type RebornTab = "garden" | "townhall" | "weather" | "event" | "dynopedia" | "log" | "levels" | "restore";
 
 /** @brief Tabs of the rebuilt view, in strip order. */
 const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string }[] = [
@@ -277,6 +277,7 @@ const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string 
   { id: "dynopedia", labelKey: "reborn.tabDynopedia" },
   { id: "log", labelKey: "reborn.tabLog" },
   { id: "levels", labelKey: "reborn.tabLevels" },
+  { id: "restore", labelKey: "reborn.tabRestore" },
 ];
 
 /** One tab inside the garden tab of the rebuilt view. */
@@ -1495,7 +1496,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           rebornTab === "event" ||
           rebornTab === "dynopedia" ||
           rebornTab === "log" ||
-          rebornTab === "levels")
+          rebornTab === "levels" ||
+          rebornTab === "restore")
           ? rebornTab
           : null,
       gstab: view === "reborn" && rebornTab === "garden" && gardenTab !== "main" ? gardenTab : null,
@@ -1518,7 +1520,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         savedRebornTab === "event" ||
         savedRebornTab === "dynopedia" ||
         savedRebornTab === "log" ||
-        savedRebornTab === "levels")
+        savedRebornTab === "levels" ||
+        savedRebornTab === "restore")
     ) {
       rebornTab = savedRebornTab;
     }
@@ -7239,6 +7242,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       seasonPanel.append(lineBlock(t("common.loading")));
     }
 
+    wrap.append(seasonPanel, buildRecoveryPanel());
+    return wrap;
+  }
+
+  /**
+   * @brief Builds the shared backup & recovery panel (recovery key display, rotate, and restore input).
+   * @return HTMLElement containing the recovery key controls and restore form.
+   */
+  function buildRecoveryPanel(): HTMLElement {
     const backup = div("garden-event-panel");
     backup.append(lineBlock(`// ${t("event.recoveryTitle")}`));
     if (mode === "owner") {
@@ -7258,8 +7270,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     input.setAttribute("aria-label", t("garden.recovery"));
     restoreRow.append(input, actionButton(t("garden.restore"), "restore"));
     backup.append(restoreRow);
+    return backup;
+  }
 
-    wrap.append(seasonPanel, backup);
+  /**
+   * @brief Builds the dedicated top-level Restore tab content in the rebuilt view.
+   * @return HTMLElement wrapping the backup & recovery panel.
+   */
+  function buildRebornRestoreSection(): HTMLElement {
+    const wrap = div("garden-event");
+    wrap.append(buildRecoveryPanel());
     return wrap;
   }
 
@@ -7316,6 +7336,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     if (rebornTab === "levels") {
       wrap.append(buildLevels());
+      return wrap;
+    }
+    if (rebornTab === "restore") {
+      wrap.append(buildRebornRestoreSection());
       return wrap;
     }
     wrap.append(buildGardenTabStrip());
