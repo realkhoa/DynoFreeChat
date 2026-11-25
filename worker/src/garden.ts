@@ -494,9 +494,25 @@ export class Garden extends DurableObject<Env> {
   }
 
   override async fetch(request: Request): Promise<Response> {
-    this.ensureSchema();
-    const url = new URL(request.url);
+    try {
+      this.ensureSchema();
+      const url = new URL(request.url);
+      return await this.route(request, url);
+    } catch (error) {
+      const msg = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      const stack = error instanceof Error ? (error.stack ?? "") : "";
+      console.error("[Garden DO] unhandled error", { url: request.url, msg, stack });
+      const topLine = stack
+        .split("\n")
+        .slice(1, 3)
+        .map((s) => s.trim())
+        .join(" | ");
+      return json({ code: "INTERNAL_ERROR", detail: topLine ? `${msg} @ ${topLine}` : msg }, 500);
+    }
+  }
 
+  /** @brief Routes an authenticated or internal Garden DO request. */
+  private async route(request: Request, url: URL): Promise<Response> {
     if (request.method === "POST" && url.pathname === "/register") return this.register(request);
     if (request.method === "POST" && url.pathname === "/bot-tick") return this.botTick(request);
     if (request.method === "POST" && url.pathname === "/gift") return this.giftInbox(request);
@@ -2155,9 +2171,25 @@ export class GardenHub extends DurableObject<Env> {
     }
   }
   override async fetch(request: Request): Promise<Response> {
-    this.ensureSchema();
-    const url = new URL(request.url);
+    try {
+      this.ensureSchema();
+      const url = new URL(request.url);
+      return await this.route(request, url);
+    } catch (error) {
+      const msg = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      const stack = error instanceof Error ? (error.stack ?? "") : "";
+      console.error("[Garden DO] unhandled error", { url: request.url, msg, stack });
+      const topLine = stack
+        .split("\n")
+        .slice(1, 3)
+        .map((s) => s.trim())
+        .join(" | ");
+      return json({ code: "INTERNAL_ERROR", detail: topLine ? `${msg} @ ${topLine}` : msg }, 500);
+    }
+  }
 
+  /** @brief Routes an authenticated or internal Garden DO request. */
+  private async route(request: Request, url: URL): Promise<Response> {
     if (request.method === "POST" && url.pathname === "/register") return this.register(request);
     if (request.method === "POST" && url.pathname === "/upsert") return this.upsert(request);
     if (request.method === "GET" && url.pathname === "/by-code") return this.byCode(url);
