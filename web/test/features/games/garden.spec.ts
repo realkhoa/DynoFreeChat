@@ -4888,4 +4888,26 @@ describe("reborn legacy parity features", () => {
     expect(traded).toEqual({ side: "buy", symbol: "FPT.VN", shares: 1 });
     expect(host.textContent).toContain("1 cp");
   });
+
+  it("toggles chill ambient background music and persists preference", async () => {
+    const api = new FakeGardenApi(makeState());
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    const btn = host.querySelector<HTMLButtonElement>('[data-act="toggleMusic"]');
+    expect(btn).not.toBeNull();
+    expect(btn?.classList.contains("is-active")).toBe(false);
+    expect(btn?.textContent).toContain("Tắt");
+
+    btn?.click();
+    await settle();
+    expect(btn?.classList.contains("is-active")).toBe(true);
+    expect(btn?.textContent).toContain("Chill");
+    expect(localStorage.getItem("dyno.garden.music")).toBe("1");
+
+    btn?.click();
+    await settle();
+    expect(btn?.classList.contains("is-active")).toBe(false);
+    expect(localStorage.getItem("dyno.garden.music")).toBe("0");
+  });
 });

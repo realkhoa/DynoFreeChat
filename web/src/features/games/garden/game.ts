@@ -216,6 +216,7 @@ import {
   treeCellRender,
 } from "./ascii";
 import { GardenApi, GardenApiError } from "./api";
+import { createChillMusicPlayer } from "./music";
 import {
   buildRebornAction,
   buildRebornActionColumns,
@@ -463,6 +464,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let staffMenu: { index: number | null | "list"; x: number; y: number; anchorTop: number } | null = null;
   // Work-safe look by default: no bright game colours unless the player opts in.
   let stealth = localStorage.getItem("dyno.garden.stealth") !== "0";
+  const music = createChillMusicPlayer();
+  let musicWanted = localStorage.getItem("dyno.garden.music") === "1";
   let farmPicker: { building: BuildingId; slot: number } | null = null;
   let animalMenu: { building: BuildingId; slot: number; x: number; y: number; anchorTop: number } | null =
     null;
@@ -2001,7 +2004,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     const stealthButton = actionButton(t("garden.stealth"), "toggleStealth");
     if (stealth) stealthButton.classList.add("is-active");
-    bar.append(stealthButton);
+    const musicButton = actionButton(
+      music.isPlaying() ? t("garden.musicOn") : t("garden.musicOff"),
+      "toggleMusic",
+    );
+    if (music.isPlaying()) musicButton.classList.add("is-active");
+    bar.append(stealthButton, musicButton);
     if (mode === "visit") bar.append(actionButton(t("garden.backHome"), "home"));
     return bar;
   }
@@ -10551,6 +10559,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return;
     }
     const action = target.dataset.act ?? "";
+    if (musicWanted && !music.isPlaying() && action !== "toggleMusic") {
+      music.start();
+    }
     if (QUICK_MENU_ACTS.has(action)) {
       const rect = target.getBoundingClientRect();
       quickMenu =
@@ -11665,6 +11676,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (root !== null) root.dataset.stealth = stealth ? "on" : "off";
         target.classList.toggle("is-active", stealth);
         return;
+      case "toggleMusic": {
+        const playing = music.toggle();
+        musicWanted = playing;
+        localStorage.setItem("dyno.garden.music", playing ? "1" : "0");
+        target.classList.toggle("is-active", playing);
+        target.textContent = playing ? t("garden.musicOn") : t("garden.musicOff");
+        return;
+      }
       case "animalPenInfo": {
         const building = target.dataset.building as BuildingId | undefined;
         const penRaw = Number(target.dataset.level);
@@ -12751,6 +12770,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       disposeLocale();
       disposeLocale = null;
     }
+    music.dispose();
     if (host !== null) {
       host.replaceChildren();
       host.removeAttribute("tabindex");
