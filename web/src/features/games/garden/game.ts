@@ -89,6 +89,7 @@ import {
   weeklyModifier,
   weekEndsAt,
   prestigeRequirement,
+  raidHitCost,
   prestigeStarterSeeds,
   prestigeSellBonus,
   SPRAYS,
@@ -7053,6 +7054,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       ),
     );
     if (raidSnapshot !== null) {
+      const raidCost = raidHitCost(state?.coins ?? 0);
       seasonPanel.append(
         lineBlock(
           t("raid.hp", {
@@ -7062,7 +7064,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           }),
         ),
       );
-      const hit = actionButton(t("raid.hit", { cost: formatCompact(100_000) }), "raidHit");
+      const hit = actionButton(
+        t("raid.hit", { cost: formatCompact(raidCost) }),
+        "raidHit",
+        mode === "owner" && raidCost > 0,
+      );
       seasonPanel.append(hit);
     }
     seasonPanel.append(lineBlock(`// ${t("event.now")}`));
@@ -9059,6 +9065,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     // Boss Raid Card (if active)
     if (raidSnapshot !== null) {
       const raidTimeLeft = Math.max(0, raidSnapshot.endsAt - at);
+      const raidCost = raidHitCost(state?.coins ?? 0);
       activeGrid.append(
         buildRebornAction({
           id: "weather:raid",
@@ -9067,7 +9074,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           note: `${formatCompact(raidSnapshot.hp)}/${formatCompact(raidSnapshot.maxHp)} HP`,
           tone: "harvest",
           act: "raidHit",
-          title: `${t("reborn.weatherRaid")} · ${formatDuration(raidTimeLeft)} · Bấm để tấn công (100k xu)`,
+          disabled: mode !== "owner" || raidCost <= 0,
+          title: `${t("reborn.weatherRaid")} · ${formatDuration(raidTimeLeft)} · ${t("raid.hitTitle", { cost: formatCompact(raidCost) })}`,
         }),
       );
     }

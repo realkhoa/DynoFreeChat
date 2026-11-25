@@ -4625,3 +4625,45 @@ describe("reborn greenhouse and nursery", () => {
     expect(host.querySelector(".garden-nursery-catalog")?.textContent).toContain("Thần Thảo");
   });
 });
+
+describe("locust raid 5% coin cost", () => {
+  it("displays 5% of total coins on the strike button instead of 100k", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 10_000_000 })) as FakeGardenApi & {
+      raid: () => Promise<{ window: number; hp: number; maxHp: number; endsAt: number }>;
+      raidHit: () => Promise<{
+        raid: { window: number; hp: number; maxHp: number; endsAt: number; defeated?: boolean };
+        coins: number;
+      }>;
+    };
+    api.raid = async () => ({
+      window: 1,
+      hp: 8_000,
+      maxHp: 10_000,
+      endsAt: CLOCK + 600_000,
+    });
+    api.raidHit = async () => ({
+      raid: { window: 1, hp: 7_750, maxHp: 10_000, endsAt: CLOCK + 600_000, defeated: false },
+      coins: 9_500_000,
+    });
+
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:event"]')?.click();
+    await settle();
+    await settle();
+
+    const hitBtn = host.querySelector<HTMLButtonElement>('.garden-reborn-event [data-act="raidHit"]');
+    expect(hitBtn).not.toBeNull();
+    expect(hitBtn?.textContent).toContain("5%");
+    expect(hitBtn?.textContent).toContain("500.000c");
+
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:weather"]')?.click();
+    await settle();
+    const weatherRaidCard = host.querySelector<HTMLButtonElement>(
+      '.garden-reborn-weather [data-act="raidHit"]',
+    );
+    expect(weatherRaidCard?.title).toContain("500.000c");
+  });
+});

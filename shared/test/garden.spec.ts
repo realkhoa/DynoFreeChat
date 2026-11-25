@@ -65,6 +65,8 @@ import {
   NURSERY_COST_FACTOR,
   hybridBreedCost,
   hybridOdds,
+  RAID_HIT_COST_RATE,
+  raidHitCost,
   specialPlotCost,
   PRESTIGE_SHOP,
   prestigeMutationBonus,
@@ -1426,5 +1428,14 @@ describe("greenhouse and nursery shared helpers", () => {
       name: "Siêu Cà",
     });
     expect(parseGardenAction({ kind: "renameHybrid", id: "hybrid:1", name: "   " })).toBeNull();
+  });
+
+  it("computes locust raid hit cost as 5% of total coins", () => {
+    expect(RAID_HIT_COST_RATE).toBe(0.05);
+    expect(raidHitCost(0)).toBe(0);
+    expect(raidHitCost(-100)).toBe(0);
+    expect(raidHitCost(10)).toBe(1);
+    expect(raidHitCost(1_000_000)).toBe(50_000);
+    expect(raidHitCost(10_000_000)).toBe(500_000);
   });
 });

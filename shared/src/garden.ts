@@ -2425,8 +2425,20 @@ export interface RaidSnapshot {
 
 /** Locust raid size and duration. */
 export const RAID_MAX_HP = 10_000;
+/** Damage dealt to the shared locust boss per player strike. */
 export const RAID_HIT_DAMAGE = 250;
-export const RAID_HIT_COST = 100_000;
+/** Fraction of the player's total coins deducted per locust raid strike (5%). */
+export const RAID_HIT_COST_RATE = 0.05;
+
+/**
+ * @brief Calculates the coin cost for one locust raid strike (5% of total coins).
+ * @param coins Player's current coin balance.
+ * @return Coin deduction for one strike (at least 1 coin when balance is positive, else 0).
+ */
+export function raidHitCost(coins: number): number {
+  if (!Number.isFinite(coins) || coins <= 0) return 0;
+  return Math.max(1, Math.round(coins * RAID_HIT_COST_RATE));
+}
 
 /** @brief Daily raid window. */
 export function raidWindowAt(now: number): number {

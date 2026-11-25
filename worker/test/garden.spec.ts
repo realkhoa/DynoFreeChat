@@ -16,7 +16,7 @@ import type {
   SeasonSnapshot,
   VisitSnapshot,
 } from "@dyno/shared/garden";
-import { SEEDS } from "@dyno/shared/garden";
+import { SEEDS, raidHitCost } from "@dyno/shared/garden";
 import { deriveTabs } from "../src/garden";
 import type { Env } from "../src/env";
 import { BASE, ORIGIN, uniqueIp } from "./helpers";
@@ -732,5 +732,49 @@ describe("garden season", () => {
     expect(Array.isArray(payload.entries)).toBe(true);
     const row = payload.entries.find((entry) => entry.code === registered.state.code);
     if (row !== undefined) expect(row.nick).toBe("ranked");
+  });
+
+  it("charges 5% of total coins per locust raid hit instead of a fixed 100k", async () => {
+    const poor = await register("poorraider");
+    const bindings = env as unknown as Env;
+    const poorGarden = bindings.GARDEN.get(bindings.GARDEN.idFromName(poor.playerId));
+    await runInDurableObject(poorGarden, (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'ledger'")
+        .toArray()[0];
+      if (row === undefined) throw new Error("ledger missing");
+      const meta = JSON.parse(row.value) as { coins: number };
+      meta.coins = 0;
+      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'ledger'", JSON.stringify(meta));
+    });
+    const noCoins = await SELF.fetch(`${BASE}/api/garden/raid`, {
+      method: "POST",
+      headers: { ...auth(poor), "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(noCoins.status).toBe(400);
+    expect(await body<{ code: string }>(noCoins)).toMatchObject({ code: "NOT_ENOUGH_COINS" });
+
+    const rich = await register("richraider");
+    const richGarden = bindings.GARDEN.get(bindings.GARDEN.idFromName(rich.playerId));
+    const initialCoins = 10_000_000;
+    await runInDurableObject(richGarden, (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'ledger'")
+        .toArray()[0];
+      if (row === undefined) throw new Error("ledger missing");
+      const meta = JSON.parse(row.value) as { coins: number };
+      meta.coins = initialCoins;
+      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'ledger'", JSON.stringify(meta));
+    });
+    const struck = await SELF.fetch(`${BASE}/api/garden/raid`, {
+      method: "POST",
+      headers: { ...auth(rich), "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(struck.status).toBe(200);
+    const payload = await body<{ coins: number }>(struck);
+    expect(payload.coins).toBe(initialCoins - raidHitCost(initialCoins));
+    expect(payload.coins).toBe(9_500_000);
   });
 });

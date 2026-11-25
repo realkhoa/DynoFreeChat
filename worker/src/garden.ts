@@ -13,6 +13,8 @@ import {
   ACTIONS_PER_MINUTE,
   GARDEN_PROTOCOL_VERSION,
   RAID_MAX_HP,
+  RAID_HIT_DAMAGE,
+  raidHitCost,
   type GuildSnapshot,
   raidWindowAt,
   raidEndsAt,
@@ -1002,7 +1004,7 @@ export class Garden extends DurableObject<Env> {
     return json({ ok: true, guild: payload.guild, coins: next.coins });
   }
 
-  /** @brief Charges one raid hit and forwards damage to the hub boss. */
+  /** @brief Charges 5% of total coins for one raid strike and forwards damage to the hub boss. */
   private async hitRaid(request: Request): Promise<Response> {
     const ledger = await this.authorize(request);
     if (ledger === null) return this.unauthorized();
@@ -1010,18 +1012,19 @@ export class Garden extends DurableObject<Env> {
     if (now - (ledger.raidLastAt ?? 0) < 60 * 60_000) {
       return json({ code: "TRY_LATER" }, 429);
     }
-    if (ledger.coins < 100_000) return json({ code: "NOT_ENOUGH_COINS" }, 400);
+    const cost = raidHitCost(ledger.coins);
+    if (cost <= 0 || ledger.coins < cost) return json({ code: "NOT_ENOUGH_COINS" }, 400);
     const hub = this.env.GARDEN_HUB.get(this.env.GARDEN_HUB.idFromName(HUB_NAME));
     const response = await hub.fetch("https://hub/raid/hit", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ damage: 250 }),
+      body: JSON.stringify({ damage: RAID_HIT_DAMAGE }),
     });
     if (!response.ok) return json({ code: "TRY_LATER" }, 502);
     const raid = (await response.json()) as Record<string, unknown>;
     const next = structuredClone(ledger);
-    next.coins -= 100_000;
-    next.stats.spent += 100_000;
+    next.coins -= cost;
+    next.stats.spent += cost;
     next.raidLastAt = now;
     if (raid.defeated === true) {
       next.coins += 1_000_000;
