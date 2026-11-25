@@ -10379,6 +10379,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** @brief Repaints the whole document. */
   function render(): void {
     if (root === null || disposed) return;
+    music.setWeather((season?.events ?? []).map((entry) => entry.id));
     page = Math.min(page, pageCount() - 1);
     root.dataset.tab = tab;
     root.dataset.mode = mode;

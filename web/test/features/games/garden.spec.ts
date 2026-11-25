@@ -31,6 +31,7 @@ import {
   type VisitSnapshot,
 } from "@dyno/shared/garden";
 import { createAsciiGardenGame } from "@/features/games/garden/game";
+import { createChillMusicPlayer, resolveWeatherAmbience } from "@/features/games/garden/music";
 import type { GardenApi } from "@/features/games/garden/api";
 import { wrapCellLabel } from "@/features/games/garden/reborn";
 import { setLocale } from "@/shared/i18n";
@@ -4909,5 +4910,20 @@ describe("reborn legacy parity features", () => {
     await settle();
     expect(btn?.classList.contains("is-active")).toBe(false);
     expect(localStorage.getItem("dyno.garden.music")).toBe("0");
+  });
+
+  it("maps weather events to subtle chill ambience soundscapes", () => {
+    expect(resolveWeatherAmbience([])).toBe("calm");
+    expect(resolveWeatherAmbience(["rain"])).toBe("rain");
+    expect(resolveWeatherAmbience(["thunderstorm", "rain"])).toBe("storm");
+    expect(resolveWeatherAmbience(["snowfall"])).toBe("frost");
+    expect(resolveWeatherAmbience(["auroraNight"])).toBe("night");
+    expect(resolveWeatherAmbience(["goldenHour"])).toBe("golden");
+    expect(resolveWeatherAmbience(["drought"])).toBe("wind");
+
+    const player = createChillMusicPlayer();
+    player.setWeather(["snowfall"]);
+    expect(player.getAmbience()).toBe("frost");
+    player.dispose();
   });
 });
