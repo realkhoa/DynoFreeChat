@@ -541,7 +541,7 @@ describe("legacy view", () => {
     const actions = Array.from(
       host.querySelectorAll<HTMLButtonElement>(".garden-reborn-quick .garden-reborn-action"),
     );
-    expect(actions).toHaveLength(11);
+    expect(actions).toHaveLength(12);
     // Same six-line frame as the plot cells, so the buttons read as plots too.
     for (const action of actions) expect(action.querySelectorAll(".garden-cell-line")).toHaveLength(6);
     // Four groups with a vertical rule between them, plus one before the group.
@@ -564,6 +564,7 @@ describe("legacy view", () => {
       "quickFertilize",
       "quickUproot",
       "quickPlant",
+      "quickWater",
     ]);
     // Every action keeps its legacy palette tone.
     expect(
@@ -580,6 +581,7 @@ describe("legacy view", () => {
       "tone-fertilizer",
       "tone-danger",
       "tone-plant",
+      "tone-water",
     ]);
     // Labels wrap inside the frame instead of spilling out.
     expect(actions[0]?.textContent).toContain("Tưới");

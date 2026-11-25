@@ -3192,6 +3192,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           act: "pickPlantTool",
           active: toolPicker === "plant" || tool?.kind === "plant",
         },
+        {
+          id: "quickWater",
+          label: t("garden.waterQuick"),
+          glyph: "w",
+          note: "",
+          tone: "water",
+          act: "quickWater",
+          active: tool?.kind === "water",
+        },
       ],
     ];
   }
