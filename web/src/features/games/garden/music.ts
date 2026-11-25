@@ -15,6 +15,120 @@ export type WeatherAmbience = "calm" | "rain" | "storm" | "frost" | "night" | "g
 /** Section within a track's 16-bar arrangement. */
 export type SongSection = "intro" | "verse" | "climax" | "outro" | "rest";
 
+/** Distinct timbral, rhythmic, and voicing profile assigned to one day phase. */
+export interface PhaseMusicProfile {
+  readonly phase: DayPhaseId;
+  readonly bassWave: OscillatorType;
+  readonly bassCutoff: number;
+  readonly bassPattern: "sustained" | "bouncy" | "pedal" | "sub";
+  readonly chordWave: OscillatorType;
+  readonly chordCutoff: number;
+  readonly chordSpreadSec: number;
+  readonly chordAttackSec: number;
+  readonly chordDetuneHz: number;
+  readonly chordPulse: boolean;
+  readonly melodyWave: OscillatorType;
+  readonly melodyCutoff: number;
+  readonly melodyEchoGain: number;
+  readonly melodyEchoDelaySec: number;
+  readonly introOffsets: readonly number[];
+  readonly verseOffsets: readonly number[];
+  readonly climaxOffsets: readonly number[];
+  readonly shakerGain: number;
+}
+
+const PHASE_PROFILES: Record<DayPhaseId, PhaseMusicProfile> = {
+  dawn: {
+    phase: "dawn",
+    bassWave: "sine",
+    bassCutoff: 750,
+    bassPattern: "pedal",
+    chordWave: "sine",
+    chordCutoff: 2100,
+    chordSpreadSec: 0.14,
+    chordAttackSec: 0.035,
+    chordDetuneHz: 0,
+    chordPulse: false,
+    melodyWave: "sine",
+    melodyCutoff: 2900,
+    melodyEchoGain: 0.28,
+    melodyEchoDelaySec: 0.28,
+    introOffsets: [0.35, 1.55],
+    verseOffsets: [0.22, 1.02, 1.82],
+    climaxOffsets: [0.15, 0.62, 1.1, 1.58, 2.08],
+    shakerGain: 0,
+  },
+  day: {
+    phase: "day",
+    bassWave: "triangle",
+    bassCutoff: 640,
+    bassPattern: "bouncy",
+    chordWave: "triangle",
+    chordCutoff: 2200,
+    chordSpreadSec: 0.025,
+    chordAttackSec: 0.025,
+    chordDetuneHz: 0,
+    chordPulse: true,
+    melodyWave: "triangle",
+    melodyCutoff: 2400,
+    melodyEchoGain: 0,
+    melodyEchoDelaySec: 0,
+    introOffsets: [0.3, 1.25],
+    verseOffsets: [0.22, 0.72, 1.25, 1.75],
+    climaxOffsets: [0.18, 0.55, 0.92, 1.32, 1.72, 2.08],
+    shakerGain: 0.0085,
+  },
+  dusk: {
+    phase: "dusk",
+    bassWave: "triangle",
+    bassCutoff: 440,
+    bassPattern: "sustained",
+    chordWave: "sawtooth",
+    chordCutoff: 780,
+    chordSpreadSec: 0.085,
+    chordAttackSec: 0.18,
+    chordDetuneHz: 0.9,
+    chordPulse: false,
+    melodyWave: "triangle",
+    melodyCutoff: 1180,
+    melodyEchoGain: 0.16,
+    melodyEchoDelaySec: 0.36,
+    introOffsets: [0.55, 1.85],
+    verseOffsets: [0.45, 1.45, 2.3],
+    climaxOffsets: [0.3, 0.95, 1.6, 2.2, 2.75],
+    shakerGain: 0,
+  },
+  night: {
+    phase: "night",
+    bassWave: "sine",
+    bassCutoff: 300,
+    bassPattern: "sub",
+    chordWave: "sine",
+    chordCutoff: 950,
+    chordSpreadSec: 0.22,
+    chordAttackSec: 0.48,
+    chordDetuneHz: 1.6,
+    chordPulse: false,
+    melodyWave: "sine",
+    melodyCutoff: 1550,
+    melodyEchoGain: 0.34,
+    melodyEchoDelaySec: 0.45,
+    introOffsets: [0.95],
+    verseOffsets: [0.85, 2.35],
+    climaxOffsets: [0.5, 1.4, 2.3, 3.15],
+    shakerGain: 0,
+  },
+};
+
+/**
+ * @brief Returns the distinct timbral and rhythmic profile for a day phase.
+ * @param phase Active day phase identifier (`dawn`, `day`, `dusk`, `night`).
+ * @return Immutable PhaseMusicProfile configuring synthesis for that phase.
+ */
+export function getPhaseProfile(phase: DayPhaseId): PhaseMusicProfile {
+  return PHASE_PROFILES[phase];
+}
+
 /** Definition of one procedural chill track bound to a day phase. */
 export interface ChillTrack {
   readonly id: string;
@@ -62,7 +176,7 @@ export const CHILL_TRACKS: readonly ChillTrack[] = [
     id: "morningDew",
     title: "Morning Dew",
     phase: "dawn",
-    stepMs: 3000,
+    stepMs: 2700,
     chords: [
       { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] },
       { bass: 82.41, notes: [164.81, 196.0, 246.94, 293.66] },
@@ -75,7 +189,7 @@ export const CHILL_TRACKS: readonly ChillTrack[] = [
     id: "bambooBreeze",
     title: "Bamboo Breeze",
     phase: "dawn",
-    stepMs: 2800,
+    stepMs: 2650,
     chords: [
       { bass: 73.42, notes: [146.83, 185.0, 220.0, 277.18] },
       { bass: 98.0, notes: [196.0, 246.94, 293.66, 369.99] },
@@ -88,7 +202,7 @@ export const CHILL_TRACKS: readonly ChillTrack[] = [
     id: "emeraldBrook",
     title: "Emerald Brook",
     phase: "dawn",
-    stepMs: 2850,
+    stepMs: 2750,
     chords: [
       { bass: 65.41, notes: [130.81, 164.81, 196.0, 246.94] },
       { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] },
@@ -103,7 +217,7 @@ export const CHILL_TRACKS: readonly ChillTrack[] = [
     id: "sunlitKoi",
     title: "Sunlit Koi",
     phase: "day",
-    stepMs: 2950,
+    stepMs: 2400,
     chords: [
       { bass: 98.0, notes: [196.0, 246.94, 293.66, 369.99] },
       { bass: 82.41, notes: [164.81, 196.0, 246.94, 293.66] },
@@ -116,7 +230,7 @@ export const CHILL_TRACKS: readonly ChillTrack[] = [
     id: "goldenOrchard",
     title: "Golden Orchard",
     phase: "day",
-    stepMs: 2750,
+    stepMs: 2350,
     chords: [
       { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] },
       { bass: 98.0, notes: [196.0, 246.94, 293.66, 329.63] },
@@ -129,7 +243,7 @@ export const CHILL_TRACKS: readonly ChillTrack[] = [
     id: "terracottaRain",
     title: "Terracotta Breeze",
     phase: "day",
-    stepMs: 3000,
+    stepMs: 2450,
     chords: [
       { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] },
       { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] },
@@ -185,7 +299,7 @@ export const CHILL_TRACKS: readonly ChillTrack[] = [
     id: "starlightSoil",
     title: "Starlight Soil",
     phase: "night",
-    stepMs: 3350,
+    stepMs: 3750,
     chords: [
       { bass: 116.54, notes: [233.08, 293.66, 349.23, 440.0] },
       { bass: 98.0, notes: [196.0, 233.08, 293.66, 349.23] },
@@ -198,7 +312,7 @@ export const CHILL_TRACKS: readonly ChillTrack[] = [
     id: "mistyGreenhouse",
     title: "Misty Greenhouse",
     phase: "night",
-    stepMs: 3400,
+    stepMs: 3850,
     chords: [
       { bass: 77.78, notes: [155.56, 196.0, 233.08, 293.66] },
       { bass: 69.3, notes: [138.59, 174.61, 207.65, 261.63] },
@@ -211,7 +325,7 @@ export const CHILL_TRACKS: readonly ChillTrack[] = [
     id: "midnightLotus",
     title: "Midnight Lotus",
     phase: "night",
-    stepMs: 3500,
+    stepMs: 3950,
     chords: [
       { bass: 92.5, notes: [185.0, 220.0, 277.18, 329.63] },
       { bass: 73.42, notes: [146.83, 185.0, 220.0, 277.18] },
@@ -358,7 +472,14 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
   }
 
   /**
-   * @brief Schedules one soft electric-piano or shimmer tone with warm lowpass filtering.
+   * @brief Schedules one soft tone with configurable attack and warm lowpass filtering.
+   * @param freq Fundamental frequency in Hz.
+   * @param startTime AudioContext timestamp to start.
+   * @param duration Tone duration in seconds.
+   * @param peakGain Maximum envelope gain.
+   * @param type Oscillator waveform type.
+   * @param cutoff Lowpass filter cutoff frequency in Hz.
+   * @param attackSec Envelope attack duration in seconds.
    */
   function playTone(
     freq: number,
@@ -367,6 +488,7 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
     peakGain: number,
     type: OscillatorType,
     cutoff = 1400,
+    attackSec = 0.08,
   ): void {
     if (ctx === null || master === null) return;
     const osc = ctx.createOscillator();
@@ -380,8 +502,9 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
     filter.frequency.setValueAtTime(cutoff, startTime);
     filter.Q.setValueAtTime(0.7, startTime);
 
+    const safeAttack = Math.min(attackSec, duration * 0.45);
     env.gain.setValueAtTime(0.0001, startTime);
-    env.gain.linearRampToValueAtTime(peakGain, startTime + 0.08);
+    env.gain.linearRampToValueAtTime(peakGain, startTime + safeAttack);
     env.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
     osc.connect(filter);
@@ -505,11 +628,146 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
   }
 
   /**
-   * @brief Schedules one bar according to the 16-bar arrangement and active day phase timbre.
+   * @brief Schedules the phase-specific bass voice for one bar.
+   */
+  function schedulePhaseBass(
+    profile: PhaseMusicProfile,
+    bassFreq: number,
+    now: number,
+    stepSec: number,
+    isClimax: boolean,
+    isIntroOrOutro: boolean,
+  ): void {
+    const baseGain = isClimax ? 0.16 : isIntroOrOutro ? 0.085 : 0.125;
+    if (profile.bassPattern === "bouncy") {
+      playTone(bassFreq, now, stepSec * 0.42, baseGain, profile.bassWave, profile.bassCutoff, 0.03);
+      playTone(
+        bassFreq * 1.5,
+        now + stepSec * 0.5,
+        stepSec * 0.42,
+        baseGain * 0.78,
+        profile.bassWave,
+        profile.bassCutoff,
+        0.03,
+      );
+      return;
+    }
+    if (profile.bassPattern === "sub") {
+      playTone(bassFreq, now, stepSec * 1.05, baseGain * 0.9, profile.bassWave, profile.bassCutoff, 0.32);
+      return;
+    }
+    if (profile.bassPattern === "pedal") {
+      playTone(bassFreq, now, stepSec * 0.85, baseGain * 0.72, profile.bassWave, profile.bassCutoff, 0.06);
+      if (isClimax) {
+        playTone(bassFreq * 2, now + stepSec * 0.5, stepSec * 0.45, 0.04, "sine", 1100, 0.04);
+      }
+      return;
+    }
+    playTone(bassFreq, now, stepSec * 0.95, baseGain, profile.bassWave, profile.bassCutoff, 0.14);
+    if (isClimax) {
+      playTone(bassFreq * 2, now + stepSec * 0.5, stepSec * 0.45, 0.05, "sine", 850, 0.08);
+    }
+  }
+
+  /**
+   * @brief Schedules the phase-specific chord voicing and pad/arpeggio texture for one bar.
+   */
+  function schedulePhaseChords(
+    profile: PhaseMusicProfile,
+    notes: readonly number[],
+    now: number,
+    stepSec: number,
+    isClimax: boolean,
+    isIntroOrOutro: boolean,
+  ): void {
+    const chordGain = isClimax ? 0.065 : isIntroOrOutro ? 0.036 : 0.05;
+    const cutoff = isClimax ? profile.chordCutoff * 1.3 : profile.chordCutoff;
+    notes.forEach((freq, idx) => {
+      const start = now + idx * profile.chordSpreadSec;
+      const dur = profile.chordPulse ? stepSec * 0.42 : stepSec * 0.96;
+      playTone(freq, start, dur, chordGain, profile.chordWave, cutoff, profile.chordAttackSec);
+      if (profile.chordDetuneHz > 0) {
+        playTone(
+          freq + profile.chordDetuneHz,
+          start,
+          stepSec * 1.05,
+          chordGain * 0.5,
+          "sine",
+          cutoff,
+          profile.chordAttackSec,
+        );
+      }
+      if (profile.chordPulse) {
+        playTone(
+          freq,
+          now + stepSec * 0.52 + idx * 0.018,
+          stepSec * 0.38,
+          chordGain * 0.72,
+          profile.chordWave,
+          cutoff,
+          0.025,
+        );
+      }
+      if (isClimax && idx >= 2 && profile.phase !== "night") {
+        playTone(freq * 2, start + 0.05, stepSec * 0.65, 0.02, "sine", 2400, 0.06);
+      }
+    });
+  }
+
+  /**
+   * @brief Schedules the phase-specific melody contour, rhythm, and optional echo tail.
+   */
+  function schedulePhaseMelody(
+    profile: PhaseMusicProfile,
+    melody: readonly number[],
+    now: number,
+    stepSec: number,
+    section: SongSection,
+  ): void {
+    const isClimax = section === "climax";
+    const isIntroOrOutro = section === "intro" || section === "outro";
+    const offsets = isClimax
+      ? profile.climaxOffsets
+      : isIntroOrOutro
+        ? profile.introOffsets
+        : profile.verseOffsets;
+    const melGain = isClimax ? 0.042 : 0.027;
+    const melDur = profile.phase === "night" ? 1.7 : profile.phase === "day" ? 0.55 : 0.95;
+
+    offsets.forEach((offset, idx) => {
+      if (offset >= stepSec - 0.15) return;
+      const noteIdx = (barInCycle * 3 + idx * 2) % melody.length;
+      const freq = melody[noteIdx] ?? 523.25;
+      playTone(
+        freq,
+        now + offset,
+        isClimax ? melDur * 1.15 : melDur,
+        melGain,
+        profile.melodyWave,
+        isClimax ? profile.melodyCutoff * 1.2 : profile.melodyCutoff,
+        profile.phase === "night" ? 0.12 : 0.035,
+      );
+      if (profile.melodyEchoGain > 0 && offset + profile.melodyEchoDelaySec < stepSec - 0.1) {
+        playTone(
+          freq,
+          now + offset + profile.melodyEchoDelaySec,
+          melDur * 0.9,
+          melGain * profile.melodyEchoGain,
+          "sine",
+          profile.melodyCutoff * 0.85,
+          0.05,
+        );
+      }
+    });
+  }
+
+  /**
+   * @brief Schedules one bar according to the 16-bar arrangement and active day phase profile.
    */
   function scheduleBar(): void {
     if (!playing) return;
     const track = currentTrack();
+    const profile = getPhaseProfile(phase);
     const section = sectionForBar(barInCycle);
     const stepSec = track.stepMs / 1000;
 
@@ -521,43 +779,16 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
         const chord = track.chords[barInCycle % track.chords.length] ?? track.chords[0]!;
         const isClimax = section === "climax";
         const isIntroOrOutro = section === "intro" || section === "outro";
-        const phaseCutoffOffset =
-          phase === "night" ? -250 : phase === "dusk" ? -100 : phase === "dawn" ? 150 : 100;
 
-        const bassGain = isClimax ? 0.17 : isIntroOrOutro ? 0.09 : 0.13;
-        playTone(chord.bass, now, stepSec * 0.92, bassGain, "sine", 900);
-        if (isClimax) {
-          playTone(chord.bass * 2, now + stepSec * 0.5, stepSec * 0.45, 0.06, "sine", 1100);
+        schedulePhaseBass(profile, chord.bass, now, stepSec, isClimax, isIntroOrOutro);
+        schedulePhaseChords(profile, chord.notes, now, stepSec, isClimax, isIntroOrOutro);
+        schedulePhaseMelody(profile, track.melody, now, stepSec, section);
+
+        if (profile.shakerGain > 0 && !isIntroOrOutro) {
+          [0.25, 0.5, 0.75].forEach((frac) => {
+            playNoiseSwell(now + stepSec * frac, 0.14, "highpass", 4200, 0.9, profile.shakerGain);
+          });
         }
-
-        const chordGain = isClimax ? 0.072 : isIntroOrOutro ? 0.04 : 0.055;
-        const cutoff = Math.max(700, (isClimax ? 2100 : 1350) + phaseCutoffOffset);
-        chord.notes.forEach((freq, idx) => {
-          playTone(freq, now + idx * 0.045, stepSec * 0.9, chordGain, "triangle", cutoff);
-          if (isClimax && idx >= 2) {
-            playTone(freq * 2, now + idx * 0.06, stepSec * 0.75, 0.024, "sine", 2400);
-          }
-        });
-
-        const offsets = isClimax
-          ? [0.25, 0.65, 1.05, 1.45, 1.85, 2.25]
-          : isIntroOrOutro
-            ? [0.6, 1.75]
-            : [0.4, 1.1, 1.8, 2.4];
-        offsets.forEach((offset, idx) => {
-          if (offset >= stepSec - 0.15) return;
-          const noteIdx = (barInCycle * 3 + idx * 2) % track.melody.length;
-          const freq = track.melody[noteIdx] ?? 523.25;
-          const melGain = isClimax ? 0.044 : 0.028;
-          playTone(
-            freq,
-            now + offset,
-            isClimax ? 1.05 : 0.85,
-            melGain,
-            "sine",
-            Math.max(1100, (isClimax ? 2600 : 1800) + phaseCutoffOffset),
-          );
-        });
       }
     }
 

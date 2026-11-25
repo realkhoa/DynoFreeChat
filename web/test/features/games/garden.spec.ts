@@ -34,6 +34,7 @@ import { createAsciiGardenGame } from "@/features/games/garden/game";
 import {
   CHILL_TRACKS,
   createChillMusicPlayer,
+  getPhaseProfile,
   resolveWeatherAmbience,
   sectionForBar,
   tracksForPhase,
@@ -4939,6 +4940,16 @@ describe("reborn legacy parity features", () => {
     expect(tracksForPhase("day")).toHaveLength(3);
     expect(tracksForPhase("dusk")).toHaveLength(3);
     expect(tracksForPhase("night")).toHaveLength(3);
+    const profiles = (["dawn", "day", "dusk", "night"] as const).map((p) => getPhaseProfile(p));
+    expect(new Set(profiles.map((p) => p.bassPattern)).size).toBe(4);
+    expect(new Set(profiles.map((p) => p.chordCutoff)).size).toBe(4);
+    expect(getPhaseProfile("day").chordPulse).toBe(true);
+    expect(getPhaseProfile("day").shakerGain).toBeGreaterThan(0);
+    expect(getPhaseProfile("dusk").chordWave).toBe("sawtooth");
+    expect(getPhaseProfile("night").chordDetuneHz).toBeGreaterThan(1);
+    expect(tracksForPhase("day")[0]!.stepMs).toBeLessThan(tracksForPhase("dawn")[0]!.stepMs);
+    expect(tracksForPhase("dawn")[0]!.stepMs).toBeLessThan(tracksForPhase("dusk")[0]!.stepMs);
+    expect(tracksForPhase("dusk")[0]!.stepMs).toBeLessThan(tracksForPhase("night")[0]!.stepMs);
     expect(sectionForBar(0)).toBe("intro");
     expect(sectionForBar(5)).toBe("verse");
     expect(sectionForBar(9)).toBe("climax");
