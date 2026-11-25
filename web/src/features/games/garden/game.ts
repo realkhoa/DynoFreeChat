@@ -258,13 +258,14 @@ type Tab =
 type GardenView = "legacy" | "reborn";
 
 /** One tab inside the rebuilt view. */
-type RebornTab = "garden" | "townhall" | "weather" | "dynopedia" | "log";
+type RebornTab = "garden" | "townhall" | "weather" | "event" | "dynopedia" | "log";
 
 /** @brief Tabs of the rebuilt view, in strip order. */
 const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string }[] = [
   { id: "garden", labelKey: "reborn.tabGarden" },
   { id: "townhall", labelKey: "reborn.tabTownhall" },
   { id: "weather", labelKey: "reborn.tabWeather" },
+  { id: "event", labelKey: "reborn.tabEvent" },
   { id: "dynopedia", labelKey: "reborn.tabDynopedia" },
   { id: "log", labelKey: "reborn.tabLog" },
 ];
@@ -1408,6 +1409,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     machineMenu = null;
     specialPicker = null;
     if (next === "legacy") loadTabData(tab);
+    if (next === "reborn" && (rebornTab === "event" || rebornTab === "weather")) {
+      void loadRaid();
+    }
     if (next !== "reborn") {
       townNpc = null;
       townBoard = null;
@@ -1462,6 +1466,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         view === "reborn" &&
         (rebornTab === "townhall" ||
           rebornTab === "weather" ||
+          rebornTab === "event" ||
           rebornTab === "dynopedia" ||
           rebornTab === "log")
           ? rebornTab
@@ -1483,6 +1488,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       visitCode === null &&
       (savedRebornTab === "townhall" ||
         savedRebornTab === "weather" ||
+        savedRebornTab === "event" ||
         savedRebornTab === "dynopedia" ||
         savedRebornTab === "log")
     ) {
@@ -7150,6 +7156,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       wrap.append(buildWeatherSection(at));
       return wrap;
     }
+    if (rebornTab === "event") {
+      wrap.append(buildRebornEventSection());
+      return wrap;
+    }
     if (rebornTab === "dynopedia") {
       wrap.append(buildDynopedia());
       return wrap;
@@ -7451,6 +7461,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     if (next === "log") {
       void loadGlobalSales();
+    }
+    if (next === "event" || next === "weather") {
+      void loadRaid();
     }
 
     syncGardenQuery();
@@ -9110,6 +9123,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     });
     wrap.append(forecastGrid);
 
+    return wrap;
+  }
+
+  /**
+   * @brief Builds the Reborn Event tab with seasonal events, boss raid, wave forecast, and recovery controls.
+   * @return Reborn Event container wrapping the full event and recovery panels.
+   */
+  function buildRebornEventSection(): HTMLElement {
+    const wrap = div("garden-reborn-event");
+    wrap.append(lineBlock(`// ${t("reborn.eventTitle")}`), buildEvent());
     return wrap;
   }
 
@@ -12024,6 +12047,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (tab === "bots") void loadBots();
         if (tab === "rank") void loadLeaderboard();
         if (tab === "extras") void loadExtras();
+        if (view === "reborn" && (rebornTab === "event" || rebornTab === "weather")) {
+          void loadRaid();
+        }
       }
     }, POLL_MS);
 

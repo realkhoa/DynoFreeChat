@@ -2264,7 +2264,8 @@ button.garden-rank-row:hover {
    shop drops below as a panel made of the same cells, so the whole town reads as
    one more board of plots. */
 .garden-townhall,
-.garden-reborn-weather {
+.garden-reborn-weather,
+.garden-reborn-event {
   display: flex;
   flex-direction: column;
   gap: 6px;

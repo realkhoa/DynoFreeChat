@@ -2891,12 +2891,13 @@ describe("reborn sub-tabs", () => {
     host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
     await settle();
 
-    // The rebuilt view owns five sub-tabs; the garden is the default one.
+    // The rebuilt view owns six sub-tabs; the garden is the default one.
     const tabs = Array.from(host.querySelectorAll<HTMLButtonElement>(".garden-reborn-tab"));
     expect(tabs.map((tab) => tab.dataset.act)).toEqual([
       "rebornTab:garden",
       "rebornTab:townhall",
       "rebornTab:weather",
+      "rebornTab:event",
       "rebornTab:dynopedia",
       "rebornTab:log",
     ]);
@@ -2904,6 +2905,7 @@ describe("reborn sub-tabs", () => {
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
     expect(host.querySelector(".garden-townhall")).toBeNull();
     expect(host.querySelector(".garden-reborn-weather")).toBeNull();
+    expect(host.querySelector(".garden-reborn-event")).toBeNull();
     expect(host.querySelector(".garden-dynopedia")).toBeNull();
     expect(host.querySelector(".garden-reborn-log")).toBeNull();
     expect(window.location.search).not.toContain("grtab=");
@@ -2923,6 +2925,17 @@ describe("reborn sub-tabs", () => {
     expect(host.querySelector(".garden-reborn .garden-reborn-weather")).not.toBeNull();
     expect(host.querySelector(".garden-reborn-row")).toBeNull();
     expect(window.location.search).toContain("grtab=weather");
+
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:event"]')?.click();
+    await settle();
+
+    expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("event");
+    const rebornEvent = host.querySelector(".garden-reborn .garden-reborn-event");
+    expect(rebornEvent).not.toBeNull();
+    expect(rebornEvent?.textContent).toContain("Tuần này:");
+    expect(rebornEvent?.querySelector('[data-act="restore"]')).not.toBeNull();
+    expect(host.querySelector(".garden-reborn-row")).toBeNull();
+    expect(window.location.search).toContain("grtab=event");
 
     host.querySelector<HTMLButtonElement>('[data-act="rebornTab:dynopedia"]')?.click();
     await settle();
