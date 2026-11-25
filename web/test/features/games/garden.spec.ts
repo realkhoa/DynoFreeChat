@@ -36,6 +36,7 @@ import {
   createChillMusicPlayer,
   resolveWeatherAmbience,
   sectionForBar,
+  tracksForPhase,
 } from "@/features/games/garden/music";
 import type { GardenApi } from "@/features/games/garden/api";
 import { wrapCellLabel } from "@/features/games/garden/reborn";
@@ -4932,8 +4933,12 @@ describe("reborn legacy parity features", () => {
     player.dispose();
   });
 
-  it("rotates across 10 chill tracks with intro, verse, climax, outro, and quiet rest phases", () => {
-    expect(CHILL_TRACKS).toHaveLength(10);
+  it("rotates dedicated chill playlists for dawn, day, dusk, and night with climax and rest phases", () => {
+    expect(CHILL_TRACKS).toHaveLength(12);
+    expect(tracksForPhase("dawn")).toHaveLength(3);
+    expect(tracksForPhase("day")).toHaveLength(3);
+    expect(tracksForPhase("dusk")).toHaveLength(3);
+    expect(tracksForPhase("night")).toHaveLength(3);
     expect(sectionForBar(0)).toBe("intro");
     expect(sectionForBar(5)).toBe("verse");
     expect(sectionForBar(9)).toBe("climax");
@@ -4942,10 +4947,14 @@ describe("reborn legacy parity features", () => {
 
     const player = createChillMusicPlayer();
     player.start();
-    const firstTitle = player.getTrackTitle();
-    expect(firstTitle).toBe(CHILL_TRACKS[0]?.title);
+    player.setPhase("dawn");
+    expect(player.getTrackTitle()).toBe(tracksForPhase("dawn")[0]?.title);
+    player.setPhase("dusk");
+    expect(player.getTrackTitle()).toBe(tracksForPhase("dusk")[0]?.title);
+    player.setPhase("night");
+    expect(player.getTrackTitle()).toBe(tracksForPhase("night")[0]?.title);
     player.nextTrack();
-    expect(player.getTrackTitle()).toBe(CHILL_TRACKS[1]?.title);
+    expect(player.getTrackTitle()).toBe(tracksForPhase("night")[1]?.title);
     player.dispose();
   });
 });

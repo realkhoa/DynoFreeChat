@@ -1,12 +1,13 @@
 /**
  * @file music.ts
  * @brief Procedural Web Audio API chill & fresh ambient soundtrack for ASCII Garden.
- * @details Features a 10-track rotating playlist of distinct lo-fi/fresh progressions,
- * a 16-bar song arc (Intro -> Verse -> Climax -> Outro), natural silent breathing
- * gaps between tracks, and subtle weather-reactive ambient SFX.
+ * @details Organizes 12 chill tracks into dedicated playlists per day phase
+ * (`dawn`, `day`, `dusk`, `night`), with a 16-bar song arc (Intro -> Verse ->
+ * Climax -> Outro), natural silent breathing gaps between tracks, and subtle
+ * weather-reactive ambient SFX.
  */
 
-import type { EventId } from "@dyno/shared/garden";
+import type { DayPhaseId, EventId } from "@dyno/shared/garden";
 
 /** Weather soundscape category mapped from active game events. */
 export type WeatherAmbience = "calm" | "rain" | "storm" | "frost" | "night" | "golden" | "wind";
@@ -14,10 +15,11 @@ export type WeatherAmbience = "calm" | "rain" | "storm" | "frost" | "night" | "g
 /** Section within a track's 16-bar arrangement. */
 export type SongSection = "intro" | "verse" | "climax" | "outro" | "rest";
 
-/** Definition of one procedural chill track in the 10-song rotation. */
+/** Definition of one procedural chill track bound to a day phase. */
 export interface ChillTrack {
   readonly id: string;
   readonly title: string;
+  readonly phase: DayPhaseId;
   readonly stepMs: number;
   readonly chords: readonly { readonly bass: number; readonly notes: readonly number[] }[];
   readonly melody: readonly number[];
@@ -33,13 +35,17 @@ export interface ChillMusicPlayer {
   getTrackTitle(): string | null;
   /** Returns the current 16-bar arrangement section. */
   getSection(): SongSection;
+  /** Updates the active day phase (`dawn`, `day`, `dusk`, `night`). */
+  setPhase(phase: DayPhaseId): void;
+  /** Returns the active day phase. */
+  getPhase(): DayPhaseId;
   /** Starts or resumes playback (must be called from or after a user gesture). */
   start(): void;
   /** Pauses playback and silences active voices cleanly. */
   stop(): void;
   /** Toggles playback and returns the new playing state. */
   toggle(): boolean;
-  /** Advances immediately to the next track in the 10-song rotation. */
+  /** Advances immediately to the next track in the active phase's playlist. */
   nextTrack(): void;
   /** Updates the active weather event ids to blend subtle ambient SFX. */
   setWeather(events: readonly EventId[]): void;
@@ -49,132 +55,185 @@ export interface ChillMusicPlayer {
   dispose(): void;
 }
 
-/** 10 distinct chill & fresh tracks with varied keys, tempos, and voicings. */
+/** 12 distinct chill & fresh tracks, 3 dedicated to each phase (`dawn`, `day`, `dusk`, `night`). */
 export const CHILL_TRACKS: readonly ChillTrack[] = [
+  // --- DAWN (Bình minh: tươi mới, sương sớm, trong trẻo) ---
   {
     id: "morningDew",
     title: "Morning Dew",
+    phase: "dawn",
     stepMs: 3000,
     chords: [
-      { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] }, // Fmaj7
-      { bass: 82.41, notes: [164.81, 196.0, 246.94, 293.66] }, // Em7
-      { bass: 73.42, notes: [146.83, 174.61, 220.0, 329.63] }, // Dm9
-      { bass: 65.41, notes: [130.81, 196.0, 246.94, 293.66] }, // Cmaj9
+      { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] },
+      { bass: 82.41, notes: [164.81, 196.0, 246.94, 293.66] },
+      { bass: 73.42, notes: [146.83, 174.61, 220.0, 329.63] },
+      { bass: 65.41, notes: [130.81, 196.0, 246.94, 293.66] },
     ],
     melody: [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5],
   },
   {
     id: "bambooBreeze",
     title: "Bamboo Breeze",
+    phase: "dawn",
     stepMs: 2800,
     chords: [
-      { bass: 73.42, notes: [146.83, 185.0, 220.0, 277.18] }, // Dmaj7
-      { bass: 98.0, notes: [196.0, 246.94, 293.66, 369.99] }, // Gmaj7
-      { bass: 82.41, notes: [164.81, 196.0, 246.94, 329.63] }, // Em9
-      { bass: 110.0, notes: [220.0, 277.18, 329.63, 392.0] }, // A9sus4
+      { bass: 73.42, notes: [146.83, 185.0, 220.0, 277.18] },
+      { bass: 98.0, notes: [196.0, 246.94, 293.66, 369.99] },
+      { bass: 82.41, notes: [164.81, 196.0, 246.94, 329.63] },
+      { bass: 110.0, notes: [220.0, 277.18, 329.63, 392.0] },
     ],
     melody: [587.33, 659.25, 739.99, 880.0, 987.77, 1174.66],
   },
   {
+    id: "emeraldBrook",
+    title: "Emerald Brook",
+    phase: "dawn",
+    stepMs: 2850,
+    chords: [
+      { bass: 65.41, notes: [130.81, 164.81, 196.0, 246.94] },
+      { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] },
+      { bass: 73.42, notes: [146.83, 174.61, 220.0, 261.63] },
+      { bass: 98.0, notes: [196.0, 246.94, 293.66, 349.23] },
+    ],
+    melody: [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5],
+  },
+
+  // --- DAY (Ban ngày: rạng rỡ, mát mẻ, tràn sức sống) ---
+  {
     id: "sunlitKoi",
     title: "Sunlit Koi",
-    stepMs: 3100,
+    phase: "day",
+    stepMs: 2950,
     chords: [
-      { bass: 98.0, notes: [196.0, 246.94, 293.66, 369.99] }, // Gmaj7
-      { bass: 82.41, notes: [164.81, 196.0, 246.94, 293.66] }, // Em7
-      { bass: 65.41, notes: [130.81, 164.81, 196.0, 246.94] }, // Cmaj7
-      { bass: 73.42, notes: [146.83, 196.0, 220.0, 293.66] }, // D6/9
+      { bass: 98.0, notes: [196.0, 246.94, 293.66, 369.99] },
+      { bass: 82.41, notes: [164.81, 196.0, 246.94, 293.66] },
+      { bass: 65.41, notes: [130.81, 164.81, 196.0, 246.94] },
+      { bass: 73.42, notes: [146.83, 196.0, 220.0, 293.66] },
     ],
     melody: [392.0, 440.0, 493.88, 587.33, 659.25, 783.99],
   },
   {
-    id: "terracottaRain",
-    title: "Terracotta Rain",
-    stepMs: 3200,
-    chords: [
-      { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] }, // Am7
-      { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] }, // Fmaj7
-      { bass: 65.41, notes: [130.81, 164.81, 196.0, 246.94] }, // Cmaj7
-      { bass: 98.0, notes: [196.0, 246.94, 293.66, 349.23] }, // G13
-    ],
-    melody: [440.0, 523.25, 587.33, 659.25, 783.99, 880.0],
-  },
-  {
-    id: "mistyGreenhouse",
-    title: "Misty Greenhouse",
-    stepMs: 2950,
-    chords: [
-      { bass: 77.78, notes: [155.56, 196.0, 233.08, 293.66] }, // Ebmaj7
-      { bass: 69.3, notes: [138.59, 174.61, 207.65, 261.63] }, // Dbmaj7
-      { bass: 65.41, notes: [130.81, 155.56, 196.0, 233.08] }, // Cm7
-      { bass: 116.54, notes: [233.08, 293.66, 349.23, 415.3] }, // Bb9sus4
-    ],
-    melody: [466.16, 523.25, 587.33, 698.46, 783.99, 932.33],
-  },
-  {
     id: "goldenOrchard",
     title: "Golden Orchard",
+    phase: "day",
     stepMs: 2750,
     chords: [
-      { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] }, // Fmaj7
-      { bass: 98.0, notes: [196.0, 246.94, 293.66, 329.63] }, // G6
-      { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] }, // Am7
-      { bass: 65.41, notes: [130.81, 164.81, 196.0, 293.66] }, // Cadd9
+      { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] },
+      { bass: 98.0, notes: [196.0, 246.94, 293.66, 329.63] },
+      { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] },
+      { bass: 65.41, notes: [130.81, 164.81, 196.0, 293.66] },
     ],
     melody: [523.25, 659.25, 698.46, 783.99, 880.0, 1046.5],
   },
   {
+    id: "terracottaRain",
+    title: "Terracotta Breeze",
+    phase: "day",
+    stepMs: 3000,
+    chords: [
+      { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] },
+      { bass: 87.31, notes: [174.61, 220.0, 261.63, 329.63] },
+      { bass: 65.41, notes: [130.81, 164.81, 196.0, 246.94] },
+      { bass: 98.0, notes: [196.0, 246.94, 293.66, 349.23] },
+    ],
+    melody: [440.0, 523.25, 587.33, 659.25, 783.99, 880.0],
+  },
+
+  // --- DUSK (Chạng vạng: hoàng hôn ấm áp, lãng mạn) ---
+  {
     id: "lanternDusk",
     title: "Lantern Dusk",
-    stepMs: 3300,
+    phase: "dusk",
+    stepMs: 3250,
     chords: [
-      { bass: 82.41, notes: [164.81, 207.65, 246.94, 311.13] }, // Emaj7
-      { bass: 69.3, notes: [138.59, 164.81, 207.65, 246.94] }, // C#m7
-      { bass: 110.0, notes: [220.0, 277.18, 329.63, 415.3] }, // Amaj7
-      { bass: 123.47, notes: [246.94, 311.13, 369.99, 440.0] }, // B13
+      { bass: 82.41, notes: [164.81, 207.65, 246.94, 311.13] },
+      { bass: 69.3, notes: [138.59, 164.81, 207.65, 246.94] },
+      { bass: 110.0, notes: [220.0, 277.18, 329.63, 415.3] },
+      { bass: 123.47, notes: [246.94, 311.13, 369.99, 440.0] },
     ],
     melody: [493.88, 554.37, 659.25, 739.99, 830.61, 987.77],
   },
   {
-    id: "starlightSoil",
-    title: "Starlight Soil",
+    id: "cloudburstCalm",
+    title: "Cloudburst Calm",
+    phase: "dusk",
     stepMs: 3150,
     chords: [
-      { bass: 116.54, notes: [233.08, 293.66, 349.23, 440.0] }, // Bbmaj7
-      { bass: 98.0, notes: [196.0, 233.08, 293.66, 349.23] }, // Gm7
-      { bass: 77.78, notes: [155.56, 196.0, 233.08, 293.66] }, // Ebmaj7
-      { bass: 87.31, notes: [174.61, 220.0, 261.63, 349.23] }, // Fadd9
+      { bass: 103.83, notes: [207.65, 261.63, 311.13, 392.0] },
+      { bass: 87.31, notes: [174.61, 207.65, 261.63, 311.13] },
+      { bass: 69.3, notes: [138.59, 174.61, 207.65, 261.63] },
+      { bass: 77.78, notes: [155.56, 196.0, 233.08, 311.13] },
+    ],
+    melody: [415.3, 466.16, 523.25, 622.25, 698.46, 830.61],
+  },
+  {
+    id: "amberSunset",
+    title: "Amber Sunset",
+    phase: "dusk",
+    stepMs: 3200,
+    chords: [
+      { bass: 73.42, notes: [146.83, 185.0, 220.0, 277.18] },
+      { bass: 61.74, notes: [123.47, 146.83, 185.0, 220.0] },
+      { bass: 98.0, notes: [196.0, 246.94, 293.66, 369.99] },
+      { bass: 110.0, notes: [220.0, 277.18, 329.63, 369.99] },
+    ],
+    melody: [440.0, 493.88, 554.37, 659.25, 739.99, 880.0],
+  },
+
+  // --- NIGHT (Đêm: sâu lắng, huyền ảo, thư giãn) ---
+  {
+    id: "starlightSoil",
+    title: "Starlight Soil",
+    phase: "night",
+    stepMs: 3350,
+    chords: [
+      { bass: 116.54, notes: [233.08, 293.66, 349.23, 440.0] },
+      { bass: 98.0, notes: [196.0, 233.08, 293.66, 349.23] },
+      { bass: 77.78, notes: [155.56, 196.0, 233.08, 293.66] },
+      { bass: 87.31, notes: [174.61, 220.0, 261.63, 349.23] },
     ],
     melody: [466.16, 523.25, 587.33, 698.46, 783.99, 932.33],
   },
   {
-    id: "emeraldBrook",
-    title: "Emerald Brook",
-    stepMs: 2850,
+    id: "mistyGreenhouse",
+    title: "Misty Greenhouse",
+    phase: "night",
+    stepMs: 3400,
     chords: [
-      { bass: 65.41, notes: [130.81, 164.81, 196.0, 246.94] }, // Cmaj7
-      { bass: 110.0, notes: [220.0, 261.63, 329.63, 392.0] }, // Am7
-      { bass: 73.42, notes: [146.83, 174.61, 220.0, 261.63] }, // Dm7
-      { bass: 98.0, notes: [196.0, 246.94, 293.66, 349.23] }, // G7
+      { bass: 77.78, notes: [155.56, 196.0, 233.08, 293.66] },
+      { bass: 69.3, notes: [138.59, 174.61, 207.65, 261.63] },
+      { bass: 65.41, notes: [130.81, 155.56, 196.0, 233.08] },
+      { bass: 116.54, notes: [233.08, 293.66, 349.23, 415.3] },
     ],
-    melody: [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5],
+    melody: [466.16, 523.25, 587.33, 698.46, 783.99, 932.33],
   },
   {
-    id: "cloudburstCalm",
-    title: "Cloudburst Calm",
-    stepMs: 3050,
+    id: "midnightLotus",
+    title: "Midnight Lotus",
+    phase: "night",
+    stepMs: 3500,
     chords: [
-      { bass: 103.83, notes: [207.65, 261.63, 311.13, 392.0] }, // Abmaj7
-      { bass: 87.31, notes: [174.61, 207.65, 261.63, 311.13] }, // Fm7
-      { bass: 69.3, notes: [138.59, 174.61, 207.65, 261.63] }, // Dbmaj7
-      { bass: 77.78, notes: [155.56, 196.0, 233.08, 311.13] }, // Eb9
+      { bass: 92.5, notes: [185.0, 220.0, 277.18, 329.63] },
+      { bass: 73.42, notes: [146.83, 185.0, 220.0, 277.18] },
+      { bass: 110.0, notes: [220.0, 277.18, 329.63, 415.3] },
+      { bass: 82.41, notes: [164.81, 207.65, 246.94, 329.63] },
     ],
-    melody: [415.3, 466.16, 523.25, 622.25, 698.46, 830.61],
+    melody: [440.0, 493.88, 554.37, 659.25, 739.99, 880.0],
   },
 ];
 
 const BARS_PER_TRACK = 16;
-const REST_BARS_BETWEEN_TRACKS = 5; // ~15s quiet ambient breather before next song
+const REST_BARS_BETWEEN_TRACKS = 5;
+
+/**
+ * @brief Returns the tracks belonging to one day phase (`dawn`, `day`, `dusk`, `night`).
+ * @param phase Active day phase identifier.
+ * @return Non-empty list of ChillTrack entries for that phase.
+ */
+export function tracksForPhase(phase: DayPhaseId): readonly ChillTrack[] {
+  const list = CHILL_TRACKS.filter((track) => track.phase === phase);
+  return list.length > 0 ? list : CHILL_TRACKS;
+}
 
 /**
  * @brief Maps active weather event ids to a cohesive chill ambient soundscape.
@@ -251,7 +310,7 @@ export function sectionForBar(barInCycle: number): SongSection {
 }
 
 /**
- * @brief Creates a procedural 10-track rotating chill ambient soundtrack player.
+ * @brief Creates a procedural phase-aware rotating chill ambient soundtrack player.
  * @return A ChillMusicPlayer handle safe to call in both browsers and tests.
  */
 export function createChillMusicPlayer(): ChillMusicPlayer {
@@ -260,9 +319,18 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
   let noiseBuffer: AudioBuffer | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   let playing = false;
+  let phase: DayPhaseId = "day";
   let trackIndex = 0;
   let barInCycle = 0;
   let ambience: WeatherAmbience = "calm";
+
+  /**
+   * @brief Returns the active track for the current phase and rotation index.
+   */
+  function currentTrack(): ChillTrack {
+    const list = tracksForPhase(phase);
+    return list[trackIndex % list.length] ?? list[0]!;
+  }
 
   /**
    * @brief Lazily initializes the Web Audio context and master gain node.
@@ -291,12 +359,6 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
 
   /**
    * @brief Schedules one soft electric-piano or shimmer tone with warm lowpass filtering.
-   * @param freq Frequency in Hz.
-   * @param startTime AudioContext start time in seconds.
-   * @param duration Sustain + release duration in seconds.
-   * @param peakGain Peak linear gain.
-   * @param type Oscillator waveform.
-   * @param cutoff Lowpass filter cutoff frequency in Hz.
    */
   function playTone(
     freq: number,
@@ -439,16 +501,15 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
       timer = null;
     }
     if (!playing) return;
-    const track = CHILL_TRACKS[trackIndex % CHILL_TRACKS.length] ?? CHILL_TRACKS[0]!;
-    timer = setInterval(scheduleBar, track.stepMs);
+    timer = setInterval(scheduleBar, currentTrack().stepMs);
   }
 
   /**
-   * @brief Schedules one bar according to the 16-bar arrangement (Intro -> Verse -> Climax -> Outro -> Rest).
+   * @brief Schedules one bar according to the 16-bar arrangement and active day phase timbre.
    */
   function scheduleBar(): void {
     if (!playing) return;
-    const track = CHILL_TRACKS[trackIndex % CHILL_TRACKS.length] ?? CHILL_TRACKS[0]!;
+    const track = currentTrack();
     const section = sectionForBar(barInCycle);
     const stepSec = track.stepMs / 1000;
 
@@ -460,17 +521,17 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
         const chord = track.chords[barInCycle % track.chords.length] ?? track.chords[0]!;
         const isClimax = section === "climax";
         const isIntroOrOutro = section === "intro" || section === "outro";
+        const phaseCutoffOffset =
+          phase === "night" ? -250 : phase === "dusk" ? -100 : phase === "dawn" ? 150 : 100;
 
-        // 1. Sub-bass (deeper & warmer during verse/climax, gentle pulse on climax)
         const bassGain = isClimax ? 0.17 : isIntroOrOutro ? 0.09 : 0.13;
         playTone(chord.bass, now, stepSec * 0.92, bassGain, "sine", 900);
         if (isClimax) {
           playTone(chord.bass * 2, now + stepSec * 0.5, stepSec * 0.45, 0.06, "sine", 1100);
         }
 
-        // 2. Rhodes chord voicing (richer + octave shimmer during climax)
         const chordGain = isClimax ? 0.072 : isIntroOrOutro ? 0.04 : 0.055;
-        const cutoff = isClimax ? 2100 : 1350;
+        const cutoff = Math.max(700, (isClimax ? 2100 : 1350) + phaseCutoffOffset);
         chord.notes.forEach((freq, idx) => {
           playTone(freq, now + idx * 0.045, stepSec * 0.9, chordGain, "triangle", cutoff);
           if (isClimax && idx >= 2) {
@@ -478,7 +539,6 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
           }
         });
 
-        // 3. Melodic droplets (sparse in intro/outro, flowing in verse, soaring arpeggio in climax)
         const offsets = isClimax
           ? [0.25, 0.65, 1.05, 1.45, 1.85, 2.25]
           : isIntroOrOutro
@@ -489,7 +549,14 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
           const noteIdx = (barInCycle * 3 + idx * 2) % track.melody.length;
           const freq = track.melody[noteIdx] ?? 523.25;
           const melGain = isClimax ? 0.044 : 0.028;
-          playTone(freq, now + offset, isClimax ? 1.05 : 0.85, melGain, "sine", isClimax ? 2600 : 1800);
+          playTone(
+            freq,
+            now + offset,
+            isClimax ? 1.05 : 0.85,
+            melGain,
+            "sine",
+            Math.max(1100, (isClimax ? 2600 : 1800) + phaseCutoffOffset),
+          );
         });
       }
     }
@@ -497,7 +564,8 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
     barInCycle += 1;
     if (barInCycle >= BARS_PER_TRACK + REST_BARS_BETWEEN_TRACKS) {
       barInCycle = 0;
-      trackIndex = (trackIndex + 1) % CHILL_TRACKS.length;
+      const list = tracksForPhase(phase);
+      trackIndex = (trackIndex + 1) % list.length;
       restartTimer();
     }
   }
@@ -513,11 +581,23 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
 
     getTrackTitle(): string | null {
       if (!playing) return null;
-      return (CHILL_TRACKS[trackIndex % CHILL_TRACKS.length] ?? CHILL_TRACKS[0]!).title;
+      return currentTrack().title;
     },
 
     getSection(): SongSection {
       return sectionForBar(barInCycle);
+    },
+
+    setPhase(nextPhase: DayPhaseId): void {
+      if (phase === nextPhase) return;
+      phase = nextPhase;
+      trackIndex = 0;
+      barInCycle = 0;
+      if (playing) restartTimer();
+    },
+
+    getPhase(): DayPhaseId {
+      return phase;
     },
 
     start(): void {
@@ -556,7 +636,8 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
     },
 
     nextTrack(): void {
-      trackIndex = (trackIndex + 1) % CHILL_TRACKS.length;
+      const list = tracksForPhase(phase);
+      trackIndex = (trackIndex + 1) % list.length;
       barInCycle = 0;
       if (playing) {
         scheduleBar();
