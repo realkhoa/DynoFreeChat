@@ -88,6 +88,13 @@ import {
   type SkillId,
   type SkillState,
   contractOffers,
+  RELICS,
+  MAX_EQUIPPED_RELICS,
+  relicById,
+  type RelicId,
+  type PetExpeditionState,
+  PET_SKILL_COOLDOWN_MS,
+  plotSynergyAt,
   CONTRACT_CHAIN,
   equippedPetEffect,
   merchantOffers,
@@ -443,6 +450,14 @@ export interface GardenLedger {
   weekHarvested: number;
   lastEarned: number;
   lastHarvested: number;
+  /** Crafted mine relics owned by the player. */
+  relics?: RelicId[];
+  /** Equipped mine relics (up to MAX_EQUIPPED_RELICS). */
+  equippedRelics?: RelicId[];
+  /** Active or completed pet expeditions. */
+  petExpeditions?: PetExpeditionState[];
+  /** Timestamp of the last equipped pet active skill trigger. */
+  petSkillAt?: number;
   /** Warehouse level: 0 not built. */
   warehouse: number;
   /** Built machines. */
@@ -655,6 +670,10 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
       claimed: ledger.questClaims.includes(quest.id),
     })),
     taxLast: ledger.taxLast,
+    relics: [...(ledger.relics ?? [])],
+    equippedRelics: [...(ledger.equippedRelics ?? [])],
+    petExpeditions: (ledger.petExpeditions ?? []).map((entry) => ({ ...entry })),
+    petSkillAt: ledger.petSkillAt ?? 0,
   };
 }
 
@@ -992,6 +1011,16 @@ export function applyGardenAction(
       return mineEat(ledger, action.item, now);
     case "assignMiner":
       return assignMiner(ledger, action.staffSlot, now);
+    case "craftRelic":
+      return craftRelic(ledger, action.relic, now);
+    case "equipRelic":
+      return equipRelic(ledger, action.relic, now);
+    case "usePetSkill":
+      return usePetSkill(ledger, now);
+    case "startPetExpedition":
+      return startPetExpedition(ledger, action.pet, action.durationMin, now);
+    case "claimPetExpedition":
+      return claimPetExpedition(ledger, action.id, now, rng);
     default:
       return { ok: false, code: "BAD_REQUEST" };
   }
@@ -1241,10 +1270,12 @@ function mutationChances(ledger: GardenLedger): Partial<Record<EffectId, number>
 
 /** @brief Combined prestige + merchant sell multiplier. */
 function sellMultiplier(ledger: GardenLedger, now: number): number {
+  const relicScale = (ledger.equippedRelics ?? []).includes("midasSeal") ? 1.2 : 1;
   return (
     prestigeSellBonus(ledger.prestige) *
     prestigeSkillSellBonus(ledger.prestigeSkills) *
-    weeklyModifier(now).sellScale
+    weeklyModifier(now).sellScale *
+    relicScale
   );
 }
 
@@ -1402,7 +1433,13 @@ function harvest(
   if (plot.growMs !== undefined && plot.watered !== true) return { ok: false, code: "NEEDS_WATER" };
 
   const next = clone(ledger);
-  const harvestedEffects = resolvedCropEffects(plot, now, goodOnly);
+  const synergy = plotSynergyAt(ledger.plots, slot, 3, ledger.hybrids);
+  const baseEffects = resolvedCropEffects(plot, now, goodOnly);
+  const harvestedEffects = canonicalEffects([
+    ...baseEffects,
+    ...(synergy.ids.includes("companion") ? (["highquality"] as EffectId[]) : []),
+    ...(synergy.ids.includes("harmony") ? (["golden"] as EffectId[]) : []),
+  ]);
   const star = rollCropQuality(
     ledger,
     `crop:${slot}`,
@@ -3696,37 +3733,47 @@ function staffMine(ledger: GardenLedger, now: number, _rng: () => number): Garde
   const mine = ensureMineState(next, now);
   next.mine = mine;
 
+  const earthDragon = (next.equippedRelics ?? []).includes("earthDragon");
+  const passes = earthDragon ? 2 : 1;
   let worked = false;
 
-  // 1. Mine every intact rock/ore/chest on the current floor in one turn.
-  for (let i = 0; i < mine.grid.length; i += 1) {
-    const cell = mine.grid[i];
-    if (!cell || cell.kind === "empty" || cell.kind === "ladder") continue;
+  for (let pass = 0; pass < passes; pass += 1) {
+    // 1. Mine every intact rock/ore/chest on the current floor in one turn.
+    for (let i = 0; i < mine.grid.length; i += 1) {
+      const cell = mine.grid[i];
+      if (!cell || cell.kind === "empty" || cell.kind === "ladder") continue;
 
-    worked = true;
-    if (cell.kind === "chest") {
-      const bonusCoins = 1_000 * Math.max(1, Math.floor(mine.currentFloor / 5));
-      next.coins += bonusCoins;
-      next.stats.earned += bonusCoins;
-      addProduct(next.bag.products, "coal", 1, 3);
-      collect(next, "product:coal");
-    } else if (cell.oreDrop) {
-      addProduct(next.bag.products, cell.oreDrop, 1, cell.dropQty ?? 1);
-      collect(next, `product:${cell.oreDrop}`);
+      worked = true;
+      if (cell.kind === "chest") {
+        const bonusCoins = 1_000 * Math.max(1, Math.floor(mine.currentFloor / 5));
+        next.coins += bonusCoins;
+        next.stats.earned += bonusCoins;
+        addProduct(next.bag.products, "coal", 1, 3);
+        collect(next, "product:coal");
+      } else if (cell.oreDrop) {
+        const baseQty = cell.dropQty ?? 1;
+        const qty = earthDragon ? Math.ceil(baseQty * 1.5) : baseQty;
+        addProduct(next.bag.products, cell.oreDrop, 1, qty);
+        collect(next, `product:${cell.oreDrop}`);
+      }
+
+      mine.grid[i] = cell.hasLadder
+        ? { kind: "ladder", hp: 0, maxHp: 0 }
+        : { kind: "empty", hp: 0, maxHp: 0 };
     }
 
-    mine.grid[i] = cell.hasLadder ? { kind: "ladder", hp: 0, maxHp: 0 } : { kind: "empty", hp: 0, maxHp: 0 };
-  }
-
-  // 2. Descend to the next floor if a ladder is already visible or just uncovered.
-  const hasLadder = mine.grid.some((c) => c.kind === "ladder");
-  if (hasLadder) {
-    worked = true;
-    const nextFloor = mine.currentFloor + 1;
-    mine.currentFloor = nextFloor;
-    mine.maxFloor = Math.max(mine.maxFloor, nextFloor);
-    const floorSeed = hash32(`${next.playerId}:${nextFloor}:${now}`);
-    mine.grid = [...generateMineFloor(nextFloor, floorSeed)];
+    // 2. Descend to the next floor if a ladder is already visible or just uncovered.
+    const hasLadder = mine.grid.some((c) => c.kind === "ladder");
+    if (hasLadder) {
+      worked = true;
+      const nextFloor = mine.currentFloor + 1;
+      mine.currentFloor = nextFloor;
+      mine.maxFloor = Math.max(mine.maxFloor, nextFloor);
+      const floorSeed = hash32(`${next.playerId}:${nextFloor}:${now}`);
+      mine.grid = [...generateMineFloor(nextFloor, floorSeed)];
+    } else {
+      break;
+    }
   }
 
   return worked ? next : null;
@@ -4058,6 +4105,180 @@ function assignMiner(ledger: GardenLedger, staffSlot: number | null, now: number
   }
 
   return { ok: true, ledger: next, changed: true };
+}
+
+/**
+ * @brief Crafts a mine relic from coins and smelted bars/gems.
+ * @param ledger Current garden ledger.
+ * @param relicId Target relic identifier.
+ * @param now Current server timestamp.
+ * @return RuleResult with the newly crafted relic added and auto-equipped if space remains.
+ */
+function craftRelic(ledger: GardenLedger, relicId: RelicId, now: number): RuleResult {
+  const def = relicById(relicId);
+  if (def === undefined) return { ok: false, code: "BAD_REQUEST" };
+  const owned = ledger.relics ?? [];
+  if (owned.includes(relicId)) return { ok: false, code: "ALREADY_CLAIMED" };
+  if (ledger.coins < def.costCoins) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  for (const [productId, needed] of Object.entries(def.materials) as Array<[ProductId, number]>) {
+    const have = ledger.bag.products
+      .filter((s) => s.product === productId)
+      .reduce((sum, s) => sum + s.qty, 0);
+    if (have < needed) return { ok: false, code: "NO_BARS" };
+  }
+
+  const next = clone(ledger);
+  next.coins -= def.costCoins;
+  next.stats.spent += def.costCoins;
+  for (const [productId, needed] of Object.entries(def.materials) as Array<[ProductId, number]>) {
+    let left = needed;
+    next.bag.products = next.bag.products
+      .map((stack) => {
+        if (left <= 0 || stack.product !== productId) return stack;
+        const take = Math.min(left, stack.qty);
+        left -= take;
+        return { ...stack, qty: stack.qty - take };
+      })
+      .filter((stack) => stack.qty > 0);
+  }
+  next.relics = [...(next.relics ?? []), relicId];
+  const equipped = [...(next.equippedRelics ?? [])];
+  if (equipped.length < MAX_EQUIPPED_RELICS && !equipped.includes(relicId)) {
+    equipped.push(relicId);
+  }
+  next.equippedRelics = equipped;
+  return changed(next, now);
+}
+
+/**
+ * @brief Toggles equipping or unequipping an owned mine relic (up to 3 active).
+ * @param ledger Current garden ledger.
+ * @param relicId Target relic identifier.
+ * @param now Current server timestamp.
+ * @return RuleResult with updated equippedRelics.
+ */
+function equipRelic(ledger: GardenLedger, relicId: RelicId, now: number): RuleResult {
+  if (!(ledger.relics ?? []).includes(relicId)) return { ok: false, code: "RELIC_LOCKED" };
+  const next = clone(ledger);
+  const equipped = [...(next.equippedRelics ?? [])];
+  const idx = equipped.indexOf(relicId);
+  if (idx >= 0) {
+    equipped.splice(idx, 1);
+  } else {
+    if (equipped.length >= MAX_EQUIPPED_RELICS) return { ok: false, code: "MAX_RELICS" };
+    equipped.push(relicId);
+  }
+  next.equippedRelics = equipped;
+  return changed(next, now);
+}
+
+/**
+ * @brief Triggers the active skill of the currently equipped pet (requires Lv >= 2, 30m cooldown).
+ * @param ledger Current garden ledger.
+ * @param now Current server timestamp.
+ * @return RuleResult applying a 10-minute growth surge and pest shield across active crops.
+ */
+function usePetSkill(ledger: GardenLedger, now: number): RuleResult {
+  const petId = ledger.equippedPet;
+  if (petId === null) return { ok: false, code: "NO_PET" };
+  const level = ledger.pets[petId] ?? 0;
+  if (level < 2) return { ok: false, code: "NO_PET" };
+  const lastAt = ledger.petSkillAt ?? 0;
+  if (now - lastAt < PET_SKILL_COOLDOWN_MS) return { ok: false, code: "SKILL_COOLDOWN" };
+
+  const next = clone(ledger);
+  const boostMs = 10 * 60_000;
+  const shieldUntil = now + 30 * 60_000;
+  next.plots = next.plots.map((plot) =>
+    plot === null || plot.dead
+      ? plot
+      : {
+          ...plot,
+          readyAt: Math.max(now, plot.readyAt - boostMs),
+          protectedUntil: Math.max(plot.protectedUntil, shieldUntil),
+          pest: false,
+        },
+  );
+  next.greenhousePlots = (next.greenhousePlots ?? []).map((plot) =>
+    plot === null
+      ? null
+      : {
+          ...plot,
+          readyAt: Math.max(now, plot.readyAt - boostMs),
+        },
+  );
+  next.petSkillAt = now;
+  return changed(next, now);
+}
+
+/**
+ * @brief Sends an owned, non-equipped pet on a timed expedition for rare loot.
+ * @param ledger Current garden ledger.
+ * @param petId Pet sent on expedition.
+ * @param durationMin Expedition duration in minutes (15 or 30).
+ * @param now Current server timestamp.
+ * @return RuleResult adding the new PetExpeditionState.
+ */
+function startPetExpedition(
+  ledger: GardenLedger,
+  petId: PetId,
+  durationMin: 15 | 30,
+  now: number,
+): RuleResult {
+  if ((ledger.pets[petId] ?? 0) < 1) return { ok: false, code: "NO_PET" };
+  if (ledger.equippedPet === petId) return { ok: false, code: "PET_BUSY" };
+  const active = ledger.petExpeditions ?? [];
+  if (active.some((entry) => entry.pet === petId)) return { ok: false, code: "PET_BUSY" };
+
+  const next = clone(ledger);
+  const durationMs = durationMin * 60_000;
+  const id = `exp:${petId}:${now}`;
+  next.petExpeditions = [
+    ...active,
+    {
+      id,
+      pet: petId,
+      startedAt: now,
+      endsAt: now + durationMs,
+      durationMin,
+    },
+  ];
+  return changed(next, now);
+}
+
+/**
+ * @brief Claims rewards from a finished pet expedition.
+ * @param ledger Current garden ledger.
+ * @param id Expedition identifier.
+ * @param now Current server timestamp.
+ * @param rng Deterministic random generator.
+ * @return RuleResult awarding coins, ores/coal, and rare seeds.
+ */
+function claimPetExpedition(ledger: GardenLedger, id: string, now: number, rng: () => number): RuleResult {
+  const expeditions = ledger.petExpeditions ?? [];
+  const exp = expeditions.find((entry) => entry.id === id);
+  if (exp === undefined) return { ok: false, code: "BAD_REQUEST" };
+  if (now < exp.endsAt) return { ok: false, code: "EXPEDITION_NOT_READY" };
+
+  const next = clone(ledger);
+  const petLevel = Math.max(1, next.pets[exp.pet] ?? 1);
+  const mult = (exp.durationMin === 30 ? 2 : 1) * (1 + (petLevel - 1) * 0.25);
+  const coinReward = Math.round(25_000 * mult);
+  next.coins += coinReward;
+  next.stats.earned += coinReward;
+
+  const rareSeeds = SEEDS.filter((s) => s.rare === true && s.prestigeOnly !== true);
+  if (rareSeeds.length > 0) {
+    const picked = rareSeeds[Math.floor(rng() * rareSeeds.length)];
+    if (picked !== undefined) {
+      next.bag.seeds[picked.id] = (next.bag.seeds[picked.id] ?? 0) + 1;
+    }
+  }
+  const oreQty = Math.max(1, Math.round(2 * mult));
+  addProduct(next.bag.products, exp.durationMin === 30 ? "goldOre" : "ironOre", 1, oreQty);
+  next.petExpeditions = expeditions.filter((entry) => entry.id !== id);
+  return changed(next, now);
 }
 
 /**
@@ -4646,7 +4867,10 @@ function startMachineCraft(
   const machine = next.machines[id];
   if (machine === undefined) return next;
   if (definition.queued === true) {
-    const cycles = machineCycles(machine.level, definition.cooldownCycles) * FARM_CYCLE_MS;
+    const relicScale = (next.equippedRelics ?? []).includes("crystalCharm") ? 0.75 : 1;
+    const cycles = Math.round(
+      machineCycles(machine.level, definition.cooldownCycles) * FARM_CYCLE_MS * relicScale,
+    );
     next.machines[id] = {
       ...machine,
       lastCraftAt: now,
@@ -4725,7 +4949,10 @@ export function settleMachines(ledger: GardenLedger, now: number): GardenLedger 
       const queue = machine.queue ?? [];
       if (queue.length === 0) break;
       if (machine.limit !== undefined && (machine.made ?? 0) >= machine.limit) break;
-      const cycles = machineCycles(machine.level, definition.cooldownCycles) * FARM_CYCLE_MS;
+      const relicScale = (current.equippedRelics ?? []).includes("crystalCharm") ? 0.75 : 1;
+      const cycles = Math.round(
+        machineCycles(machine.level, definition.cooldownCycles) * FARM_CYCLE_MS * relicScale,
+      );
       if (definition.queued !== true && now - machine.lastCraftAt < cycles) break;
       const [hold, ...rest] = queue;
       if (hold === undefined) break;
@@ -5117,6 +5344,10 @@ function clone(ledger: GardenLedger): GardenLedger {
     shopStock: { ...ledger.shopStock },
     questProgress: { ...ledger.questProgress },
     questClaims: [...ledger.questClaims],
+    relics: [...(ledger.relics ?? [])],
+    equippedRelics: [...(ledger.equippedRelics ?? [])],
+    petExpeditions: (ledger.petExpeditions ?? []).map((entry) => ({ ...entry })),
+    petSkillAt: ledger.petSkillAt ?? 0,
   };
 }
 

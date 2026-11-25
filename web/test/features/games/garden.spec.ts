@@ -4153,9 +4153,9 @@ describe("quick uproot clears dead plants", () => {
     const searchInput = host.querySelector<HTMLInputElement>(".garden-dynopedia-search");
     expect(searchInput).not.toBeNull();
 
-    // Verify category buttons exist and include all 13 categories
+    // Verify category buttons exist and include all 14 categories
     const categoryButtons = host.querySelectorAll<HTMLButtonElement>('[data-act="dynopediaCategory"]');
-    expect(categoryButtons.length).toBe(13);
+    expect(categoryButtons.length).toBe(14);
     expect(window.location.search).toContain("grtab=dynopedia");
 
     // Verify cards grid renders cards
@@ -4742,5 +4742,77 @@ describe("reborn legacy parity features", () => {
     await settle();
     await settle();
     expect(host.textContent).toContain("Champion");
+  });
+
+  it("renders dynopedia mechanics guide, mine relic forge, weather market news, and pet skill/expeditions", async () => {
+    const base = makeState({
+      coins: 50_000_000,
+      bag: {
+        seeds: {},
+        crops: [],
+        supplies: {},
+        products: [
+          { product: "copperBar", star: 1, qty: 10 },
+          { product: "ruby", star: 1, qty: 3 },
+        ],
+      },
+      extras: {
+        ...makeState().extras,
+        pets: { dog: 2, cat: 1 },
+        equippedPet: "dog",
+      },
+    });
+    const api = new FakeGardenApi(base);
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // 1. Dynopedia mechanics category
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:dynopedia"]')?.click();
+    await settle();
+    host
+      .querySelector<HTMLButtonElement>('[data-act="dynopediaCategory"][data-category="mechanics"]')
+      ?.click();
+    await settle();
+    expect(host.textContent).toContain("Cộng Hưởng");
+
+    // 2. Mine relic forge
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:garden"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:mine"]')?.click();
+    await settle();
+    const craftBtn = host.querySelector<HTMLButtonElement>(
+      '[data-act="craftRelic"][data-relic="crystalCharm"]',
+    );
+    expect(craftBtn).not.toBeNull();
+    craftBtn?.click();
+    await settle();
+    expect(api.calls.find((c) => c.action?.kind === "craftRelic")?.action).toEqual({
+      kind: "craftRelic",
+      relic: "crystalCharm",
+    });
+
+    // 3. Weather market news
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:weather"]')?.click();
+    await settle();
+    expect(host.textContent).toContain("Tin Tức Thị Trường");
+
+    // 4. Pet active skill + expedition
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:townhall"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="townNpc"][data-npc="pet"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="usePetSkill"]')?.click();
+    await settle();
+    expect(api.calls.find((c) => c.action?.kind === "usePetSkill")?.action).toEqual({
+      kind: "usePetSkill",
+    });
+    host.querySelector<HTMLButtonElement>('[data-act="startPetExpedition"][data-pet="cat"]')?.click();
+    await settle();
+    expect(api.calls.find((c) => c.action?.kind === "startPetExpedition")?.action).toMatchObject({
+      kind: "startPetExpedition",
+      pet: "cat",
+    });
   });
 });

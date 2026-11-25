@@ -27,6 +27,7 @@ import {
   staffMarketAt,
   cropSellPrice,
   eventsAt,
+  seasonAt,
   nextTabPrice,
   resolvedCropEffects,
   resolvedTreeEffects,
@@ -2703,5 +2704,75 @@ describe("nursery cross-breeding, exponential cost, rename and seed maker", () =
       item: hybrid!.id,
     });
     expect(seeded.ok).toBe(true);
+  });
+
+  it("applies 3x3 plot synergies (trio 2x yield, companion highquality), crafts/equips relics, and runs pet skill & expeditions", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000_000;
+    ledger.bag.seeds.carrot = 5;
+    ledger.bag.seeds.lavender = 2;
+    ledger.bag.products = [
+      { product: "copperBar", star: 1, qty: 10 },
+      { product: "ruby", star: 1, qty: 5 },
+    ];
+
+    // 1. Trio + Companion synergy on slot 0 (carrots at 0, 1, 2 + lavender at 3)
+    const p0 = run(ledger, { kind: "plant", slot: 0, seed: "carrot" });
+    expect(p0.ok).toBe(true);
+    if (!p0.ok) return;
+    const p1 = run(p0.ledger, { kind: "plant", slot: 1, seed: "carrot" });
+    if (!p1.ok) return;
+    const p2 = run(p1.ledger, { kind: "plant", slot: 2, seed: "carrot" });
+    if (!p2.ok) return;
+    const p3 = run(p2.ledger, { kind: "plant", slot: 3, seed: "lavender" });
+    if (!p3.ok) return;
+
+    if (p3.ledger.plots[0]) {
+      p3.ledger.plots[0] = { ...p3.ledger.plots[0], watered: true, readyAt: NOW - 1 };
+    }
+    const harvested = run(p3.ledger, { kind: "harvest", slot: 0, tree: false });
+    expect(harvested.ok).toBe(true);
+    if (!harvested.ok) return;
+    const stack = harvested.ledger.bag.crops.find((c) => c.item === "carrot");
+    expect(stack?.qty).toBeGreaterThanOrEqual(1);
+    expect(stack?.effects).toContain("highquality");
+
+    // 2. Craft & equip crystalCharm relic
+    const crafted = run(harvested.ledger, { kind: "craftRelic", relic: "crystalCharm" });
+    expect(crafted.ok).toBe(true);
+    if (!crafted.ok) return;
+    expect(crafted.ledger.relics).toContain("crystalCharm");
+    expect(crafted.ledger.equippedRelics).toContain("crystalCharm");
+
+    const unequipped = run(crafted.ledger, { kind: "equipRelic", relic: "crystalCharm" });
+    expect(unequipped.ok).toBe(true);
+    if (!unequipped.ok) return;
+    expect(unequipped.ledger.equippedRelics).not.toContain("crystalCharm");
+
+    // 3. Pet active skill + expedition
+    const withPets = unequipped.ledger;
+    withPets.pets = { dog: 2, cat: 1 };
+    withPets.equippedPet = "dog";
+    const skilled = run(withPets, { kind: "usePetSkill" });
+    expect(skilled.ok).toBe(true);
+    if (!skilled.ok) return;
+    expect(skilled.ledger.petSkillAt).toBe(NOW);
+
+    const started = run(skilled.ledger, { kind: "startPetExpedition", pet: "cat", durationMin: 15 });
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+    const expId = started.ledger.petExpeditions?.[0]?.id ?? "";
+    expect(expId.length).toBeGreaterThan(0);
+
+    const claimed = applyGardenAction(
+      started.ledger,
+      { kind: "claimPetExpedition", id: expId },
+      seasonAt(NOW),
+      NOW + 16 * 60_000,
+    );
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) return;
+    expect(claimed.ledger.petExpeditions?.length).toBe(0);
+    expect(claimed.ledger.coins).toBeGreaterThan(started.ledger.coins);
   });
 });

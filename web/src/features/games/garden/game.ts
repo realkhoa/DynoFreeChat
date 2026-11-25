@@ -58,6 +58,11 @@ import {
   PICKAXE_TIERS,
   mineElevatorCheckpoints,
   initialMineState,
+  RELICS,
+  MAX_EQUIPPED_RELICS,
+  PET_SKILL_COOLDOWN_MS,
+  type RelicId,
+  type PetId,
   type MineRockKind,
   type MineRockCell,
   type MineState,
@@ -5034,6 +5039,52 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     });
 
     wrap.append(grid);
+
+    // 4. Relic Forge & Mine Artifacts
+    if (mode === "owner" && state !== null) {
+      const relicWrap = div("garden-town-section");
+      relicWrap.append(span("garden-board-title", t("relics.title")));
+      const ownedRelics = state.extras.relics ?? [];
+      const equippedRelics = state.extras.equippedRelics ?? [];
+      const relicRow = div("garden-tools");
+      for (const relic of RELICS) {
+        const isOwned = ownedRelics.includes(relic.id);
+        const isEquipped = equippedRelics.includes(relic.id);
+        const matsText = Object.entries(relic.materials)
+          .map(([prod, qty]) => `${t(`products.${prod}`)}×${qty}`)
+          .join(" + ");
+        if (!isOwned) {
+          const canCraft =
+            state.coins >= relic.costCoins &&
+            Object.entries(relic.materials).every(
+              ([prod, qty]) =>
+                (state?.bag.products ?? [])
+                  .filter((s) => s.product === prod)
+                  .reduce((sum, s) => sum + s.qty, 0) >= (qty ?? 0),
+            );
+          const btn = actionButton(
+            `${t(`relics.${relic.id}`)} — ${t("relics.craft")} (${formatCompact(relic.costCoins)}c + ${matsText})`,
+            "craftRelic",
+            canCraft,
+          );
+          btn.dataset.relic = relic.id;
+          relicRow.append(btn);
+        } else {
+          const canToggle = isEquipped || equippedRelics.length < MAX_EQUIPPED_RELICS;
+          const btn = actionButton(
+            `${isEquipped ? "★ " : ""}${t(`relics.${relic.id}`)} — ${isEquipped ? t("relics.unequip") : t("relics.equip")}`,
+            "equipRelic",
+            canToggle,
+          );
+          btn.dataset.relic = relic.id;
+          if (isEquipped) btn.classList.add("is-active");
+          relicRow.append(btn);
+        }
+      }
+      relicWrap.append(relicRow);
+      wrap.append(relicWrap);
+    }
+
     return wrap;
   }
 
@@ -5923,6 +5974,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       { id: "attachments", icon: "🧩", labelKey: "dynopedia.cat.attachments" },
       { id: "events", icon: "⛅", labelKey: "dynopedia.cat.events" },
       { id: "pets", icon: "🐾", labelKey: "dynopedia.cat.pets" },
+      { id: "mechanics", icon: "📘", labelKey: "dynopedia.cat.mechanics" },
     ] as const;
 
     for (const cat of categories) {
@@ -6234,6 +6286,26 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           icon: dynopediaItemIcon("events", event.id),
           tags: [`grow x${event.growScale}`, `sell x${event.sellBonus}`],
           detail: `${t(`events.${event.id}.desc`)} · grow x${event.growScale} · sell x${event.sellBonus}`,
+        });
+      }
+    } else if (dynopediaCategory === "mechanics") {
+      const guides = [
+        { id: "synergy", icon: "🧩", tag: "3×3 & 81" },
+        { id: "relics", icon: "🏺", tag: "Mine Forge" },
+        { id: "guild", icon: "🏰", tag: "Co-op" },
+        { id: "news", icon: "📰", tag: "Market Surge" },
+        { id: "pet", icon: "🐾", tag: "Expedition" },
+        { id: "vip", icon: "🌟", tag: "VIP & Nursery" },
+        { id: "mine", icon: "⛏️", tag: "Staff Miner" },
+      ] as const;
+      for (const guide of guides) {
+        cards.push({
+          id: `mech:${guide.id}`,
+          title: t(`dynopedia.mech.${guide.id}Title`),
+          codexKey: null,
+          icon: guide.icon,
+          tags: [guide.tag],
+          detail: t(`dynopedia.mech.${guide.id}Desc`),
         });
       }
     } else {
@@ -8990,6 +9062,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     );
 
     // 2. Active Conditions Grid (Phase, Active Weather Events, Weekly Modifier, Boss Raid)
+    if (season.news !== undefined) {
+      wrap.append(lineBlock(`// ${t("news.title")}: ${t(`news.${season.news.id}`)}`));
+    }
     wrap.append(lineBlock(`// ${t("reborn.weatherNow")}`));
     const activeGrid = div("garden-town-npcs");
 
@@ -9403,6 +9478,66 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     manageBlock.append(petGrid);
     panel.append(manageBlock);
 
+    if (mode === "owner" && state !== null) {
+      const at = now();
+      const skillBlock = div("garden-town-section");
+      skillBlock.append(span("garden-board-title", t("pet.skillTitle")));
+      const equippedCopies = equipped !== null ? (state.extras.pets[equipped] ?? 0) : 0;
+      const lastSkillAt = state.extras.petSkillAt ?? 0;
+      const cdLeft = Math.max(0, PET_SKILL_COOLDOWN_MS - (at - lastSkillAt));
+      const canSkill = equipped !== null && equippedCopies >= 2 && cdLeft === 0;
+      skillBlock.append(
+        actionButton(
+          cdLeft > 0 ? t("pet.skillCooldown", { time: formatDuration(cdLeft, "short") }) : t("pet.skillBtn"),
+          "usePetSkill",
+          canSkill,
+        ),
+      );
+      panel.append(skillBlock);
+
+      const expBlock = div("garden-town-section");
+      expBlock.append(span("garden-board-title", t("pet.expeditionTitle")));
+      const expeditions = state.extras.petExpeditions ?? [];
+      for (const exp of expeditions) {
+        const ready = at >= exp.endsAt;
+        if (ready) {
+          const btn = actionButton(
+            `${t(`pets.${exp.pet}`)} — ${t("pet.expClaim")}`,
+            "claimPetExpedition",
+            true,
+          );
+          btn.dataset.id = exp.id;
+          expBlock.append(btn);
+        } else {
+          expBlock.append(
+            lineBlock(
+              `// ${t(`pets.${exp.pet}`)} · ${t("pet.expRunning", { time: formatDuration(exp.endsAt - at, "short") })}`,
+            ),
+          );
+        }
+      }
+      const idlePets = PETS.filter(
+        (p) =>
+          (state?.extras.pets[p.id] ?? 0) > 0 &&
+          p.id !== equipped &&
+          !expeditions.some((e) => e.pet === p.id),
+      );
+      if (idlePets.length > 0) {
+        const expRow = div("garden-tools");
+        for (const p of idlePets) {
+          const b15 = actionButton(`${t(`pets.${p.id}`)} · ${t("pet.exp15")}`, "startPetExpedition");
+          b15.dataset.pet = p.id;
+          b15.dataset.min = "15";
+          const b30 = actionButton(`${t(`pets.${p.id}`)} · ${t("pet.exp30")}`, "startPetExpedition");
+          b30.dataset.pet = p.id;
+          b30.dataset.min = "30";
+          expRow.append(b15, b30);
+        }
+        expBlock.append(expRow);
+      }
+      panel.append(expBlock);
+    }
+
     return panel;
   }
 
@@ -9445,6 +9580,39 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       donateInput.setAttribute("aria-label", t("guild.donate"));
       donateRow.append(donateInput, actionButton(t("guild.donate"), "guildDonate", mode === "owner"));
       block.append(donateRow);
+
+      if (guildSnapshot.project !== undefined) {
+        const proj = guildSnapshot.project;
+        const projBlock = div("garden-town-section");
+        projBlock.append(span("garden-board-title", t("guild.projectTitle")));
+        const itemLabel = t(`products.${proj.item}`);
+        projBlock.append(
+          lineBlock(
+            t("guild.projectProgress", {
+              progress: proj.progress,
+              target: proj.target,
+              item: itemLabel,
+              reward: formatCompact(proj.rewardCoins),
+            }),
+          ),
+        );
+        if (proj.completed) {
+          projBlock.append(lineBlock(t("guild.projectDone", { reward: formatCompact(proj.rewardCoins) })));
+        } else {
+          const haveQty = (state?.bag.products ?? [])
+            .filter((s) => s.product === proj.item)
+            .reduce((sum, s) => sum + s.qty, 0);
+          projBlock.append(
+            actionButton(
+              t("guild.projectContribute", { item: itemLabel }),
+              "guildContribute",
+              mode === "owner" && haveQty >= 1,
+            ),
+          );
+        }
+        block.append(projBlock);
+      }
+
       block.append(actionButton(t("guild.leave"), "guildLeave", mode === "owner"));
     } else {
       const nameInput = document.createElement("input");
@@ -11601,6 +11769,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           void loadGuilds();
         });
         return;
+      case "guildContribute":
+        void api
+          .guildContribute(1)
+          .then((result) => {
+            guildSnapshot = result.guild;
+            if (state !== null) state = { ...state, coins: result.coins };
+            message = { text: t("guild.donated"), kind: "ok" };
+          })
+          .catch(() => {
+            message = { text: translateError("NO_PRODUCT"), kind: "err" };
+          })
+          .finally(() => void loadGuilds());
+        return;
       case "giftCoins": {
         const code = giftCode.trim().toUpperCase();
         const amount = Number(giftAmount);
@@ -11905,6 +12086,32 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "extrasEquip": {
         const pet = target.dataset.pet;
         if (pet !== undefined) void runAction({ kind: "equipPet", pet: pet as never }, t("extras.equipped"));
+        return;
+      }
+      case "craftRelic": {
+        const relic = target.dataset.relic as RelicId | undefined;
+        if (relic !== undefined) void runAction({ kind: "craftRelic", relic }, t("relics.craft"));
+        return;
+      }
+      case "equipRelic": {
+        const relic = target.dataset.relic as RelicId | undefined;
+        if (relic !== undefined) void runAction({ kind: "equipRelic", relic }, t("relics.equipped"));
+        return;
+      }
+      case "usePetSkill":
+        void runAction({ kind: "usePetSkill" }, t("pet.skillBtn"));
+        return;
+      case "startPetExpedition": {
+        const pet = target.dataset.pet as PetId | undefined;
+        const durationMin = target.dataset.min === "30" ? 30 : 15;
+        if (pet !== undefined) {
+          void runAction({ kind: "startPetExpedition", pet, durationMin }, t("pet.expeditionTitle"));
+        }
+        return;
+      }
+      case "claimPetExpedition": {
+        const id = target.dataset.id;
+        if (id !== undefined) void runAction({ kind: "claimPetExpedition", id }, t("pet.expClaim"));
         return;
       }
       case "extrasWheel":

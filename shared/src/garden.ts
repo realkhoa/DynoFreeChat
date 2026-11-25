@@ -2188,7 +2188,218 @@ export function animalMeatPrice(
   return Math.round(buyPrice * ANIMAL_MEAT_RATIO * quality * pond);
 }
 
-/** @brief Sell value of one product stack, after quality and event bonus. */
+/** Identifier for a craftable mine relic. */
+export type RelicId = "crystalCharm" | "earthDragon" | "phoenixTalisman" | "midasSeal";
+
+/** Maximum number of relics a player can equip at once. */
+export const MAX_EQUIPPED_RELICS = 3;
+
+/** Static definition of one craftable mine relic. */
+export interface RelicDefinition {
+  readonly id: RelicId;
+  readonly costCoins: number;
+  readonly materials: Readonly<Partial<Record<ProductId, number>>>;
+}
+
+/** Catalog of craftable mine relics forged from ores and gems. */
+export const RELICS: readonly RelicDefinition[] = [
+  { id: "crystalCharm", costCoins: 2_000_000, materials: { copperBar: 5, ruby: 1 } },
+  { id: "earthDragon", costCoins: 8_000_000, materials: { ironBar: 5, goldBar: 3, coal: 5 } },
+  { id: "phoenixTalisman", costCoins: 15_000_000, materials: { goldBar: 5, iridiumBar: 2 } },
+  { id: "midasSeal", costCoins: 30_000_000, materials: { iridiumBar: 5, diamond: 3 } },
+];
+
+/**
+ * @brief Looks up a relic definition by id.
+ * @param id Candidate relic identifier.
+ * @return Matching relic definition, or undefined.
+ */
+export function relicById(id: string): RelicDefinition | undefined {
+  return RELICS.find((entry) => entry.id === id);
+}
+
+/** One active or claimable pet expedition. */
+export interface PetExpeditionState {
+  readonly id: string;
+  readonly pet: PetId;
+  readonly startedAt: number;
+  readonly endsAt: number;
+  readonly durationMin: 15 | 30;
+}
+
+/** Cooldown between equipped pet active skill triggers (30 minutes). */
+export const PET_SKILL_COOLDOWN_MS = 30 * 60_000;
+
+/** Identifier for a 3x3 / 9x9 plot synergy bonus. */
+export type SynergyId = "trio" | "companion" | "harmony";
+
+/** Computed synergy bonuses for a single plot slot. */
+export interface PlotSynergy {
+  readonly ids: readonly SynergyId[];
+  readonly growScale: number;
+  readonly sellBonus: number;
+}
+
+const FLOWER_OR_HERB_SEEDS = new Set<string>([
+  "lavender",
+  "chamomile",
+  "mint",
+  "rose",
+  "sunflower",
+  "lotus",
+  "basil",
+  "rosemary",
+  "tea",
+]);
+
+/**
+ * @brief Computes adjacency & line synergies for one crop plot inside a 3x3 patch or 9x9 greenhouse grid.
+ * @param plots Flat array of plots (`3x3` patches per 9 slots when `gridWidth === 3`, or `9x9` when `gridWidth === 9`).
+ * @param slot Target zero-based slot index.
+ * @param gridWidth Row width (`3` for normal/VIP patches, `9` for greenhouse).
+ * @param hybrids Optional custom hybrid definitions.
+ * @return Active synergy ids, growth scale multiplier, and sell bonus fraction.
+ */
+export function plotSynergyAt(
+  plots: readonly (PlotState | null)[],
+  slot: number,
+  gridWidth: 3 | 9,
+  hybrids?: readonly HybridSeed[],
+): PlotSynergy {
+  const center = plots[slot] ?? null;
+  if (center === null) return { ids: [], growScale: 1, sellBonus: 0 };
+
+  const blockStart = gridWidth === 9 ? 0 : Math.floor(slot / 9) * 9;
+  const blockSize = gridWidth === 9 ? 81 : 9;
+  const local = slot - blockStart;
+  const row = Math.floor(local / gridWidth);
+  const col = local % gridWidth;
+  const at = (r: number, c: number): PlotState | null => {
+    if (r < 0 || c < 0 || r >= gridWidth || r * gridWidth + c >= blockSize) return null;
+    return plots[blockStart + r * gridWidth + c] ?? null;
+  };
+
+  const ids: SynergyId[] = [];
+  let growScale = 1;
+  let sellBonus = 0;
+
+  // 1. Trio: 3-in-a-row horizontally or vertically with the same seed.
+  const same = (r: number, c: number): boolean => at(r, c)?.seed === center.seed;
+  const hTrio =
+    (same(row, col - 1) && same(row, col + 1)) ||
+    (same(row, col - 2) && same(row, col - 1)) ||
+    (same(row, col + 1) && same(row, col + 2));
+  const vTrio =
+    (same(row - 1, col) && same(row + 1, col)) ||
+    (same(row - 2, col) && same(row - 1, col)) ||
+    (same(row + 1, col) && same(row + 2, col));
+  if (hTrio || vTrio) {
+    ids.push("trio");
+    growScale *= 0.85;
+    sellBonus += 0.15;
+  }
+
+  const neighbors = [at(row - 1, col), at(row + 1, col), at(row, col - 1), at(row, col + 1)].filter(
+    (entry): entry is PlotState => entry !== null,
+  );
+
+  // 2. Companion: adjacent to an herb or flower.
+  const hasCompanion = neighbors.some((neighbor) => {
+    const def = resolveSeed(neighbor.seed, hybrids);
+    return def !== undefined && FLOWER_OR_HERB_SEEDS.has(def.id);
+  });
+  if (hasCompanion) {
+    ids.push("companion");
+    sellBonus += 0.25;
+  }
+
+  // 3. Seasonal Harmony: 3+ distinct seed varieties among center + orthogonal neighbors.
+  const varieties = new Set<string>();
+  const centerDef = resolveSeed(center.seed, hybrids);
+  if (centerDef !== undefined) varieties.add(centerDef.id);
+  for (const neighbor of neighbors) {
+    const def = resolveSeed(neighbor.seed, hybrids);
+    if (def !== undefined) varieties.add(def.id);
+  }
+  if (varieties.size >= 3) {
+    ids.push("harmony");
+    sellBonus += 0.5;
+  }
+
+  return { ids, growScale, sellBonus };
+}
+
+/** Rotating market news themes driving dynamic price surges per wave. */
+export const MARKET_NEWS_THEMES: readonly MarketNewsSnapshot[] = [
+  {
+    id: "pastryFestival",
+    tags: ["wheat", "strawberry", "blueberry", "cranberry", "bread", "jam"],
+    multiplier: 1.8,
+  },
+  { id: "herbCraze", tags: ["tea", "lavender", "chamomile", "mint", "driedHerb"], multiplier: 1.9 },
+  {
+    id: "winterComfort",
+    tags: ["mushroom", "soup", "wine", "cheese"],
+    multiplier: 1.75,
+  },
+  {
+    id: "industrialBoom",
+    tags: ["copperBar", "ironBar", "goldBar", "iridiumBar", "coal", "ruby", "diamond"],
+    multiplier: 1.8,
+  },
+  {
+    id: "fruitFiesta",
+    tags: ["fruit", "juice", "wine", "apple", "mango", "grape", "peach"],
+    multiplier: 1.75,
+  },
+];
+
+/**
+ * @brief Returns the deterministic market surge news for a given wave.
+ * @param wave Zero-based phase wave index.
+ * @return Active MarketNewsSnapshot.
+ */
+export function marketNewsFor(wave: number): MarketNewsSnapshot {
+  const index = Math.abs(wave) % MARKET_NEWS_THEMES.length;
+  return MARKET_NEWS_THEMES[index] ?? MARKET_NEWS_THEMES[0]!;
+}
+
+/**
+ * @brief Computes the active market news multiplier for a crop or tree item.
+ * @param item Item identifier.
+ * @param news Active market news, if any.
+ * @return Price multiplier (>= 1).
+ */
+export function newsMultiplierForCrop(item: string, news?: MarketNewsSnapshot): number {
+  if (news === undefined) return 1;
+  const seed = seedById(item);
+  if (seed !== undefined && news.tags.includes(seed.id)) {
+    return news.multiplier;
+  }
+  const tree = treeById(item);
+  if (tree !== undefined && (news.tags.includes(tree.id) || news.tags.includes("fruit"))) {
+    return news.multiplier;
+  }
+  return 1;
+}
+
+/**
+ * @brief Computes the active market news multiplier for a crafted product.
+ * @param product Product identifier.
+ * @param news Active market news, if any.
+ * @return Price multiplier (>= 1).
+ */
+export function newsMultiplierForProduct(product: string, news?: MarketNewsSnapshot): number {
+  if (news === undefined) return 1;
+  if (news.tags.includes(product)) return news.multiplier;
+  const def = productById(product);
+  if (def !== undefined && news.tags.includes("mushroom") && def.id.includes("Mushroom")) {
+    return news.multiplier;
+  }
+  return 1;
+}
+
+/** @brief Sell value of one product stack, after quality, event, and market news bonus. */
 export function productPrice(stack: ProductStack, season: SeasonSnapshot): number {
   const definition = productById(stack.product);
   if (definition === undefined) return 0;
@@ -2197,7 +2408,8 @@ export function productPrice(stack: ProductStack, season: SeasonSnapshot): numbe
     season.events.length > 0 ? eventsAt(season.event.startedAt) : eventsAt(season.event.startedAt),
   );
   const mutation = effectsMultiplier(stack.effects ?? []);
-  return Math.max(1, Math.round(definition.base * quality * bonus * mutation));
+  const newsMult = newsMultiplierForProduct(stack.product, season.news);
+  return Math.max(1, Math.round(definition.base * quality * bonus * mutation * newsMult));
 }
 
 /** One occupied plot on the wire. */
@@ -2458,6 +2670,20 @@ export interface GuildMember {
   readonly joinedAt: number;
 }
 
+/** Guild co-op weekly project progress. */
+export interface GuildProjectSnapshot {
+  /** Target item id (product or seed/crop). */
+  readonly item: ProductId | SeedId;
+  /** Total quantity required to finish the project. */
+  readonly target: number;
+  /** Current quantity donated by guild members. */
+  readonly progress: number;
+  /** Whether the project target has been reached. */
+  readonly completed: boolean;
+  /** Bonus coins awarded to the guild bank on completion. */
+  readonly rewardCoins: number;
+}
+
 /** Guild summary returned by the hub. */
 export interface GuildSnapshot {
   readonly id: string;
@@ -2467,6 +2693,8 @@ export interface GuildSnapshot {
   /** Shared guild coin bank. */
   readonly bank: number;
   readonly createdAt: number;
+  /** Shared guild co-op project. */
+  readonly project?: GuildProjectSnapshot;
 }
 
 /** Price of building the kitchen inside the warehouse. */
@@ -3395,6 +3623,14 @@ export interface ExtrasSnapshot {
   readonly prestigeSkills?: Partial<Record<PrestigeSkillId, number>>;
   /** Unspent prestige skill points. */
   readonly prestigePoints?: number;
+  /** Crafted mine relics owned by the player. */
+  readonly relics?: readonly RelicId[];
+  /** Currently equipped mine relics (up to MAX_EQUIPPED_RELICS). */
+  readonly equippedRelics?: readonly RelicId[];
+  /** Active or completed pet expeditions waiting to be claimed. */
+  readonly petExpeditions?: readonly PetExpeditionState[];
+  /** Server timestamp of the last equipped pet active skill trigger. */
+  readonly petSkillAt?: number;
 }
 
 /** Kinds of daily quest progress the server tracks. */
@@ -4183,10 +4419,22 @@ export function applyMarket(
   return { ...season, prices, fruitPrices };
 }
 
+/** Dynamic market surge news item for the active wave. */
+export interface MarketNewsSnapshot {
+  /** Stable theme identifier. */
+  readonly id: string;
+  /** Matching crop categories or product ids boosted by this news. */
+  readonly tags: readonly string[];
+  /** Sell price multiplier applied to matching goods. */
+  readonly multiplier: number;
+}
+
 /** Everything that changes with the server clock. */
 export interface SeasonSnapshot {
   /** Rotation index of the current phase window. */
   readonly wave: number;
+  /** Dynamic market surge news for this wave. */
+  readonly news?: MarketNewsSnapshot;
   /** Current day phase: day, dusk, night or dawn. */
   readonly phase: {
     readonly id: DayPhaseId;
@@ -4392,6 +4640,11 @@ export type GardenAction = (
   | { readonly kind: "upgradePickaxe" }
   | { readonly kind: "mineEat"; readonly item: ProductId }
   | { readonly kind: "assignMiner"; readonly staffSlot: number | null }
+  | { readonly kind: "craftRelic"; readonly relic: RelicId }
+  | { readonly kind: "equipRelic"; readonly relic: RelicId }
+  | { readonly kind: "usePetSkill" }
+  | { readonly kind: "startPetExpedition"; readonly pet: PetId; readonly durationMin: 15 | 30 }
+  | { readonly kind: "claimPetExpedition"; readonly id: string }
 ) & { readonly auto?: boolean };
 
 /** Error codes; the client localizes them, the server never sends prose. */
@@ -4467,7 +4720,12 @@ export type GardenErrorCode =
   | "ROCK_EMPTY"
   | "GREENHOUSE_LOCKED"
   | "HYBRID_LIMIT"
-  | "NOT_ENOUGH_PARENTS";
+  | "NOT_ENOUGH_PARENTS"
+  | "RELIC_LOCKED"
+  | "MAX_RELICS"
+  | "PET_BUSY"
+  | "SKILL_COOLDOWN"
+  | "EXPEDITION_NOT_READY";
 
 /** Successful response to a garden action. */
 export interface GardenActResponse {
@@ -5136,6 +5394,21 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return { kind, slot, seed: seed.id };
   }
   if (kind === "claimCodex") return { kind };
+  if (kind === "craftRelic" || kind === "equipRelic") {
+    const relic = typeof value.relic === "string" ? relicById(value.relic) : undefined;
+    return relic === undefined ? null : { kind, relic: relic.id };
+  }
+  if (kind === "usePetSkill") return { kind };
+  if (kind === "startPetExpedition") {
+    const pet = typeof value.pet === "string" ? petById(value.pet) : undefined;
+    const durationMin = value.durationMin === 30 ? 30 : value.durationMin === 15 ? 15 : null;
+    return pet === undefined || durationMin === null ? null : { kind, pet: pet.id, durationMin };
+  }
+  if (kind === "claimPetExpedition") {
+    return typeof value.id === "string" && value.id.length > 0 && value.id.length <= 64
+      ? { kind, id: value.id }
+      : null;
+  }
   if (kind === "respecPrestige") return { kind };
   if (kind === "fulfillChain") return { kind };
   if (kind === "buildKitchen") return { kind };
@@ -5423,6 +5696,7 @@ export function seasonAt(now: number): SeasonSnapshot {
 
   return {
     wave: phase.index,
+    news: marketNewsFor(phase.index),
     phase: { id: phase.phase.id, startsAt: phase.startsAt, endsAt: phase.endsAt },
     event: { id: current.id, startedAt: phase.startsAt, endsAt: phase.endsAt },
     events: currentEvents.map((event) => ({
@@ -5799,7 +6073,8 @@ export function cropSellPrice(
       : 1;
   const pest = stack.pest === true ? PEST_VALUE_MULTIPLIER : 1;
   const quality = 2 ** (Math.max(1, Math.min(5, stack.star ?? 1)) - 1);
-  return Math.round(base * multiplier * bonus * pest * quality);
+  const newsMult = newsMultiplierForCrop(stack.item, season.news);
+  return Math.round(base * multiplier * bonus * pest * quality * newsMult);
 }
 
 /** @brief Total value of every crop in a bag. */

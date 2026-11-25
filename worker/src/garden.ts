@@ -501,6 +501,9 @@ export class Garden extends DurableObject<Env> {
     if (request.method === "POST" && url.pathname === "/recipe") return this.learnRecipe(request);
     if (request.method === "POST" && url.pathname === "/raid") return this.hitRaid(request);
     if (request.method === "POST" && url.pathname === "/guild/donate") return this.donateGuild(request);
+    if (request.method === "POST" && url.pathname === "/guild/contribute") {
+      return this.contributeGuild(request);
+    }
     if (request.method === "POST" && url.pathname === "/recovery") return this.rotateRecovery(request);
     if (request.method === "POST" && url.pathname === "/issue-token") return this.issueToken(request);
     if (request.method === "POST" && url.pathname === "/identity") return this.identity(request);
@@ -608,6 +611,12 @@ export class Garden extends DurableObject<Env> {
       wheelLast: raw.wheelLast ?? "",
       wheelDay: typeof raw.wheelDay === "number" ? raw.wheelDay : 0,
       prestige: typeof raw.prestige === "number" ? raw.prestige : 0,
+      relics: Array.isArray(raw.relics) ? [...raw.relics] : [],
+      equippedRelics: Array.isArray(raw.equippedRelics) ? [...raw.equippedRelics] : [],
+      petExpeditions: Array.isArray(raw.petExpeditions)
+        ? raw.petExpeditions.map((entry) => ({ ...entry }))
+        : [],
+      petSkillAt: typeof raw.petSkillAt === "number" ? raw.petSkillAt : 0,
       prestigeSkills: {
         merchant: raw.prestigeSkills?.merchant ?? 0,
         farmer: raw.prestigeSkills?.farmer ?? 0,
@@ -1004,6 +1013,54 @@ export class Garden extends DurableObject<Env> {
     return json({ ok: true, guild: payload.guild, coins: next.coins });
   }
 
+  /**
+   * @brief Contributes items from the player's bag toward the guild's shared co-op project.
+   * @param request HTTP request containing `{ qty }`.
+   * @return Updated guild snapshot and player coins, or error response.
+   */
+  private async contributeGuild(request: Request): Promise<Response> {
+    const ledger = await this.authorize(request);
+    if (ledger === null) return this.unauthorized();
+    const body = await readJson(request);
+    const qty = typeof body.qty === "number" ? Math.max(1, Math.min(100, Math.floor(body.qty))) : 1;
+
+    const hub = this.env.GARDEN_HUB.get(this.env.GARDEN_HUB.idFromName(HUB_NAME));
+    const mineRes = await hub.fetch(`https://hub/guild/mine?playerId=${encodeURIComponent(ledger.playerId)}`);
+    if (!mineRes.ok) return json({ code: "BAD_REQUEST" }, 400);
+    const minePayload = (await mineRes.json()) as { guild: GuildSnapshot | null };
+    const project = minePayload.guild?.project;
+    if (minePayload.guild === null || project === undefined) return json({ code: "BAD_REQUEST" }, 400);
+
+    const next = structuredClone(ledger);
+    const haveProd = next.bag.products
+      .filter((s) => s.product === project.item)
+      .reduce((sum, s) => sum + s.qty, 0);
+    if (haveProd < qty) return json({ code: "NO_PRODUCT" }, 400);
+
+    let left = qty;
+    next.bag.products = next.bag.products
+      .map((stack) => {
+        if (left <= 0 || stack.product !== project.item) return stack;
+        const take = Math.min(left, stack.qty);
+        left -= take;
+        return { ...stack, qty: stack.qty - take };
+      })
+      .filter((stack) => stack.qty > 0);
+
+    const contribRes = await hub.fetch("https://hub/guild/contribute", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ playerId: ledger.playerId, qty }),
+    });
+    if (!contribRes.ok) return json({ code: "BAD_REQUEST" }, 400);
+    const payload = (await contribRes.json()) as { guild?: unknown };
+    const reward = qty * 1_000;
+    next.coins += reward;
+    next.stats.earned += reward;
+    this.write(next);
+    return json({ ok: true, guild: payload.guild, coins: next.coins });
+  }
+
   /** @brief Charges 5% of total coins for one raid strike and forwards damage to the hub boss. */
   private async hitRaid(request: Request): Promise<Response> {
     const ledger = await this.authorize(request);
@@ -1012,7 +1069,10 @@ export class Garden extends DurableObject<Env> {
     if (now - (ledger.raidLastAt ?? 0) < 60 * 60_000) {
       return json({ code: "TRY_LATER" }, 429);
     }
-    const cost = raidHitCost(ledger.coins);
+    const baseCost = raidHitCost(ledger.coins);
+    const cost = (ledger.equippedRelics ?? []).includes("phoenixTalisman")
+      ? Math.round(baseCost * 0.5)
+      : baseCost;
     if (cost <= 0 || ledger.coins < cost) return json({ code: "NOT_ENOUGH_COINS" }, 400);
     const hub = this.env.GARDEN_HUB.get(this.env.GARDEN_HUB.idFromName(HUB_NAME));
     const response = await hub.fetch("https://hub/raid/hit", {
@@ -1987,6 +2047,12 @@ export class GardenHub extends DurableObject<Env> {
     if (!guildColumns.some((column) => column.name === "bank")) {
       this.sql.exec("ALTER TABLE guilds ADD COLUMN bank INTEGER NOT NULL DEFAULT 0");
     }
+    if (!guildColumns.some((column) => column.name === "project_item")) {
+      this.sql.exec("ALTER TABLE guilds ADD COLUMN project_item TEXT NOT NULL DEFAULT 'cheese'");
+      this.sql.exec("ALTER TABLE guilds ADD COLUMN project_target INTEGER NOT NULL DEFAULT 50");
+      this.sql.exec("ALTER TABLE guilds ADD COLUMN project_progress INTEGER NOT NULL DEFAULT 0");
+      this.sql.exec("ALTER TABLE guilds ADD COLUMN project_completed INTEGER NOT NULL DEFAULT 0");
+    }
   }
   override async fetch(request: Request): Promise<Response> {
     this.ensureSchema();
@@ -2006,6 +2072,9 @@ export class GardenHub extends DurableObject<Env> {
     if (request.method === "POST" && url.pathname === "/guild/join") return this.guildJoin(request);
     if (request.method === "POST" && url.pathname === "/guild/leave") return this.guildLeave(request);
     if (request.method === "POST" && url.pathname === "/guild/donate") return this.guildDonate(request);
+    if (request.method === "POST" && url.pathname === "/guild/contribute") {
+      return this.guildContribute(request);
+    }
     if (request.method === "GET" && url.pathname === "/guild/mine") return this.guildMine(url);
     if (request.method === "GET" && url.pathname === "/guild/list") return this.guildList();
     if (request.method === "POST" && url.pathname === "/raid/hit") return this.raidHit(request);
@@ -2373,6 +2442,40 @@ export class GardenHub extends DurableObject<Env> {
     return json({ ok: true, guild: this.guildById(guildId) });
   }
 
+  /**
+   * @brief Advances the shared guild co-op project progress and awards bank bonus on completion.
+   * @param request HTTP request with `{ playerId, qty }`.
+   * @return Updated GuildSnapshot.
+   */
+  private async guildContribute(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const playerId = typeof body.playerId === "string" ? body.playerId : "";
+    const qty = typeof body.qty === "number" ? Math.max(1, Math.min(100, Math.floor(body.qty))) : 0;
+    const guildId = this.guildOf(playerId);
+    if (guildId === undefined || qty < 1) return json({ code: "BAD_REQUEST" }, 400);
+
+    const row = this.sql
+      .exec<SqlRow<{ project_target: number; project_progress: number; project_completed: number }>>(
+        "SELECT project_target, project_progress, project_completed FROM guilds WHERE id = ?",
+        guildId,
+      )
+      .toArray()[0];
+    if (row === undefined) return json({ code: "BAD_REQUEST" }, 404);
+
+    const nextProgress = row.project_progress + qty;
+    const newlyCompleted = row.project_completed === 0 && nextProgress >= row.project_target;
+    if (newlyCompleted) {
+      this.sql.exec(
+        "UPDATE guilds SET project_progress = ?, project_completed = 1, bank = bank + 500000 WHERE id = ?",
+        nextProgress,
+        guildId,
+      );
+    } else {
+      this.sql.exec("UPDATE guilds SET project_progress = ? WHERE id = ?", nextProgress, guildId);
+    }
+    return json({ ok: true, guild: this.guildById(guildId) });
+  }
+
   /** @brief Guild of one player. */
   private guildMine(url: URL): Response {
     const playerId = url.searchParams.get("playerId") ?? "";
@@ -2415,11 +2518,23 @@ export class GardenHub extends DurableObject<Env> {
       .toArray()[0]?.guild_id;
   }
 
-  /** @brief Full guild snapshot with members. */
+  /** @brief Full guild snapshot with members and co-op project. */
   private guildById(id: string): GuildSnapshot | null {
     const guild = this.sql
-      .exec<SqlRow<{ id: string; name: string; owner_id: string; bank: number; created_at: number }>>(
-        "SELECT id, name, owner_id, bank, created_at FROM guilds WHERE id = ?",
+      .exec<
+        SqlRow<{
+          id: string;
+          name: string;
+          owner_id: string;
+          bank: number;
+          created_at: number;
+          project_item: string;
+          project_target: number;
+          project_progress: number;
+          project_completed: number;
+        }>
+      >(
+        "SELECT id, name, owner_id, bank, created_at, project_item, project_target, project_progress, project_completed FROM guilds WHERE id = ?",
         id,
       )
       .toArray()[0];
@@ -2436,6 +2551,13 @@ export class GardenHub extends DurableObject<Env> {
       ownerId: guild.owner_id,
       bank: guild.bank,
       createdAt: guild.created_at,
+      project: {
+        item: (guild.project_item || "cheese") as "cheese",
+        target: guild.project_target || 50,
+        progress: guild.project_progress || 0,
+        completed: guild.project_completed === 1,
+        rewardCoins: 500_000,
+      },
       members: members.map((member) => ({
         playerId: member.player_id,
         nick: member.nick,

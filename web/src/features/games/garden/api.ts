@@ -252,6 +252,19 @@ export class GardenApi {
     });
   }
 
+  /**
+   * @brief Contributes crafted products toward the guild's shared co-op project.
+   * @param qty Quantity to contribute.
+   * @return Updated guild snapshot and player coins.
+   */
+  async guildContribute(qty: number): Promise<{ guild: GuildSnapshot; coins: number }> {
+    return this.request<{ guild: GuildSnapshot; coins: number }>("/api/garden/guild/contribute", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ qty }),
+    });
+  }
+
   /** @brief Leaves the current guild. */
   async guildLeave(): Promise<{ ok: boolean }> {
     return this.request<{ ok: boolean }>("/api/garden/guild/leave", {
