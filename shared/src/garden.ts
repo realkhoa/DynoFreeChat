@@ -293,8 +293,17 @@ export type TreeId =
   | "mango"
   | "kiwi";
 
+/** Custom cross-bred plant seed identifier minted by the Nursery. */
+export type HybridId = `hybrid:${string}`;
+
+/** Static or hybrid seed identifier that can be planted in a crop or greenhouse plot. */
+export type AnySeedId = SeedId | HybridId;
+
 /** Anything that can sit in the harvest bag: a crop seed or a tree fruit. */
 export type ItemId = SeedId | TreeId;
+
+/** Static or hybrid crop/fruit identifier stored in produce stacks. */
+export type AnyItemId = ItemId | HybridId;
 
 /** Luck effects a crop can carry. */
 export type EffectId =
@@ -327,7 +336,11 @@ export type EffectId =
   | "burnt"
   | "shriveled"
   | "pale"
-  | "brainrot";
+  | "brainrot"
+  | "highquality";
+
+/** Negative mutations that are prevented inside the greenhouse. */
+export const BAD_MUTATIONS: ReadonlySet<EffectId> = new Set(["burnt", "shriveled", "pale"]);
 
 /** Global events that rotate over time. */
 export type EventId =
@@ -789,6 +802,8 @@ export const EFFECTS: readonly EffectDefinition[] = [
   { id: "pale", mark: ".", multiplier: 0.7, natural: true },
   // Premium-garden-only mutation, never rolled by weather.
   { id: "brainrot", mark: "?", multiplier: 20, natural: false },
+  // Greenhouse-only mutation: always grants 3x sale price, never naturally rolled.
+  { id: "highquality", mark: "H", multiplier: 3, natural: false },
 ];
 
 /**
@@ -1284,7 +1299,7 @@ export interface MachineDefinition {
 /** One timed job running inside a machine. */
 export interface MachineJob {
   /** Item being processed; it lives in the machine, not in the bag. */
-  readonly item: ItemId | ProductId;
+  readonly item: AnyItemId | ProductId;
   /** Server time the job started. */
   readonly startedAt: number;
   /** Server time the output is ready to collect. */
@@ -2190,7 +2205,7 @@ export interface PlotState {
   /** Absolute plot index, `0..MAX_PLOTS-1`. */
   readonly slot: number;
   /** Seed planted here. */
-  readonly seed: SeedId;
+  readonly seed: AnySeedId;
   /** Wall-clock planting time, server clock. */
   readonly plantedAt: number;
   /** Wall-clock time the crop becomes harvestable. */
@@ -2270,7 +2285,7 @@ export interface TreeState {
 /** One stack of harvested produce in the bag. */
 export interface CropStack {
   /** Item of the harvested stack: a seed's crop or a tree's fruit. */
-  readonly item: ItemId;
+  readonly item: AnyItemId;
   /** Mutations the stack carried when harvested. */
   readonly effects: readonly EffectId[];
   /** Harvested from a pest-damaged plant; sells for half. */
@@ -2284,7 +2299,7 @@ export interface CropStack {
 /** Seeds and crops the player owns. */
 export interface BagState {
   /** Unplanted seeds by id; missing ids are zero. */
-  readonly seeds: Readonly<Partial<Record<SeedId, number>>>;
+  readonly seeds: Readonly<Partial<Record<AnySeedId, number>>>;
   /** Harvested crops ready to sell. */
   readonly crops: readonly CropStack[];
   /** Owned fertilizers and sprays; missing ids are zero. */
@@ -2350,7 +2365,7 @@ export interface TimelineEvent {
   readonly ts: number;
   /** Event family, used for the localized label. */
   readonly kind:
-    "plant" | "harvest" | "sale" | "prestige" | "hazard" | "codex" | "skill" | "purchase" | "craft";
+    "plant" | "harvest" | "sale" | "prestige" | "hazard" | "codex" | "skill" | "purchase" | "craft" | "breed";
   /** Item/product or short target id. */
   readonly item?: string;
   /** Quantity or secondary number. */
@@ -2494,6 +2509,104 @@ export const INSURANCE_PAYOUT = 150;
 
 /** Greenhouse levels: prices and pest-chance reduction per level. */
 export const GREENHOUSE_PRICES: readonly number[] = [2_000_000, 4_000_000, 8_000_000];
+
+/** Maximum number of plots inside the greenhouse (9x9 grid = 81). */
+export const GREENHOUSE_SLOTS = 81;
+
+/** Greenhouse slots unlocked per greenhouse upgrade level (27, 54, 81). */
+export const GREENHOUSE_SLOTS_PER_LEVEL = 27;
+
+/** Effect guaranteed on every greenhouse crop harvest (x3 sell price). */
+export const GREENHOUSE_MUTATION: EffectId = "highquality";
+
+/**
+ * @brief Computes unlocked greenhouse plots for a greenhouse level.
+ * @param level Current greenhouse upgrade level (`0..3`).
+ * @return Number of open greenhouse plots, capped at {@link GREENHOUSE_SLOTS}.
+ */
+export function greenhouseCapacity(level: number): number {
+  return Math.min(GREENHOUSE_SLOTS, Math.max(0, Math.floor(level)) * GREENHOUSE_SLOTS_PER_LEVEL);
+}
+
+/** Quality tier produced by Nursery cross-breeding. */
+export type HybridTier = "elite" | "normal" | "dud";
+
+/** Prefix for player-bred custom hybrid seed ids. */
+export const HYBRID_PREFIX = "hybrid:";
+
+/** Wire format check for hybrid seed identifiers. */
+export const HYBRID_ID_RE = /^hybrid:[a-z0-9_-]{1,24}$/;
+
+/** Minimum and maximum parent plants combined in one Nursery cross-breed. */
+export const MIN_BREED_PARENTS = 2;
+export const MAX_BREED_PARENTS = 6;
+
+/** Maximum stored hybrid varieties per garden. */
+export const MAX_HYBRIDS = 40;
+
+/** Nursery cross-breeding base price (2 parents) and exponential factor per extra parent. */
+export const NURSERY_BASE_COST = 50_000;
+export const NURSERY_COST_FACTOR = 3;
+
+/** Custom cross-bred plant variety minted in the Nursery. */
+export interface HybridSeed {
+  /** Stable identifier (`hybrid:<n>`). */
+  readonly id: HybridId;
+  /** User-editable display name. */
+  readonly name: string;
+  /** Parent item ids combined to create this variety. */
+  readonly parents: readonly string[];
+  /** Rolled genetics tier: elite (cây xịn), normal, or dud (cây đểu). */
+  readonly tier: HybridTier;
+  /** Growth time in milliseconds. */
+  readonly growMs: number;
+  /** Base sale price of one harvested hybrid crop. */
+  readonly sell: number;
+  /** Whether the crop regrows after harvesting. */
+  readonly regrow: boolean;
+  /** Guaranteed bonus mutation on elite hybrids. */
+  readonly bonusEffect?: EffectId;
+  /** Four ASCII glyphs: seed, sprout, young, ripe. */
+  readonly art: readonly [string, string, string, string];
+  /** Creation server timestamp. */
+  readonly createdAt: number;
+}
+
+/**
+ * @brief Checks whether a seed/item identifier refers to a custom Nursery hybrid.
+ * @param id Identifier string from wire or bag.
+ * @return True if the identifier matches the hybrid prefix format.
+ */
+export function isHybridId(id: string): id is HybridId {
+  return HYBRID_ID_RE.test(id);
+}
+
+/**
+ * @brief Computes exponential cross-breeding cost for a parent count.
+ * @param parentCount Number of selected parent plants (`>= 2`).
+ * @return Coins required: `NURSERY_BASE_COST * NURSERY_COST_FACTOR^(parentCount - 2)`.
+ */
+export function hybridBreedCost(parentCount: number): number {
+  const extra = Math.max(0, Math.min(MAX_BREED_PARENTS, Math.floor(parentCount)) - MIN_BREED_PARENTS);
+  return NURSERY_BASE_COST * NURSERY_COST_FACTOR ** extra;
+}
+
+/**
+ * @brief Computes outcome probabilities for a Nursery cross-breed roll.
+ * @param parentCount Number of selected parents (`2..6`).
+ * @param spliceBonus Genetics splice bonus points (`0..20`).
+ * @return Probabilities in `0..1` summing to `1` for `elite`, `normal`, and `dud`.
+ */
+export function hybridOdds(
+  parentCount: number,
+  spliceBonus = 0,
+): { readonly elite: number; readonly normal: number; readonly dud: number } {
+  const extra = Math.max(0, Math.min(MAX_BREED_PARENTS, Math.floor(parentCount)) - MIN_BREED_PARENTS);
+  const elite = Math.min(0.65, 0.25 + extra * 0.05 + Math.max(0, spliceBonus) * 0.005);
+  const dud = Math.max(0.15, 0.3 - extra * 0.03);
+  const normal = Math.max(0.05, Number((1 - elite - dud).toFixed(4)));
+  return { elite, normal, dud };
+}
 
 /** Pet levels: prices and extra pest-chance reduction per level. */
 export const PET_PRICES: readonly number[] = [100_000, 300_000, 800_000];
@@ -3544,6 +3657,12 @@ export interface GardenSnapshot {
   readonly specialUnlocked: readonly number[];
   /** Special plots outside the normal crop grid; never auto-sold. */
   readonly specialPlots: readonly (PlotState | null)[];
+  /** Greenhouse crop plots, `0..GREENHOUSE_SLOTS-1` (auto-watered, highquality x3, immune). */
+  readonly greenhousePlots?: readonly (PlotState | null)[];
+  /** Custom hybrid seeds cross-bred in the Nursery. */
+  readonly hybrids?: readonly HybridSeed[];
+  /** Identifier of the most recently bred hybrid variety. */
+  readonly lastHybridId?: HybridId;
   /** Mushroom house trays, `0..MUSHROOM_TRAYS-1`. */
   readonly mushroomTrays: readonly (MushroomTrayState | null)[];
   /** Owned spawn blocks per mushroom species. */
@@ -3606,6 +3725,10 @@ export interface VisitSnapshot {
   readonly specialUnlocked: readonly number[];
   /** Special plots outside the normal crop grid. */
   readonly specialPlots: readonly (PlotState | null)[];
+  /** Greenhouse crop plots, `0..GREENHOUSE_SLOTS-1`. */
+  readonly greenhousePlots?: readonly (PlotState | null)[];
+  /** Custom hybrid seeds cross-bred in the Nursery. */
+  readonly hybrids?: readonly HybridSeed[];
   /** Warehouse and its machines. */
   readonly warehouse: WarehouseState;
   /** Mine floor state, depth, and pickaxe progression. */
@@ -4109,11 +4232,11 @@ export interface LeaderboardEntry {
 
 /** Actions the owner can apply to their garden. */
 export type GardenAction = (
-  | { readonly kind: "plant"; readonly slot: number; readonly seed: SeedId }
-  | { readonly kind: "plantAll"; readonly seed: SeedId }
+  | { readonly kind: "plant"; readonly slot: number; readonly seed: AnySeedId }
+  | { readonly kind: "plantAll"; readonly seed: AnySeedId }
   | {
       readonly kind: "uprootBulk";
-      readonly seed?: SeedId;
+      readonly seed?: AnySeedId;
       readonly tree?: TreeId;
       readonly priceBelow?: number;
       readonly profit?: "loss" | "win";
@@ -4137,12 +4260,20 @@ export type GardenAction = (
   | { readonly kind: "buyPatch"; readonly tab: number }
   | { readonly kind: "buySpecialPatch"; readonly patch: number }
   | { readonly kind: "buySpecialPlot"; readonly patch?: number }
-  | { readonly kind: "plantSpecial"; readonly slot: number; readonly seed: SeedId }
+  | { readonly kind: "plantSpecial"; readonly slot: number; readonly seed: AnySeedId }
   | { readonly kind: "harvestSpecial"; readonly slot: number }
   | { readonly kind: "waterSpecial"; readonly slot: number }
   | { readonly kind: "fertilizeSpecial"; readonly slot: number; readonly supply: FertilizerId }
   | { readonly kind: "spraySpecial"; readonly slot: number; readonly supply: SprayId }
   | { readonly kind: "uprootSpecial"; readonly slot: number }
+  | { readonly kind: "plantGreenhouse"; readonly slot: number; readonly seed: AnySeedId }
+  | { readonly kind: "harvestGreenhouse"; readonly slot: number }
+  | { readonly kind: "uprootGreenhouse"; readonly slot: number }
+  | { readonly kind: "fertilizeGreenhouse"; readonly slot: number; readonly supply: FertilizerId }
+  | { readonly kind: "plantAllGreenhouse"; readonly seed: AnySeedId }
+  | { readonly kind: "harvestAllGreenhouse" }
+  | { readonly kind: "breedHybrid"; readonly parents: readonly AnyItemId[] }
+  | { readonly kind: "renameHybrid"; readonly id: HybridId; readonly name: string }
   | { readonly kind: "waterAll" }
   | { readonly kind: "harvestAll" }
   | { readonly kind: "quickPlan" }
@@ -4183,7 +4314,7 @@ export type GardenAction = (
   | { readonly kind: "spinWheel" }
   | {
       readonly kind: "sellCrop";
-      readonly item: ItemId;
+      readonly item: AnyItemId;
       readonly effects: readonly EffectId[];
       readonly pest?: boolean;
       readonly star?: number;
@@ -4198,12 +4329,12 @@ export type GardenAction = (
   | {
       readonly kind: "craftMachine";
       readonly machine: MachineId;
-      readonly item?: ItemId | ProductId;
+      readonly item?: AnyItemId | ProductId;
     }
   | {
       readonly kind: "queueMachine";
       readonly machine: MachineId;
-      readonly item?: ItemId | ProductId;
+      readonly item?: AnyItemId | ProductId;
       readonly qty?: number;
     }
   | { readonly kind: "collectMachine"; readonly machine: MachineId }
@@ -4321,7 +4452,10 @@ export type GardenErrorCode =
   | "FLOOR_LOCKED"
   | "NO_BARS"
   | "MAX_PICKAXE"
-  | "ROCK_EMPTY";
+  | "ROCK_EMPTY"
+  | "GREENHOUSE_LOCKED"
+  | "HYBRID_LIMIT"
+  | "NOT_ENOUGH_PARENTS";
 
 /** Successful response to a garden action. */
 export interface GardenActResponse {
@@ -4362,6 +4496,35 @@ export interface GardenCredentials {
 /** @brief Looks one seed up by id. */
 export function seedById(id: string): SeedDefinition | undefined {
   return SEEDS.find((seed) => seed.id === id);
+}
+
+/**
+ * @brief Converts a custom Nursery hybrid variety into a {@link SeedDefinition} shape.
+ * @param hybrid Custom hybrid definition.
+ * @return Seed-compatible definition used by growth, display, and pricing logic.
+ */
+export function hybridAsSeedDefinition(hybrid: HybridSeed): SeedDefinition {
+  return {
+    id: hybrid.id as unknown as SeedId,
+    growMs: hybrid.growMs,
+    buy: Math.max(100, Math.round(hybrid.sell * 0.5)),
+    sell: hybrid.sell,
+    regrow: hybrid.regrow,
+    art: hybrid.art,
+  };
+}
+
+/**
+ * @brief Resolves either a static seed or a custom Nursery hybrid by id.
+ * @param id Seed or hybrid identifier.
+ * @param hybrids Optional list of player-created hybrid definitions.
+ * @return Matching definition, or `undefined` if unknown.
+ */
+export function resolveSeed(id: string, hybrids?: readonly HybridSeed[]): SeedDefinition | undefined {
+  const staticSeed = seedById(id);
+  if (staticSeed !== undefined) return staticSeed;
+  const hybrid = hybrids?.find((entry) => entry.id === id);
+  return hybrid === undefined ? undefined : hybridAsSeedDefinition(hybrid);
 }
 
 /** @brief Looks one fruit tree up by id. */
@@ -4564,7 +4727,7 @@ export function canonicalEffects(effects: readonly EffectId[]): EffectId[] {
 }
 
 /** @brief Builds the bag key for one produce stack. */
-export function cropKey(item: ItemId, effects: readonly EffectId[], star = 1): string {
+export function cropKey(item: AnyItemId, effects: readonly EffectId[], star = 1): string {
   const canonical = canonicalEffects(effects);
   const quality = Math.max(1, Math.min(5, Math.floor(star)));
   const base = canonical.length === 0 ? item : `${item}:${canonical.join(":")}`;
@@ -4575,20 +4738,49 @@ export function cropKey(item: ItemId, effects: readonly EffectId[], star = 1): s
  * @brief Parses one bag key back into a stack identity.
  * @return The item and its mutation list, or `null` when malformed.
  */
-export function parseCropKey(key: string): { item: ItemId; effects: EffectId[]; star: number } | null {
+export function parseCropKey(key: string): { item: AnyItemId; effects: EffectId[]; star: number } | null {
   const [base, starPart] = key.split("#");
   const star = starPart === undefined ? 1 : Number(starPart);
   if (!Number.isInteger(star) || star < 1 || star > 5) return null;
-  const [itemPart, ...effectParts] = (base ?? "").split(":");
-  const item = itemPart === undefined ? undefined : itemById(itemPart);
-  if (item === undefined) return null;
+  let itemId: AnyItemId | undefined;
+  let effectParts: string[];
+  if ((base ?? "").startsWith(HYBRID_PREFIX)) {
+    const rest = (base ?? "").slice(HYBRID_PREFIX.length);
+    const [slug, ...effectsRaw] = rest.split(":");
+    const candidate = `${HYBRID_PREFIX}${slug ?? ""}`;
+    if (!isHybridId(candidate)) return null;
+    itemId = candidate;
+    effectParts = effectsRaw;
+  } else {
+    const [itemPart, ...effectsRaw] = (base ?? "").split(":");
+    const item = itemPart === undefined ? undefined : itemById(itemPart);
+    if (item === undefined) return null;
+    itemId = item.id;
+    effectParts = effectsRaw;
+  }
   const effects: EffectId[] = [];
   for (const part of effectParts) {
     const effect = effectById(part);
     if (effect === undefined) return null;
     effects.push(effect.id);
   }
-  return { item: item.id, effects: canonicalEffects(effects), star };
+  return { item: itemId, effects: canonicalEffects(effects), star };
+}
+
+/** @brief Resolves a static seed or valid hybrid seed id from untrusted wire input. */
+function parseAnySeedId(raw: unknown): AnySeedId | undefined {
+  if (typeof raw !== "string") return undefined;
+  const staticSeed = seedById(raw);
+  if (staticSeed !== undefined) return staticSeed.id;
+  return isHybridId(raw) ? raw : undefined;
+}
+
+/** @brief Resolves a static item or valid hybrid item id from untrusted wire input. */
+function parseAnyItemId(raw: unknown): AnyItemId | undefined {
+  if (typeof raw !== "string") return undefined;
+  const staticItem = itemById(raw);
+  if (staticItem !== undefined) return staticItem.id;
+  return isHybridId(raw) ? raw : undefined;
 }
 
 /**
@@ -4602,16 +4794,16 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
 
   if (kind === "plant") {
     const slot = readSlot(value.slot, MAX_CROPS);
-    const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+    const seed = parseAnySeedId(value.seed);
     if (slot === null || seed === undefined) return null;
-    return { kind, slot, seed: seed.id };
+    return { kind, slot, seed };
   }
   if (kind === "plantAll") {
-    const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
-    return seed === undefined ? null : { kind, seed: seed.id };
+    const seed = parseAnySeedId(value.seed);
+    return seed === undefined ? null : { kind, seed };
   }
   if (kind === "uprootBulk") {
-    const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+    const seed = parseAnySeedId(value.seed);
     const tree = typeof value.tree === "string" ? treeById(value.tree) : undefined;
     if (value.seed !== undefined && seed === undefined) return null;
     if (value.tree !== undefined && tree === undefined) return null;
@@ -4631,7 +4823,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     if (priceBelow !== undefined && (typeof priceBelow !== "number" || priceBelow < 0)) return null;
     return {
       kind,
-      ...(seed === undefined ? {} : { seed: seed.id }),
+      ...(seed === undefined ? {} : { seed }),
       ...(tree === undefined ? {} : { tree: tree.id }),
       ...(profit === undefined ? {} : { profit }),
       ...(priceBelow === undefined ? {} : { priceBelow }),
@@ -4734,7 +4926,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return slot === null ? null : { kind, slot };
   }
   if (kind === "sellCrop") {
-    const item = typeof value.item === "string" ? itemById(value.item) : undefined;
+    const item = parseAnyItemId(value.item);
     const qty = value.qty;
     if (item === undefined) return null;
     if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 99) return null;
@@ -4750,7 +4942,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     if (typeof star !== "number" || !Number.isInteger(star) || star < 1 || star > 5) return null;
     return {
       kind,
-      item: item.id,
+      item,
       effects: canonicalEffects(effects),
       pest: value.pest === true,
       star,
@@ -4789,11 +4981,11 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
   }
   if (kind === "plantSpecial") {
     const slot = value.slot;
-    const seed = typeof value.seed === "string" ? seedById(value.seed) : undefined;
+    const seed = parseAnySeedId(value.seed);
     if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= SPECIAL_SLOTS) {
       return null;
     }
-    return seed === undefined ? null : { kind, slot, seed: seed.id };
+    return seed === undefined ? null : { kind, slot, seed };
   }
   if (kind === "harvestSpecial" || kind === "waterSpecial" || kind === "uprootSpecial") {
     const slot = value.slot;
@@ -4801,6 +4993,47 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
       return null;
     }
     return { kind, slot };
+  }
+  if (kind === "plantGreenhouse") {
+    const slot = readSlot(value.slot, GREENHOUSE_SLOTS);
+    const seed = parseAnySeedId(value.seed);
+    if (slot === null || seed === undefined) return null;
+    return { kind, slot, seed };
+  }
+  if (kind === "harvestGreenhouse" || kind === "uprootGreenhouse") {
+    const slot = readSlot(value.slot, GREENHOUSE_SLOTS);
+    return slot === null ? null : { kind, slot };
+  }
+  if (kind === "fertilizeGreenhouse") {
+    const slot = readSlot(value.slot, GREENHOUSE_SLOTS);
+    const supply = typeof value.supply === "string" ? fertilizerById(value.supply) : undefined;
+    if (slot === null || supply === undefined) return null;
+    return { kind, slot, supply: supply.id };
+  }
+  if (kind === "plantAllGreenhouse") {
+    const seed = parseAnySeedId(value.seed);
+    return seed === undefined ? null : { kind, seed };
+  }
+  if (kind === "harvestAllGreenhouse") return { kind };
+  if (kind === "breedHybrid") {
+    if (!Array.isArray(value.parents)) return null;
+    if (value.parents.length < MIN_BREED_PARENTS || value.parents.length > MAX_BREED_PARENTS) {
+      return null;
+    }
+    const parents: AnyItemId[] = [];
+    for (const rawParent of value.parents) {
+      const item = parseAnyItemId(rawParent);
+      if (item === undefined) return null;
+      parents.push(item);
+    }
+    return { kind, parents };
+  }
+  if (kind === "renameHybrid") {
+    if (typeof value.id !== "string" || !isHybridId(value.id)) return null;
+    if (typeof value.name !== "string") return null;
+    const name = value.name.trim();
+    if (name.length < 1 || name.length > 28) return null;
+    return { kind, id: value.id, name };
   }
   if (kind === "buyTab") return { kind };
   if (kind === "buildWarehouse") return { kind };
@@ -4860,14 +5093,14 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     const machine = typeof value.machine === "string" ? machineById(value.machine) : undefined;
     if (machine === undefined) return null;
     const rawItem = typeof value.item === "string" ? value.item : undefined;
-    const parsedItem = rawItem === undefined ? undefined : (itemById(rawItem) ?? productById(rawItem));
-    if (rawItem !== undefined && parsedItem === undefined) return null;
-    const item = parsedItem;
+    const parsedItemId =
+      rawItem === undefined ? undefined : (parseAnyItemId(rawItem) ?? productById(rawItem)?.id);
+    if (rawItem !== undefined && parsedItemId === undefined) return null;
     if (kind === "craftMachine") {
       return {
         kind: "craftMachine",
         machine: machine.id,
-        ...(item === undefined ? {} : { item: item.id }),
+        ...(parsedItemId === undefined ? {} : { item: parsedItemId }),
       };
     }
     const qty = value.qty === undefined ? 1 : value.qty;
@@ -4875,7 +5108,7 @@ export function parseGardenAction(raw: unknown): GardenAction | null {
     return {
       kind: "queueMachine",
       machine: machine.id,
-      ...(item === undefined ? {} : { item: item.id }),
+      ...(parsedItemId === undefined ? {} : { item: parsedItemId }),
       qty,
     };
   }
@@ -5387,16 +5620,22 @@ export function weatherEffects(
 }
 
 /** @brief All mutations on a crop: manual ones plus accumulated weather. */
-export function resolvedCropEffects(plot: PlotState, until: number, goodOnly = false): EffectId[] {
+export function resolvedCropEffects(
+  plot: PlotState,
+  until: number,
+  goodOnly = false,
+  greenhouse = false,
+): EffectId[] {
+  const safeGoodOnly = goodOnly || greenhouse;
   const weather = weatherEffects(
     plot.seed,
     plot.slot,
     plot.plantedAt,
     Math.min(until, plot.readyAt),
     plot.spray,
-    goodOnly,
+    safeGoodOnly,
     plot.mutationBoost ?? 0,
-    plot.badLuck ?? 0,
+    greenhouse ? 0 : (plot.badLuck ?? 0),
   );
   // Premium soil always feeds at least one good weather mutation.
   if (goodOnly && weather.length === 0) {
@@ -5406,7 +5645,12 @@ export function resolvedCropEffects(plot: PlotState, until: number, goodOnly = f
       if (picked !== undefined) weather.push(picked.id);
     }
   }
-  return canonicalEffects([...plot.effects, ...weather]);
+  const combined = [...plot.effects, ...weather];
+  if (greenhouse) {
+    combined.push(GREENHOUSE_MUTATION);
+    return canonicalEffects(combined.filter((id) => !BAD_MUTATIONS.has(id)));
+  }
+  return canonicalEffects(combined);
 }
 
 /** @brief All mutations on a fruit tree: manual ones plus accumulated weather. */
@@ -5446,9 +5690,16 @@ export interface PlotView {
  * @brief Reads the live stage of one crop.
  * @param plot Occupied plot.
  * @param now Clock to measure against, same clock the server used.
+ * @param hybrids Optional player hybrid definitions for resolving hybrid seeds.
+ * @param greenhouse Whether this plot sits inside the greenhouse.
  */
-export function plotView(plot: PlotState, now: number): PlotView {
-  const seed = seedById(plot.seed);
+export function plotView(
+  plot: PlotState,
+  now: number,
+  hybrids?: readonly HybridSeed[],
+  greenhouse = false,
+): PlotView {
+  const seed = resolveSeed(plot.seed, hybrids);
   if (seed === undefined) throw new Error(`Unknown seed: ${plot.seed}`);
   const total = Math.max(1, plot.readyAt - plot.plantedAt);
   const elapsed = Math.max(0, now - plot.plantedAt);
@@ -5457,7 +5708,7 @@ export function plotView(plot: PlotState, now: number): PlotView {
   const stage = ready ? 3 : Math.min(2, Math.floor(progress * 3));
   return {
     seed,
-    effects: resolvedCropEffects(plot, now)
+    effects: resolvedCropEffects(plot, now, false, greenhouse)
       .map((id) => effectById(id))
       .filter((effect): effect is EffectDefinition => effect !== undefined),
     ready,
@@ -5511,16 +5762,23 @@ export function gardenCounts(
 }
 
 /** @brief Sell price of one produce stack under a season snapshot. */
-export function cropSellPrice(stack: CropStack, season: SeasonSnapshot): number {
+export function cropSellPrice(
+  stack: CropStack,
+  season: SeasonSnapshot,
+  hybrids?: readonly HybridSeed[],
+): number {
   const multiplier = effectsMultiplier(stack.effects);
   const seed = seedById(stack.item);
-  const tree = seed === undefined ? treeById(stack.item) : undefined;
+  const hybrid = seed === undefined ? hybrids?.find((entry) => entry.id === stack.item) : undefined;
+  const tree = seed === undefined && hybrid === undefined ? treeById(stack.item) : undefined;
   const base =
-    seed === undefined
-      ? tree === undefined
-        ? 0
-        : (season.fruitPrices[tree.id as TreeId] ?? 0)
-      : (season.prices[seed.id] ?? 0);
+    seed !== undefined
+      ? (season.prices[seed.id] ?? 0)
+      : hybrid !== undefined
+        ? hybrid.sell
+        : tree !== undefined
+          ? (season.fruitPrices[tree.id as TreeId] ?? 0)
+          : 0;
   // Event seeds are worth a lot more while their weather runs.
   const active = new Set(season.events.map((event) => event.id));
   const bonus =
@@ -5533,6 +5791,6 @@ export function cropSellPrice(stack: CropStack, season: SeasonSnapshot): number 
 }
 
 /** @brief Total value of every crop in a bag. */
-export function bagValue(bag: BagState, season: SeasonSnapshot): number {
-  return bag.crops.reduce((total, stack) => total + cropSellPrice(stack, season) * stack.qty, 0);
+export function bagValue(bag: BagState, season: SeasonSnapshot, hybrids?: readonly HybridSeed[]): number {
+  return bag.crops.reduce((total, stack) => total + cropSellPrice(stack, season, hybrids) * stack.qty, 0);
 }

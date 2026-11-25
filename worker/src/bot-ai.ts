@@ -202,8 +202,11 @@ export function summarizeGarden(
       continue;
     }
     if (!plot.watered) drySlots.push(slot);
-    const sell = season.prices[plot.seed] ?? 0;
-    const cost = season.buyPrices?.[plot.seed] ?? SEEDS.find((seed) => seed.id === plot.seed)?.buy ?? 0;
+    const sell = (season.prices as Readonly<Record<string, number>>)[plot.seed] ?? 0;
+    const cost =
+      (season.buyPrices as Readonly<Record<string, number>> | undefined)?.[plot.seed] ??
+      SEEDS.find((seed) => seed.id === plot.seed)?.buy ??
+      0;
     if (cost > 0 && sell > 0 && sell <= cost) lossSlots.push(slot);
   }
   const treeReadySlots: number[] = [];

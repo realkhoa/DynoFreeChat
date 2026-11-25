@@ -283,6 +283,57 @@ describe("garden play", () => {
     expect(payload.state.trees[0]?.tree).toBe("apple");
   });
 
+  it("buys chickens past 12 slots in an upgraded coop through the DO HTTP API", async () => {
+    const registered = await register("coopmaster");
+    const bindings = env as unknown as Env;
+    const garden = bindings.GARDEN.get(bindings.GARDEN.idFromName(registered.playerId));
+    await runInDurableObject(garden, (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'ledger'")
+        .toArray()[0];
+      if (row === undefined) throw new Error("ledger missing");
+      const meta = JSON.parse(row.value) as { coins: number };
+      meta.coins = 500_000_000;
+      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'ledger'", JSON.stringify(meta));
+    });
+
+    let rev = registered.state.rev;
+    const buildRes = await act(registered, rev, { kind: "buildBuilding", building: "coop" });
+    expect(buildRes.status).toBe(200);
+    rev = (buildRes.payload as GardenActResponse).state.rev;
+
+    // Upgrade to level 3 (16 slots) and buy beyond slot 12
+    for (let step = 2; step <= 3; step += 1) {
+      const upg = await act(registered, rev, { kind: "upgradeBuilding", building: "coop" });
+      expect(upg.status).toBe(200);
+      rev = (upg.payload as GardenActResponse).state.rev;
+    }
+
+    const buy12 = await act(registered, rev, {
+      kind: "buyAnimal",
+      building: "coop",
+      slot: 12,
+      animal: "chicken",
+    });
+    expect(buy12.status).toBe(200);
+    const state12 = (buy12.payload as GardenActResponse).state;
+    expect(state12.animals.coop[12]?.kind).toBe("chicken");
+    rev = state12.rev;
+
+    const buy15 = await act(registered, rev, {
+      kind: "buyAnimal",
+      building: "coop",
+      slot: 15,
+      animal: "duck",
+    });
+    expect(buy15.status).toBe(200);
+    expect((buy15.payload as GardenActResponse).state.animals.coop[15]?.kind).toBe("duck");
+
+    const persisted = await readState(registered);
+    expect(persisted.state.animals.coop[12]?.kind).toBe("chicken");
+    expect(persisted.state.animals.coop[15]?.kind).toBe("duck");
+  });
+
   it("plants a bagged seed and rejects a stale revision", async () => {
     const registered = await register();
     const planted = await act(registered, registered.state.rev, { kind: "plant", slot: 0, seed: "carrot" });

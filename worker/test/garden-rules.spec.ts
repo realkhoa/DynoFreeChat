@@ -19,6 +19,12 @@ import {
   THIRST_RULE_VERSION,
   SPECIAL_PATCH_PRICE,
   SPECIAL_PLOT_PRICE,
+  GREENHOUSE_PRICES,
+  GREENHOUSE_SLOTS,
+  NURSERY_BASE_COST,
+  NURSERY_COST_FACTOR,
+  hybridBreedCost,
+  staffMarketAt,
   cropSellPrice,
   eventsAt,
   nextTabPrice,
@@ -43,6 +49,8 @@ import {
   settleAttachments,
   settleDisease,
   settleHazards,
+  settlePest,
+  settleStaff,
   settleThirst,
 } from "../src/garden-rules";
 
@@ -2563,5 +2571,137 @@ describe("mine exploration and actions", () => {
     if (!upgrade.ok) return;
     expect(upgrade.ledger.mine?.pickaxeLevel).toBe(1);
     expect(upgrade.ledger.coins).toBe(50_000);
+  });
+});
+
+describe("greenhouse rules (81 limit, auto-water, highquality x3, immune, staff)", () => {
+  it("caps greenhouse upgrades at 81 slots and blocks locked slots", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000_000;
+    const lv1 = run(ledger, { kind: "buyGreenhouse" });
+    expect(lv1.ok).toBe(true);
+    if (!lv1.ok) return;
+    expect(lv1.ledger.greenhouse).toBe(1);
+    expect(lv1.ledger.greenhousePlots).toHaveLength(GREENHOUSE_SLOTS);
+
+    const lv2 = run(lv1.ledger, { kind: "buyGreenhouse" });
+    if (!lv2.ok) throw new Error("lv2 failed");
+    const lv3 = run(lv2.ledger, { kind: "buyGreenhouse" });
+    if (!lv3.ok) throw new Error("lv3 failed");
+    expect(lv3.ledger.greenhouse).toBe(3);
+
+    const maxOut = run(lv3.ledger, { kind: "buyGreenhouse" });
+    expect(maxOut.ok).toBe(false);
+    if (!maxOut.ok) expect(maxOut.code).toBe("MAX_LEVEL");
+
+    // Slot 27 is locked at level 1
+    lv1.ledger.bag.seeds.carrot = 5;
+    const lockedAttempt = run(lv1.ledger, { kind: "plantGreenhouse", slot: 27, seed: "carrot" });
+    expect(lockedAttempt.ok).toBe(false);
+    if (!lockedAttempt.ok) expect(lockedAttempt.code).toBe("PLOT_LOCKED");
+    expect(GREENHOUSE_PRICES).toHaveLength(3);
+  });
+
+  it("auto-waters, applies highquality x3, blocks pests/disease/hazards, and allows staff harvesting", () => {
+    const ledger = makeLedger();
+    ledger.coins = 50_000_000;
+    const lv1 = run(ledger, { kind: "buyGreenhouse" });
+    if (!lv1.ok) throw new Error("lv1 failed");
+    lv1.ledger.bag.seeds.carrot = 10;
+
+    // Planted plot is automatically watered even with adverse roll
+    const planted = run(lv1.ledger, { kind: "plantGreenhouse", slot: 0, seed: "carrot" }, NOW, 0.9);
+    expect(planted.ok).toBe(true);
+    if (!planted.ok) return;
+    const ghPlot = planted.ledger.greenhousePlots?.[0];
+    expect(ghPlot?.watered).toBe(true);
+    expect(ghPlot?.effects).toContain("highquality");
+
+    // Never dies of thirst, pests, disease, or heatwave hazards
+    const afterThirst = settleThirst(planted.ledger, NOW + 10 * PLANT_THIRST_MS);
+    const afterPest = settlePest(afterThirst, NOW + 60 * 60_000);
+    const afterDisease = settleDisease(afterPest, NOW + 60 * 60_000);
+    const afterHazard = settleHazards(afterDisease, NOW + 60 * 60_000);
+    const safePlot = afterHazard.greenhousePlots?.[0];
+    expect(safePlot?.dead ?? false).toBe(false);
+    expect(safePlot?.pest).toBe(false);
+    expect(safePlot?.diseasedAt).toBeUndefined();
+
+    // Staff can harvest ripe greenhouse crops directly into inventory
+    const candidate = staffMarketAt(afterHazard.playerId, NOW).find(
+      (entry) => !entry.traits.includes("lazy"),
+    );
+    if (candidate === undefined) throw new Error("no non-lazy staff candidate");
+    const hired = run(afterHazard, { kind: "hireStaff", id: candidate.id });
+    if (!hired.ok) throw new Error("hire failed");
+    const assigned = run(hired.ledger, { kind: "setStaffRole", index: 0, role: "harvest" });
+    if (!assigned.ok) throw new Error("assign failed");
+
+    const ripeAt = Math.max(safePlot?.readyAt ?? NOW, NOW) + 4 * 60 * 60_000;
+    const harvested = settleStaff(assigned.ledger, ripeAt);
+    expect(harvested.greenhousePlots?.[0] ?? null).toBeNull();
+    const stack = harvested.bag.crops.find((entry) => entry.item === "carrot");
+    expect(stack?.effects).toContain("highquality");
+  });
+});
+
+describe("nursery cross-breeding, exponential cost, rename and seed maker", () => {
+  it("charges exponential costs and produces elite vs dud hybrids with rename & planting", () => {
+    const ledger = makeLedger();
+    ledger.coins = 10_000_000;
+    ledger.bag.seeds.carrot = 5;
+    ledger.bag.crops.push({ item: "tomato", effects: [], qty: 5 });
+
+    // Exponential cost for 3 parents = 50_000 * 3^(3-2) = 150_000
+    const eliteResult = run(
+      ledger,
+      { kind: "breedHybrid", parents: ["carrot", "tomato", "carrot"] },
+      NOW,
+      0.01,
+    );
+    expect(eliteResult.ok).toBe(true);
+    if (!eliteResult.ok) return;
+    expect(eliteResult.ledger.coins).toBe(10_000_000 - hybridBreedCost(3));
+    expect(NURSERY_BASE_COST * NURSERY_COST_FACTOR).toBe(150_000);
+    expect(eliteResult.ledger.hybrids).toHaveLength(1);
+    const hybrid = eliteResult.ledger.hybrids?.[0];
+    expect(hybrid?.tier).toBe("elite");
+    expect(eliteResult.ledger.lastHybridId).toBe(hybrid?.id);
+    expect(eliteResult.ledger.bag.seeds[hybrid!.id] ?? 0).toBe(4);
+
+    // Roll in [odds.elite, odds.elite + odds.dud) yields dud
+    const dudResult = run(
+      eliteResult.ledger,
+      { kind: "breedHybrid", parents: ["carrot", "tomato"] },
+      NOW + 1_000,
+      0.3,
+    );
+    expect(dudResult.ok).toBe(true);
+    if (!dudResult.ok) return;
+    expect(dudResult.ledger.hybrids?.[1]?.tier).toBe("dud");
+
+    // Rename newly bred hybrid
+    const renamed = run(dudResult.ledger, {
+      kind: "renameHybrid",
+      id: hybrid!.id,
+      name: "Cà Rốt Hoàng Kim",
+    });
+    expect(renamed.ok).toBe(true);
+    if (!renamed.ok) return;
+    expect(renamed.ledger.hybrids?.[0]?.name).toBe("Cà Rốt Hoàng Kim");
+
+    // Plant hybrid into normal plot & feed harvested hybrid crop into Seed Maker
+    const planted = run(renamed.ledger, { kind: "plant", slot: 0, seed: hybrid!.id });
+    expect(planted.ok).toBe(true);
+    if (!planted.ok) return;
+    planted.ledger.warehouse = 1;
+    planted.ledger.machines.seedMaker = { level: 1, lastCraftAt: 0, queue: [] };
+    planted.ledger.bag.crops.push({ item: hybrid!.id, effects: ["highquality"], qty: 2 });
+    const seeded = run(planted.ledger, {
+      kind: "craftMachine",
+      machine: "seedMaker",
+      item: hybrid!.id,
+    });
+    expect(seeded.ok).toBe(true);
   });
 });

@@ -30,6 +30,24 @@ import {
   ACHIEVEMENTS,
   EGG_PRICE,
   GREENHOUSE_PRICES,
+  GREENHOUSE_SLOTS,
+  GREENHOUSE_SLOTS_PER_LEVEL,
+  GREENHOUSE_MUTATION,
+  greenhouseCapacity,
+  NURSERY_BASE_COST,
+  NURSERY_COST_FACTOR,
+  MIN_BREED_PARENTS,
+  MAX_BREED_PARENTS,
+  MAX_HYBRIDS,
+  isHybridId,
+  hybridBreedCost,
+  hybridOdds,
+  hybridAsSeedDefinition,
+  resolveSeed,
+  type AnySeedId,
+  type AnyItemId,
+  type HybridId,
+  type HybridSeed,
   INSURANCE_PRICE,
   PETS,
   PET_MAX_LEVEL,
@@ -187,6 +205,7 @@ import {
   fitText,
   growthColor,
   labelValue,
+  lockedCellRender,
   treeCellRender,
 } from "./ascii";
 import { GardenApi, GardenApiError } from "./api";
@@ -429,6 +448,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let machineMenu: { id: MachineId; x: number; y: number; anchorTop: number } | null = null;
   let specialPicker: number | null = null;
   let specialMenu: { slot: number; x: number; y: number } | null = null;
+  let greenhousePicker: number | null = null;
+  let greenhouseMenu: { slot: number; x: number; y: number } | null = null;
+  let greenhouseSupplyPicker: number | null = null;
+  let greenhouseBulkSeed = "";
+  let nurseryParents: AnyItemId[] = [];
+  let nurseryPopover: HybridId | null = null;
+  let hybridRenameDraft = "";
   let minerMenuOpen = false;
   let machineQty = 1;
   let chartSort: "roi" | "income" | "pressure" = "roi";
@@ -575,8 +601,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return button;
   }
 
-  /** @brief Localized short seed name. */
-  function seedName(id: SeedId): string {
+  /** @brief Returns the active view's custom Nursery hybrids list. */
+  function activeHybrids(): readonly HybridSeed[] {
+    return (mode === "visit" ? visiting?.hybrids : state?.hybrids) ?? [];
+  }
+
+  /** @brief Localized short seed name, supporting Nursery hybrids. */
+  function seedName(id: AnySeedId | string): string {
+    if (isHybridId(id)) {
+      return activeHybrids().find((entry) => entry.id === id)?.name ?? id;
+    }
     return t(`seeds.${id}.short`);
   }
 
@@ -610,18 +644,23 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     return count;
   }
 
-  /** @brief Localized full name of any bag item. */
-  function itemName(id: ItemId): string {
+  /** @brief Localized full name of any bag item or Nursery hybrid. */
+  function itemName(id: AnyItemId | string): string {
+    if (isHybridId(id)) {
+      return activeHybrids().find((entry) => entry.id === id)?.name ?? id;
+    }
     return seedById(id) === undefined ? t(`trees.${id}`) : t(`seeds.${id}`);
   }
 
   /** @brief Minimum prestige tier needed to plant a seed. */
-  function seedPrestigeTier(id: SeedId): number {
+  function seedPrestigeTier(id: AnySeedId | string): number {
+    if (isHybridId(id)) return 0;
     return PRESTIGE_SHOP.find((offer) => offer.seed === id)?.tier ?? 0;
   }
 
   /** @brief Whether the current account is below a seed's prestige tier. */
-  function seedLocked(id: SeedId): boolean {
+  function seedLocked(id: AnySeedId | string): boolean {
+    if (isHybridId(id)) return false;
     const level = state?.extras.prestige ?? 0;
     return seedPrestigeTier(id) > level;
   }
@@ -642,9 +681,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       .toLowerCase();
   }
 
-  /** @brief Display name for a crop, fruit or product id. */
+  /** @brief Display name for a crop, fruit, hybrid or product id. */
   function materialName(id: string): string {
-    if (seedById(id) !== undefined || treeById(id) !== undefined) return itemName(id as ItemId);
+    if (isHybridId(id) || seedById(id) !== undefined || treeById(id) !== undefined) {
+      return itemName(id);
+    }
     const key = `products.${id}`;
     const translated = t(key);
     return translated === key ? id : translated;
@@ -938,7 +979,48 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       state = result.state;
       season = result.season;
       offline = false;
+      if (action.kind === "breedHybrid" && result.state.lastHybridId !== undefined) {
+        nurseryPopover = result.state.lastHybridId;
+        const created = result.state.hybrids?.find((entry) => entry.id === nurseryPopover);
+        hybridRenameDraft = created?.name ?? "";
+        nurseryParents = [];
+      }
+      if (action.kind === "renameHybrid") {
+        nurseryPopover = null;
+      }
       message = { text: successText, kind: "ok" };
+    } catch (error) {
+      applyApiError(error);
+    }
+    busy = false;
+    if (!disposed) render();
+  }
+
+  /**
+   * @brief Plants one seed into a greenhouse plot, buying from the seasonal shop if needed.
+   * @param slot Target greenhouse slot index (0..80).
+   * @param seedId Standard or custom hybrid seed identifier.
+   */
+  async function plantGreenhouseSeed(slot: number, seedId: AnySeedId): Promise<void> {
+    if (state === null || busy) return;
+    busy = true;
+    try {
+      let current = state;
+      const owned = current.bag.seeds[seedId] ?? 0;
+      if (owned < 1) {
+        if (isHybridId(seedId)) throw new GardenApiError("NO_SEEDS", 0);
+        const offer = season?.shop.offers.find((entry) => entry.seed === seedId);
+        if (offer === undefined) throw new GardenApiError("SHOP_SOLD_OUT", 0);
+        const bought = await api.act(current.rev, { kind: "buySeed", seed: seedId, qty: 1 });
+        current = bought.state;
+        season = bought.season;
+      }
+      const planted = await api.act(current.rev, { kind: "plantGreenhouse", slot, seed: seedId });
+      state = planted.state;
+      season = planted.season;
+      offline = false;
+      greenhousePicker = null;
+      message = { text: t("greenhouse.planted"), kind: "ok" };
     } catch (error) {
       applyApiError(error);
     }
@@ -995,7 +1077,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     const plot = plotAt(slot);
     if (plot === null) return;
-    const view = plotView(plot, now());
+    const view = plotView(plot, now(), activeHybrids());
     if (!view.ready) {
       message = { text: translateError("NOT_READY"), kind: "err" };
       render();
@@ -1004,6 +1086,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const gain = cropSellPrice(
       { item: plot.seed, effects: resolvedCropEffects(plot, now()), qty: 1 },
       season,
+      activeHybrids(),
     );
     void runAction(
       { kind: "harvest", slot, tree: false },
@@ -1123,7 +1206,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /** @brief Sells one harvested stack. */
-  function sellStack(item: ItemId, effects: readonly EffectId[], pest = false, star = 1): void {
+  function sellStack(item: AnyItemId, effects: readonly EffectId[], pest = false, star = 1): void {
     if (state === null || season === null) return;
     const stack = state.bag.crops.find(
       (entry) =>
@@ -1133,7 +1216,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         (entry.star ?? 1) === star,
     );
     if (stack === undefined) return;
-    const gross = cropSellPrice(stack, season) * stack.qty;
+    const gross = cropSellPrice(stack, season, activeHybrids()) * stack.qty;
     // The server keeps 10% of every sale; show the amount actually received.
     const gain = gross - Math.round(gross * 0.1);
     void runAction(
@@ -1153,7 +1236,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function sellAll(): void {
     if (state === null || season === null || state.bag.crops.length === 0) return;
     const total = state.bag.crops.reduce(
-      (sum, stack) => sum + cropSellPrice(stack, season as SeasonSnapshot) * stack.qty,
+      (sum, stack) => sum + cropSellPrice(stack, season as SeasonSnapshot, activeHybrids()) * stack.qty,
       0,
     );
     sellAllDialog = {
@@ -2012,7 +2095,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const render =
       area === "tree"
         ? treeCellRender(tree, at, lockedCost, local % PLOTS_PER_PATCH)
-        : cellRender(plot, at, lockedCost, local % PLOTS_PER_PATCH);
+        : cellRender(plot, at, lockedCost, local % PLOTS_PER_PATCH, activeHybrids());
     for (let index = 0; index < 6; index += 1) {
       const line = cell.children.item(index);
       if (line instanceof HTMLElement) line.textContent = render.lines[index] ?? "";
@@ -2243,9 +2326,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         lines.push("", t("garden.empty"), t("garden.emptyHint"));
       }
     } else {
-      const view = plotView(plot, at);
-      const definition = seedById(plot.seed);
-      lines.push(labelValue(t("garden.crop"), t(`seeds.${plot.seed}`)));
+      const view = plotView(plot, at, activeHybrids());
+      const definition = resolveSeed(plot.seed, activeHybrids());
+      lines.push(labelValue(t("garden.crop"), itemName(plot.seed)));
       const stages = tList("garden.stageValues");
       const stageIndex = view.ready ? 3 : Math.min(view.stage, 2);
       const stage = stages[stageIndex] ?? "";
@@ -2312,7 +2395,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         lines.push(
           labelValue(
             t("garden.finalSell"),
-            `${formatCompact(cropSellPrice({ item: plot.seed, effects: resolvedCropEffects(plot, at), qty: 1 }, season))}c`,
+            `${formatCompact(cropSellPrice({ item: plot.seed, effects: resolvedCropEffects(plot, at), qty: 1 }, season, activeHybrids()))}c`,
           ),
         );
       }
@@ -2337,7 +2420,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function buildSeedPicker(slot: number): HTMLElement {
     const wrap = div("garden-seeds");
     wrap.append(span("garden-hint", t("garden.pickSeed", { slot: plotLabel(slot, "crop").plot })));
-    const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
+    const hybridDefs = activeHybrids().map((hybrid) => hybridAsSeedDefinition(hybrid));
+    const ownedSeeds = [...SEEDS, ...hybridDefs].filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
     if (ownedSeeds.length === 0) wrap.append(span("garden-hint", t("garden.noSeedsOwned")));
     for (const seed of ownedSeeds) {
       const owned = state?.bag.seeds[seed.id] ?? 0;
@@ -2667,7 +2751,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (!view) return side;
 
     side.append(span("garden-side-title", `// ${t("side.bag")}`));
-    const seeds = Object.values(view.bag.seeds).reduce((sum, qty) => sum + (qty ?? 0), 0);
+    const seeds = Object.values(view.bag.seeds).reduce<number>((sum, qty) => sum + (qty ?? 0), 0);
     const seedKinds = Object.values(view.bag.seeds).filter((qty) => (qty ?? 0) > 0).length;
     const seedRow = sideRow(
       "🌱",
@@ -2676,7 +2760,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     );
     seedRow.title = Object.entries(view.bag.seeds)
       .filter(([, qty]) => (qty ?? 0) > 0)
-      .map(([id, qty]) => `${t(`seeds.${id}.short`)} ×${qty}`)
+      .map(([id, qty]) => `${seedName(id)} ×${qty}`)
       .join(" · ");
     side.append(seedRow);
     const supplyRow = sideRow(
@@ -2995,7 +3079,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return;
     }
     const plot = view.plots[slot] ?? null;
-    const render = cellRender(plot, at, null, slot % SPECIAL_PLOTS_PER_PATCH);
+    const render = cellRender(plot, at, null, slot % SPECIAL_PLOTS_PER_PATCH, activeHybrids());
     for (let index = 0; index < 6; index += 1) {
       const line = button.children.item(index);
       if (line instanceof HTMLElement) line.textContent = render.lines[index] ?? "";
@@ -3117,8 +3201,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           const value = cropSellPrice(
             { item: plot.seed, effects: resolvedCropEffects(plot, at), pest: plot.pest, star: 1, qty: 1 },
             season,
+            activeHybrids(),
           );
-          if (!matches(value, seedById(plot.seed)?.buy ?? 0)) continue;
+          if (!matches(value, resolveSeed(plot.seed, activeHybrids())?.buy ?? 0)) continue;
         }
         add(seedName(plot.seed));
       }
@@ -3239,7 +3324,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return;
     }
     // One dropdown for "uproot exactly this plant", not a button per species.
-    const planted = new Map<SeedId, number>();
+    const planted = new Map<AnySeedId, number>();
     for (const plot of state?.plots ?? []) {
       if (plot === null) continue;
       planted.set(plot.seed, (planted.get(plot.seed) ?? 0) + 1);
@@ -3814,9 +3899,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     } else {
       const allowed = definition.input.seeds;
       const allowFruit = definition.allProduce === true;
+      const hybrids = state.hybrids;
       const items = (state.bag.crops ?? [])
         .filter(
-          (stack) => seedById(stack.item) !== undefined || (allowFruit && treeById(stack.item) !== undefined),
+          (stack) =>
+            resolveSeed(stack.item, hybrids) !== undefined ||
+            (allowFruit && treeById(stack.item) !== undefined),
         )
         .filter((stack) => allowed === undefined || allowed.includes(stack.item as never))
         .map((stack) => stack.item);
@@ -3930,7 +4018,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const value =
         season === null
           ? null
-          : cropSellPrice({ item: plot.seed, effects, pest: plot.pest, star, qty: 1 }, season);
+          : cropSellPrice(
+              { item: plot.seed, effects, pest: plot.pest, star, qty: 1 },
+              season,
+              activeHybrids(),
+            );
       const lines = [
         `// ${seedName(plot.seed)}`,
         labelValue(t("garden.stage"), at >= plot.readyAt ? t("garden.ripe") : t("garden.growing")),
@@ -5074,7 +5166,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     exchange.append(lineBlock(`// ${t("market.exchange")}`));
     if (state.bag.crops.length === 0) exchange.append(lineBlock(t("market.empty")));
     for (const stack of state.bag.crops) {
-      const value = cropSellPrice(stack, season) * stack.qty;
+      const value = cropSellPrice(stack, season, activeHybrids()) * stack.qty;
       const row = rowButton(
         "garden-market-row",
         `${itemName(stack.item)} ${stack.star ?? 1}★ ${fitText(effectBadge(stack.effects), 8)}${stack.pest === true ? t("market.pestTag") : ""}${fitText(`x${stack.qty}`, 4)}${fitText(`${formatCompact(value)}c`, 7)}[${t("market.sell")}]`,
@@ -5090,7 +5182,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (state.bag.crops.length > 0) {
       const currentSeason = season;
       const total = state.bag.crops.reduce(
-        (sum, stack) => sum + cropSellPrice(stack, currentSeason) * stack.qty,
+        (sum, stack) => sum + cropSellPrice(stack, currentSeason, activeHybrids()) * stack.qty,
         0,
       );
       exchange.append(actionButton(t("market.sellAllValue", { coins: total }), "sellAll"));
@@ -7389,6 +7481,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     menu = null;
     mushroomPicker = null;
     mushroomInfo = null;
+    greenhousePicker = null;
+    greenhouseMenu = null;
+    greenhouseSupplyPicker = null;
+    nurseryPopover = null;
     staffPanel = null;
     quickPlanPreview = null;
     quickMenu = null;
@@ -7562,11 +7658,673 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /**
+   * @brief Returns the active farm snapshot for greenhouse rendering (owner or visited friend).
+   * @return Active garden or visit snapshot, or `null` when unavailable.
+   */
+  function greenhouseView(): GardenSnapshot | VisitSnapshot | null {
+    return mode === "visit" ? visiting : state;
+  }
+
+  /**
+   * @brief Repaints one 81-slot greenhouse cell with auto-water and HighQuality protection.
+   * @param button Target ASCII button cell element.
+   * @param slot Zero-based greenhouse slot index (0..80).
+   * @param at Server-clock timestamp.
+   */
+  function syncGreenhouseCell(button: HTMLButtonElement, slot: number, at: number): void {
+    const view = greenhouseView();
+    for (let index = 0; index < 6; index += 1) {
+      const line = button.children.item(index);
+      if (line instanceof HTMLElement) line.textContent = "";
+    }
+    button.classList.remove("is-empty", "is-ready", "is-locked", "is-pest", "is-diseased");
+    if (view === null) return;
+    const capacity = greenhouseCapacity(view.extras.greenhouse ?? 0);
+    if (slot >= capacity) {
+      button.classList.add("is-locked");
+      button.disabled = true;
+      const line0 = button.children.item(0);
+      if (line0 instanceof HTMLElement) line0.textContent = "· · ·";
+      button.dataset.act = "greenhouseNoop";
+      button.title = t("greenhouse.lockedPlot");
+      return;
+    }
+    const plot = view.greenhousePlots?.[slot] ?? null;
+    const rendered = cellRender(plot, at, null, slot, activeHybrids(), true);
+    for (let index = 0; index < 6; index += 1) {
+      const line = button.children.item(index);
+      if (line instanceof HTMLElement) line.textContent = rendered.lines[index] ?? "";
+    }
+    button.classList.toggle("is-ready", rendered.ready);
+    button.classList.toggle("is-empty", rendered.empty);
+    button.disabled = false;
+    button.dataset.act = "greenhousePlot";
+    button.title =
+      plot === null
+        ? t("greenhouse.emptyPlot")
+        : rendered.ready
+          ? t("greenhouse.harvest")
+          : seedName(plot.seed);
+  }
+
+  /**
+   * @brief Builds the inline seed picker for planting into one greenhouse plot.
+   * @param slot Target greenhouse slot index.
+   * @return Picker container listing owned seeds, hybrids, and seasonal shop seeds.
+   */
+  function buildGreenhousePicker(slot: number): HTMLElement {
+    const wrap = div("garden-seeds");
+    wrap.append(span("garden-hint", t("greenhouse.pickSeed", { slot: slot + 1 })));
+    const catalog = [...SEEDS, ...activeHybrids().map((hybrid) => hybridAsSeedDefinition(hybrid))];
+    const offers = new Set((season?.shop.offers ?? []).map((entry) => entry.seed));
+    let any = false;
+    for (const entry of catalog) {
+      const owned = state?.bag.seeds[entry.id] ?? 0;
+      const canBuy = !isHybridId(entry.id) && offers.has(entry.id as SeedId);
+      if (owned < 1 && !canBuy) continue;
+      any = true;
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "garden-row";
+      row.dataset.slot = String(slot);
+      row.dataset.seed = entry.id;
+      if (owned > 0) {
+        row.dataset.act = "greenhousePlantSeed";
+        row.textContent = `${fitText(seedName(entry.id), 12)}${fitText(`${t("garden.bag")} ${owned}`, 8)}${formatDuration(entry.growMs, "short")}`;
+      } else {
+        row.dataset.act = "greenhouseBuyAndPlant";
+        const price = season?.buyPrices?.[entry.id as SeedId] ?? entry.buy;
+        row.disabled = (state?.coins ?? 0) < price;
+        row.textContent = `${fitText(seedName(entry.id), 12)}${fitText(`${formatCompact(price)}c`, 8)}${formatDuration(entry.growMs, "short")}`;
+      }
+      wrap.append(row);
+    }
+    if (!any) wrap.append(span("garden-hint", t("greenhouse.noSeeds")));
+    wrap.append(actionButton(t("common.close"), "greenhousePickerClose"));
+    return wrap;
+  }
+
+  /**
+   * @brief Builds the fertilizer picker for one growing greenhouse plot.
+   * @param slot Target greenhouse slot index.
+   * @return Supply picker container element.
+   */
+  function buildGreenhouseSupplyPicker(slot: number): HTMLElement {
+    const wrap = div("garden-seeds");
+    for (const supply of FERTILIZERS) {
+      const owned = state?.bag.supplies[supply.id] ?? 0;
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "garden-row";
+      row.dataset.act = "greenhouseFertilize";
+      row.dataset.slot = String(slot);
+      row.dataset.supply = supply.id;
+      row.disabled = owned < 1;
+      row.textContent = `${fitText(t(`supplies.${supply.id}`), 16)}${fitText(`${owned}`, 4)}x${supply.growMultiplier} · ${supply.harvests}`;
+      wrap.append(row);
+    }
+    wrap.append(actionButton(t("common.close"), "greenhouseSupplyClose"));
+    return wrap;
+  }
+
+  /**
+   * @brief Builds the floating context menu for a clicked greenhouse plot.
+   * @param at Server-clock timestamp.
+   * @return Popover element or `null` when closed or out of bounds.
+   */
+  function buildGreenhouseMenu(at: number): HTMLElement | null {
+    if (greenhouseMenu === null || mode !== "owner") return null;
+    const view = greenhouseView();
+    const slot = greenhouseMenu.slot;
+    const capacity = greenhouseCapacity(view?.extras.greenhouse ?? 0);
+    if (view === null || slot < 0 || slot >= capacity) return null;
+    const plot = view.greenhousePlots?.[slot] ?? null;
+    const wrap = div("garden-menu garden-greenhouse-menu");
+    const left = Math.min(Math.max(8, greenhouseMenu.x), Math.max(8, window.innerWidth - 340 - 8));
+    const top = Math.min(Math.max(8, greenhouseMenu.y), Math.max(8, window.innerHeight - 180));
+    wrap.style.left = `${left}px`;
+    wrap.style.top = `${top}px`;
+
+    const head = div("garden-menu-head");
+    head.append(span("garden-menu-title", `${t("greenhouse.title")} · #${slot + 1}`));
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "garden-menu-close";
+    close.dataset.act = "greenhouseMenuClose";
+    close.textContent = "×";
+    close.setAttribute("aria-label", t("common.close"));
+    head.append(close);
+    wrap.append(head);
+
+    const info = document.createElement("pre");
+    info.className = "garden-menu-info";
+    if (plot === null) {
+      info.textContent = `${t("greenhouse.emptyPlot")}\n${t("greenhouse.perkQuality")}\n${t("greenhouse.immune")}`;
+    } else {
+      const effects = resolvedCropEffects(plot, at, false, true);
+      const pv = plotView(plot, at, activeHybrids(), true);
+      const value =
+        season === null
+          ? null
+          : cropSellPrice(
+              { item: plot.seed, effects, pest: false, star: 1, qty: 1 },
+              season,
+              activeHybrids(),
+            );
+      const lines = [
+        `// ${seedName(plot.seed)}`,
+        labelValue(t("garden.stage"), pv.ready ? t("garden.ripe") : t("garden.growing")),
+        labelValue(t("garden.timeLeft"), pv.ready ? t("garden.ready") : formatDuration(pv.remainingMs)),
+        labelValue(t("garden.effects"), effectBadge(effects) || t("effects.highquality")),
+        labelValue(t("side.value"), value === null ? "—" : `${formatCompact(value)}c`),
+        `// ${t("greenhouse.autoWatered")}`,
+        `// ${t("greenhouse.immune")}`,
+      ];
+      info.textContent = lines.join("\n");
+    }
+    wrap.append(info);
+
+    const rows = div("garden-menu-rows");
+    if (plot === null) {
+      rows.append(menuRow(`[ ${t("greenhouse.plant")} ]`, "greenhouseMenuPlant"));
+    } else {
+      const pv = plotView(plot, at, activeHybrids(), true);
+      if (pv.ready) {
+        rows.append(menuRow(`[ ${t("greenhouse.harvest")} ]`, "greenhouseMenuHarvest"));
+      }
+      rows.append(
+        menuRow(`[ ${t("greenhouse.fertilize")} ]`, "greenhouseMenuFertilize"),
+        menuRow(`[ ${t("greenhouse.uproot")} ]`, "greenhouseMenuUproot"),
+      );
+    }
+    rows.append(menuRow(t("common.close"), "greenhouseMenuClose"));
+    wrap.append(rows);
+    return wrap;
+  }
+
+  /**
+   * @brief Builds the 81-slot Reborn Greenhouse tab with auto-water, HighQuality x3,
+   * pest/hazard immunity, bulk plant/harvest controls, and upgrade tiers.
+   * @param at Server-clock timestamp.
+   * @return Complete Greenhouse tab container element.
+   */
+  function buildGreenhouseTab(at: number): HTMLElement {
+    const wrap = div("garden-greenhouse-reborn");
+    const view = greenhouseView();
+    if (view === null) return lineBlock(t("common.loading"));
+
+    const level = view.extras.greenhouse ?? 0;
+    const capacity = greenhouseCapacity(level);
+    wrap.append(
+      lineBlock(
+        `// ${t("greenhouse.title")} · ${t("greenhouse.slots", { owned: capacity, max: GREENHOUSE_SLOTS })}`,
+      ),
+    );
+
+    const perks = div("garden-greenhouse-perks");
+    for (const key of ["perkWater", "perkQuality", "perkSafe", "perkStaff", "perkLimit"] as const) {
+      perks.append(span("garden-greenhouse-perk", t(`greenhouse.${key}`)));
+    }
+    wrap.append(perks);
+
+    if (mode === "visit") {
+      wrap.append(lineBlock(t("greenhouse.visitHint")));
+    }
+
+    if (mode === "owner") {
+      const controls = div("garden-greenhouse-controls");
+      if (level < GREENHOUSE_PRICES.length) {
+        const nextPrice = GREENHOUSE_PRICES[level] ?? 0;
+        const nextSlots = (level + 1) * GREENHOUSE_SLOTS_PER_LEVEL;
+        controls.append(
+          actionButton(
+            level === 0
+              ? t("greenhouse.unlock", { cost: formatCompact(nextPrice) })
+              : t("greenhouse.upgrade", {
+                  level: level + 1,
+                  slots: nextSlots,
+                  cost: formatCompact(nextPrice),
+                }),
+            "buyGreenhouse",
+            (state?.coins ?? 0) >= nextPrice,
+          ),
+        );
+      } else {
+        controls.append(span("garden-greenhouse-max-badge", `✓ ${t("greenhouse.maxLevel")}`));
+      }
+
+      if (level > 0) {
+        const seedOptions = [
+          ...SEEDS,
+          ...activeHybrids().map((hybrid) => hybridAsSeedDefinition(hybrid)),
+        ].filter((entry) => (state?.bag.seeds[entry.id] ?? 0) > 0);
+        if (seedOptions.length > 0 && !seedOptions.some((entry) => entry.id === greenhouseBulkSeed)) {
+          greenhouseBulkSeed = seedOptions[0]?.id ?? "";
+        }
+        const select = document.createElement("select");
+        select.className = "garden-greenhouse-seed-select";
+        select.dataset.role = "greenhouseBulkSeed";
+        for (const entry of seedOptions) {
+          const opt = document.createElement("option");
+          opt.value = entry.id;
+          opt.textContent = `${seedName(entry.id)} (×${state?.bag.seeds[entry.id] ?? 0})`;
+          if (entry.id === greenhouseBulkSeed) opt.selected = true;
+          select.append(opt);
+        }
+        if (seedOptions.length === 0) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = t("greenhouse.noSeeds");
+          select.append(opt);
+          select.disabled = true;
+        }
+        controls.append(select);
+        controls.append(
+          actionButton(
+            t("greenhouse.plantAll"),
+            "plantAllGreenhouse",
+            seedOptions.length > 0 && greenhouseBulkSeed.length > 0,
+          ),
+          actionButton(t("greenhouse.harvestAll"), "harvestAllGreenhouse", true),
+        );
+      }
+      wrap.append(controls);
+    }
+
+    if (level > 0) {
+      const grid = div("garden-greenhouse-grid");
+      for (let slot = 0; slot < GREENHOUSE_SLOTS; slot += 1) {
+        const cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "garden-cell garden-greenhouse-cell";
+        cell.dataset.slot = String(slot);
+        for (let lineIndex = 0; lineIndex < 6; lineIndex += 1) {
+          cell.append(document.createElement("span"));
+        }
+        syncGreenhouseCell(cell, slot, at);
+        grid.append(cell);
+      }
+      wrap.append(grid);
+    }
+
+    if (mode === "owner" && greenhousePicker !== null) {
+      wrap.append(buildGreenhousePicker(greenhousePicker));
+    } else if (mode === "owner" && greenhouseSupplyPicker !== null) {
+      wrap.append(buildGreenhouseSupplyPicker(greenhouseSupplyPicker));
+    }
+    return wrap;
+  }
+
+  /**
+   * @brief Lists all owned crop/fruit/seed/hybrid items eligible for cross-breeding.
+   * @param snapshot Owner garden state snapshot.
+   * @return Aggregated inventory entries ordered for Nursery parent selection.
+   */
+  function nurseryParentPool(
+    snapshot: GardenSnapshot,
+  ): Array<{ id: AnyItemId; name: string; total: number; crops: number; seeds: number; isHybrid: boolean }> {
+    const out: Array<{
+      id: AnyItemId;
+      name: string;
+      total: number;
+      crops: number;
+      seeds: number;
+      isHybrid: boolean;
+    }> = [];
+    const ids: AnyItemId[] = [
+      ...SEEDS.map((seed) => seed.id),
+      ...TREES.map((tree) => tree.id),
+      ...(snapshot.hybrids ?? []).map((hybrid) => hybrid.id),
+    ];
+    for (const id of ids) {
+      const crops = (snapshot.bag.crops ?? [])
+        .filter((stack) => stack.item === id)
+        .reduce((sum, stack) => sum + stack.qty, 0);
+      const seeds = snapshot.bag.seeds?.[id as AnySeedId] ?? 0;
+      const total = crops + seeds;
+      if (total < 1) continue;
+      out.push({
+        id,
+        name: itemName(id),
+        total,
+        crops,
+        seeds,
+        isHybrid: isHybridId(id),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * @brief Builds the Seed Maker bridge section embedded directly in the Nursery tab.
+   * @param at Server-clock timestamp.
+   * @return Seed Maker bridge card allowing users to build/craft/collect hybrid & crop seeds.
+   */
+  function buildNurserySeedMakerSection(at: number): HTMLElement {
+    const card = div("garden-nursery-card");
+    card.append(lineBlock(`// ${t("nursery.seedMakerTitle")}`));
+    if (state === null) return card;
+
+    if (state.warehouse.level === 0) {
+      card.append(lineBlock(t("nursery.seedMakerLockedWarehouse")));
+      card.append(
+        actionButton(
+          t("warehouse.build", { cost: formatCompact(WAREHOUSE_PRICE) }),
+          "buildWarehouse",
+          state.coins >= WAREHOUSE_PRICE,
+        ),
+      );
+      return card;
+    }
+
+    const seedMaker = state.warehouse.machines.seedMaker;
+    const definition = machineById("seedMaker");
+    if (definition === undefined || seedMaker === undefined || seedMaker.level === 0) {
+      card.append(lineBlock(t("nursery.seedMakerLocked")));
+      const buildButton = actionButton(
+        t("warehouse.buildMachine", { cost: formatCompact(MACHINE_PRICE) }),
+        "buildMachine",
+        state.coins >= MACHINE_PRICE,
+      );
+      buildButton.dataset.machine = "seedMaker";
+      card.append(buildButton);
+      return card;
+    }
+
+    const coolingMs = machineRemaining(seedMaker, "seedMaker", at);
+    const jobReady = seedMaker.job !== undefined && at >= seedMaker.job.readyAt;
+    const jobBrewing = seedMaker.job !== undefined && at < seedMaker.job.readyAt;
+    const headRow = div("garden-nursery-seedmaker-head");
+    const statusText = jobReady
+      ? `${t("warehouse.jobReady")} · ${itemName(seedMaker.job!.item as AnyItemId)}`
+      : jobBrewing
+        ? `${t("warehouse.brewing", { item: itemName(seedMaker.job!.item as AnyItemId) })}`
+        : coolingMs > 0
+          ? `${t("warehouse.cooling")} ${formatDuration(coolingMs, "short")}`
+          : t("nursery.seedMakerIdle");
+    headRow.append(span("garden-nursery-status", `Lv ${seedMaker.level} · ${statusText}`));
+    if (jobBrewing && seedMaker.job !== undefined) {
+      const timer = span(
+        "garden-nursery-timer",
+        `${t("warehouse.remaining")} ${formatDuration(seedMaker.job.readyAt - at, "short")}`,
+      );
+      timer.dataset.machineUntil = String(seedMaker.job.readyAt);
+      headRow.append(timer);
+    }
+    card.append(headRow);
+
+    const actions = div("garden-tools");
+    if (jobReady) {
+      const collect = actionButton(t("warehouse.collect"), "machineCollect");
+      collect.dataset.machine = "seedMaker";
+      actions.append(collect);
+    }
+    const openBtn = actionButton(t("nursery.seedMakerOpen"), "machineMenuOpen");
+    openBtn.dataset.machine = "seedMaker";
+    actions.append(openBtn);
+    card.append(actions);
+
+    const hybrids = state.hybrids ?? [];
+    const processableItems = [
+      ...new Set(
+        (state.bag.crops ?? [])
+          .filter((stack) => resolveSeed(stack.item, hybrids) !== undefined)
+          .map((stack) => stack.item),
+      ),
+    ];
+    if (processableItems.length === 0) {
+      card.append(span("garden-hint", t("nursery.seedMakerNoCrops")));
+    } else {
+      const cropGrid = div("garden-nursery-seedmaker-crops");
+      const machineBusy = seedMaker.job !== undefined || coolingMs > 0;
+      for (const item of processableItems) {
+        const count = (state.bag.crops ?? [])
+          .filter((stack) => stack.item === item)
+          .reduce((sum, stack) => sum + stack.qty, 0);
+        const row = div("garden-nursery-seedmaker-row");
+        row.append(
+          span("garden-nursery-item-name", `${itemName(item)} (×${count})`),
+          menuRow(`[ +1 ${t("nursery.makeSeeds")} ]`, "machineCraft", {
+            data: { machine: "seedMaker", item },
+            disabled: machineBusy,
+          }),
+          menuRow(`[ +Q ]`, "machineQueue", {
+            data: { machine: "seedMaker", item },
+          }),
+        );
+        cropGrid.append(row);
+      }
+      card.append(cropGrid);
+    }
+    return card;
+  }
+
+  /**
+   * @brief Builds the Reborn Nursery & Cross-Breeding tab connected to Seed Maker.
+   * @param at Server-clock timestamp.
+   * @return Complete Nursery container element.
+   */
+  function buildNurseryTab(at: number): HTMLElement {
+    const wrap = div("garden-nursery-reborn");
+    const view = mode === "visit" ? visiting : state;
+    if (view === null) return lineBlock(t("common.loading"));
+
+    const hybrids = view.hybrids ?? [];
+    wrap.append(
+      lineBlock(
+        `// ${t("nursery.title")} · ${t("nursery.summary", { count: hybrids.length, max: MAX_HYBRIDS })}`,
+      ),
+    );
+    if (mode === "visit") {
+      wrap.append(lineBlock(t("nursery.visitHint")));
+    }
+
+    if (mode === "owner" && state !== null) {
+      wrap.append(buildNurserySeedMakerSection(at));
+
+      const lab = div("garden-nursery-card");
+      lab.append(lineBlock(`// ${t("nursery.labTitle")}`));
+      lab.append(
+        span(
+          "garden-hint",
+          t("nursery.parentsLabel", { count: nurseryParents.length, max: MAX_BREED_PARENTS }),
+        ),
+      );
+
+      const selectedWrap = div("garden-nursery-parents");
+      if (nurseryParents.length === 0) {
+        selectedWrap.append(span("garden-hint", t("nursery.parentsEmpty")));
+      } else {
+        nurseryParents.forEach((parentId, index) => {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "garden-nursery-parent-chip";
+          chip.dataset.act = "nurseryRemoveParent";
+          chip.dataset.index = String(index);
+          chip.textContent = `${itemName(parentId)} ×`;
+          selectedWrap.append(chip);
+        });
+        selectedWrap.append(actionButton(t("nursery.clearParents"), "nurseryClearParents"));
+      }
+      lab.append(selectedWrap);
+
+      const parentCountForCost = Math.max(MIN_BREED_PARENTS, nurseryParents.length);
+      const cost = hybridBreedCost(parentCountForCost);
+      const odds = hybridOdds(parentCountForCost, state.extras.spliceBonus);
+      const metrics = div("garden-nursery-metrics");
+      metrics.append(
+        span(
+          "garden-nursery-cost",
+          `${t("nursery.costLabel")} ${formatCompact(cost)}c (${formatNumber(cost)}c)`,
+        ),
+        span(
+          "garden-nursery-odds",
+          `${t("nursery.oddsLabel")} ${t("nursery.oddsElite", { pct: Math.round(odds.elite * 100) })} · ${t("nursery.oddsNormal", { pct: Math.round(odds.normal * 100) })} · ${t("nursery.oddsDud", { pct: Math.round(odds.dud * 100) })}`,
+        ),
+      );
+      lab.append(metrics);
+
+      const canBreed =
+        nurseryParents.length >= MIN_BREED_PARENTS &&
+        nurseryParents.length <= MAX_BREED_PARENTS &&
+        hybrids.length < MAX_HYBRIDS &&
+        state.coins >= cost;
+      const breedBtn = actionButton(
+        t("nursery.breedBtn", { cost: formatCompact(cost) }),
+        "breedHybrid",
+        canBreed,
+      );
+      breedBtn.classList.add("garden-nursery-breed-btn");
+      lab.append(breedBtn);
+
+      lab.append(span("garden-hint", t("nursery.poolTitle")));
+      const pool = nurseryParentPool(state);
+      if (pool.length === 0) {
+        lab.append(span("garden-hint", t("nursery.poolEmpty")));
+      } else {
+        const poolGrid = div("garden-nursery-pool");
+        for (const entry of pool) {
+          const pickedCount = nurseryParents.filter((parent) => parent === entry.id).length;
+          const remaining = entry.total - pickedCount;
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = `garden-nursery-pool-btn${entry.isHybrid ? " is-hybrid" : ""}`;
+          btn.dataset.act = "nurseryAddParent";
+          btn.dataset.item = entry.id;
+          btn.disabled = remaining < 1 || nurseryParents.length >= MAX_BREED_PARENTS;
+          btn.textContent = `${entry.name} (${remaining}) ${t("nursery.addParent")}`;
+          poolGrid.append(btn);
+        }
+        lab.append(poolGrid);
+      }
+      wrap.append(lab);
+    }
+
+    const catalog = div("garden-nursery-card");
+    catalog.append(lineBlock(`// ${t("nursery.catalogTitle", { count: hybrids.length, max: MAX_HYBRIDS })}`));
+    if (hybrids.length === 0) {
+      catalog.append(span("garden-hint", t("nursery.catalogEmpty")));
+    } else {
+      const list = div("garden-nursery-catalog");
+      for (const hybrid of [...hybrids].reverse()) {
+        const card = div(`garden-nursery-hybrid-item is-${hybrid.tier}`);
+        const top = div("garden-nursery-hybrid-head");
+        top.append(
+          span(`garden-nursery-tier badge-${hybrid.tier}`, t(`nursery.tier.${hybrid.tier}`)),
+          span("garden-nursery-hybrid-name", hybrid.name),
+        );
+        card.append(top);
+        const parentsLine = hybrid.parents.map((p) => itemName(p)).join(" × ");
+        const seedOwned = state?.bag.seeds[hybrid.id] ?? 0;
+        const statsText = [
+          t("nursery.parentsLine", { parents: parentsLine }),
+          `${formatCompact(hybrid.sell)}c · ${formatDuration(hybrid.growMs, "short")} · ${hybrid.regrow ? t("nursery.regrowYes") : t("nursery.regrowNo")}`,
+          hybrid.bonusEffect ? `✨ ${t(`effects.${hybrid.bonusEffect}`)}` : "",
+          `${t("garden.bag")}: ${seedOwned} hạt`,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        card.append(span("garden-nursery-hybrid-stats", statsText));
+
+        if (mode === "owner") {
+          const actions = div("garden-tools");
+          const renameBtn = actionButton(t("nursery.renameBtn"), "nurseryOpenRename");
+          renameBtn.dataset.hybridId = hybrid.id;
+          const pickBtn = actionButton(
+            t("nursery.addParent"),
+            "nurseryAddParent",
+            nurseryParents.length < MAX_BREED_PARENTS &&
+              ((state?.bag.seeds[hybrid.id] ?? 0) > 0 ||
+                (state?.bag.crops ?? []).some((s) => s.item === hybrid.id)),
+          );
+          pickBtn.dataset.item = hybrid.id;
+          actions.append(renameBtn, pickBtn);
+          card.append(actions);
+        }
+        list.append(card);
+      }
+      catalog.append(list);
+    }
+    wrap.append(catalog);
+    return wrap;
+  }
+
+  /**
+   * @brief Builds the post-breeding result and rename popover overlay for a custom hybrid.
+   * @return Popover modal container element, or `null` when hidden.
+   */
+  function buildNurseryPopover(): HTMLElement | null {
+    if (nurseryPopover === null || state === null || mode !== "owner") return null;
+    const hybrid = state.hybrids?.find((entry) => entry.id === nurseryPopover);
+    if (hybrid === undefined) return null;
+
+    const backdrop = div("garden-nursery-popover-backdrop");
+    const modal = div(`garden-nursery-popover is-${hybrid.tier}`);
+
+    const head = div("garden-menu-head");
+    head.append(span("garden-menu-title", `🧬 ${t("nursery.popoverTitle")}`));
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "garden-menu-close";
+    close.dataset.act = "nurseryPopoverClose";
+    close.textContent = "×";
+    close.setAttribute("aria-label", t("common.close"));
+    head.append(close);
+    modal.append(head);
+
+    const badge = span(`garden-nursery-tier badge-${hybrid.tier}`, t(`nursery.tier.${hybrid.tier}`));
+    modal.append(badge);
+
+    const parentsLine = hybrid.parents.map((p) => itemName(p)).join(" × ");
+    const info = document.createElement("pre");
+    info.className = "garden-menu-info";
+    info.textContent = [
+      `// ${hybrid.name}`,
+      t("nursery.parentsLine", { parents: parentsLine }),
+      `${t("side.value")}: ${formatCompact(hybrid.sell)}c`,
+      `${t("garden.timeLeft")}: ${formatDuration(hybrid.growMs, "short")}`,
+      `${t("garden.kind")}: ${hybrid.regrow ? t("nursery.regrowYes") : t("nursery.regrowNo")}`,
+      ...(hybrid.bonusEffect ? [`Effect: ${t(`effects.${hybrid.bonusEffect}`)}`] : []),
+      `${t("garden.bag")}: ${state.bag.seeds[hybrid.id] ?? 0}`,
+    ].join("\n");
+    modal.append(info);
+
+    const renameBox = div("garden-nursery-rename-row");
+    const label = span("garden-hint", t("nursery.renameLabel"));
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 32;
+    input.className = "garden-input garden-nursery-rename-input";
+    input.dataset.role = "hybridRename";
+    input.placeholder = t("nursery.renamePlaceholder");
+    input.value = hybridRenameDraft;
+    const saveBtn = actionButton(
+      t("nursery.renameSave"),
+      "renameHybrid",
+      hybridRenameDraft.trim().length > 0,
+    );
+    saveBtn.dataset.hybridId = hybrid.id;
+    renameBox.append(label, input, saveBtn);
+    modal.append(renameBox);
+
+    const footer = div("garden-tools");
+    footer.append(
+      actionButton(t("nursery.toGreenhouse"), "nurseryToGreenhouse"),
+      actionButton(t("common.close"), "nurseryPopoverClose"),
+    );
+    modal.append(footer);
+    backdrop.append(modal);
+    return backdrop;
+  }
+
+  /**
    * @brief Dispatches the body of a non-main garden tab.
    * @details Extension point: add one branch here next to its builder.
    */
   function buildGardenTabBody(at: number): HTMLElement {
     if (gardenTab === "mushroom") return buildMushroomHouse(at);
+    if (gardenTab === "greenhouse") return buildGreenhouseTab(at);
+    if (gardenTab === "nursery") return buildNurseryTab(at);
     if (gardenTab === "barn" || gardenTab === "coop" || gardenTab === "pond") {
       return buildAnimalTab(gardenTab);
     }
@@ -7679,7 +8437,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
    * @return A styled interactive card button configured with shipSellCrop dataset.
    */
   function buildCropShippingCard(stack: CropStack, atSeason: SeasonSnapshot | null): HTMLButtonElement {
-    const unit = atSeason === null ? 0 : cropSellPrice(stack, atSeason);
+    const unit = atSeason === null ? 0 : cropSellPrice(stack, atSeason, activeHybrids());
     const total = unit * stack.qty;
 
     const card = document.createElement("button");
@@ -7811,7 +8569,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const cropValue =
       nowSeason === null
         ? 0
-        : cropStacks.reduce((sum, stack) => sum + cropSellPrice(stack, nowSeason) * stack.qty, 0);
+        : cropStacks.reduce(
+            (sum, stack) => sum + cropSellPrice(stack, nowSeason, activeHybrids()) * stack.qty,
+            0,
+          );
     const productValue =
       nowSeason === null
         ? 0
@@ -9016,6 +9777,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const specialEl = buildSpecialMenu(now());
       if (specialEl !== null) parts.push(specialEl);
     }
+    if (greenhouseMenu !== null) {
+      const greenhouseEl = buildGreenhouseMenu(now());
+      if (greenhouseEl !== null) parts.push(greenhouseEl);
+    }
+    if (nurseryPopover !== null) {
+      const nurseryEl = buildNurseryPopover();
+      if (nurseryEl !== null) parts.push(nurseryEl);
+    }
     if (sellAllDialog !== null) {
       const sellEl = buildSellAllDialog();
       if (sellEl !== null) parts.push(sellEl);
@@ -9062,6 +9831,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (const cell of root.querySelectorAll<HTMLElement>(".garden-special-cell[data-slot]")) {
       const slot = Number(cell.dataset.slot);
       if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncSpecialCell(cell, slot, at);
+    }
+    for (const cell of root.querySelectorAll<HTMLElement>(".garden-greenhouse-cell[data-slot]")) {
+      const slot = Number(cell.dataset.slot);
+      if (Number.isInteger(slot) && cell instanceof HTMLButtonElement) syncGreenhouseCell(cell, slot, at);
     }
     const reborn = rebornPlots();
     for (const cell of root.querySelectorAll<HTMLElement>(".garden-reborn-cell[data-slot]")) {
@@ -10033,7 +10806,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "machineQueue": {
         const machine = target.dataset.machine as MachineId | undefined;
         if (machine === undefined) return;
-        const item = target.dataset.item as ItemId | undefined;
+        const item = target.dataset.item as AnyItemId | undefined;
         void runAction(
           { kind: "queueMachine", machine, qty: machineQty, ...(item === undefined ? {} : { item }) },
           t("warehouse.queued"),
@@ -10042,7 +10815,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       case "machineCraft": {
         const machine = target.dataset.machine as MachineId | undefined;
-        const item = target.dataset.item as ItemId | undefined;
+        const item = target.dataset.item as AnyItemId | undefined;
         if (machine !== undefined) {
           const action: GardenAction =
             item === undefined ? { kind: "craftMachine", machine } : { kind: "craftMachine", machine, item };
@@ -10571,7 +11344,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         render();
         return;
       case "shipSellCrop": {
-        const item = target.dataset.item as ItemId | undefined;
+        const item = target.dataset.item as AnyItemId | undefined;
         const qty = Number(target.dataset.qty);
         if (item === undefined || season === null || !Number.isInteger(qty) || qty < 1) return;
         let effects: EffectId[] = [];
@@ -10591,6 +11364,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
             qty: 1,
           },
           season,
+          activeHybrids(),
         );
         void runAction(
           {
@@ -10649,7 +11423,146 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         void runAction({ kind: "buyInsurance" }, t("extras.insuranceBought"));
         return;
       case "extrasGreenhouse":
+      case "buyGreenhouse":
         void runAction({ kind: "buyGreenhouse" }, t("extras.greenhouseBought"));
+        return;
+      case "greenhouseNoop":
+        return;
+      case "greenhousePlot": {
+        const slot = Number(target.dataset.slot);
+        if (!Number.isInteger(slot)) return;
+        if (mode !== "owner") return;
+        greenhousePicker = null;
+        greenhouseSupplyPicker = null;
+        greenhouseMenu = { slot, x: event.clientX, y: event.clientY };
+        render();
+        return;
+      }
+      case "greenhouseMenuClose":
+        greenhouseMenu = null;
+        render();
+        return;
+      case "greenhousePickerClose":
+        greenhousePicker = null;
+        render();
+        return;
+      case "greenhouseSupplyClose":
+        greenhouseSupplyPicker = null;
+        render();
+        return;
+      case "greenhouseMenuPlant":
+        if (greenhouseMenu !== null) greenhousePicker = greenhouseMenu.slot;
+        greenhouseMenu = null;
+        greenhouseSupplyPicker = null;
+        render();
+        return;
+      case "greenhouseMenuHarvest":
+        if (greenhouseMenu !== null) {
+          const slot = greenhouseMenu.slot;
+          greenhouseMenu = null;
+          void runAction({ kind: "harvestGreenhouse", slot }, t("greenhouse.harvested"));
+        }
+        return;
+      case "greenhouseMenuFertilize":
+        if (greenhouseMenu !== null) greenhouseSupplyPicker = greenhouseMenu.slot;
+        greenhouseMenu = null;
+        greenhousePicker = null;
+        render();
+        return;
+      case "greenhouseMenuUproot":
+        if (greenhouseMenu !== null) {
+          const slot = greenhouseMenu.slot;
+          greenhouseMenu = null;
+          void runAction({ kind: "uprootGreenhouse", slot }, t("greenhouse.uprooted"));
+        }
+        return;
+      case "greenhousePlantSeed": {
+        const slot = Number(target.dataset.slot);
+        const seed = target.dataset.seed as AnySeedId | undefined;
+        if (Number.isInteger(slot) && seed !== undefined) {
+          greenhousePicker = null;
+          void runAction({ kind: "plantGreenhouse", slot, seed }, t("greenhouse.planted"));
+        }
+        return;
+      }
+      case "greenhouseBuyAndPlant": {
+        const slot = Number(target.dataset.slot);
+        const seed = target.dataset.seed as AnySeedId | undefined;
+        if (Number.isInteger(slot) && seed !== undefined) {
+          void plantGreenhouseSeed(slot, seed);
+        }
+        return;
+      }
+      case "greenhouseFertilize": {
+        const slot = Number(target.dataset.slot);
+        const supply = target.dataset.supply as FertilizerId | undefined;
+        if (Number.isInteger(slot) && supply !== undefined) {
+          greenhouseSupplyPicker = null;
+          void runAction({ kind: "fertilizeGreenhouse", slot, supply }, t("greenhouse.fertilized"));
+        }
+        return;
+      }
+      case "plantAllGreenhouse":
+        if (greenhouseBulkSeed.length > 0) {
+          void runAction(
+            { kind: "plantAllGreenhouse", seed: greenhouseBulkSeed as AnySeedId },
+            t("greenhouse.plantedAll"),
+          );
+        }
+        return;
+      case "harvestAllGreenhouse":
+        void runAction({ kind: "harvestAllGreenhouse" }, t("greenhouse.harvestedAll"));
+        return;
+      case "nurseryAddParent": {
+        const item = target.dataset.item as AnyItemId | undefined;
+        if (item !== undefined && nurseryParents.length < MAX_BREED_PARENTS) {
+          nurseryParents = [...nurseryParents, item];
+          render();
+        }
+        return;
+      }
+      case "nurseryRemoveParent": {
+        const index = Number(target.dataset.index);
+        if (Number.isInteger(index) && index >= 0 && index < nurseryParents.length) {
+          nurseryParents = nurseryParents.filter((_, idx) => idx !== index);
+          render();
+        }
+        return;
+      }
+      case "nurseryClearParents":
+        nurseryParents = [];
+        render();
+        return;
+      case "breedHybrid":
+        if (nurseryParents.length >= MIN_BREED_PARENTS) {
+          void runAction({ kind: "breedHybrid", parents: [...nurseryParents] }, t("nursery.bred"));
+        }
+        return;
+      case "nurseryOpenRename": {
+        const hybridId = target.dataset.hybridId as HybridId | undefined;
+        const hybrid = state?.hybrids?.find((entry) => entry.id === hybridId);
+        if (hybrid !== undefined) {
+          nurseryPopover = hybrid.id;
+          hybridRenameDraft = hybrid.name;
+          render();
+        }
+        return;
+      }
+      case "renameHybrid": {
+        const hybridId = (target.dataset.hybridId as HybridId | undefined) ?? nurseryPopover ?? undefined;
+        const name = hybridRenameDraft.trim();
+        if (hybridId !== undefined && name.length > 0) {
+          void runAction({ kind: "renameHybrid", id: hybridId, name }, t("nursery.renamed", { name }));
+        }
+        return;
+      }
+      case "nurseryPopoverClose":
+        nurseryPopover = null;
+        render();
+        return;
+      case "nurseryToGreenhouse":
+        nurseryPopover = null;
+        switchGardenTab("greenhouse");
         return;
       case "extrasHatch":
         void runAction({ kind: "hatchEgg" }, t("extras.hatched"));
@@ -10759,7 +11672,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         return;
       }
       case "sell": {
-        const item = target.dataset.item as ItemId | undefined;
+        const item = target.dataset.item as AnyItemId | undefined;
         if (item === undefined) return;
         let effects: EffectId[] = [];
         try {
@@ -10834,6 +11747,16 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       }
       if (specialMenu !== null) {
         specialMenu = null;
+        render();
+        return;
+      }
+      if (greenhouseMenu !== null) {
+        greenhouseMenu = null;
+        render();
+        return;
+      }
+      if (nurseryPopover !== null) {
+        nurseryPopover = null;
         render();
         return;
       }
@@ -10993,6 +11916,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     if (target.dataset.role === "giftCode") giftCode = target.value;
     if (target.dataset.role === "giftAmount") giftAmount = target.value;
+    if (target.dataset.role === "hybridRename") {
+      hybridRenameDraft = target.value;
+      const saveBtn = root?.querySelector<HTMLButtonElement>(
+        '.garden-nursery-popover button[data-act="renameHybrid"]',
+      );
+      if (saveBtn) saveBtn.disabled = hybridRenameDraft.trim().length < 1;
+    }
   }
 
   /**
@@ -11004,6 +11934,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (!(target instanceof HTMLElement)) return;
     if (target.dataset.role === "kitchenIngredientSelect" && target instanceof HTMLSelectElement) {
       kitchenIngredientFilter = target.value;
+      render();
+      return;
+    }
+    if (target.dataset.role === "greenhouseBulkSeed" && target instanceof HTMLSelectElement) {
+      greenhouseBulkSeed = target.value;
       render();
     }
   }
@@ -11023,6 +11958,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       target.closest(".garden-reborn-cell") === null
     ) {
       specialMenu = null;
+      render();
+    }
+    if (
+      greenhouseMenu !== null &&
+      target.closest(".garden-menu") === null &&
+      target.closest(".garden-greenhouse-cell") === null
+    ) {
+      greenhouseMenu = null;
       render();
     }
     if (menu === null) return;

@@ -58,6 +58,13 @@ import {
   parseGardenAuth,
   plotView,
   rollEffects,
+  GREENHOUSE_SLOTS,
+  GREENHOUSE_MUTATION,
+  greenhouseCapacity,
+  NURSERY_BASE_COST,
+  NURSERY_COST_FACTOR,
+  hybridBreedCost,
+  hybridOdds,
   specialPlotCost,
   PRESTIGE_SHOP,
   prestigeMutationBonus,
@@ -1324,5 +1331,100 @@ describe("quick plan planner", () => {
     });
     expect(preview.slots).toBe(0);
     expect(preview.totalCost).toBe(0);
+  });
+});
+
+describe("greenhouse and nursery shared helpers", () => {
+  it("caps greenhouse capacity at 81 slots and enforces highquality x3 with bad-effect immunity", () => {
+    expect(GREENHOUSE_SLOTS).toBe(81);
+    expect(GREENHOUSE_MUTATION).toBe("highquality");
+    expect(effectById("highquality")?.multiplier).toBe(3);
+    expect(greenhouseCapacity(0)).toBe(0);
+    expect(greenhouseCapacity(1)).toBe(27);
+    expect(greenhouseCapacity(2)).toBe(54);
+    expect(greenhouseCapacity(3)).toBe(81);
+    expect(greenhouseCapacity(10)).toBe(81);
+
+    const effects = resolvedCropEffects(
+      {
+        slot: 0,
+        seed: "carrot",
+        plantedAt: NOW - 60_000,
+        readyAt: NOW - 1_000,
+        effects: ["burnt", "shriveled", "pale", "golden"],
+        watered: false,
+        fertilized: false,
+        harvests: 0,
+        fertilizer: null,
+        spray: null,
+        pest: false,
+        protectedUntil: 0,
+      },
+      NOW,
+      false,
+      true,
+    );
+    expect(effects).toContain("highquality");
+    expect(effects).toContain("golden");
+    expect(effects).not.toContain("burnt");
+    expect(effects).not.toContain("shriveled");
+    expect(effects).not.toContain("pale");
+  });
+
+  it("scales nursery breeding cost exponentially and sums odds cleanly", () => {
+    expect(hybridBreedCost(2)).toBe(NURSERY_BASE_COST);
+    expect(hybridBreedCost(3)).toBe(NURSERY_BASE_COST * NURSERY_COST_FACTOR);
+    expect(hybridBreedCost(4)).toBe(NURSERY_BASE_COST * NURSERY_COST_FACTOR ** 2);
+
+    const odds2 = hybridOdds(2);
+    expect(odds2.elite + odds2.normal + odds2.dud).toBeCloseTo(1, 6);
+    const odds5 = hybridOdds(5, 3);
+    expect(odds5.elite).toBeGreaterThan(odds2.elite);
+    expect(odds5.dud).toBeLessThan(odds2.dud);
+  });
+
+  it("parses greenhouse, nursery actions, and hybrid crop keys", () => {
+    expect(parseCropKey("hybrid:1:highquality")).toEqual({
+      item: "hybrid:1",
+      effects: ["highquality"],
+      star: 1,
+    });
+    expect(parseGardenAction({ kind: "plantGreenhouse", slot: 80, seed: "hybrid:1" })).toEqual({
+      kind: "plantGreenhouse",
+      slot: 80,
+      seed: "hybrid:1",
+    });
+    expect(parseGardenAction({ kind: "plantGreenhouse", slot: 81, seed: "carrot" })).toBeNull();
+    expect(parseGardenAction({ kind: "harvestGreenhouse", slot: 0 })).toEqual({
+      kind: "harvestGreenhouse",
+      slot: 0,
+    });
+    expect(parseGardenAction({ kind: "uprootGreenhouse", slot: 0 })).toEqual({
+      kind: "uprootGreenhouse",
+      slot: 0,
+    });
+    expect(parseGardenAction({ kind: "fertilizeGreenhouse", slot: 1, supply: "speedGrow" })).toEqual({
+      kind: "fertilizeGreenhouse",
+      slot: 1,
+      supply: "speedGrow",
+    });
+    expect(parseGardenAction({ kind: "plantAllGreenhouse", seed: "carrot" })).toEqual({
+      kind: "plantAllGreenhouse",
+      seed: "carrot",
+    });
+    expect(parseGardenAction({ kind: "harvestAllGreenhouse" })).toEqual({
+      kind: "harvestAllGreenhouse",
+    });
+    expect(parseGardenAction({ kind: "breedHybrid", parents: ["carrot", "tomato", "hybrid:1"] })).toEqual({
+      kind: "breedHybrid",
+      parents: ["carrot", "tomato", "hybrid:1"],
+    });
+    expect(parseGardenAction({ kind: "breedHybrid", parents: ["carrot"] })).toBeNull();
+    expect(parseGardenAction({ kind: "renameHybrid", id: "hybrid:1", name: "Siêu Cà" })).toEqual({
+      kind: "renameHybrid",
+      id: "hybrid:1",
+      name: "Siêu Cà",
+    });
+    expect(parseGardenAction({ kind: "renameHybrid", id: "hybrid:1", name: "   " })).toBeNull();
   });
 });

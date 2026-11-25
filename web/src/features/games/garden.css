@@ -3382,3 +3382,309 @@ button.garden-rank-row:hover {
     padding-bottom: 4px;
   }
 }
+
+/* Reborn Greenhouse (81 plots, 9x9 grid, auto-water & highquality x3) */
+.garden-greenhouse-reborn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.garden-greenhouse-perks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.garden-greenhouse-perk {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  background: rgba(111, 227, 181, 0.12);
+  color: #6fe3b5;
+  border: 1px solid rgba(111, 227, 181, 0.28);
+}
+
+.garden-greenhouse-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.garden-greenhouse-max-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: #a9e08f;
+  background: rgba(169, 224, 143, 0.14);
+  border: 1px solid rgba(169, 224, 143, 0.35);
+}
+
+.garden-greenhouse-seed-select {
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  background: var(--bg-surface, #15171c);
+  color: var(--text-normal, #e4e6eb);
+  border: 1px solid var(--border-subtle);
+}
+
+.garden-greenhouse-grid {
+  display: grid;
+  grid-template-columns: repeat(9, max-content);
+  gap: 4px;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 6px;
+  border: 1px solid rgba(111, 227, 181, 0.25);
+  border-radius: 6px;
+  background: rgba(18, 34, 28, 0.35);
+}
+
+.garden-greenhouse-cell.is-locked {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* Reborn Nursery (Cross-breeding Lab + Seed Maker Bridge + Popover) */
+.garden-nursery-reborn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.garden-nursery-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-surface, rgba(255, 255, 255, 0.02));
+}
+
+.garden-nursery-seedmaker-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.86rem;
+}
+
+.garden-nursery-timer {
+  color: #63b3ed;
+  font-weight: 600;
+}
+
+.garden-nursery-seedmaker-crops {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.garden-nursery-seedmaker-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.84rem;
+}
+
+.garden-nursery-item-name {
+  min-width: 120px;
+}
+
+.garden-nursery-parents {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 6px 8px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 4px;
+}
+
+.garden-nursery-parent-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  background: rgba(169, 224, 143, 0.15);
+  color: #a9e08f;
+  border: 1px solid rgba(169, 224, 143, 0.35);
+}
+
+.garden-nursery-parent-chip:hover {
+  background: rgba(244, 135, 113, 0.2);
+  color: #f48771;
+  border-color: rgba(244, 135, 113, 0.45);
+}
+
+.garden-nursery-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.garden-nursery-cost {
+  color: #dcdcaa;
+  font-weight: 600;
+}
+
+.garden-nursery-pool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.garden-nursery-pool-btn {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.79rem;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-normal);
+  border: 1px solid var(--border-subtle);
+}
+
+.garden-nursery-pool-btn.is-hybrid {
+  border-color: rgba(183, 148, 244, 0.45);
+  color: #d6bcfa;
+}
+
+.garden-nursery-pool-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.garden-nursery-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 8px;
+}
+
+.garden-nursery-hybrid-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.garden-nursery-hybrid-item.is-elite {
+  border-color: rgba(236, 201, 75, 0.45);
+}
+
+.garden-nursery-hybrid-item.is-dud {
+  border-color: rgba(244, 135, 113, 0.35);
+}
+
+.garden-nursery-hybrid-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.garden-nursery-hybrid-name {
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.garden-nursery-hybrid-stats {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.garden-nursery-tier {
+  display: inline-block;
+  width: max-content;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.garden-nursery-tier.badge-elite {
+  background: rgba(236, 201, 75, 0.18);
+  color: #ecc94b;
+  border: 1px solid rgba(236, 201, 75, 0.4);
+}
+
+.garden-nursery-tier.badge-normal {
+  background: rgba(111, 227, 181, 0.15);
+  color: #6fe3b5;
+  border: 1px solid rgba(111, 227, 181, 0.35);
+}
+
+.garden-nursery-tier.badge-dud {
+  background: rgba(244, 135, 113, 0.16);
+  color: #f48771;
+  border: 1px solid rgba(244, 135, 113, 0.35);
+}
+
+.garden-nursery-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.garden-nursery-popover {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-panel, #181b22);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.garden-nursery-popover.is-elite {
+  border-color: rgba(236, 201, 75, 0.6);
+}
+
+.garden-nursery-popover.is-dud {
+  border-color: rgba(244, 135, 113, 0.55);
+}
+
+.garden-nursery-rename-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.garden-nursery-rename-input {
+  flex: 1 1 160px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.86rem;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-normal);
+  border: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 720px) {
+  .garden-greenhouse-grid {
+    grid-template-columns: repeat(5, max-content);
+  }
+}

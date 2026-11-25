@@ -19,6 +19,7 @@ import {
   SEEDS,
   TREES,
   TREES_PER_TAB,
+  GREENHOUSE_SLOTS,
   initialMineState,
   seasonAt,
   type ExtrasSnapshot,
@@ -2989,7 +2990,7 @@ describe("reborn sub-tabs", () => {
 
     host.querySelector<HTMLButtonElement>('[data-act="gardenTab:nursery"]')?.click();
     await settle();
-    expect(host.querySelector(".garden-garden-empty")?.textContent).toContain("vườn ươm");
+    expect(host.querySelector(".garden-nursery-reborn")).not.toBeNull();
     expect(host.querySelector(".garden-reborn-row .garden-reborn-quick")).not.toBeNull();
     expect(window.location.search).toContain("gstab=nursery");
 
@@ -4371,5 +4372,162 @@ describe("reborn row responsiveness", () => {
     expect(row).toContain("max-width: 100%");
     const side = css.slice(css.indexOf(".garden-reborn-side {"), css.indexOf(".garden-reborn-sep"));
     expect(side).toContain("flex-wrap: nowrap");
+  });
+});
+
+describe("reborn greenhouse and nursery", () => {
+  it("renders the 81-slot greenhouse with auto-water, highquality x3 and staff perks", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 5_000_000,
+        extras: { ...EXTRAS, greenhouse: 1 },
+        greenhousePlots: [
+          { ...RIPE_PLOT, effects: ["highquality"], watered: true, pest: false },
+          ...new Array(GREENHOUSE_SLOTS - 1).fill(null),
+        ],
+        bag: { seeds: { carrot: 5 }, crops: [], supplies: {} },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:greenhouse"]')?.click();
+    await settle();
+
+    const gh = host.querySelector(".garden-greenhouse-reborn");
+    expect(gh).not.toBeNull();
+    expect(gh?.textContent).toContain("27/81");
+    expect(gh?.textContent).toContain("HighQuality ×3");
+    expect(host.querySelectorAll(".garden-greenhouse-cell").length).toBe(GREENHOUSE_SLOTS);
+    expect(host.querySelectorAll(".garden-greenhouse-cell.is-locked").length).toBe(GREENHOUSE_SLOTS - 27);
+
+    host.querySelector<HTMLButtonElement>('[data-act="harvestAllGreenhouse"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "harvestAllGreenhouse")).toBe(true);
+  });
+
+  it("breeds hybrids with exponential cost, connects Seed Maker, opens result popover and renames", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 5_000_000,
+        warehouse: {
+          level: 1,
+          machines: { seedMaker: { level: 1, lastCraftAt: 0, queue: [] } },
+        },
+        bag: {
+          seeds: { carrot: 4 },
+          crops: [
+            { item: "tomato", effects: [], qty: 3 },
+            { item: "hybrid:1", effects: ["highquality"], qty: 2 },
+          ],
+          supplies: {},
+        },
+        hybrids: [
+          {
+            id: "hybrid:1",
+            name: "Giống Cũ #1",
+            parents: ["carrot", "tomato"],
+            tier: "normal",
+            growMs: 120_000,
+            sell: 60,
+            regrow: false,
+            art: [".", "v", "Y", "*"],
+            createdAt: CLOCK - 10_000,
+          },
+        ],
+      }),
+    );
+    api.act = async (rev: number, action: GardenAction) => {
+      api.calls.push({ method: "act", action });
+      if (action.kind === "breedHybrid") {
+        api.stateValue = {
+          ...api.stateValue,
+          rev: rev + 1,
+          lastHybridId: "hybrid:2",
+          hybrids: [
+            ...(api.stateValue.hybrids ?? []),
+            {
+              id: "hybrid:2",
+              name: "Siêu Lai #2",
+              parents: action.parents,
+              tier: "elite",
+              growMs: 90_000,
+              sell: 320,
+              regrow: true,
+              bonusEffect: "golden",
+              art: [".", "v", "Y", "★"],
+              createdAt: CLOCK,
+            },
+          ],
+          bag: {
+            ...api.stateValue.bag,
+            seeds: { ...api.stateValue.bag.seeds, "hybrid:2": 4 },
+          },
+        };
+      } else if (action.kind === "renameHybrid") {
+        api.stateValue = {
+          ...api.stateValue,
+          rev: rev + 1,
+          hybrids: (api.stateValue.hybrids ?? []).map((h) =>
+            h.id === action.id ? { ...h, name: action.name } : h,
+          ),
+        };
+      } else {
+        api.stateValue = { ...api.stateValue, rev: rev + 1 };
+      }
+      return { state: api.stateValue, season: SEASON, serverNow: CLOCK };
+    };
+
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:nursery"]')?.click();
+    await settle();
+
+    // Seed Maker bridge is connected and exposes hybrid crops
+    const nursery = host.querySelector(".garden-nursery-reborn");
+    expect(nursery).not.toBeNull();
+    expect(nursery?.textContent).toContain("Máy Tách Hạt");
+    expect(
+      host.querySelector('[data-act="machineCraft"][data-machine="seedMaker"][data-item="hybrid:1"]'),
+    ).not.toBeNull();
+
+    // Pick 2 parents -> cost is 50,000c, then 3rd parent -> exponential cost 150,000c
+    host.querySelector<HTMLButtonElement>('[data-act="nurseryAddParent"][data-item="carrot"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-act="nurseryAddParent"][data-item="tomato"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-nursery-cost")?.textContent).toContain("50.000c");
+
+    host.querySelector<HTMLButtonElement>('[data-act="nurseryAddParent"][data-item="carrot"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-nursery-cost")?.textContent).toContain("150.000c");
+
+    // Breed opens result popover automatically and allows renaming
+    host.querySelector<HTMLButtonElement>('[data-act="breedHybrid"]')?.click();
+    await settle();
+    const popover = host.querySelector(".garden-nursery-popover");
+    expect(popover).not.toBeNull();
+    expect(popover?.textContent).toContain("Siêu Lai #2");
+
+    const input = popover?.querySelector<HTMLInputElement>('input[data-role="hybridRename"]');
+    expect(input).not.toBeNull();
+    if (input) {
+      input.value = "Thần Thảo";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    popover?.querySelector<HTMLButtonElement>('[data-act="renameHybrid"]')?.click();
+    await settle();
+
+    expect(api.calls.find((c) => c.action?.kind === "renameHybrid")?.action).toEqual({
+      kind: "renameHybrid",
+      id: "hybrid:2",
+      name: "Thần Thảo",
+    });
+    expect(host.querySelector(".garden-nursery-popover")).toBeNull();
+    expect(host.querySelector(".garden-nursery-catalog")?.textContent).toContain("Thần Thảo");
   });
 });

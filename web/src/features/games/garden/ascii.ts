@@ -11,6 +11,7 @@ import {
   animalIsIncubating,
   PLANT_THIRST_MS,
   animalQuality,
+  isHybridId,
   plotView,
   resolvedTreeEffects,
   strongestEffect,
@@ -18,6 +19,7 @@ import {
   treeLikeById,
   type AnimalId,
   type AnimalState,
+  type HybridSeed,
   type PlotState,
   type TreeState,
 } from "@dyno/shared/garden";
@@ -127,17 +129,22 @@ export function lockedCellRender(priceText: string | null, slot?: number): CellR
  * @param plot Plot state, or `null` for empty soil.
  * @param now Server-clock time.
  * @param lockedCost Unlock price when the plot is locked, else `null`.
+ * @param slot Zero-based slot index.
+ * @param hybrids Optional custom hybrid definitions for resolving hybrid names.
+ * @param greenhouse Whether this plot is inside the auto-watered highquality greenhouse.
  */
 export function cellRender(
   plot: PlotState | null,
   now: number,
   lockedCost: number | null,
   slot = 0,
+  hybrids?: readonly HybridSeed[],
+  greenhouse = false,
 ): CellRender {
   const top = border(slot);
   const bottom = border();
   if (lockedCost !== null) {
-    return lockedCellRender(lockedCost > 0 ? `${lockedCost}c` : null);
+    return lockedCellRender(lockedCost > 0 ? `${lockedCost}c` : null, slot);
   }
 
   if (plot === null) {
@@ -151,9 +158,10 @@ export function cellRender(
     };
   }
 
-  const view = plotView(plot, now);
-  const name = t(`seeds.${view.seed.id}.short`);
-  if (plot.dead === true) {
+  const view = plotView(plot, now, hybrids, greenhouse);
+  const hybrid = isHybridId(plot.seed) ? hybrids?.find((entry) => entry.id === plot.seed) : undefined;
+  const name = hybrid !== undefined ? hybrid.name : t(`seeds.${view.seed.id}.short`);
+  if (plot.dead === true && !greenhouse) {
     return {
       lines: [
         top,
@@ -171,7 +179,7 @@ export function cellRender(
       dead: true,
     };
   }
-  const thirsty = plot.watered !== true;
+  const thirsty = !greenhouse && plot.watered !== true;
   const glyph = thirsty ? (view.seed.art[0] ?? ".") : (view.seed.art[view.stage] ?? ".");
   const strongest = strongestEffect(view.effects.map((effect) => effect.id));
   const effect = strongest === null ? "" : t(`effects.${strongest.id}`);

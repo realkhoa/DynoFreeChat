@@ -41,6 +41,23 @@ import {
   FUTURE_FEE_RATE,
   FUTURE_LOCK_MS,
   GREENHOUSE_PRICES,
+  GREENHOUSE_SLOTS,
+  GREENHOUSE_MUTATION,
+  greenhouseCapacity,
+  BAD_MUTATIONS,
+  type AnySeedId,
+  type AnyItemId,
+  type HybridId,
+  type HybridSeed,
+  type HybridTier,
+  MIN_BREED_PARENTS,
+  MAX_BREED_PARENTS,
+  MAX_HYBRIDS,
+  HYBRID_PREFIX,
+  isHybridId,
+  hybridBreedCost,
+  hybridOdds,
+  resolveSeed,
   INSURANCE_DURATION_MS,
   INSURANCE_PAYOUT,
   INSURANCE_PRICE,
@@ -238,7 +255,7 @@ import {
 /** Mutable bag used by the rules; the wire type stays readonly. */
 export interface LedgerBag {
   /** Unplanted seeds by id. */
-  seeds: Partial<Record<SeedId, number>>;
+  seeds: Partial<Record<AnySeedId, number>>;
   /** Harvested crops and fruits. */
   crops: CropStack[];
   /** Owned fertilizers and sprays. */
@@ -340,6 +357,14 @@ export interface GardenLedger {
   specialUnlocked: number[];
   /** Premium plots outside the normal crop grid. */
   specialPlots: (PlotState | null)[];
+  /** Greenhouse crop plots, capped at {@link GREENHOUSE_SLOTS}. */
+  greenhousePlots?: (PlotState | null)[];
+  /** Custom hybrid varieties minted in the Nursery. */
+  hybrids?: HybridSeed[];
+  /** Sequential counter for unique hybrid ids. */
+  hybridCounter?: number;
+  /** Most recently bred hybrid id. */
+  lastHybridId?: HybridId;
   /** Mushroom house trays; absent on old saves. */
   mushroomTrays?: (MushroomTrayState | null)[];
   /** Owned mushroom spawn blocks per species. */
@@ -502,6 +527,9 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     specialPatches: 0,
     specialUnlocked: new Array<number>(SPECIAL_PATCHES).fill(0),
     specialPlots: new Array<PlotState | null>(SPECIAL_SLOTS).fill(null),
+    greenhousePlots: new Array<PlotState | null>(GREENHOUSE_SLOTS).fill(null),
+    hybrids: [],
+    hybridCounter: 0,
     mushroomTrays: new Array<MushroomTrayState | null>(MUSHROOM_TRAYS).fill(null),
     mushroomSpawn: {},
     lastCrop: new Array<SeedId | null>(totalCrops(STARTING_TABS)).fill(null),
@@ -673,6 +701,12 @@ export function ledgerSnapshot(ledger: GardenLedger): GardenSnapshot {
     specialPatches: ledger.specialPatches ?? 0,
     specialUnlocked: [...(ledger.specialUnlocked ?? [])],
     specialPlots: (ledger.specialPlots ?? []).map((plot) => (plot === null ? null : { ...plot })),
+    greenhousePlots: Array.from({ length: GREENHOUSE_SLOTS }, (_unused, index) => {
+      const plot = ledger.greenhousePlots?.[index] ?? null;
+      return plot === null ? null : { ...plot };
+    }),
+    hybrids: (ledger.hybrids ?? []).map((hybrid) => ({ ...hybrid, parents: [...hybrid.parents] })),
+    ...(ledger.lastHybridId === undefined ? {} : { lastHybridId: ledger.lastHybridId }),
     mushroomTrays: (ledger.mushroomTrays ?? []).map((tray) => (tray === null ? null : { ...tray })),
     mushroomSpawn: { ...(ledger.mushroomSpawn ?? {}) },
     extras: extrasSnapshot(ledger),
@@ -827,6 +861,22 @@ export function applyGardenAction(
       return withSpecial(ledger, spray, action.slot, action.supply, now, false, rng);
     case "uprootSpecial":
       return withSpecial(ledger, uproot, action.slot, now);
+    case "plantGreenhouse":
+      return plantGreenhouse(ledger, action.slot, action.seed, now, rng);
+    case "harvestGreenhouse":
+      return harvestGreenhouse(ledger, action.slot, now, rng, action.auto === true);
+    case "uprootGreenhouse":
+      return uprootGreenhouse(ledger, action.slot, now);
+    case "fertilizeGreenhouse":
+      return fertilizeGreenhouse(ledger, action.slot, action.supply, now);
+    case "plantAllGreenhouse":
+      return plantAllGreenhouse(ledger, action.seed, now, rng);
+    case "harvestAllGreenhouse":
+      return harvestAllGreenhouse(ledger, now, rng);
+    case "breedHybrid":
+      return breedHybrid(ledger, action.parents, now, rng);
+    case "renameHybrid":
+      return renameHybrid(ledger, action.id, action.name, now);
     case "waterAll":
       return waterAll(ledger, now);
     case "buildBuilding":
@@ -1064,17 +1114,17 @@ function specializePlot(ledger: GardenLedger, slot: number, now: number, halve: 
 }
 
 /** @brief Sows one owned seed into every free, open plot. */
-function plantAll(ledger: GardenLedger, seedId: SeedId, now: number, rng: () => number): RuleResult {
-  const seed = seedById(seedId);
+function plantAll(ledger: GardenLedger, seedId: AnySeedId, now: number, rng: () => number): RuleResult {
+  const seed = resolveSeed(seedId, ledger.hybrids);
   if (seed === undefined) return { ok: false, code: "NO_SEED" };
-  if (prestigeTierForSeed(seed.id) > ledger.prestige) {
+  if (!isHybridId(seedId) && prestigeTierForSeed(seed.id) > ledger.prestige) {
     return { ok: false, code: "PRESTIGE_LOCKED" };
   }
   if (seed.category === "fruit") return { ok: false, code: "WRONG_AREA" };
   if (ledger.damagedPlots?.every((damaged) => damaged === true) === true) {
     return { ok: false, code: "PLOT_DAMAGED" };
   }
-  let owned = ledger.bag.seeds[seed.id] ?? 0;
+  let owned = ledger.bag.seeds[seedId] ?? 0;
   if (owned < 1) return { ok: false, code: "NO_SEED" };
 
   let current = ledger;
@@ -1082,7 +1132,7 @@ function plantAll(ledger: GardenLedger, seedId: SeedId, now: number, rng: () => 
   for (let slot = 0; slot < ledger.plots.length && owned > 0; slot += 1) {
     if ((ledger.plots[slot] ?? null) !== null) continue;
     if (!isCropPatchOpen(ledger, slot)) continue;
-    const result = plant(current, slot, seed.id, now, rng);
+    const result = plant(current, slot, seedId, now, rng);
     if (!result.ok) continue;
     current = result.ledger;
     owned -= 1;
@@ -1098,7 +1148,7 @@ function plantAll(ledger: GardenLedger, seedId: SeedId, now: number, rng: () => 
 /** @brief Uproots every crop matching a seed, value or profit filter. */
 function uprootBulk(
   ledger: GardenLedger,
-  filter: { seed?: SeedId; tree?: TreeId; priceBelow?: number; profit?: "loss" | "win"; dead?: boolean },
+  filter: { seed?: AnySeedId; tree?: TreeId; priceBelow?: number; profit?: "loss" | "win"; dead?: boolean },
   season: SeasonSnapshot,
   now: number,
 ): RuleResult {
@@ -1214,7 +1264,7 @@ function mutationSkillBonus(ledger: GardenLedger): number {
 function plant(
   ledger: GardenLedger,
   slot: number,
-  seedId: SeedId,
+  seedId: AnySeedId,
   now: number,
   rng: () => number,
 ): RuleResult {
@@ -1222,17 +1272,18 @@ function plant(
   if (!isCropPatchOpen(ledger, slot)) return { ok: false, code: "PLOT_LOCKED" };
   if (ledger.plots[slot] !== null) return { ok: false, code: "PLOT_OCCUPIED" };
   if (ledger.damagedPlots?.[slot] === true) return { ok: false, code: "PLOT_DAMAGED" };
-  const seed = seedById(seedId);
+  const seed = resolveSeed(seedId, ledger.hybrids);
   if (seed === undefined) return { ok: false, code: "NO_SEED" };
-  if (prestigeTierForSeed(seed.id) > ledger.prestige) {
+  if (!isHybridId(seedId) && prestigeTierForSeed(seed.id) > ledger.prestige) {
     return { ok: false, code: "PRESTIGE_LOCKED" };
   }
   if (seed.category === "fruit") return { ok: false, code: "WRONG_AREA" };
-  const owned = ledger.bag.seeds[seed.id] ?? 0;
+  const owned = ledger.bag.seeds[seedId] ?? 0;
   if (owned < 1) return { ok: false, code: "NO_SEED" };
 
+  const hybrid = isHybridId(seedId) ? ledger.hybrids?.find((entry) => entry.id === seedId) : undefined;
   const next = clone(ledger);
-  next.bag.seeds[seed.id] = owned - 1;
+  next.bag.seeds[seedId] = owned - 1;
   const events = eventsAt(now);
   const readyAt =
     now +
@@ -1242,11 +1293,11 @@ function plant(
     );
   next.plots[slot] = {
     slot,
-    seed: seed.id,
+    seed: seedId,
     plantedAt: now,
     readyAt,
     growMs: readyAt - now,
-    effects: [],
+    effects: hybrid?.bonusEffect !== undefined ? [hybrid.bonusEffect] : [],
     pest: false,
     protectedUntil: 0,
     watered: false,
@@ -1256,7 +1307,7 @@ function plant(
     spray: null,
   };
   next.stats.planted += 1;
-  logTimeline(next, "plant", now, { item: seed.id });
+  logTimeline(next, "plant", now, { item: seedId });
   return changed(next, now);
 }
 
@@ -1366,16 +1417,13 @@ function harvest(
   }
   for (const effect of harvestedEffects) collect(next, `effect:${effect}`);
   next.stats.harvested += 1;
-  grantXp(
-    next,
-    "farming",
-    auto ? 1 : 100 + Math.round((seedById(plot.seed)?.sell ?? 0) * 3) + harvestedEffects.length * 25,
-  );
+  const seed = resolveSeed(plot.seed, ledger.hybrids);
+  const hybrid = isHybridId(plot.seed) ? ledger.hybrids?.find((entry) => entry.id === plot.seed) : undefined;
+  grantXp(next, "farming", auto ? 1 : 100 + Math.round((seed?.sell ?? 0) * 3) + harvestedEffects.length * 25);
   // One planting cycle always costs some fertility, even for reharvest plants.
   const fertility = Math.max(0, (next.soil[slot] ?? SOIL_START) - SOIL_STEP);
   next.soil[slot] = fertility;
 
-  const seed = seedById(plot.seed);
   if (seed !== undefined && seed.regrow) {
     const events = eventsAt(now);
     const petMutation = petEffect(ledger, "mutation");
@@ -1403,7 +1451,7 @@ function harvest(
       plantedAt: now,
       readyAt: regrowAt,
       growMs: regrowAt - now,
-      effects: [],
+      effects: hybrid?.bonusEffect !== undefined ? [hybrid.bonusEffect] : [],
       mutationBoost: mutationSkillBonus(ledger) + weeklyModifier(now).mutationBonus,
       badLuck: wealthBadLuck(ledger.coins),
       pest: false,
@@ -3018,6 +3066,21 @@ function liquidationValue(ledger: GardenLedger, season: SeasonSnapshot, now: num
     total += cropSellPrice(
       { item: plot.seed, effects: resolvedCropEffects(plot, now), pest: plot.pest, star: 1, qty: 1 },
       season,
+      ledger.hybrids,
+    );
+  }
+  for (const plot of ledger.greenhousePlots ?? []) {
+    if (plot === null) continue;
+    total += cropSellPrice(
+      {
+        item: plot.seed,
+        effects: resolvedCropEffects(plot, now, true, true),
+        pest: false,
+        star: 1,
+        qty: 1,
+      },
+      season,
+      ledger.hybrids,
     );
   }
   for (const tree of ledger.trees) {
@@ -3025,6 +3088,7 @@ function liquidationValue(ledger: GardenLedger, season: SeasonSnapshot, now: num
     total += cropSellPrice(
       { item: tree.tree, effects: resolvedTreeEffects(tree, now), pest: tree.pest, star: 1, qty: 1 },
       season,
+      ledger.hybrids,
     );
   }
   for (const plot of ledger.specialPlots ?? []) {
@@ -3038,6 +3102,7 @@ function liquidationValue(ledger: GardenLedger, season: SeasonSnapshot, now: num
         qty: 1,
       },
       season,
+      ledger.hybrids,
     );
   }
   for (const building of BUILDING_IDS) {
@@ -3077,12 +3142,13 @@ function liquidateMachineInputs(ledger: GardenLedger, season: SeasonSnapshot): n
       } else {
         total += cropSellPrice(
           {
-            item: job.item as ItemId,
+            item: job.item as AnyItemId,
             star: job.star ?? 1,
             qty: 1,
             effects,
           },
           season,
+          ledger.hybrids,
         );
       }
     }
@@ -3113,6 +3179,7 @@ function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): Ru
   next.plots = next.plots.map(() => null);
   next.trees = next.trees.map(() => null);
   next.specialPlots = next.specialPlots.map(() => null);
+  next.greenhousePlots = (next.greenhousePlots ?? []).map(() => null);
   next.animals = {
     coop: next.animals.coop.map(() => null),
     barn: next.animals.barn.map(() => null),
@@ -3456,6 +3523,22 @@ function staffHarvest(ledger: GardenLedger, now: number, rng: () => number): Gar
       worked = true;
     }
   }
+  const ghLimit = greenhouseCapacity(current.greenhouse);
+  for (let slot = 0; slot < ghLimit; slot += 1) {
+    const plot = current.greenhousePlots?.[slot] ?? null;
+    if (plot === null || plot.favorite === true || now < plot.readyAt) continue;
+    const result = applyGardenAction(
+      current,
+      { kind: "harvestGreenhouse", slot, auto: true },
+      seasonAt(now),
+      now,
+      rng,
+    );
+    if (result.ok) {
+      current = result.ledger;
+      worked = true;
+    }
+  }
   return worked ? current : null;
 }
 
@@ -3491,11 +3574,13 @@ function staffSaleHunt(ledger: GardenLedger, now: number, _rng: () => number): G
   for (let guard = 0; guard < 200; guard += 1) {
     const stack = current.bag.crops.find((entry) => {
       if (entry.qty <= 0) return false;
-      const base = basePriceOf(entry.item, season);
+      const hybrid = isHybridId(entry.item) ? current.hybrids?.find((h) => h.id === entry.item) : undefined;
+      const base = hybrid !== undefined ? hybrid.sell : basePriceOf(entry.item as ItemId, season);
       if (base <= 0) return false;
       const unit = cropSellPrice(
         { item: entry.item, effects: entry.effects, pest: entry.pest, star: entry.star ?? 1, qty: 1 },
         season,
+        current.hybrids,
       );
       return unit >= base * 1.25;
     });
@@ -3530,6 +3615,22 @@ function staffPlant(ledger: GardenLedger, now: number, rng: () => number): Garde
     const result = applyGardenAction(
       current,
       { kind: "plant", slot, seed: seed.id, auto: true },
+      seasonAt(now),
+      now,
+      rng,
+    );
+    if (!result.ok) continue;
+    current = result.ledger;
+    worked = true;
+  }
+  const ghLimit = greenhouseCapacity(current.greenhouse);
+  for (let slot = 0; slot < ghLimit; slot += 1) {
+    if ((current.greenhousePlots?.[slot] ?? null) !== null) continue;
+    const seed = SEEDS.find((entry) => (current.bag.seeds[entry.id] ?? 0) > 0);
+    if (seed === undefined) break;
+    const result = applyGardenAction(
+      current,
+      { kind: "plantGreenhouse", slot, seed: seed.id, auto: true },
       seasonAt(now),
       now,
       rng,
@@ -4427,9 +4528,10 @@ function upgradeMachine(ledger: GardenLedger, id: MachineId, now: number): RuleR
 /** @brief Input item a machine accepts, with its base sale price. */
 function machineInput(
   definition: MachineDefinition,
-  item: ItemId | undefined,
-): { key: ItemId; sell: number } | null {
-  const seed = item === undefined ? undefined : seedById(item);
+  item: AnyItemId | undefined,
+  hybrids?: readonly HybridSeed[],
+): { key: AnyItemId; sell: number } | null {
+  const seed = item === undefined ? undefined : resolveSeed(item, hybrids);
   const fruit = item === undefined ? undefined : treeById(item);
   if (definition.output.kind === "seeds" && seed === undefined) return null;
   if (definition.allProduce === true) {
@@ -4437,7 +4539,7 @@ function machineInput(
   } else if (seed === undefined) {
     return null;
   }
-  const key = seed?.id ?? fruit?.id;
+  const key = (seed !== undefined ? item : fruit?.id) as AnyItemId | undefined;
   if (key === undefined) return null;
   const allowed = definition.input.kind === "seedCrop" ? definition.input.seeds : undefined;
   if (allowed !== undefined && !allowed.includes(key as never)) return null;
@@ -4446,7 +4548,7 @@ function machineInput(
 
 /** One input already removed from the bag and held by a machine. */
 interface MachineHold {
-  key: ItemId | ProductId;
+  key: AnyItemId | ProductId;
   star?: number;
   sell?: number;
   effects?: readonly EffectId[];
@@ -4466,7 +4568,7 @@ function productRecipes(definition: MachineDefinition): Array<{ input: ProductId
 }
 
 /** @brief Output product for one machine input, following extra recipes. */
-function recipeOutputFor(definition: MachineDefinition, key: ItemId | ProductId): ProductId | undefined {
+function recipeOutputFor(definition: MachineDefinition, key: AnyItemId | ProductId): ProductId | undefined {
   const recipe = productRecipes(definition).find((entry) => entry.input === key);
   if (recipe !== undefined) return recipe.output;
   return definition.output.kind === "product" ? definition.output.product : undefined;
@@ -4476,7 +4578,7 @@ function recipeOutputFor(definition: MachineDefinition, key: ItemId | ProductId)
 function takeMachineInput(
   next: GardenLedger,
   definition: MachineDefinition,
-  item: ItemId | ProductId | undefined,
+  item: AnyItemId | ProductId | undefined,
 ): MachineHold | null {
   const recipes = productRecipes(definition);
   if (recipes.length > 0) {
@@ -4521,8 +4623,8 @@ function takeMachineInput(
     };
   }
   const candidate =
-    item ?? next.bag.crops.find((entry) => machineInput(definition, entry.item) !== null)?.item;
-  const input = machineInput(definition, candidate as ItemId | undefined);
+    item ?? next.bag.crops.find((entry) => machineInput(definition, entry.item, next.hybrids) !== null)?.item;
+  const input = machineInput(definition, candidate as AnyItemId | undefined, next.hybrids);
   if (input === null) return null;
   const stack = next.bag.crops.find((entry) => entry.item === input.key);
   if (stack === undefined || stack.qty < 1) return null;
@@ -4553,11 +4655,12 @@ function produceMachineOutput(
     addProduct(next.bag.products, outputProduct, star, qty, hold.effects ?? []);
     return qty;
   }
-  const seed = seedById(hold.key as ItemId);
+  const seed = resolveSeed(hold.key, next.hybrids);
   if (seed === undefined) return 0;
   if (roll() >= seedMakerChance(next.prestige)) return 0;
   const qty = Math.max(1, Math.round(seedMakerOutput(level) * (1 + bonus)));
-  next.bag.seeds[seed.id] = (next.bag.seeds[seed.id] ?? 0) + qty;
+  const targetId = hold.key as AnySeedId;
+  next.bag.seeds[targetId] = (next.bag.seeds[targetId] ?? 0) + qty;
   return qty;
 }
 
@@ -4708,7 +4811,7 @@ function clearMachineQueue(ledger: GardenLedger, id: MachineId, now: number): Ru
 function craftMachine(
   ledger: GardenLedger,
   id: MachineId,
-  item: ItemId | ProductId | undefined,
+  item: AnyItemId | ProductId | undefined,
   now: number,
 ): RuleResult {
   const definition = machineById(id);
@@ -4739,7 +4842,7 @@ function craftMachine(
 function queueMachine(
   ledger: GardenLedger,
   id: MachineId,
-  item: ItemId | ProductId | undefined,
+  item: AnyItemId | ProductId | undefined,
   qty: number,
   now: number,
 ): RuleResult {
@@ -4867,7 +4970,7 @@ function buySeed(
 /** @brief Sells one or more harvested stacks at the season price. */
 function sellCrop(
   ledger: GardenLedger,
-  item: ItemId,
+  item: AnyItemId,
   effects: readonly EffectId[],
   star: number,
   qty: number,
@@ -4887,7 +4990,7 @@ function sellCrop(
   const next = clone(ledger);
   // A locked future guarantees its price for the covered units.
   const marketPrice = Math.round(
-    cropSellPrice(stack, season) *
+    cropSellPrice(stack, season, ledger.hybrids) *
       (1 + petEffect(ledger, "sell")) *
       (1 + farmingSellBonus(ledger.skills.farming.level)) *
       sellMultiplier(ledger, now),
@@ -4908,7 +5011,7 @@ function sellCrop(
       .filter((entry) => entry.qty > 0);
   }
   removeCrop(next.bag.crops, item, effects, pest, star, qty);
-  recordSale(next, { kind: "crop", item, qty, star, effects, gross, net: gross - tax }, now);
+  recordSale(next, { kind: "crop", item: item as ItemId, qty, star, effects, gross, net: gross - tax }, now);
   return changed(next, now);
 }
 
@@ -4919,7 +5022,7 @@ function sellAll(ledger: GardenLedger, season: SeasonSnapshot, now: number): Rul
   let total = 0;
   for (const stack of next.bag.crops) {
     const base = Math.round(
-      cropSellPrice(stack, season) *
+      cropSellPrice(stack, season, ledger.hybrids) *
         (1 + petEffect(ledger, "sell")) *
         (1 + farmingSellBonus(ledger.skills.farming.level)) *
         sellMultiplier(ledger, now),
@@ -4933,7 +5036,7 @@ function sellAll(ledger: GardenLedger, season: SeasonSnapshot, now: number): Rul
       next,
       {
         kind: "crop",
-        item: stack.item,
+        item: stack.item as ItemId,
         qty: stack.qty,
         star: stack.star ?? 1,
         effects: stack.effects,
@@ -5003,6 +5106,11 @@ function clone(ledger: GardenLedger): GardenLedger {
     specialPatches: ledger.specialPatches ?? 0,
     specialUnlocked: [...(ledger.specialUnlocked ?? [])],
     specialPlots: (ledger.specialPlots ?? []).map((plot) => (plot === null ? null : { ...plot })),
+    greenhousePlots: Array.from({ length: GREENHOUSE_SLOTS }, (_unused, index) => {
+      const plot = ledger.greenhousePlots?.[index] ?? null;
+      return plot === null ? null : { ...plot };
+    }),
+    hybrids: (ledger.hybrids ?? []).map((hybrid) => ({ ...hybrid, parents: [...hybrid.parents] })),
     skills: {
       farming: { ...ledger.skills.farming },
       ranching: { ...ledger.skills.ranching },
@@ -5048,10 +5156,427 @@ function sameEffects(left: readonly EffectId[], right: readonly EffectId[]): boo
   return a === b;
 }
 
+/** @brief Checks whether a greenhouse slot index is valid and unlocked by level. */
+function greenhouseSlotOpen(ledger: GardenLedger, slot: number): boolean {
+  return (
+    Number.isInteger(slot) &&
+    slot >= 0 &&
+    slot < GREENHOUSE_SLOTS &&
+    slot < greenhouseCapacity(ledger.greenhouse)
+  );
+}
+
+/**
+ * @brief Plants one seed in an unlocked greenhouse slot (auto-watered, highquality x3, immune).
+ * @param ledger Current garden ledger.
+ * @param slot Target slot index (`0..GREENHOUSE_SLOTS-1`).
+ * @param seedId Seed or custom hybrid seed id.
+ * @param now Server-clock timestamp.
+ * @param _rng Deterministic RNG source.
+ * @return Next ledger on success or validation error.
+ */
+function plantGreenhouse(
+  ledger: GardenLedger,
+  slot: number,
+  seedId: AnySeedId,
+  now: number,
+  _rng: () => number,
+): RuleResult {
+  if (ledger.greenhouse <= 0) return { ok: false, code: "GREENHOUSE_LOCKED" };
+  if (!greenhouseSlotOpen(ledger, slot)) return { ok: false, code: "PLOT_LOCKED" };
+  if ((ledger.greenhousePlots?.[slot] ?? null) !== null) return { ok: false, code: "PLOT_OCCUPIED" };
+  const seed = resolveSeed(seedId, ledger.hybrids);
+  if (seed === undefined) return { ok: false, code: "NO_SEED" };
+  if (!isHybridId(seedId) && prestigeTierForSeed(seed.id) > ledger.prestige) {
+    return { ok: false, code: "PRESTIGE_LOCKED" };
+  }
+  if (seed.category === "fruit") return { ok: false, code: "WRONG_AREA" };
+  const owned = ledger.bag.seeds[seedId] ?? 0;
+  if (owned < 1) return { ok: false, code: "NO_SEED" };
+
+  const hybrid = isHybridId(seedId) ? ledger.hybrids?.find((entry) => entry.id === seedId) : undefined;
+  const next = clone(ledger);
+  next.bag.seeds[seedId] = owned - 1;
+  const events = eventsAt(now);
+  const rawGrowMs = growTimeForEvents(
+    seed,
+    events,
+    null,
+    dayPhaseAt(now).phase.growScale * growthScale(ledger, now),
+  );
+  const wateredGrowMs = Math.max(5_000, Math.round(rawGrowMs * (1 - WATER_CUT_RATIO)));
+  const effects: EffectId[] = [GREENHOUSE_MUTATION];
+  if (hybrid?.bonusEffect !== undefined) effects.push(hybrid.bonusEffect);
+  next.greenhousePlots = Array.from({ length: GREENHOUSE_SLOTS }, (_unused, index) => {
+    if (index !== slot) return next.greenhousePlots?.[index] ?? null;
+    return {
+      slot,
+      seed: seedId,
+      plantedAt: now,
+      readyAt: now + wateredGrowMs,
+      growMs: wateredGrowMs,
+      effects: canonicalEffects(effects.filter((id) => !BAD_MUTATIONS.has(id))),
+      pest: false,
+      protectedUntil: Number.MAX_SAFE_INTEGER,
+      watered: true,
+      fertilized: false,
+      harvests: 0,
+      fertilizer: null,
+      spray: null,
+    };
+  });
+  next.stats.planted += 1;
+  logTimeline(next, "plant", now, { item: seedId });
+  return changed(next, now);
+}
+
+/**
+ * @brief Harvests one ripe crop from a greenhouse slot, guaranteeing `highquality` x3 value and pest immunity.
+ * @param ledger Current garden ledger.
+ * @param slot Target greenhouse slot.
+ * @param now Server-clock timestamp.
+ * @param rng Deterministic RNG source.
+ * @param auto Whether invoked by staff or bulk automation.
+ * @return Next ledger on success or error.
+ */
+function harvestGreenhouse(
+  ledger: GardenLedger,
+  slot: number,
+  now: number,
+  rng: () => number,
+  auto = false,
+): RuleResult {
+  if (ledger.greenhouse <= 0) return { ok: false, code: "GREENHOUSE_LOCKED" };
+  if (!greenhouseSlotOpen(ledger, slot)) return { ok: false, code: "PLOT_LOCKED" };
+  const plot = ledger.greenhousePlots?.[slot] ?? null;
+  if (plot === null) return { ok: false, code: "PLOT_EMPTY" };
+  if (plot.favorite === true && !auto) return { ok: false, code: "FAVORITE_LOCKED" };
+  if (auto && plot.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
+  if (now < plot.readyAt) return { ok: false, code: "NOT_READY" };
+
+  const next = clone(ledger);
+  const harvestedEffects = resolvedCropEffects(plot, now, true, true);
+  const star = rollCropQuality(
+    ledger,
+    `gh:${slot}`,
+    plot.fertilizer !== null,
+    plot.spray !== null,
+    false,
+    SOIL_START,
+    now,
+  );
+  addCrop(next.bag.crops, plot.seed, harvestedEffects, 1, false, star);
+  if (rng() < petEffect(ledger, "extraHarvest")) {
+    addCrop(next.bag.crops, plot.seed, harvestedEffects, 1, false, star);
+    next.weekHarvested += 1;
+  }
+  for (const effect of harvestedEffects) collect(next, `effect:${effect}`);
+  next.stats.harvested += 1;
+  const seed = resolveSeed(plot.seed, ledger.hybrids);
+  const hybrid = isHybridId(plot.seed) ? ledger.hybrids?.find((entry) => entry.id === plot.seed) : undefined;
+  grantXp(next, "farming", auto ? 1 : 100 + Math.round((seed?.sell ?? 0) * 3) + harvestedEffects.length * 25);
+
+  if (seed !== undefined && seed.regrow) {
+    const events = eventsAt(now);
+    const rawGrowMs = growTimeForEvents(
+      seed,
+      events,
+      plot.fertilizer,
+      dayPhaseAt(now).phase.growScale * growthScale(ledger, now),
+    );
+    const wateredGrowMs = Math.max(5_000, Math.round(rawGrowMs * (1 - WATER_CUT_RATIO)));
+    const regrowEffects: EffectId[] = [GREENHOUSE_MUTATION];
+    if (hybrid?.bonusEffect !== undefined) regrowEffects.push(hybrid.bonusEffect);
+    next.greenhousePlots = (next.greenhousePlots ?? []).map((entry, index) =>
+      index === slot
+        ? {
+            slot,
+            seed: plot.seed,
+            plantedAt: now,
+            readyAt: now + wateredGrowMs,
+            growMs: wateredGrowMs,
+            effects: canonicalEffects(regrowEffects),
+            mutationBoost: mutationSkillBonus(ledger) + weeklyModifier(now).mutationBonus,
+            badLuck: 0,
+            pest: false,
+            protectedUntil: Number.MAX_SAFE_INTEGER,
+            favorite: plot.favorite,
+            watered: true,
+            fertilized: false,
+            harvests: plot.harvests + 1,
+            fertilizer: tickFertilizer(plot.fertilizer),
+            spray: tickSpray(plot.spray),
+          }
+        : entry,
+    );
+  } else {
+    next.greenhousePlots = (next.greenhousePlots ?? []).map((entry, index) =>
+      index === slot ? null : entry,
+    );
+  }
+  return changed(next, now);
+}
+
+/** @brief Uproots one plant from a greenhouse plot. */
+function uprootGreenhouse(ledger: GardenLedger, slot: number, now: number): RuleResult {
+  if (ledger.greenhouse <= 0) return { ok: false, code: "GREENHOUSE_LOCKED" };
+  if (!greenhouseSlotOpen(ledger, slot)) return { ok: false, code: "PLOT_LOCKED" };
+  const plot = ledger.greenhousePlots?.[slot] ?? null;
+  if (plot === null) return { ok: false, code: "PLOT_EMPTY" };
+  if (plot.favorite === true) return { ok: false, code: "FAVORITE_LOCKED" };
+  const next = clone(ledger);
+  next.greenhousePlots = (next.greenhousePlots ?? []).map((entry, index) => (index === slot ? null : entry));
+  return changed(next, now);
+}
+
+/** @brief Applies one fertilizer to a growing greenhouse plot. */
+function fertilizeGreenhouse(
+  ledger: GardenLedger,
+  slot: number,
+  supply: FertilizerId,
+  now: number,
+): RuleResult {
+  if (ledger.greenhouse <= 0) return { ok: false, code: "GREENHOUSE_LOCKED" };
+  if (!greenhouseSlotOpen(ledger, slot)) return { ok: false, code: "PLOT_LOCKED" };
+  const definition = fertilizerById(supply);
+  if (definition === undefined) return { ok: false, code: "BAD_REQUEST" };
+  const plant = ledger.greenhousePlots?.[slot] ?? null;
+  if (plant === null) return { ok: false, code: "PLOT_EMPTY" };
+  const owned = ledger.bag.supplies[supply] ?? 0;
+  if (owned < 1) return { ok: false, code: "NO_SUPPLY" };
+
+  const next = clone(ledger);
+  next.bag.supplies[supply] = owned - 1;
+  const remaining = Math.max(0, plant.readyAt - now);
+  const readyAt =
+    now >= plant.readyAt
+      ? plant.readyAt
+      : now + Math.max(1_000, Math.round(remaining * definition.growMultiplier));
+  next.greenhousePlots = (next.greenhousePlots ?? []).map((entry, index) =>
+    index === slot
+      ? {
+          ...plant,
+          readyAt,
+          fertilized: true,
+          fertilizer: { id: supply, left: definition.harvests },
+        }
+      : entry,
+  );
+  return changed(next, now);
+}
+
+/** @brief Plants one seed into all empty unlocked greenhouse slots. */
+function plantAllGreenhouse(
+  ledger: GardenLedger,
+  seedId: AnySeedId,
+  now: number,
+  rng: () => number,
+): RuleResult {
+  if (ledger.greenhouse <= 0) return { ok: false, code: "GREENHOUSE_LOCKED" };
+  let owned = ledger.bag.seeds[seedId] ?? 0;
+  if (owned < 1) return { ok: false, code: "NO_SEED" };
+  const limit = greenhouseCapacity(ledger.greenhouse);
+  let current = ledger;
+  let planted = 0;
+  for (let slot = 0; slot < limit && owned > 0; slot += 1) {
+    if ((current.greenhousePlots?.[slot] ?? null) !== null) continue;
+    const result = plantGreenhouse(current, slot, seedId, now, rng);
+    if (!result.ok) break;
+    current = result.ledger;
+    owned -= 1;
+    planted += 1;
+  }
+  if (planted === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  current.rev = ledger.rev + 1;
+  current.updatedAt = now;
+  current.lastSeen = now;
+  return { ok: true, ledger: current, changed: true };
+}
+
+/** @brief Harvests every ready plot inside the greenhouse. */
+function harvestAllGreenhouse(ledger: GardenLedger, now: number, rng: () => number): RuleResult {
+  if (ledger.greenhouse <= 0) return { ok: false, code: "GREENHOUSE_LOCKED" };
+  const limit = greenhouseCapacity(ledger.greenhouse);
+  let current = ledger;
+  let harvested = 0;
+  for (let slot = 0; slot < limit; slot += 1) {
+    const plot = current.greenhousePlots?.[slot] ?? null;
+    if (plot === null || plot.favorite === true || now < plot.readyAt) continue;
+    const result = harvestGreenhouse(current, slot, now, rng, false);
+    if (!result.ok) continue;
+    current = result.ledger;
+    harvested += 1;
+  }
+  if (harvested === 0) return { ok: false, code: "NOTHING_TO_DO" };
+  current.rev = ledger.rev + 1;
+  current.updatedAt = now;
+  current.lastSeen = now;
+  return { ok: true, ledger: current, changed: true };
+}
+
+/** @brief Resolves base sell/grow stats for a Nursery breeding parent (seed, tree, or hybrid). */
+function resolveParentStats(
+  id: string,
+  hybrids?: readonly HybridSeed[],
+): { sell: number; growMs: number; regrow: boolean } | null {
+  const seed = resolveSeed(id, hybrids);
+  if (seed !== undefined) return { sell: seed.sell, growMs: seed.growMs, regrow: seed.regrow };
+  const tree = treeById(id);
+  if (tree !== undefined) return { sell: tree.sell, growMs: tree.growMs, regrow: true };
+  return null;
+}
+
+/** @brief Total available units of a parent item across bag crops and seeds. */
+function bagItemTotal(ledger: GardenLedger, item: AnyItemId): number {
+  const cropCount = ledger.bag.crops
+    .filter((entry) => entry.item === item)
+    .reduce((sum, entry) => sum + entry.qty, 0);
+  const seedCount = ledger.bag.seeds[item as AnySeedId] ?? 0;
+  return cropCount + seedCount;
+}
+
+/** @brief Deducts one parent unit from bag crops first, falling back to seeds. */
+function deductParentItem(next: GardenLedger, item: AnyItemId): boolean {
+  const crop = next.bag.crops.find((entry) => entry.item === item && entry.qty > 0);
+  if (crop !== undefined) {
+    next.bag.crops = next.bag.crops
+      .map((entry) => (entry === crop ? { ...entry, qty: entry.qty - 1 } : entry))
+      .filter((entry) => entry.qty > 0);
+    return true;
+  }
+  const seedKey = item as AnySeedId;
+  const seedQty = next.bag.seeds[seedKey] ?? 0;
+  if (seedQty > 0) {
+    next.bag.seeds[seedKey] = seedQty - 1;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * @brief Cross-breeds 2 or more parent plants in the Nursery into a new custom HybridSeed.
+ * @param ledger Current garden ledger.
+ * @param parents Two to six parent crop/seed/hybrid ids.
+ * @param now Server-clock timestamp.
+ * @param rng Deterministic RNG source.
+ * @return Updated ledger containing the new hybrid and awarded seeds, or validation error.
+ */
+function breedHybrid(
+  ledger: GardenLedger,
+  parents: readonly AnyItemId[],
+  now: number,
+  rng: () => number,
+): RuleResult {
+  if (parents.length < MIN_BREED_PARENTS || parents.length > MAX_BREED_PARENTS) {
+    return { ok: false, code: "NOT_ENOUGH_PARENTS" };
+  }
+  if ((ledger.hybrids?.length ?? 0) >= MAX_HYBRIDS) {
+    return { ok: false, code: "HYBRID_LIMIT" };
+  }
+  const cost = hybridBreedCost(parents.length);
+  if (ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
+
+  // Verify inventory counts handle repeated parent ids accurately.
+  const required = new Map<AnyItemId, number>();
+  const resolvedStats: Array<{ sell: number; growMs: number; regrow: boolean }> = [];
+  for (const parent of parents) {
+    const stats = resolveParentStats(parent, ledger.hybrids);
+    if (stats === null) return { ok: false, code: "BAD_REQUEST" };
+    resolvedStats.push(stats);
+    required.set(parent, (required.get(parent) ?? 0) + 1);
+  }
+  for (const [parent, need] of required.entries()) {
+    if (bagItemTotal(ledger, parent) < need) return { ok: false, code: "NO_CROP" };
+  }
+
+  const next = clone(ledger);
+  next.coins -= cost;
+  next.stats.spent += cost;
+  for (const parent of parents) {
+    if (!deductParentItem(next, parent)) return { ok: false, code: "NO_CROP" };
+  }
+
+  const avgSell = resolvedStats.reduce((sum, entry) => sum + entry.sell, 0) / resolvedStats.length;
+  const avgGrow = resolvedStats.reduce((sum, entry) => sum + entry.growMs, 0) / resolvedStats.length;
+  const anyRegrow = resolvedStats.some((entry) => entry.regrow);
+
+  const odds = hybridOdds(parents.length, ledger.spliceBonus);
+  const roll = rng();
+  const counter = (ledger.hybridCounter ?? ledger.hybrids?.length ?? 0) + 1;
+  const id = `${HYBRID_PREFIX}${counter}` as HybridId;
+
+  let tier: HybridTier = "normal";
+  let sell = Math.max(2, Math.round(avgSell * (1.2 + rng() * 0.4)));
+  let growMs = Math.max(12_000, Math.round(avgGrow * 0.95));
+  let regrow = anyRegrow && rng() < 0.7;
+  let bonusEffect: EffectId | undefined;
+  let art: [string, string, string, string] = [".", "v", "Y", "*"];
+  let seedAward = 3;
+  let defaultName = `Lai #${counter}`;
+
+  if (roll < odds.elite) {
+    tier = "elite";
+    sell = Math.max(5, Math.round(avgSell * (2.5 + rng() * 1.5)));
+    growMs = Math.max(10_000, Math.round(avgGrow * 0.7));
+    regrow = anyRegrow || rng() < 0.5;
+    const elitePool: readonly EffectId[] = ["golden", "crystal", "rainbow", "cosmic", "diamond"];
+    bonusEffect = elitePool[Math.floor(rng() * elitePool.length)] ?? "golden";
+    art = [".", "v", "Y", "★"];
+    seedAward = 4;
+    defaultName = `Siêu Lai #${counter}`;
+  } else if (roll < odds.elite + odds.dud) {
+    tier = "dud";
+    sell = Math.max(1, Math.round(avgSell * (0.3 + rng() * 0.3)));
+    growMs = Math.max(15_000, Math.round(avgGrow * 1.4));
+    regrow = false;
+    art = [".", ",", "x", "?"];
+    seedAward = 2;
+    defaultName = `Cây Đểu #${counter}`;
+  }
+
+  const created: HybridSeed = {
+    id,
+    name: defaultName,
+    parents: [...parents],
+    tier,
+    growMs,
+    sell,
+    regrow,
+    ...(bonusEffect === undefined ? {} : { bonusEffect }),
+    art,
+    createdAt: now,
+  };
+  next.hybrids = [...(next.hybrids ?? []), created];
+  next.hybridCounter = counter;
+  next.lastHybridId = id;
+  next.bag.seeds[id] = (next.bag.seeds[id] ?? 0) + seedAward;
+  logTimeline(next, "breed", now, { item: id, qty: seedAward });
+  return changed(next, now);
+}
+
+/**
+ * @brief Renames one player-created Nursery hybrid variety.
+ * @param ledger Current garden ledger.
+ * @param id Target hybrid id.
+ * @param name New display name (1..28 trimmed chars).
+ * @param now Server-clock timestamp.
+ * @return Next ledger with updated hybrid name or error.
+ */
+function renameHybrid(ledger: GardenLedger, id: HybridId, name: string, now: number): RuleResult {
+  const trimmed = name.trim();
+  if (trimmed.length < 1 || trimmed.length > 28) return { ok: false, code: "BAD_REQUEST" };
+  const list = ledger.hybrids ?? [];
+  const index = list.findIndex((entry) => entry.id === id);
+  if (index < 0) return { ok: false, code: "BAD_REQUEST" };
+  const next = clone(ledger);
+  next.hybrids = list.map((entry, i) => (i === index ? { ...entry, name: trimmed } : entry));
+  return changed(next, now);
+}
+
 /** @brief Adds one produce unit to a mutable bag. */
 function addCrop(
   crops: CropStack[],
-  item: ItemId,
+  item: AnyItemId,
   effects: readonly EffectId[],
   qty: number,
   pest = false,
@@ -5088,7 +5613,7 @@ function addCrop(
 /** @brief Removes produce units from a mutable bag, dropping empty stacks. */
 function removeCrop(
   crops: CropStack[],
-  item: ItemId,
+  item: AnyItemId,
   effects: readonly EffectId[],
   pest: boolean,
   star: number,

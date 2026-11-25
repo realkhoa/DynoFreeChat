@@ -37,6 +37,7 @@ import {
   SPECIAL_PATCHES,
   SPECIAL_PLOTS_PER_PATCH,
   SPECIAL_SLOTS,
+  GREENHOUSE_SLOTS,
   MUSHROOM_TRAYS,
   BUILDING_IDS,
   buildingSlots,
@@ -57,6 +58,7 @@ import {
   type SeasonSnapshot,
   type SaleRecord,
   effectById,
+  type AnySeedId,
   type SeedId,
   type SupplyId,
   type TreeId,
@@ -558,6 +560,13 @@ export class Garden extends DurableObject<Env> {
         const plot = raw.specialPlots?.[index] ?? null;
         return plot === null ? null : { ...plot };
       }),
+      greenhousePlots: Array.from({ length: GREENHOUSE_SLOTS }, (_unused, index) => {
+        const plot = raw.greenhousePlots?.[index] ?? null;
+        return plot === null ? null : { ...plot };
+      }),
+      hybrids: (raw.hybrids ?? []).map((hybrid) => ({ ...hybrid, parents: [...hybrid.parents] })),
+      hybridCounter: typeof raw.hybridCounter === "number" ? raw.hybridCounter : (raw.hybrids?.length ?? 0),
+      ...(raw.lastHybridId === undefined ? {} : { lastHybridId: raw.lastHybridId }),
       mushroomTrays: Array.from({ length: MUSHROOM_TRAYS }, (_unused, index) => {
         const tray = raw.mushroomTrays?.[index] ?? null;
         return tray === null ? null : { ...tray, slot: index };
@@ -743,7 +752,7 @@ export class Garden extends DurableObject<Env> {
 
   /** @brief Reads the bag rows into seeds, crops, supplies and products. */
   private readBag(): GardenLedger["bag"] {
-    const seeds: Partial<Record<SeedId, number>> = {};
+    const seeds: Partial<Record<AnySeedId, number>> = {};
     const crops: CropStack[] = [];
     const supplies: Partial<Record<SupplyId, number>> = {};
     const products: ProductStack[] = [];
@@ -751,7 +760,7 @@ export class Garden extends DurableObject<Env> {
     const rows = this.sql.exec<BagRow>("SELECT kind, item, qty FROM bag").toArray();
     for (const row of rows) {
       if (row.kind === "seed") {
-        seeds[row.item as SeedId] = row.qty;
+        seeds[row.item as AnySeedId] = row.qty;
         continue;
       }
       if (row.kind === "supply") {
@@ -1631,6 +1640,11 @@ export class Garden extends DurableObject<Env> {
       specialPatches: ledger.specialPatches ?? 0,
       specialUnlocked: [...(ledger.specialUnlocked ?? [])],
       specialPlots: (ledger.specialPlots ?? []).map((plot) => (plot === null ? null : { ...plot })),
+      greenhousePlots: Array.from({ length: GREENHOUSE_SLOTS }, (_unused, index) => {
+        const plot = ledger.greenhousePlots?.[index] ?? null;
+        return plot === null ? null : { ...plot };
+      }),
+      hybrids: (ledger.hybrids ?? []).map((hybrid) => ({ ...hybrid, parents: [...hybrid.parents] })),
       warehouse: {
         level: ledger.warehouse,
         machines: { ...ledger.machines },

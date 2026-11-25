@@ -181,7 +181,7 @@ export function planBotActions(
     if (now >= planted.readyAt) continue; // harvest handles ripe plants
     if (!cropSlotOpen(ledger, slot)) continue;
     const value = expectedCropValue(planted, season, now);
-    const seedCost = seedBuyPrice(planted.seed, season);
+    const seedCost = planted.seed.startsWith("hybrid:") ? 0 : seedBuyPrice(planted.seed as SeedId, season);
     if (value <= seedCost) push({ kind: "uproot", slot, tree: false });
   }
   for (let slot = 0; slot < ledger.trees.length; slot += 1) {
@@ -199,7 +199,8 @@ export function planBotActions(
         const slot = tab * CROPS_PER_TAB + patch * PLOTS_PER_PATCH + plot;
         const plotState = ledger.plots[slot] ?? null;
         if (plotState !== null && now >= plotState.readyAt) {
-          ready.push({ slot, tree: false, value: season.prices[plotState.seed] ?? 0 });
+          const val = (season.prices as Readonly<Record<string, number>>)[plotState.seed] ?? 0;
+          ready.push({ slot, tree: false, value: val });
         }
       }
     }
