@@ -499,7 +499,7 @@ describe("legacy view", () => {
     const actions = Array.from(
       host.querySelectorAll<HTMLButtonElement>(".garden-reborn-quick .garden-reborn-action"),
     );
-    expect(actions).toHaveLength(10);
+    expect(actions).toHaveLength(11);
     // Same six-line frame as the plot cells, so the buttons read as plots too.
     for (const action of actions) expect(action.querySelectorAll(".garden-cell-line")).toHaveLength(6);
     // Four groups with a vertical rule between them, plus one before the group.
@@ -509,7 +509,7 @@ describe("legacy view", () => {
     // Quick actions and the four staff cells live in one cluster on the same row.
     expect(host.querySelectorAll(".garden-reborn-side .garden-reborn-quick")).toHaveLength(1);
     expect(host.querySelectorAll(".garden-reborn-side .garden-reborn-staff")).toHaveLength(1);
-    // Requested order: field actions, bulk supplies, quick tools, then uproot.
+    // Requested order: field actions, bulk supplies, quick tools, then uproot + quick plant.
     expect(actions.map((action) => action.dataset.actionId)).toEqual([
       "water",
       "harvest",
@@ -521,6 +521,7 @@ describe("legacy view", () => {
       "quickSpray",
       "quickFertilize",
       "quickUproot",
+      "quickPlant",
     ]);
     // Every action keeps its legacy palette tone.
     expect(
@@ -536,12 +537,15 @@ describe("legacy view", () => {
       "tone-chemical",
       "tone-fertilizer",
       "tone-danger",
+      "tone-plant",
     ]);
     // Labels wrap inside the frame instead of spilling out.
     expect(actions[0]?.textContent).toContain("Tưới");
     expect(actions[0]?.textContent).toContain("nước");
     expect(actions[9]?.textContent).toContain("Nhổ");
     expect(actions[9]?.textContent).toContain("nhanh");
+    expect(actions[10]?.textContent).toContain("Quick");
+    expect(actions[10]?.textContent).toContain("plant");
     // A ripe crop makes harvest and quick sell usable; nothing needs water.
     expect(actions[0]?.disabled).toBe(true);
     expect(actions[1]?.disabled).toBe(false);
@@ -4423,6 +4427,45 @@ describe("reborn row responsiveness", () => {
     expect(row).toContain("max-width: 100%");
     const side = css.slice(css.indexOf(".garden-reborn-side {"), css.indexOf(".garden-reborn-sep"));
     expect(side).toContain("flex-wrap: nowrap");
+  });
+});
+
+describe("reborn quick plant button", () => {
+  it("places Quick plant below Bulk uproot and plants picked seeds on plot click", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        bag: { seeds: { carrot: 3 }, crops: [], supplies: {} },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    const uprootBtn = host.querySelector<HTMLButtonElement>('[data-action-id="quickUproot"]');
+    const plantBtn = host.querySelector<HTMLButtonElement>('[data-action-id="quickPlant"]');
+    expect(uprootBtn).not.toBeNull();
+    expect(plantBtn).not.toBeNull();
+    expect(plantBtn?.parentElement).toBe(uprootBtn?.parentElement);
+    expect(uprootBtn?.nextElementSibling).toBe(plantBtn);
+    expect(plantBtn?.textContent).toContain("Quick");
+    expect(plantBtn?.textContent).toContain("plant");
+
+    plantBtn?.click();
+    await settle();
+    const seedChoice = host.querySelector<HTMLButtonElement>(
+      '.garden-quick-menu [data-act="pickPlantSeed"][data-seed="carrot"]',
+    );
+    expect(seedChoice).not.toBeNull();
+    seedChoice?.click();
+    await settle();
+
+    host.querySelector<HTMLButtonElement>('.garden-reborn-garden .garden-cell[data-area="crop"]')?.click();
+    await settle();
+    expect(api.calls.some((call) => call.action?.kind === "plant" && call.action.seed === "carrot")).toBe(
+      true,
+    );
   });
 });
 

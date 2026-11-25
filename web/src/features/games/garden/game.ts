@@ -505,7 +505,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let buyQty = 1;
   type GardenTool =
     | { kind: "fertilize" | "spray"; supply: SupplyId }
-    | { kind: "plant"; seed: SeedId }
+    | { kind: "plant"; seed: AnySeedId }
     | { kind: "water" }
     | { kind: "harvest" };
   let tool: GardenTool | null = null;
@@ -1030,13 +1030,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /** @brief Plants one seed, buying it first when the bag is empty. */
-  async function plantSeed(slot: number, seedId: SeedId): Promise<void> {
+  async function plantSeed(slot: number, seedId: AnySeedId): Promise<void> {
     if (state === null || busy) return;
     busy = true;
     try {
       let current = state;
       const owned = current.bag.seeds[seedId] ?? 0;
       if (owned < 1) {
+        if (isHybridId(seedId)) throw new GardenApiError("NO_SEEDS", 0);
         const offer = season?.shop.offers.find((entry) => entry.seed === seedId);
         if (offer === undefined) throw new GardenApiError("SHOP_SOLD_OUT", 0);
         const bought = await api.act(current.rev, { kind: "buySeed", seed: seedId, qty: 1 });
@@ -2941,7 +2942,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const pestCost = pestTargets * PEST_SPRAY_COST;
     const renovateCost = (state?.soil ?? []).reduce((sum, fertility) => sum + soilRenovateCost(fertility), 0);
     const fertilizerTargets = supplyTargetCount("fertilize", at);
-    const seedKinds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0).length;
+    const seedKinds = [...SEEDS, ...activeHybrids()].filter(
+      (seed) => (state?.bag.seeds[seed.id] ?? 0) > 0,
+    ).length;
     // Quick Plan fills every empty slot it can afford across crops, trees and trays.
     const planSlots =
       (state?.plots ?? []).filter((plot, slot) => plot === null && !cropSlotLocked(slot)).length +
@@ -3051,6 +3054,15 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           tone: "danger",
           act: "bulkUproot",
           active: bulkPanel === "uproot",
+        },
+        {
+          id: "quickPlant",
+          label: t("reborn.action.plant"),
+          glyph: "+",
+          note: seedKinds > 0 ? String(seedKinds) : "",
+          tone: "plant",
+          act: "pickPlantTool",
+          active: toolPicker === "plant" || tool?.kind === "plant",
         },
       ],
     ];
@@ -3243,12 +3255,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   function appendToolPickers(wrap: HTMLElement): void {
     if (toolPicker === "plant") {
       const picker = div("garden-tools");
-      const ownedSeeds = SEEDS.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
+      const catalog = [...SEEDS, ...activeHybrids().map((hybrid) => hybridAsSeedDefinition(hybrid))];
+      const ownedSeeds = catalog.filter((seed) => (state?.bag.seeds[seed.id] ?? 0) > 0);
       if (ownedSeeds.length === 0) picker.append(span("garden-hint", t("garden.plantNoSeeds")));
       for (const seed of ownedSeeds) {
         const locked = seedLocked(seed.id);
         const button = actionButton(
-          `${t(`seeds.${seed.id}`)} (${state?.bag.seeds[seed.id] ?? 0})${locked ? ` · P${seedPrestigeTier(seed.id)}` : ""}`,
+          `${seedName(seed.id)} (${state?.bag.seeds[seed.id] ?? 0})${locked ? ` · P${seedPrestigeTier(seed.id)}` : ""}`,
           "pickPlantSeed",
           !locked,
         );
@@ -10097,7 +10110,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
                 return;
               }
               void runAction(
-                { kind: "plantFruitSeed", slot, seed: tool.seed },
+                { kind: "plantFruitSeed", slot, seed: tool.seed as SeedId },
                 t("garden.plantedFruitSeed", { seed: seedName(tool.seed) }),
               );
               return;
@@ -10443,7 +10456,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         render();
         return;
       case "pickPlantSeed": {
-        const seed = target.dataset.seed as SeedId | undefined;
+        const seed = target.dataset.seed as AnySeedId | undefined;
         if (seed !== undefined) {
           tool = { kind: "plant", seed };
           toolPicker = null;
