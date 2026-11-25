@@ -94,8 +94,15 @@ export default {
 
     try {
       return await routeRequest(request, env, url, origin);
-    } catch {
-      return withCors(json({ code: "INTERNAL_ERROR" }, 500), origin);
+    } catch (error) {
+      const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      console.error("[worker] unhandled error", {
+        method: request.method,
+        path: url.pathname,
+        detail,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      return withCors(json({ code: "INTERNAL_ERROR", detail }, 500), origin);
     }
   },
 } satisfies ExportedHandler<Env>;
