@@ -1451,6 +1451,8 @@ export const VI: Dictionary = {
   "account.hint":
     "Tạo tài khoản hoặc đăng nhập (không cần xác thực email) để gắn vào data vườn hiện tại và chơi đồng bộ trên nhiều thiết bị.",
   "account.linkedAs": "Đang liên kết tài khoản: {username}",
+  "account.currentGardenTarget":
+    "Vườn đang chơi: {nick} (Mã: {code}) — sẽ tự động gắn vào tài khoản khi Đăng ký.",
   "account.multiDeviceActive":
     "Đồng bộ nhiều máy đang bật — đăng nhập tài khoản này ở máy khác sẽ giữ nguyên quyền chơi ở cả hai nơi.",
   "account.usernamePlaceholder": "Tên đăng nhập hoặc email (không cần xác thực)",
@@ -3073,6 +3075,8 @@ export const EN: Dictionary = {
   "account.recoveryOptionalPlaceholder": "Old recovery key (optional, to link another garden)",
   "account.registerLink": "Register & Link this garden",
   "account.loginSync": "Login & Sync",
+  "account.currentGardenTarget":
+    "Active garden: {nick} (Code: {code}) — will be linked automatically when you Register.",
   "account.linkCurrent": "Link account to this garden",
   "account.logout": "Log out this device",
   "account.registerOk": "Account created and linked!",

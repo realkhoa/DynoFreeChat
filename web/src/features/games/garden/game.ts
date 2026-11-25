@@ -1392,8 +1392,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (username.length === 0 || password.length === 0 || busy) return;
     busy = true;
     try {
-      const rec = accountRecoveryDraft.trim().toUpperCase();
-      const bundle = await api.accountRegister(username, password, rec.length > 0 ? rec : undefined);
+      const typedRec = accountRecoveryDraft.trim().toUpperCase();
+      const autoRec = typedRec.length > 0 ? typedRec : api.session?.recovery;
+      const bundle = await api.accountRegister(username, password, autoRec);
       applyAccountBundle(bundle, "account.registerOk");
     } catch (error) {
       applyApiError(error);
@@ -7391,6 +7392,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
 
     panel.append(lineBlock(t("account.hint")));
+    if (mode === "owner" && state !== null) {
+      panel.append(lineBlock(t("account.currentGardenTarget", { nick: state.nick, code: state.code })));
+    }
     const userRow = div("garden-restore-row");
     const userInput = document.createElement("input");
     userInput.type = "text";

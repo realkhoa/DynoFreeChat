@@ -86,7 +86,7 @@ export default {
         headers: {
           ...corsHeaders(origin),
           "access-control-allow-methods": "GET,POST,OPTIONS",
-          "access-control-allow-headers": "content-type,x-dyno-lock,x-dyno-garden",
+          "access-control-allow-headers": "content-type,x-dyno-lock,x-dyno-garden,x-dyno-account-token",
           "access-control-max-age": "600",
         },
       });

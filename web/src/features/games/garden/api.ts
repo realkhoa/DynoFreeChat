@@ -674,8 +674,8 @@ export class GardenApi {
     }
   }
 
-  /** @brief Builds the request headers: access gate plus owner credentials. */
-  private headers(extra: Record<string, string>): Record<string, string> {
+  /** @brief Builds the request headers: access gate, owner credentials, and optional account token. */
+  private headers(extra: Record<string, string>, includeAccount = false): Record<string, string> {
     const headers: Record<string, string> = { ...extra };
     if (this.storage !== null) {
       try {
@@ -688,7 +688,7 @@ export class GardenApi {
     if (this.credentials !== null) {
       headers[GARDEN_AUTH_HEADER] = formatGardenAuth(this.credentials);
     }
-    if (this.accountInfo !== null) {
+    if (includeAccount && this.accountInfo !== null) {
       headers[ACCOUNT_TOKEN_HEADER] = this.accountInfo.accountToken;
     }
     return headers;
@@ -746,10 +746,11 @@ export class GardenApi {
    */
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     let response: Response;
+    const includeAccount = path.startsWith("/api/garden/account");
     try {
       response = await this.fetchImpl(`${this.base}${path}`, {
         ...init,
-        headers: this.headers((init.headers as Record<string, string> | undefined) ?? {}),
+        headers: this.headers((init.headers as Record<string, string> | undefined) ?? {}, includeAccount),
       });
     } catch {
       throw new GardenApiError("NETWORK", 0);
