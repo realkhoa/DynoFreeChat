@@ -7209,7 +7209,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const owned = specialView()?.owned ?? 0;
     vip.append(
       lineBlock(`// ${t("reborn.vipTitle")} · ${t("reborn.vipProgress", { owned, total: SPECIAL_SLOTS })}`),
-      buildRebornBoard(rebornPlots(), at),
+      buildRebornBoard(rebornPlots(), at, activeHybrids()),
     );
     row.append(vip);
     if (mode === "owner") row.append(div("garden-reborn-sep"), buildRebornSide(at));
@@ -9896,7 +9896,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     for (const cell of root.querySelectorAll<HTMLElement>(".garden-reborn-cell[data-slot]")) {
       const slot = Number(cell.dataset.slot);
       const plot = Number.isInteger(slot) ? reborn[slot] : undefined;
-      if (plot !== undefined && cell instanceof HTMLButtonElement) paintRebornCell(cell, plot, at);
+      if (plot !== undefined && cell instanceof HTMLButtonElement) {
+        paintRebornCell(cell, plot, at, activeHybrids());
+      }
     }
     for (const cell of root.querySelectorAll<HTMLElement>(".garden-mushroom-tray[data-slot]")) {
       const slot = Number(cell.dataset.slot);

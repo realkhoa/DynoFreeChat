@@ -7,7 +7,7 @@
  * plot in the sequence shows its price and can be bought.
  */
 
-import type { PlotState } from "@dyno/shared/garden";
+import type { HybridSeed, PlotState } from "@dyno/shared/garden";
 import { formatCompact, t } from "@/shared/i18n";
 import { CELL_INNER, cellRender, fitText, growthColor, lockedCellRender, type CellRender } from "./ascii";
 
@@ -29,14 +29,15 @@ export interface RebornPlot {
  * @brief Renders one rebuilt plot in the normal six-line plot frame.
  * @param plot Plot data for the reborn board.
  * @param now Server-clock time.
+ * @param hybrids Optional custom hybrid definitions for resolving hybrid names.
  * @return The framed cell, flagged locked/empty/ready/growing.
  */
-export function rebornPlotRender(plot: RebornPlot, now: number): CellRender {
+export function rebornPlotRender(plot: RebornPlot, now: number, hybrids?: readonly HybridSeed[]): CellRender {
   if (!plot.owned) {
     const price = plot.buyable ? `${formatCompact(plot.price)}c` : null;
     return lockedCellRender(price, plot.slot);
   }
-  return cellRender(plot.plot, now, null, plot.slot);
+  return cellRender(plot.plot, now, null, plot.slot, hybrids);
 }
 
 /**
@@ -44,11 +45,17 @@ export function rebornPlotRender(plot: RebornPlot, now: number): CellRender {
  * @param cell Button owning the six cell lines.
  * @param plot Plot data for this cell.
  * @param now Server-clock time.
+ * @param hybrids Optional custom hybrid definitions for resolving hybrid names.
  * @details Also owns the click contract so both the initial render and the tick
  * repaint keep the same action, title and disabled state.
  */
-export function paintRebornCell(cell: HTMLButtonElement, plot: RebornPlot, now: number): void {
-  const render = rebornPlotRender(plot, now);
+export function paintRebornCell(
+  cell: HTMLButtonElement,
+  plot: RebornPlot,
+  now: number,
+  hybrids?: readonly HybridSeed[],
+): void {
+  const render = rebornPlotRender(plot, now, hybrids);
   for (let index = 0; index < render.lines.length; index += 1) {
     const line = cell.children.item(index);
     if (line instanceof HTMLElement) line.textContent = render.lines[index] ?? "";
@@ -90,9 +97,14 @@ export function paintRebornCell(cell: HTMLButtonElement, plot: RebornPlot, now: 
  * @brief Builds the 27-plot VIP board.
  * @param plots Plot data in purchase order, nine per row.
  * @param now Server-clock time.
+ * @param hybrids Optional custom hybrid definitions for resolving hybrid names.
  * @return The board element; each cell is the same size as a normal plot cell.
  */
-export function buildRebornBoard(plots: readonly RebornPlot[], now: number): HTMLElement {
+export function buildRebornBoard(
+  plots: readonly RebornPlot[],
+  now: number,
+  hybrids?: readonly HybridSeed[],
+): HTMLElement {
   const board = document.createElement("div");
   board.className = "garden-reborn-board";
   for (const plot of plots) {
@@ -105,7 +117,7 @@ export function buildRebornBoard(plots: readonly RebornPlot[], now: number): HTM
       line.className = "garden-cell-line";
       cell.append(line);
     }
-    paintRebornCell(cell, plot, now);
+    paintRebornCell(cell, plot, now, hybrids);
     board.append(cell);
   }
   return board;

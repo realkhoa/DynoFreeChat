@@ -293,7 +293,7 @@ describe("garden play", () => {
         .toArray()[0];
       if (row === undefined) throw new Error("ledger missing");
       const meta = JSON.parse(row.value) as { coins: number };
-      meta.coins = 500_000_000;
+      meta.coins = 500_000_000_000;
       state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'ledger'", JSON.stringify(meta));
     });
 
@@ -332,6 +332,36 @@ describe("garden play", () => {
     const persisted = await readState(registered);
     expect(persisted.state.animals.coop[12]?.kind).toBe("chicken");
     expect(persisted.state.animals.coop[15]?.kind).toBe("duck");
+  });
+
+  it("plants and persists crops in VIP specialPlots through the DO HTTP API", async () => {
+    const registered = await register("vipplanter");
+    const bindings = env as unknown as Env;
+    const garden = bindings.GARDEN.get(bindings.GARDEN.idFromName(registered.playerId));
+    await runInDurableObject(garden, (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'ledger'")
+        .toArray()[0];
+      if (row === undefined) throw new Error("ledger missing");
+      const meta = JSON.parse(row.value) as { coins: number };
+      meta.coins = 500_000_000_000;
+      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'ledger'", JSON.stringify(meta));
+    });
+
+    let rev = registered.state.rev;
+    const buy = await act(registered, rev, { kind: "buySpecialPlot" });
+    expect(buy.status).toBe(200);
+    rev = (buy.payload as GardenActResponse).state.rev;
+
+    const planted = await act(registered, rev, { kind: "plantSpecial", slot: 0, seed: "carrot" });
+    expect(planted.status).toBe(200);
+    const plantedState = (planted.payload as GardenActResponse).state;
+    expect(plantedState.specialPlots[0]?.seed).toBe("carrot");
+    expect(plantedState.bag.seeds.carrot).toBe(2);
+
+    const persisted = await readState(registered);
+    expect(persisted.state.specialPlots[0]?.seed).toBe("carrot");
+    expect(persisted.state.bag.seeds.carrot).toBe(2);
   });
 
   it("plants a bagged seed and rejects a stale revision", async () => {

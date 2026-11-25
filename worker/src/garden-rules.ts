@@ -1040,6 +1040,7 @@ function withSpecial<T extends readonly unknown[]>(
     unlockedPatches: [SPECIAL_PLOTS_PER_PATCH],
     plots: ledger.specialPlots,
     soil: new Array<number>(SPECIAL_SLOTS).fill(SOIL_START),
+    damagedPlots: [],
   };
   const result = rule(projected, slot, ...rest);
   if (!result.ok) return result;
@@ -1051,6 +1052,7 @@ function withSpecial<T extends readonly unknown[]>(
       soil: ledger.soil,
       tabs: ledger.tabs,
       unlockedPatches: ledger.unlockedPatches,
+      damagedPlots: ledger.damagedPlots,
       specialPlots: result.ledger.plots,
     },
   };
