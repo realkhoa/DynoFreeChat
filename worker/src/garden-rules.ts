@@ -310,8 +310,10 @@ export interface GardenLedger {
   color: string;
   /** Public share code. */
   code: string;
-  /** SHA-256 of the current write token. */
+  /** SHA-256 of the primary write token. */
   tokenHash: string;
+  /** Additional SHA-256 token digests issued to linked multi-device sessions. */
+  sessionTokenHashes?: string[];
   /** SHA-256 of the recovery key. */
   recoveryHash: string;
   /** Spendable coins. */

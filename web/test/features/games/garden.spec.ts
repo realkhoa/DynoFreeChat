@@ -211,6 +211,7 @@ class FakeGardenApi {
   visitValue: VisitSnapshot = makeVisit();
   calls: Array<{ method: string; action?: GardenAction }> = [];
   session = { playerId: PLAYER_ID, token: "a".repeat(64), recovery: "ABCD-EFGH-JKMN" };
+  account: { username: string; accountToken: string } | null = null;
 
   constructor(stateValue: GardenSnapshot = makeState()) {
     this.stateValue = stateValue;
@@ -225,6 +226,39 @@ class FakeGardenApi {
   }
 
   forget(): void {}
+
+  logoutAccount(): void {
+    this.account = null;
+  }
+
+  async accountRegister(username: string, _password: string, _recovery?: string) {
+    this.account = { username, accountToken: "acct-token" };
+    return {
+      accountToken: "acct-token",
+      username,
+      playerId: this.session.playerId,
+      token: "b".repeat(64),
+      state: this.stateValue,
+      season: this.seasonValue,
+      serverNow: CLOCK,
+    };
+  }
+
+  async accountLogin(username: string, _password: string, _recovery?: string) {
+    return this.accountRegister(username, _password, _recovery);
+  }
+
+  async accountLink(_recovery?: string) {
+    return {
+      accountToken: "acct-token",
+      username: this.account?.username ?? "linked@example.com",
+      playerId: this.session.playerId,
+      token: "b".repeat(64),
+      state: this.stateValue,
+      season: this.seasonValue,
+      serverNow: CLOCK,
+    };
+  }
 
   async state() {
     return { state: this.stateValue, season: this.seasonValue, serverNow: CLOCK, market: MARKET };
@@ -4994,5 +5028,21 @@ describe("reborn legacy parity features", () => {
     expect(host.querySelector('[data-role="restore"]')).not.toBeNull();
     expect(host.querySelector('[data-act="restore"]')).not.toBeNull();
     expect(host.querySelector('[data-act="rotate"]')).not.toBeNull();
+
+    const userInput = host.querySelector<HTMLInputElement>('[data-role="accountUser"]');
+    const passInput = host.querySelector<HTMLInputElement>('[data-role="accountPass"]');
+    expect(userInput).not.toBeNull();
+    expect(passInput).not.toBeNull();
+    if (userInput && passInput) {
+      userInput.value = "farmer@example.com";
+      userInput.dispatchEvent(new Event("input", { bubbles: true }));
+      passInput.value = "secret123";
+      passInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    host.querySelector<HTMLButtonElement>('[data-act="accountRegister"]')?.click();
+    await settle();
+
+    expect(host.textContent).toContain("farmer@example.com");
+    expect(host.querySelector('[data-act="accountLogout"]')).not.toBeNull();
   });
 });

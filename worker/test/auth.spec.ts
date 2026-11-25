@@ -1,16 +1,22 @@
 import { SELF } from "cloudflare:test";
+import { GARDEN_AUTH_HEADER, formatGardenAuth } from "@dyno/shared/garden";
 import { describe, expect, it } from "vitest";
 import {
+  ACCOUNT_SESSION_TTL_MS,
   LOCK_HEADER,
   SESSION_TTL_MS,
   VERIFY_CAPACITY,
   VERIFY_WINDOW_MS,
+  hashPasswordPBKDF2,
+  issueAccountSession,
   issueSession,
   lockSecrets,
   sha256Hex,
   takeVerifyAttempt,
   timingSafeEqual,
+  verifyAccountSession,
   verifyCredential,
+  verifyPasswordPBKDF2,
   verifySession,
   type LockSecrets,
 } from "../src/auth";
@@ -126,5 +132,73 @@ describe("auth routes", () => {
 
   it("exposes the lock header name for the client", () => {
     expect(LOCK_HEADER).toBe("x-dyno-lock");
+  });
+});
+
+describe("cloudflare account auth & multi-device sync", () => {
+  it("hashes and verifies passwords via PBKDF2 and signs account sessions", async () => {
+    const hash = await hashPasswordPBKDF2("secret-pass");
+    expect(hash.startsWith("pbkdf2$")).toBe(true);
+    await expect(verifyPasswordPBKDF2("secret-pass", hash)).resolves.toBe(true);
+    await expect(verifyPasswordPBKDF2("wrong-pass", hash)).resolves.toBe(false);
+
+    const now = 1_700_000_000_000;
+    const token = await issueAccountSession("test-secret", "acct-1", now);
+    await expect(verifyAccountSession("test-secret", token, now)).resolves.toBe("acct-1");
+    await expect(
+      verifyAccountSession("test-secret", token, now + ACCOUNT_SESSION_TTL_MS + 1),
+    ).resolves.toBeNull();
+  });
+
+  it("links an account to an existing garden without email verification and keeps multiple devices authorized", async () => {
+    const ip = uniqueIp();
+    const regRes = await SELF.fetch(`${BASE}/api/garden/register`, {
+      method: "POST",
+      headers: { origin: ORIGIN, "content-type": "application/json", "cf-connecting-ip": ip },
+      body: JSON.stringify({ nick: "OldFarmer", color: "#5f8" }),
+    });
+    expect(regRes.status).toBe(201);
+    const oldGarden = (await regRes.json()) as { playerId: string; token: string };
+    const oldAuth = formatGardenAuth(oldGarden);
+
+    const acctReg = await SELF.fetch(`${BASE}/api/garden/account/register`, {
+      method: "POST",
+      headers: {
+        origin: ORIGIN,
+        "content-type": "application/json",
+        [GARDEN_AUTH_HEADER]: oldAuth,
+      },
+      body: JSON.stringify({ username: "farmer@example.com", password: "password123" }),
+    });
+    expect(acctReg.status).toBe(201);
+    const linked = (await acctReg.json()) as {
+      accountToken: string;
+      username: string;
+      playerId: string;
+      token: string;
+    };
+    expect(linked.username).toBe("farmer@example.com");
+    expect(linked.playerId).toBe(oldGarden.playerId);
+
+    // Second device logs in with username/password -> gets its own token for the same garden
+    const device2Login = await SELF.fetch(`${BASE}/api/garden/account/login`, {
+      method: "POST",
+      headers: { origin: ORIGIN, "content-type": "application/json" },
+      body: JSON.stringify({ username: "farmer@example.com", password: "password123" }),
+    });
+    expect(device2Login.status).toBe(200);
+    const device2 = (await device2Login.json()) as { playerId: string; token: string };
+    expect(device2.playerId).toBe(oldGarden.playerId);
+    expect(device2.token).not.toBe(oldGarden.token);
+
+    // Both Device 1 and Device 2 can still access /api/garden/state simultaneously
+    const s1 = await SELF.fetch(`${BASE}/api/garden/state`, {
+      headers: { origin: ORIGIN, [GARDEN_AUTH_HEADER]: oldAuth },
+    });
+    const s2 = await SELF.fetch(`${BASE}/api/garden/state`, {
+      headers: { origin: ORIGIN, [GARDEN_AUTH_HEADER]: formatGardenAuth(device2) },
+    });
+    expect(s1.status).toBe(200);
+    expect(s2.status).toBe(200);
   });
 });

@@ -99,6 +99,7 @@ import {
   ledgerSnapshot,
   type GardenLedger,
 } from "./garden-rules";
+import { hashPasswordPBKDF2, verifyPasswordPBKDF2 } from "./auth";
 import { timingSafeEqualHex } from "./pass";
 import { randomRecoveryKey, randomToken, sha256Hex } from "./secrets";
 import { createRng, hash32 } from "@dyno/shared/garden";
@@ -514,6 +515,7 @@ export class Garden extends DurableObject<Env> {
     }
     if (request.method === "POST" && url.pathname === "/recovery") return this.rotateRecovery(request);
     if (request.method === "POST" && url.pathname === "/issue-token") return this.issueToken(request);
+    if (request.method === "POST" && url.pathname === "/issue-session") return this.issueSession();
     if (request.method === "POST" && url.pathname === "/identity") return this.identity(request);
     if (request.method === "POST" && url.pathname === "/water-guest") return this.waterGuest(request);
     if (request.method === "POST" && url.pathname === "/cheer-guest") return this.cheerGuest(request);
@@ -1187,14 +1189,19 @@ export class Garden extends DurableObject<Env> {
     return json({ ok: true, recipe });
   }
 
-  /** @brief Authenticates one owner request against the stored token digest. */
+  /** @brief Authenticates one owner request against the primary or multi-device session token digests. */
   private async authorize(request: Request): Promise<GardenLedger | null> {
     const token = request.headers.get(GARDEN_TOKEN_HEADER);
     if (token === null || token.length !== 64) return null;
     const ledger = this.read();
     if (ledger === null) return null;
     const digest = await sha256Hex(token);
-    return timingSafeEqualHex(digest, ledger.tokenHash) ? ledger : null;
+    if (timingSafeEqualHex(digest, ledger.tokenHash)) return ledger;
+    const sessions = ledger.sessionTokenHashes ?? [];
+    for (const storedHash of sessions) {
+      if (timingSafeEqualHex(digest, storedHash)) return ledger;
+    }
+    return null;
   }
 
   /** @brief Standard unauthorized response. */
@@ -1723,6 +1730,24 @@ export class Garden extends DurableObject<Env> {
     return json({ token, state: ledgerSnapshot(ledger), season: seasonAt(now), serverNow: now });
   }
 
+  /**
+   * @brief Mints an additional multi-device session token without revoking existing devices.
+   * @return JSON containing the new token and current garden snapshot.
+   */
+  private async issueSession(): Promise<Response> {
+    const ledger = this.read();
+    if (ledger === null) return json({ code: "NO_GARDEN" }, 404);
+    const now = Date.now();
+    const token = randomToken();
+    const digest = await sha256Hex(token);
+    const existing = ledger.sessionTokenHashes ?? [];
+    ledger.sessionTokenHashes = [...existing.slice(-7), digest];
+    ledger.updatedAt = now;
+    ledger.lastSeen = now;
+    this.write(ledger);
+    return json({ token, state: ledgerSnapshot(ledger), season: seasonAt(now), serverNow: now });
+  }
+
   /** @brief Verifies a token and returns the identity behind it. */
   private async identity(request: Request): Promise<Response> {
     const ledger = await this.authorize(request);
@@ -2097,6 +2122,14 @@ export class GardenHub extends DurableObject<Env> {
         harvested INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS accounts (
+        account_id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        player_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
     `);
     // Bots live in the same table but never reach the human leaderboard.
     const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(gardens)").toArray();
@@ -2152,6 +2185,12 @@ export class GardenHub extends DurableObject<Env> {
     if (request.method === "GET" && url.pathname === "/stocks") return this.stocks(url);
     if (request.method === "POST" && url.pathname === "/remove") return this.remove(request);
     if (request.method === "GET" && url.pathname === "/info") return this.info();
+    if (request.method === "POST" && url.pathname === "/auth/register") return this.authRegister(request);
+    if (request.method === "POST" && url.pathname === "/auth/login") return this.authLogin(request);
+    if (request.method === "POST" && url.pathname === "/auth/cf-access") return this.authCfAccess(request);
+    if (request.method === "POST" && url.pathname === "/auth/link") return this.authLink(request);
+    if (request.method === "GET" && url.pathname === "/auth/by-player") return this.authByPlayer(url);
+    if (request.method === "GET" && url.pathname === "/auth/by-id") return this.authById(url);
 
     return json({ code: "NOT_FOUND" }, 404);
   }
@@ -2896,6 +2935,222 @@ export class GardenHub extends DurableObject<Env> {
     if (row.count >= REGISTERS_PER_WINDOW) return false;
     this.sql.exec("UPDATE creates SET count = count + 1 WHERE ip = ?", ip);
     return true;
+  }
+
+  /**
+   * @brief Registers a new Cloudflare-stored account without email verification and optionally links an existing garden.
+   * @param request JSON body `{ username, password, playerId? }`.
+   * @return Account summary `{ accountId, username, playerId }` or error status.
+   */
+  private async authRegister(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    const playerId = typeof body.playerId === "string" && body.playerId.length > 0 ? body.playerId : null;
+    if (username.length < 3 || username.length > 64 || !/^[a-z0-9._@+-]+$/.test(username)) {
+      return json({ code: "BAD_USERNAME" }, 400);
+    }
+    if (password.length < 6 || password.length > 128) {
+      return json({ code: "BAD_PASSWORD" }, 400);
+    }
+    const exists = this.sql
+      .exec<SqlRow<{ account_id: string }>>("SELECT account_id FROM accounts WHERE username = ?", username)
+      .toArray()[0];
+    if (exists !== undefined) return json({ code: "USERNAME_EXISTS" }, 409);
+
+    if (playerId !== null) {
+      const gardenExists = this.sql
+        .exec<SqlRow<{ player_id: string }>>("SELECT player_id FROM gardens WHERE player_id = ?", playerId)
+        .toArray()[0];
+      if (gardenExists === undefined) return json({ code: "NO_GARDEN" }, 404);
+    }
+
+    const now = Date.now();
+    const accountId = crypto.randomUUID();
+    const passwordHash = await hashPasswordPBKDF2(password);
+    this.sql.exec(
+      "INSERT INTO accounts (account_id, username, password_hash, player_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      accountId,
+      username,
+      passwordHash,
+      playerId,
+      now,
+      now,
+    );
+    return json({ accountId, username, playerId }, 201);
+  }
+
+  /**
+   * @brief Authenticates a username/password pair and optionally links an existing garden when unlinked.
+   * @param request JSON body `{ username, password, linkPlayerId? }`.
+   * @return Account summary `{ accountId, username, playerId }`.
+   */
+  private async authLogin(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    const linkPlayerId =
+      typeof body.linkPlayerId === "string" && body.linkPlayerId.length > 0 ? body.linkPlayerId : null;
+    if (username.length === 0 || password.length === 0) {
+      return json({ code: "BAD_CREDENTIAL" }, 401);
+    }
+    const row = this.sql
+      .exec<
+        SqlRow<{ account_id: string; username: string; password_hash: string; player_id: string | null }>
+      >("SELECT account_id, username, password_hash, player_id FROM accounts WHERE username = ?", username)
+      .toArray()[0];
+    if (row === undefined) return json({ code: "BAD_CREDENTIAL" }, 401);
+    const ok = await verifyPasswordPBKDF2(password, row.password_hash);
+    if (!ok) return json({ code: "BAD_CREDENTIAL" }, 401);
+
+    let playerId = row.player_id;
+    if (playerId === null && linkPlayerId !== null) {
+      const gardenExists = this.sql
+        .exec<SqlRow<{ player_id: string }>>(
+          "SELECT player_id FROM gardens WHERE player_id = ?",
+          linkPlayerId,
+        )
+        .toArray()[0];
+      if (gardenExists !== undefined) {
+        playerId = linkPlayerId;
+        this.sql.exec(
+          "UPDATE accounts SET player_id = ?, updated_at = ? WHERE account_id = ?",
+          playerId,
+          Date.now(),
+          row.account_id,
+        );
+      }
+    }
+    return json({ accountId: row.account_id, username: row.username, playerId });
+  }
+
+  /**
+   * @brief Upserts a Cloudflare Access SSO identity (`Cf-Access-Authenticated-User-Email`) without a password.
+   * @param request JSON body `{ email, linkPlayerId? }`.
+   * @return Account summary `{ accountId, username, playerId }`.
+   */
+  private async authCfAccess(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const linkPlayerId =
+      typeof body.linkPlayerId === "string" && body.linkPlayerId.length > 0 ? body.linkPlayerId : null;
+    if (email.length < 3 || email.length > 64) return json({ code: "BAD_USERNAME" }, 400);
+
+    const existing = this.sql
+      .exec<SqlRow<{ account_id: string; username: string; player_id: string | null }>>(
+        "SELECT account_id, username, player_id FROM accounts WHERE username = ?",
+        email,
+      )
+      .toArray()[0];
+    const now = Date.now();
+    if (existing !== undefined) {
+      let playerId = existing.player_id;
+      if (playerId === null && linkPlayerId !== null) {
+        const gardenExists = this.sql
+          .exec<SqlRow<{ player_id: string }>>(
+            "SELECT player_id FROM gardens WHERE player_id = ?",
+            linkPlayerId,
+          )
+          .toArray()[0];
+        if (gardenExists !== undefined) {
+          playerId = linkPlayerId;
+          this.sql.exec(
+            "UPDATE accounts SET player_id = ?, updated_at = ? WHERE account_id = ?",
+            playerId,
+            now,
+            existing.account_id,
+          );
+        }
+      }
+      return json({ accountId: existing.account_id, username: existing.username, playerId });
+    }
+
+    const accountId = crypto.randomUUID();
+    let validPlayerId: string | null = null;
+    if (linkPlayerId !== null) {
+      const g = this.sql
+        .exec<SqlRow<{ player_id: string }>>(
+          "SELECT player_id FROM gardens WHERE player_id = ?",
+          linkPlayerId,
+        )
+        .toArray()[0];
+      if (g !== undefined) validPlayerId = linkPlayerId;
+    }
+    this.sql.exec(
+      "INSERT INTO accounts (account_id, username, password_hash, player_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      accountId,
+      email,
+      "cf-access",
+      validPlayerId,
+      now,
+      now,
+    );
+    return json({ accountId, username: email, playerId: validPlayerId });
+  }
+
+  /**
+   * @brief Links an existing account to a specific garden `playerId`.
+   * @param request JSON body `{ accountId, playerId }`.
+   * @return Updated account summary.
+   */
+  private async authLink(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const accountId = typeof body.accountId === "string" ? body.accountId : "";
+    const playerId = typeof body.playerId === "string" ? body.playerId : "";
+    if (accountId.length === 0 || playerId.length === 0) return json({ code: "BAD_REQUEST" }, 400);
+
+    const row = this.sql
+      .exec<SqlRow<{ account_id: string; username: string; player_id: string | null }>>(
+        "SELECT account_id, username, player_id FROM accounts WHERE account_id = ?",
+        accountId,
+      )
+      .toArray()[0];
+    if (row === undefined) return json({ code: "NO_ACCOUNT" }, 404);
+
+    const gardenExists = this.sql
+      .exec<SqlRow<{ player_id: string }>>("SELECT player_id FROM gardens WHERE player_id = ?", playerId)
+      .toArray()[0];
+    if (gardenExists === undefined) return json({ code: "NO_GARDEN" }, 404);
+
+    this.sql.exec(
+      "UPDATE accounts SET player_id = ?, updated_at = ? WHERE account_id = ?",
+      playerId,
+      Date.now(),
+      accountId,
+    );
+    return json({ accountId: row.account_id, username: row.username, playerId });
+  }
+
+  /**
+   * @brief Looks up whether a garden `playerId` is already linked to a Cloudflare account.
+   * @param url Request URL containing `?playerId=...`.
+   * @return `{ linked: boolean, username?: string }`.
+   */
+  private authByPlayer(url: URL): Response {
+    const playerId = url.searchParams.get("playerId") ?? "";
+    if (playerId.length === 0) return json({ linked: false });
+    const row = this.sql
+      .exec<SqlRow<{ username: string }>>("SELECT username FROM accounts WHERE player_id = ?", playerId)
+      .toArray()[0];
+    return json(row ? { linked: true, username: row.username } : { linked: false });
+  }
+
+  /**
+   * @brief Looks up an account by its UUID.
+   * @param url Request URL containing `?accountId=...`.
+   * @return Account summary or 404.
+   */
+  private authById(url: URL): Response {
+    const accountId = url.searchParams.get("accountId") ?? "";
+    if (accountId.length === 0) return json({ code: "NO_ACCOUNT" }, 404);
+    const row = this.sql
+      .exec<SqlRow<{ account_id: string; username: string; player_id: string | null }>>(
+        "SELECT account_id, username, player_id FROM accounts WHERE account_id = ?",
+        accountId,
+      )
+      .toArray()[0];
+    if (row === undefined) return json({ code: "NO_ACCOUNT" }, 404);
+    return json({ accountId: row.account_id, username: row.username, playerId: row.player_id });
   }
 }
 

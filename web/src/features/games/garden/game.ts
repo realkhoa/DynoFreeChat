@@ -544,6 +544,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   let busy = false;
   let uprootArmed = false;
   let restoreDraft = "";
+  let accountUserDraft = "";
+  let accountPassDraft = "";
+  let accountRecoveryDraft = "";
+  let linkedAccountUsername: string | null = api.account?.username ?? null;
   let leaderboard: LeaderboardEntry[] = [];
   let localIdentity: Identity = { nick: "guest", color: "hsl(210 40% 70%)" };
 
@@ -1351,6 +1355,92 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     busy = false;
     if (!disposed) render();
+  }
+
+  /**
+   * @brief Applies an authenticated Cloudflare account bundle onto the active garden session.
+   * @param bundle Response payload returned by register, login, or link endpoints.
+   * @param okKey Localized success message key.
+   */
+  function applyAccountBundle(
+    bundle: {
+      username: string;
+      state?: GardenSnapshot;
+      season?: SeasonSnapshot;
+    },
+    okKey: string,
+  ): void {
+    linkedAccountUsername = bundle.username;
+    if (bundle.state !== undefined && bundle.season !== undefined) {
+      state = bundle.state;
+      season = bundle.season;
+      mode = "owner";
+      visiting = null;
+      visitCode = null;
+      selectedSlot = null;
+      offline = false;
+    }
+    accountPassDraft = "";
+    accountRecoveryDraft = "";
+    message = { text: t(okKey), kind: "ok" };
+  }
+
+  /** @brief Registers a Cloudflare account without email verification and links the current or recovered garden. */
+  async function submitAccountRegister(): Promise<void> {
+    const username = accountUserDraft.trim();
+    const password = accountPassDraft;
+    if (username.length === 0 || password.length === 0 || busy) return;
+    busy = true;
+    try {
+      const rec = accountRecoveryDraft.trim().toUpperCase();
+      const bundle = await api.accountRegister(username, password, rec.length > 0 ? rec : undefined);
+      applyAccountBundle(bundle, "account.registerOk");
+    } catch (error) {
+      applyApiError(error);
+    }
+    busy = false;
+    if (!disposed) render();
+  }
+
+  /** @brief Signs into a Cloudflare account and syncs its linked garden to this device. */
+  async function submitAccountLogin(): Promise<void> {
+    const username = accountUserDraft.trim();
+    const password = accountPassDraft;
+    if (username.length === 0 || password.length === 0 || busy) return;
+    busy = true;
+    try {
+      const rec = accountRecoveryDraft.trim().toUpperCase();
+      const bundle = await api.accountLogin(username, password, rec.length > 0 ? rec : undefined);
+      applyAccountBundle(bundle, "account.loginOk");
+    } catch (error) {
+      applyApiError(error);
+    }
+    busy = false;
+    if (!disposed) render();
+  }
+
+  /** @brief Links the active Cloudflare account (or Cloudflare Access user) to the current or recovered garden. */
+  async function submitAccountLink(): Promise<void> {
+    if (busy) return;
+    busy = true;
+    try {
+      const rec = accountRecoveryDraft.trim().toUpperCase();
+      const bundle = await api.accountLink(rec.length > 0 ? rec : undefined);
+      applyAccountBundle(bundle, "account.linkOk");
+    } catch (error) {
+      applyApiError(error);
+    }
+    busy = false;
+    if (!disposed) render();
+  }
+
+  /** @brief Clears the Cloudflare account session on this device only. */
+  function logoutAccountLocal(): void {
+    api.logoutAccount();
+    linkedAccountUsername = null;
+    accountPassDraft = "";
+    message = { text: t("account.logoutOk"), kind: "ok" };
+    render();
   }
 
   /** @brief Mints a new recovery key and shows it once. */
@@ -7274,12 +7364,75 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /**
+   * @brief Builds the Cloudflare account & multi-device sync panel.
+   * @return HTMLElement containing account registration, login, link-to-garden, and logout controls.
+   */
+  function buildAccountSyncPanel(): HTMLElement {
+    const panel = div("garden-event-panel");
+    panel.append(lineBlock(`// ${t("account.title")}`));
+    const activeUser = linkedAccountUsername ?? api.account?.username ?? null;
+    if (activeUser !== null) {
+      panel.append(lineBlock(t("account.linkedAs", { username: activeUser })));
+      panel.append(lineBlock(t("account.multiDeviceActive")));
+      const row = div("garden-restore-row");
+      const recInput = document.createElement("input");
+      recInput.type = "text";
+      recInput.className = "stage-input garden-restore-input";
+      recInput.placeholder = t("account.recoveryOptionalPlaceholder");
+      recInput.value = accountRecoveryDraft;
+      recInput.dataset.role = "accountRecovery";
+      row.append(
+        recInput,
+        actionButton(t("account.linkCurrent"), "accountLink"),
+        actionButton(t("account.logout"), "accountLogout"),
+      );
+      panel.append(row);
+      return panel;
+    }
+
+    panel.append(lineBlock(t("account.hint")));
+    const userRow = div("garden-restore-row");
+    const userInput = document.createElement("input");
+    userInput.type = "text";
+    userInput.className = "stage-input garden-restore-input";
+    userInput.placeholder = t("account.usernamePlaceholder");
+    userInput.value = accountUserDraft;
+    userInput.dataset.role = "accountUser";
+    userInput.setAttribute("aria-label", t("account.usernamePlaceholder"));
+
+    const passInput = document.createElement("input");
+    passInput.type = "password";
+    passInput.className = "stage-input garden-restore-input";
+    passInput.placeholder = t("account.passwordPlaceholder");
+    passInput.value = accountPassDraft;
+    passInput.dataset.role = "accountPass";
+    passInput.setAttribute("aria-label", t("account.passwordPlaceholder"));
+    userRow.append(userInput, passInput);
+    panel.append(userRow);
+
+    const actionRow = div("garden-restore-row");
+    const recInput = document.createElement("input");
+    recInput.type = "text";
+    recInput.className = "stage-input garden-restore-input";
+    recInput.placeholder = t("account.recoveryOptionalPlaceholder");
+    recInput.value = accountRecoveryDraft;
+    recInput.dataset.role = "accountRecovery";
+    actionRow.append(
+      recInput,
+      actionButton(t("account.registerLink"), "accountRegister"),
+      actionButton(t("account.loginSync"), "accountLogin"),
+    );
+    panel.append(actionRow);
+    return panel;
+  }
+
+  /**
    * @brief Builds the dedicated top-level Restore tab content in the rebuilt view.
-   * @return HTMLElement wrapping the backup & recovery panel.
+   * @return HTMLElement wrapping the Cloudflare account sync panel and backup & recovery panel.
    */
   function buildRebornRestoreSection(): HTMLElement {
     const wrap = div("garden-event");
-    wrap.append(buildRecoveryPanel());
+    wrap.append(buildAccountSyncPanel(), buildRecoveryPanel());
     return wrap;
   }
 
@@ -12443,6 +12596,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "restore":
         void restoreGarden();
         return;
+      case "accountRegister":
+        void submitAccountRegister();
+        return;
+      case "accountLogin":
+        void submitAccountLogin();
+        return;
+      case "accountLink":
+        void submitAccountLink();
+        return;
+      case "accountLogout":
+        logoutAccountLocal();
+        return;
       case "rotate":
         void rotateRecovery();
         return;
@@ -12571,6 +12736,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
     if (target.dataset.role === "restore") restoreDraft = target.value;
+    if (target.dataset.role === "accountUser") accountUserDraft = target.value;
+    if (target.dataset.role === "accountPass") accountPassDraft = target.value;
+    if (target.dataset.role === "accountRecovery") accountRecoveryDraft = target.value;
     if (target.dataset.role === "uprootPrice") uprootPriceDraft = target.value;
     if (target.dataset.role === "machineLimit") machineLimitDraft = target.value;
     if (target.dataset.role === "guildDonate") {

@@ -31,7 +31,13 @@ import {
 } from "@dyno/shared/garden";
 import { LOCK_HEADER } from "@dyno/shared/market";
 import { sanitizeColor, sanitizeNick } from "@dyno/shared/protocol";
-import { lockSecrets, verifySession } from "./auth";
+import {
+  accountSigningSecret,
+  issueAccountSession,
+  lockSecrets,
+  verifyAccountSession,
+  verifySession,
+} from "./auth";
 import type { Env } from "./env";
 import { BOT_HEADER, GARDEN_TOKEN_HEADER, HUB_NAME, MARKET_HEADER } from "./garden";
 import { BOT_MANAGER_NAME } from "./bot-manager";
@@ -61,6 +67,14 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
 
   if (name === "register" && request.method === "POST") return registerGarden(request, env, now);
   if (name === "restore" && request.method === "POST") return restoreGarden(request, env);
+  if (name === "account") {
+    const action = parts[3];
+    if (action === "register" && request.method === "POST") return accountRegister(request, env, now);
+    if (action === "login" && request.method === "POST") return accountLogin(request, env, now);
+    if (action === "link" && request.method === "POST") return accountLink(request, env, now);
+    if (action === "me" && request.method === "GET") return accountMe(request, env, now);
+    return json({ code: "NOT_FOUND" }, 404);
+  }
   if (name === "season" && request.method === "GET") return seasonRoute(env, now);
   if (name === "market" && request.method === "GET") return marketRoute(env);
   if (name === "leaderboard" && request.method === "GET") return leaderboard(env, url);
@@ -859,4 +873,249 @@ async function leaderboard(env: Env, url: URL): Promise<Response> {
   // API filters by the BotManager registry as the source of truth.
   payload.entries = (payload.entries ?? []).filter((entry) => !botCodes.has(entry.code));
   return json(payload);
+}
+
+const ACCOUNT_TOKEN_HEADER = "x-dyno-account-token";
+
+/**
+ * @brief Resolves a verified `playerId` from either the caller's active garden credentials or a recovery key.
+ * @param request Incoming HTTP request.
+ * @param env Worker environment bindings.
+ * @param recovery Optional recovery key string from the request body.
+ * @return Verified `playerId` or `null` when neither credential is present/valid.
+ */
+async function resolveVerifiedPlayerId(
+  request: Request,
+  env: Env,
+  recovery: unknown,
+): Promise<string | null> {
+  if (typeof recovery === "string" && recovery.trim().length > 0) {
+    const clean = recovery.trim().toUpperCase();
+    if (!isRecoveryKey(clean)) return null;
+    const hash = await sha256Hex(clean);
+    const lookup = await hubStub(env).fetch(`https://hub/by-recovery?hash=${hash}`);
+    if (!lookup.ok) return null;
+    const found = (await lookup.json()) as { playerId?: unknown };
+    return typeof found.playerId === "string" ? found.playerId : null;
+  }
+  const auth = parseGardenAuth(request.headers.get(GARDEN_AUTH_HEADER));
+  if (auth === null) return null;
+  const verified = await visitorIdentity(env, auth);
+  return verified !== null ? verified.playerId : null;
+}
+
+/**
+ * @brief Issues a multi-device garden session payload for an authenticated account.
+ * @param env Worker environment bindings.
+ * @param account Account summary `{ accountId, username, playerId }`.
+ * @param accountToken Signed account session token.
+ * @return JSON Response containing account info and (when linked) garden credentials & snapshot.
+ */
+async function buildAccountAuthResponse(
+  env: Env,
+  account: { accountId: string; username: string; playerId: string | null },
+  accountToken: string,
+  status = 200,
+): Promise<Response> {
+  if (account.playerId === null) {
+    return json({ accountToken, username: account.username, playerId: null }, status);
+  }
+  const issued = await gardenStub(env, account.playerId).fetch("https://garden/issue-session", {
+    method: "POST",
+  });
+  if (!issued.ok) {
+    return json({ accountToken, username: account.username, playerId: null }, status);
+  }
+  const payload = (await issued.json()) as {
+    token: string;
+    state: unknown;
+    season: unknown;
+    serverNow: number;
+  };
+  return json(
+    {
+      accountToken,
+      username: account.username,
+      playerId: account.playerId,
+      token: payload.token,
+      state: payload.state,
+      season: payload.season,
+      serverNow: payload.serverNow,
+    },
+    status,
+  );
+}
+
+/**
+ * @brief Registers a new Cloudflare account (no email verification) and optionally links an existing garden.
+ * @param request HTTP request with `{ username, password, recovery? }`.
+ * @param env Worker environment bindings.
+ * @param now Current epoch milliseconds.
+ * @return Account token and linked garden session bundle.
+ */
+async function accountRegister(request: Request, env: Env, now: number): Promise<Response> {
+  const body = await readJson(request);
+  const playerId = await resolveVerifiedPlayerId(request, env, body.recovery);
+  if (typeof body.recovery === "string" && body.recovery.trim().length > 0 && playerId === null) {
+    return json({ code: "BAD_RECOVERY" }, 400);
+  }
+
+  const hubRes = await hubStub(env).fetch("https://hub/auth/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      username: body.username,
+      password: body.password,
+      playerId,
+    }),
+  });
+  if (!hubRes.ok) return hubRes;
+  const account = (await hubRes.json()) as {
+    accountId: string;
+    username: string;
+    playerId: string | null;
+  };
+  const accountToken = await issueAccountSession(accountSigningSecret(env), account.accountId, now);
+  return buildAccountAuthResponse(env, account, accountToken, 201);
+}
+
+/**
+ * @brief Signs into an existing Cloudflare account and issues a multi-device garden session.
+ * @param request HTTP request with `{ username, password, recovery? }`.
+ * @param env Worker environment bindings.
+ * @param now Current epoch milliseconds.
+ * @return Account token and linked garden session bundle.
+ */
+async function accountLogin(request: Request, env: Env, now: number): Promise<Response> {
+  const body = await readJson(request);
+  const linkPlayerId = await resolveVerifiedPlayerId(request, env, body.recovery);
+  if (typeof body.recovery === "string" && body.recovery.trim().length > 0 && linkPlayerId === null) {
+    return json({ code: "BAD_RECOVERY" }, 400);
+  }
+
+  const hubRes = await hubStub(env).fetch("https://hub/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      username: body.username,
+      password: body.password,
+      linkPlayerId,
+    }),
+  });
+  if (!hubRes.ok) return hubRes;
+  const account = (await hubRes.json()) as {
+    accountId: string;
+    username: string;
+    playerId: string | null;
+  };
+  const accountToken = await issueAccountSession(accountSigningSecret(env), account.accountId, now);
+  return buildAccountAuthResponse(env, account, accountToken, 200);
+}
+
+/**
+ * @brief Links an authenticated account (via token or Cloudflare Access email) to an existing garden.
+ * @param request HTTP request with optional `{ recovery? }`.
+ * @param env Worker environment bindings.
+ * @param now Current epoch milliseconds.
+ * @return Updated account and multi-device garden session bundle.
+ */
+async function accountLink(request: Request, env: Env, now: number): Promise<Response> {
+  const body = await readJson(request);
+  const playerId = await resolveVerifiedPlayerId(request, env, body.recovery);
+  if (playerId === null) return json({ code: "NO_GARDEN" }, 400);
+
+  let accountId = await verifyAccountSession(
+    accountSigningSecret(env),
+    request.headers.get(ACCOUNT_TOKEN_HEADER),
+    now,
+  );
+  if (accountId === null) {
+    const cfEmail = (request.headers.get("cf-access-authenticated-user-email") ?? "").trim();
+    if (cfEmail.length > 0) {
+      const cfRes = await hubStub(env).fetch("https://hub/auth/cf-access", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: cfEmail, linkPlayerId: playerId }),
+      });
+      if (!cfRes.ok) return cfRes;
+      const cfAccount = (await cfRes.json()) as { accountId: string };
+      accountId = cfAccount.accountId;
+    }
+  }
+  if (accountId === null) return json({ code: "UNAUTHORIZED" }, 401);
+
+  const linkRes = await hubStub(env).fetch("https://hub/auth/link", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ accountId, playerId }),
+  });
+  if (!linkRes.ok) return linkRes;
+  const account = (await linkRes.json()) as {
+    accountId: string;
+    username: string;
+    playerId: string | null;
+  };
+  const accountToken = await issueAccountSession(accountSigningSecret(env), account.accountId, now);
+  return buildAccountAuthResponse(env, account, accountToken, 200);
+}
+
+/**
+ * @brief Returns current Cloudflare account / Cloudflare Access link status for the caller.
+ * @param request Incoming GET request.
+ * @param env Worker environment bindings.
+ * @param now Current epoch milliseconds.
+ * @return `{ linked, username?, playerId?, cfAccessEmail? }`.
+ */
+async function accountMe(request: Request, env: Env, now: number): Promise<Response> {
+  const cfEmail = (request.headers.get("cf-access-authenticated-user-email") ?? "").trim() || null;
+  const accountId = await verifyAccountSession(
+    accountSigningSecret(env),
+    request.headers.get(ACCOUNT_TOKEN_HEADER),
+    now,
+  );
+  if (accountId !== null) {
+    const lookup = await hubStub(env).fetch(
+      `https://hub/auth/by-id?accountId=${encodeURIComponent(accountId)}`,
+    );
+    if (lookup.ok) {
+      const account = (await lookup.json()) as { username: string; playerId: string | null };
+      return json({
+        linked: account.playerId !== null,
+        username: account.username,
+        playerId: account.playerId,
+        cfAccessEmail: cfEmail,
+      });
+    }
+  }
+
+  if (cfEmail !== null) {
+    const auth = parseGardenAuth(request.headers.get(GARDEN_AUTH_HEADER));
+    const verified = auth !== null ? await visitorIdentity(env, auth) : null;
+    const cfRes = await hubStub(env).fetch("https://hub/auth/cf-access", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: cfEmail, linkPlayerId: verified?.playerId ?? null }),
+    });
+    if (cfRes.ok) {
+      const cfAccount = (await cfRes.json()) as {
+        accountId: string;
+        username: string;
+        playerId: string | null;
+      };
+      const accountToken = await issueAccountSession(accountSigningSecret(env), cfAccount.accountId, now);
+      return buildAccountAuthResponse(env, cfAccount, accountToken, 200);
+    }
+  }
+
+  const auth = parseGardenAuth(request.headers.get(GARDEN_AUTH_HEADER));
+  if (auth !== null) {
+    const lookup = await hubStub(env).fetch(
+      `https://hub/auth/by-player?playerId=${encodeURIComponent(auth.playerId)}`,
+    );
+    if (lookup.ok) {
+      const data = (await lookup.json()) as { linked: boolean; username?: string };
+      return json({ ...data, playerId: auth.playerId, cfAccessEmail: cfEmail });
+    }
+  }
+  return json({ linked: false, cfAccessEmail: cfEmail });
 }

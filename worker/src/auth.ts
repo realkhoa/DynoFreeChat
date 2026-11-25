@@ -218,3 +218,109 @@ export async function stateResponse(
   const unlocked = await verifySession(secrets, request.headers.get(LOCK_HEADER), Date.now());
   return json({ required: true, unlocked });
 }
+
+/** How long a linked Cloudflare account session stays valid (30 days). */
+export const ACCOUNT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+const PBKDF2_ITERATIONS = 100_000;
+
+/**
+ * @brief Converts a hex string back into a Uint8Array.
+ * @param hex Lower-case hexadecimal string.
+ * @return Decoded byte buffer.
+ */
+function fromHex(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i += 1) {
+    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+/**
+ * @brief Derives a salted PBKDF2-SHA256 password hash using Cloudflare WebCrypto.
+ * @param password Plaintext password provided by the user.
+ * @param existingSaltHex Optional hex salt for verification; generates random 16 bytes when omitted.
+ * @return Encoded hash string `pbkdf2$<saltHex>$<digestHex>`.
+ */
+export async function hashPasswordPBKDF2(password: string, existingSaltHex?: string): Promise<string> {
+  const saltBytes = existingSaltHex ? fromHex(existingSaltHex) : crypto.getRandomValues(new Uint8Array(16));
+  const saltHex = existingSaltHex ?? toHex(saltBytes.buffer as ArrayBuffer);
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: saltBytes.buffer as ArrayBuffer, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    keyMaterial,
+    256,
+  );
+  return `pbkdf2$${saltHex}$${toHex(derived)}`;
+}
+
+/**
+ * @brief Verifies a plaintext password against a stored `pbkdf2$<salt>$<hash>` string.
+ * @param password Plaintext password to check.
+ * @param stored Stored password hash record.
+ * @return True if the password matches.
+ */
+export async function verifyPasswordPBKDF2(password: string, stored: string): Promise<boolean> {
+  const parts = stored.split("$");
+  if (parts.length !== 3 || parts[0] !== "pbkdf2") return false;
+  const saltHex = parts[1];
+  if (!saltHex || !/^[0-9a-f]{32}$/.test(saltHex)) return false;
+  const recomputed = await hashPasswordPBKDF2(password, saltHex);
+  return timingSafeEqual(recomputed, stored);
+}
+
+/**
+ * @brief Resolves the HMAC signing secret for Cloudflare account tokens.
+ * @param env Worker environment bindings.
+ * @return Non-empty HMAC secret string.
+ */
+export function accountSigningSecret(env: { LOCK_TOKEN?: string; OPENCODE_API_KEY?: string }): string {
+  const lock = (env.LOCK_TOKEN ?? "").trim();
+  if (lock.length > 0) return lock;
+  const apiKey = (env.OPENCODE_API_KEY ?? "").trim();
+  if (apiKey.length > 0) return apiKey;
+  return "dyno-garden-cf-account-v1";
+}
+
+/**
+ * @brief Issues a signed multi-device account session token (`<accountId>.<expiresAt>.<sig>`).
+ * @param secret HMAC signing secret.
+ * @param accountId Unique account UUID.
+ * @param now Current epoch milliseconds.
+ * @return Signed token string.
+ */
+export async function issueAccountSession(secret: string, accountId: string, now: number): Promise<string> {
+  const expiresAt = now + ACCOUNT_SESSION_TTL_MS;
+  const sig = await sign(secret, `dyno-acct:${accountId}:${expiresAt}`);
+  return `${accountId}.${expiresAt}.${sig}`;
+}
+
+/**
+ * @brief Verifies a signed account session token and extracts its accountId.
+ * @param secret HMAC signing secret.
+ * @param token Raw token string.
+ * @param now Current epoch milliseconds.
+ * @return Validated accountId, or null if invalid or expired.
+ */
+export async function verifyAccountSession(
+  secret: string,
+  token: string | null,
+  now: number,
+): Promise<string | null> {
+  if (token === null || token.length === 0) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [accountId, rawExpires, sig] = parts;
+  if (!accountId || !rawExpires || !sig) return null;
+  const expiresAt = Number(rawExpires);
+  if (!Number.isFinite(expiresAt) || expiresAt <= now) return null;
+  const expected = await sign(secret, `dyno-acct:${accountId}:${expiresAt}`);
+  return timingSafeEqual(expected, sig) ? accountId : null;
+}

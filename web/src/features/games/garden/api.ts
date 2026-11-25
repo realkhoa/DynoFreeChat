@@ -27,7 +27,44 @@ import { apiBase } from "@/env";
 import { loadIdentity, type Identity } from "@/shared/lib/identity";
 
 /** Storage key for the player credentials. */
+/** Storage key for the garden credentials. */
 export const GARDEN_CREDENTIALS_KEY = "dyno.garden.credentials";
+
+/** Storage key for the linked Cloudflare account session. */
+export const GARDEN_ACCOUNT_KEY = "dyno.garden.account";
+
+/** Header carrying the signed Cloudflare account session token. */
+export const ACCOUNT_TOKEN_HEADER = "x-dyno-account-token";
+
+/** Persisted Cloudflare account session stored locally on this device. */
+export interface StoredGardenAccount {
+  readonly username: string;
+  readonly accountToken: string;
+}
+
+/** Response returned by `/api/garden/account/*` authentication and linking endpoints. */
+export interface AccountAuthBundle {
+  readonly accountToken: string;
+  readonly username: string;
+  readonly playerId: string | null;
+  readonly token?: string;
+  readonly state?: GardenSnapshot;
+  readonly season?: SeasonSnapshot;
+  readonly serverNow?: number;
+}
+
+/** Response returned by `GET /api/garden/account/me`. */
+export interface AccountMePayload {
+  readonly linked: boolean;
+  readonly username?: string;
+  readonly playerId?: string | null;
+  readonly cfAccessEmail?: string | null;
+  readonly accountToken?: string;
+  readonly token?: string;
+  readonly state?: GardenSnapshot;
+  readonly season?: SeasonSnapshot;
+  readonly serverNow?: number;
+}
 
 /** One bot garden row for the bots tab. */
 export interface GardenBot {
@@ -133,6 +170,7 @@ export class GardenApi {
   private readonly storage: Storage | null;
   private readonly identity: () => Identity;
   private credentials: StoredGardenCredentials | null;
+  private accountInfo: StoredGardenAccount | null;
   private offsetMs = 0;
 
   constructor(options: GardenApiOptions = {}) {
@@ -141,11 +179,17 @@ export class GardenApi {
     this.storage = options.storage ?? safeStorage();
     this.identity = options.identity ?? (() => loadIdentity(this.storage));
     this.credentials = this.readCredentials();
+    this.accountInfo = this.readAccount();
   }
 
   /** @brief Current credentials, or `null` for a fresh browser. */
   get session(): StoredGardenCredentials | null {
     return this.credentials;
+  }
+
+  /** @brief Current linked Cloudflare account session, or `null`. */
+  get account(): StoredGardenAccount | null {
+    return this.accountInfo;
   }
 
   /** @brief Server-clock estimate: `Date.now()` corrected by the last response. */
@@ -190,6 +234,90 @@ export class GardenApi {
     });
     this.adopt(bundle);
     return bundle;
+  }
+
+  /**
+   * @brief Registers a Cloudflare account without email verification and links the current or recovered garden.
+   * @param username Username or email identifier.
+   * @param password Account password (minimum 6 characters).
+   * @param recovery Optional recovery key to link an older garden directly.
+   * @return AccountAuthBundle with optional synced garden session.
+   */
+  async accountRegister(username: string, password: string, recovery?: string): Promise<AccountAuthBundle> {
+    const bundle = await this.request<AccountAuthBundle>("/api/garden/account/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password, recovery }),
+    });
+    this.adoptAccount(bundle);
+    return bundle;
+  }
+
+  /**
+   * @brief Signs into a Cloudflare account and syncs its linked garden to this device.
+   * @param username Username or email identifier.
+   * @param password Account password.
+   * @param recovery Optional recovery key to link if the account has no garden yet.
+   * @return AccountAuthBundle with multi-device garden session when linked.
+   */
+  async accountLogin(username: string, password: string, recovery?: string): Promise<AccountAuthBundle> {
+    const bundle = await this.request<AccountAuthBundle>("/api/garden/account/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password, recovery }),
+    });
+    this.adoptAccount(bundle);
+    return bundle;
+  }
+
+  /**
+   * @brief Links the currently signed-in account (or Cloudflare Access user) to the active or recovered garden.
+   * @param recovery Optional recovery key for an older garden.
+   * @return Updated AccountAuthBundle.
+   */
+  async accountLink(recovery?: string): Promise<AccountAuthBundle> {
+    const bundle = await this.request<AccountAuthBundle>("/api/garden/account/link", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ recovery }),
+    });
+    this.adoptAccount(bundle);
+    return bundle;
+  }
+
+  /**
+   * @brief Checks the current account / Cloudflare Access link status.
+   * @return AccountMePayload describing link status and optional synced session.
+   */
+  async accountMe(): Promise<AccountMePayload> {
+    const payload = await this.request<AccountMePayload>("/api/garden/account/me", { method: "GET" });
+    if (
+      typeof payload.accountToken === "string" &&
+      typeof payload.username === "string" &&
+      typeof payload.playerId === "string"
+    ) {
+      this.adoptAccount({
+        accountToken: payload.accountToken,
+        username: payload.username,
+        playerId: payload.playerId,
+        token: payload.token,
+        state: payload.state,
+        season: payload.season,
+        serverNow: payload.serverNow,
+      });
+    }
+    return payload;
+  }
+
+  /** @brief Clears the locally stored Cloudflare account session on this device only. */
+  logoutAccount(): void {
+    this.accountInfo = null;
+    if (this.storage === null) return;
+    try {
+      this.storage.removeItem(GARDEN_ACCOUNT_KEY);
+    } catch {
+      // Blocked storage: in-memory clear still applies.
+    }
   }
 
   /** @brief Reads the owner snapshot. */
@@ -560,7 +688,56 @@ export class GardenApi {
     if (this.credentials !== null) {
       headers[GARDEN_AUTH_HEADER] = formatGardenAuth(this.credentials);
     }
+    if (this.accountInfo !== null) {
+      headers[ACCOUNT_TOKEN_HEADER] = this.accountInfo.accountToken;
+    }
     return headers;
+  }
+
+  /** @brief Persists an authenticated Cloudflare account and adopts any synced garden session. */
+  private adoptAccount(bundle: AccountAuthBundle): void {
+    this.accountInfo = { username: bundle.username, accountToken: bundle.accountToken };
+    if (this.storage !== null) {
+      try {
+        this.storage.setItem(GARDEN_ACCOUNT_KEY, JSON.stringify(this.accountInfo));
+      } catch {
+        // Blocked storage: keep in-memory session.
+      }
+    }
+    if (
+      typeof bundle.playerId === "string" &&
+      typeof bundle.token === "string" &&
+      bundle.state !== undefined &&
+      bundle.season !== undefined &&
+      typeof bundle.serverNow === "number"
+    ) {
+      const existingRecovery =
+        this.credentials?.playerId === bundle.playerId ? this.credentials.recovery : undefined;
+      this.adopt({
+        playerId: bundle.playerId,
+        token: bundle.token,
+        recovery: existingRecovery,
+        state: bundle.state,
+        season: bundle.season,
+        serverNow: bundle.serverNow,
+      });
+    }
+  }
+
+  /** @brief Reads the persisted Cloudflare account session from storage. */
+  private readAccount(): StoredGardenAccount | null {
+    if (this.storage === null) return null;
+    try {
+      const raw = this.storage.getItem(GARDEN_ACCOUNT_KEY);
+      if (raw === null) return null;
+      const parsed = JSON.parse(raw) as unknown;
+      if (typeof parsed !== "object" || parsed === null) return null;
+      const record = parsed as Record<string, unknown>;
+      if (typeof record.username !== "string" || typeof record.accountToken !== "string") return null;
+      return { username: record.username, accountToken: record.accountToken };
+    } catch {
+      return null;
+    }
   }
 
   /**
