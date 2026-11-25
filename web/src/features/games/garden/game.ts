@@ -8795,7 +8795,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       name: t(`seeds.${offer.seed}.short`),
       glyph: definition?.art[3] ?? "?",
       note: stock > 0 ? `${formatCompact(price)}c·${stock}` : t("town.soldOut"),
-      tone: "harvest",
+      tone: rare ? "money" : "harvest",
       title: `${seedName(offer.seed)} · ${formatNumber(price)}c · ${t("market.stock")} ${stock}`,
       act: "townBuy",
       data: { kind: "seed", item: offer.seed },
@@ -8819,19 +8819,31 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     };
   }
 
-  /** @brief Seed and fertilizer merchant stock. */
+  /**
+   * @brief Seed, rare shop and supply merchant stock in the Reborn townhall market.
+   * @return Shop sections separating standard seeds, rare seeds, and supplies.
+   */
   function seedShopSections(): TownShopSection[] {
+    const offers = season?.shop.offers ?? [];
+    const normalOffers = offers.filter((offer) => seedById(offer.seed)?.rare !== true);
+    const rareOffers = offers.filter((offer) => seedById(offer.seed)?.rare === true);
     return [
       {
         id: "seeds",
         title: t("town.sectionSeeds"),
-        items: (season?.shop.offers ?? []).map(townSeedItem),
+        items: normalOffers.map(townSeedItem),
         emptyHint: t("town.soldOut"),
+      },
+      {
+        id: "rareSeeds",
+        title: t("town.sectionRareSeeds"),
+        items: rareOffers.map(townSeedItem),
+        emptyHint: t("market.rareEmpty"),
       },
       {
         id: "supplies",
         title: t("town.sectionSupplies"),
-        items: FERTILIZERS.map(townSupplyItem),
+        items: [...FERTILIZERS, ...SPRAYS].map(townSupplyItem),
         emptyHint: t("town.soldOut"),
       },
     ];

@@ -115,6 +115,7 @@ export function buildTownShop(
   for (const section of sections) {
     const block = document.createElement("div");
     block.className = "garden-town-section";
+    block.dataset.section = section.id;
     const heading = document.createElement("span");
     heading.className = "garden-board-title";
     heading.textContent = section.title;

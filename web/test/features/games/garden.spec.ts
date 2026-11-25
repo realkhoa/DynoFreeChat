@@ -3097,7 +3097,10 @@ describe("townhall tab", () => {
     await settle();
     const shop = host.querySelector(".garden-town-shop");
     expect(shop).not.toBeNull();
-    expect(shop?.querySelectorAll(".garden-town-section")).toHaveLength(2);
+    expect(shop?.querySelectorAll(".garden-town-section")).toHaveLength(3);
+    expect(shop?.querySelector('[data-section="rareSeeds"]')?.textContent).toContain("Shop hiếm");
+    const rareSeed = SEEDS.find((entry) => entry.rare === true);
+    expect(rareSeed).toBeDefined();
     const seeds = shop?.querySelectorAll('[data-act="townBuy"][data-kind="seed"]') ?? [];
     expect(seeds.length).toBe(SEASON.shop.offers.length);
     expect(shop?.textContent).toContain("Phân bón");
@@ -3109,6 +3112,41 @@ describe("townhall tab", () => {
     host.querySelector<HTMLButtonElement>('[data-act="townClose"]')?.click();
     await settle();
     expect(host.querySelector(".garden-town-shop")).toBeNull();
+  });
+
+  it("displays rare seeds inside the dedicated Rare shop section in reborn market", async () => {
+    const rareSeed = SEEDS.find((entry) => entry.rare === true);
+    if (rareSeed === undefined) throw new Error("No rare seed in catalog");
+    const api = new FakeGardenApi(makeState({ coins: 5_000_000_000 }));
+    api.seasonValue = {
+      ...SEASON,
+      wave: 0,
+      shop: {
+        ...SEASON.shop,
+        offers: [
+          ...SEASON.shop.offers.filter((offer) => offer.seed !== rareSeed.id),
+          { seed: rareSeed.id, price: rareSeed.buy, stock: 1 },
+        ],
+      },
+    };
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    await openTown(host);
+
+    host.querySelector<HTMLButtonElement>('[data-npc="seeds"]')?.click();
+    await settle();
+
+    const rareSection = host.querySelector('.garden-town-section[data-section="rareSeeds"]');
+    expect(rareSection).not.toBeNull();
+    const rareButton = rareSection?.querySelector<HTMLButtonElement>(
+      `[data-act="townBuy"][data-kind="seed"][data-item="${rareSeed.id}"]`,
+    );
+    expect(rareButton).not.toBeNull();
+    rareButton?.click();
+    await settle();
+    expect(
+      api.calls.some((call) => call.action?.kind === "buySeed" && call.action.seed === rareSeed.id),
+    ).toBe(true);
   });
 
   it("sells farm tools only while they are in stock", async () => {
