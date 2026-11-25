@@ -1392,7 +1392,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (username.length === 0 || password.length === 0 || busy) return;
     busy = true;
     try {
-      const bundle = await api.accountRegister(username, password);
+      let bundle = await api.accountRegister(username, password);
+      if (bundle.playerId === null && state === null) {
+        await loadOwner();
+        bundle = await api.accountLink();
+      }
       applyAccountBundle(bundle, "account.registerOk");
     } catch (error) {
       applyApiError(error);
@@ -7043,11 +7047,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       botsAt = Date.now();
       offline = false;
       render();
-    } catch {
+    } catch (error) {
       if (!disposed) {
-        botsAt = 0;
-        offline = true;
-        render();
+        // Back off for 10s instead of resetting to 0, preventing a tight render->loadBots loop.
+        botsAt = Date.now() - DATA_TTL_MS + 10_000;
+        if (error instanceof GardenApiError && error.code === "NETWORK") {
+          offline = true;
+          render();
+        }
       }
     } finally {
       botsBusy = false;
@@ -7148,10 +7155,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       chartAt = Date.now();
       offline = false;
       render();
-    } catch {
+    } catch (error) {
       if (!disposed) {
         chartAt = 0;
-        offline = true;
+        offline = error instanceof GardenApiError && error.code === "NETWORK";
         render();
       }
     } finally {

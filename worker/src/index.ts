@@ -92,123 +92,134 @@ export default {
       });
     }
 
-    // Access gate: exchange the access token or PIN for a signed session token.
-    if (url.pathname === "/api/auth/verify" && request.method === "POST") {
-      return withCors(await verifyResponse(request, env), origin);
+    try {
+      return await routeRequest(request, env, url, origin);
+    } catch {
+      return withCors(json({ code: "INTERNAL_ERROR" }, 500), origin);
     }
+  },
+} satisfies ExportedHandler<Env>;
 
-    if (url.pathname === "/api/auth/state" && request.method === "GET") {
-      return withCors(await stateResponse(request, env), origin);
-    }
+/**
+ * @brief Dispatches non-OPTIONS API and WebSocket requests with CORS wrapping.
+ */
+async function routeRequest(request: Request, env: Env, url: URL, origin: string | null): Promise<Response> {
+  // Access gate: exchange the access token or PIN for a signed session token.
+  if (url.pathname === "/api/auth/verify" && request.method === "POST") {
+    return withCors(await verifyResponse(request, env), origin);
+  }
 
-    // Market feed proxy. Read-only, rate limited per IP, never cached by the
-    // browser, and gated behind the access token when the Worker has one.
-    if (url.pathname.startsWith("/api/market/")) {
-      if (request.method !== "GET") return withCors(json({ code: "METHOD_NOT_ALLOWED" }, 405), origin);
+  if (url.pathname === "/api/auth/state" && request.method === "GET") {
+    return withCors(await stateResponse(request, env), origin);
+  }
 
-      const secrets = lockSecrets(env);
-      if (secrets !== null) {
-        const unlocked = await verifySession(secrets, request.headers.get(LOCK_HEADER), Date.now());
-        if (!unlocked) return withCors(json({ code: "LOCKED" }, 401), origin);
-      }
+  // Market feed proxy. Read-only, rate limited per IP, never cached by the
+  // browser, and gated behind the access token when the Worker has one.
+  if (url.pathname.startsWith("/api/market/")) {
+    if (request.method !== "GET") return withCors(json({ code: "METHOD_NOT_ALLOWED" }, 405), origin);
 
-      const ip = request.headers.get("cf-connecting-ip") ?? "local";
-      if (!takeRate(ip, Date.now())) {
-        return withCors(json({ code: "RATE_LIMITED" }, 429, { "retry-after": "10" }), origin);
-      }
-
-      const deps = marketDeps();
-      let response: Response;
-      switch (url.pathname) {
-        case "/api/market/quotes":
-          response = await quotesResponse(url.searchParams.get("symbols"), deps);
-          break;
-        case "/api/market/indices":
-          response = await indicesResponse(deps);
-          break;
-        case "/api/market/chart":
-          response = await chartResponse(
-            url.searchParams.get("symbol"),
-            url.searchParams.get("resolution"),
-            deps,
-          );
-          break;
-        case "/api/market/depth":
-          response = await depthResponse(url.searchParams.get("symbol"), deps);
-          break;
-        case "/api/market/feed":
-          response = await feedResponse(
-            url.searchParams.get("symbol"),
-            url.searchParams.get("source"),
-            url.searchParams.get("page"),
-            deps,
-          );
-          break;
-        default:
-          response = json({ code: "NOT_FOUND" }, 404);
-      }
-
-      const out = withCors(response, origin);
-      out.headers.set("cache-control", "no-store");
-      return out;
-    }
-
-    // ASCII Garden: registration, play, visits and the leaderboard.
-    const gardenResponse = await handleGardenRoute(request, env, url);
-    if (gardenResponse !== null) return withCors(gardenResponse, origin);
-
-    const registry = () => env.REGISTRY.get(env.REGISTRY.idFromName("registry"));
-
-    // Destructive maintenance: only a holder of a valid access session may purge.
-    if (url.pathname === "/api/rooms/purge" && request.method === "POST") {
-      const secrets = lockSecrets(env);
-      const unlocked =
-        secrets !== null && (await verifySession(secrets, request.headers.get(LOCK_HEADER), Date.now()));
+    const secrets = lockSecrets(env);
+    if (secrets !== null) {
+      const unlocked = await verifySession(secrets, request.headers.get(LOCK_HEADER), Date.now());
       if (!unlocked) return withCors(json({ code: "LOCKED" }, 401), origin);
+    }
 
-      const response = await registry().fetch("https://registry/purge", {
+    const ip = request.headers.get("cf-connecting-ip") ?? "local";
+    if (!takeRate(ip, Date.now())) {
+      return withCors(json({ code: "RATE_LIMITED" }, 429, { "retry-after": "10" }), origin);
+    }
+
+    const deps = marketDeps();
+    let response: Response;
+    switch (url.pathname) {
+      case "/api/market/quotes":
+        response = await quotesResponse(url.searchParams.get("symbols"), deps);
+        break;
+      case "/api/market/indices":
+        response = await indicesResponse(deps);
+        break;
+      case "/api/market/chart":
+        response = await chartResponse(
+          url.searchParams.get("symbol"),
+          url.searchParams.get("resolution"),
+          deps,
+        );
+        break;
+      case "/api/market/depth":
+        response = await depthResponse(url.searchParams.get("symbol"), deps);
+        break;
+      case "/api/market/feed":
+        response = await feedResponse(
+          url.searchParams.get("symbol"),
+          url.searchParams.get("source"),
+          url.searchParams.get("page"),
+          deps,
+        );
+        break;
+      default:
+        response = json({ code: "NOT_FOUND" }, 404);
+    }
+
+    const out = withCors(response, origin);
+    out.headers.set("cache-control", "no-store");
+    return out;
+  }
+
+  // ASCII Garden: registration, play, visits and the leaderboard.
+  const gardenResponse = await handleGardenRoute(request, env, url);
+  if (gardenResponse !== null) return withCors(gardenResponse, origin);
+
+  const registry = () => env.REGISTRY.get(env.REGISTRY.idFromName("registry"));
+
+  // Destructive maintenance: only a holder of a valid access session may purge.
+  if (url.pathname === "/api/rooms/purge" && request.method === "POST") {
+    const secrets = lockSecrets(env);
+    const unlocked =
+      secrets !== null && (await verifySession(secrets, request.headers.get(LOCK_HEADER), Date.now()));
+    if (!unlocked) return withCors(json({ code: "LOCKED" }, 401), origin);
+
+    const response = await registry().fetch("https://registry/purge", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: await request.text(),
+    });
+    return withCors(response, origin);
+  }
+
+  if (url.pathname === "/api/rooms") {
+    if (request.method === "GET") {
+      const listUrl = new URL("https://registry/list");
+      listUrl.search = url.search;
+      return withCors(await registry().fetch(listUrl), origin);
+    }
+    if (request.method === "POST") {
+      const response = await registry().fetch("https://registry/create", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "cf-connecting-ip": request.headers.get("cf-connecting-ip") ?? "unknown",
+        },
         body: await request.text(),
       });
       return withCors(response, origin);
     }
+    return withCors(json({ code: "METHOD_NOT_ALLOWED" }, 405), origin);
+  }
 
-    if (url.pathname === "/api/rooms") {
-      if (request.method === "GET") {
-        const listUrl = new URL("https://registry/list");
-        listUrl.search = url.search;
-        return withCors(await registry().fetch(listUrl), origin);
-      }
-      if (request.method === "POST") {
-        const response = await registry().fetch("https://registry/create", {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "cf-connecting-ip": request.headers.get("cf-connecting-ip") ?? "unknown",
-          },
-          body: await request.text(),
-        });
-        return withCors(response, origin);
-      }
-      return withCors(json({ code: "METHOD_NOT_ALLOWED" }, 405), origin);
+  if (url.pathname === "/ws") {
+    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+      return withCors(json({ code: "EXPECTED_UPGRADE" }, 426), origin);
     }
 
-    if (url.pathname === "/ws") {
-      if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
-        return withCors(json({ code: "EXPECTED_UPGRADE" }, 426), origin);
-      }
+    const slug = sanitizeSlug(url.searchParams.get("r"));
+    if (!slug.ok) return withCors(json({ code: "BAD_SLUG" }, 400), origin);
 
-      const slug = sanitizeSlug(url.searchParams.get("r"));
-      if (!slug.ok) return withCors(json({ code: "BAD_SLUG" }, 400), origin);
+    // Forward the original upgrade request untouched. Rebuilding it with
+    // `new Request(...)` drops the upgrade semantics in production and the
+    // handshake then hangs forever, even though miniflare tolerates it.
+    const stub = env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(slug.slug));
+    return stub.fetch(request);
+  }
 
-      // Forward the original upgrade request untouched. Rebuilding it with
-      // `new Request(...)` drops the upgrade semantics in production and the
-      // handshake then hangs forever, even though miniflare tolerates it.
-      const stub = env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(slug.slug));
-      return stub.fetch(request);
-    }
-
-    return withCors(json({ code: "NOT_FOUND" }, 404), origin);
-  },
-} satisfies ExportedHandler<Env>;
+  return withCors(json({ code: "NOT_FOUND" }, 404), origin);
+}
