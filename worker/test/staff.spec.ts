@@ -225,4 +225,15 @@ describe("staff", () => {
     }
     expect(current.staff).toHaveLength(0);
   });
+
+  it("ignores unknown or legacy worker roles without crashing clone", () => {
+    const ledger = hireWorker(makeLedger(), "water");
+    ledger.staff[0] = {
+      ...ledger.staff[0]!,
+      role: "idle" as never,
+      lastWorkAt: NOW - 10 * FARM_CYCLE_MS,
+    };
+    const settled = settleStaff(ledger, NOW + FARM_CYCLE_MS);
+    expect(settled.plots).toHaveLength(ledger.plots.length);
+  });
 });

@@ -3848,10 +3848,12 @@ export function settleStaff(ledger: GardenLedger, now: number): GardenLedger {
             return staffSaleHunt(base, now, rng);
           case "mine":
             return staffMine(base, now, rng);
+          default:
+            return null;
         }
       };
       const next = chore(worked);
-      if (next !== null) {
+      if (next !== null && next !== undefined) {
         worked = next;
         tasks = 1;
       }
