@@ -253,13 +253,24 @@ describe("ASCII Garden Mine action handlers", () => {
     expect(assignRes.ledger.staff[0]?.role).toBe("mine");
     expect(assignRes.ledger.mine?.assignedStaffSlot).toBe(0);
 
-    // 2. Put a ladder on the floor to verify Bob descends automatically
+    // 2. Put custom ores + chest + hidden ladder on floor 1 and verify 1 turn mines the entire floor & descends
     const bobLedger = assignRes.ledger;
     if (bobLedger.mine) {
-      bobLedger.mine.grid[0] = { kind: "ladder", hp: 0, maxHp: 0 };
+      bobLedger.mine.grid = bobLedger.mine.grid.map((cell, idx) => {
+        if (idx === 0) return { kind: "copper", hp: 5, maxHp: 5, oreDrop: "copperOre", dropQty: 2 };
+        if (idx === 1) return { kind: "gold", hp: 20, maxHp: 20, oreDrop: "goldOre", dropQty: 3 };
+        if (idx === 2) return { kind: "chest", hp: 10, maxHp: 10, hasLadder: true };
+        return { kind: "empty", hp: 0, maxHp: 0 };
+      });
     }
 
+    const coinsBefore = bobLedger.coins;
     const settled = settleStaff(bobLedger, NOW + 600_000);
     expect(settled.mine?.currentFloor).toBe(2);
+    expect(settled.mine?.maxFloor).toBe(2);
+    expect(settled.bag.products.find((p) => p.product === "copperOre")?.qty).toBe(2);
+    expect(settled.bag.products.find((p) => p.product === "goldOre")?.qty).toBe(3);
+    expect(settled.bag.products.find((p) => p.product === "coal")?.qty).toBe(3);
+    expect(settled.coins).toBeGreaterThan(coinsBefore);
   });
 });

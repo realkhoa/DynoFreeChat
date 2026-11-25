@@ -3683,11 +3683,12 @@ function staffWater(ledger: GardenLedger, now: number, rng: () => number): Garde
 
 /**
  * @brief Automates mining chores for an assigned staff member.
- * @details Checks if a ladder is uncovered to descend, or chips away at rocks/ores.
- * Drops are collected into the warehouse bag and codex discoveries are logged.
+ * @details Clears every remaining rock, ore, gem, and chest on the current mine
+ * floor in a single turn, collects all drops and chest coins into the ledger,
+ * and descends to the next floor whenever a ladder is visible or uncovered.
  * @param ledger Garden before mining action.
  * @param now Current server timestamp.
- * @param rng Deterministic random generator.
+ * @param _rng Deterministic random generator.
  * @return Updated GardenLedger if work occurred, or null if idle.
  */
 function staffMine(ledger: GardenLedger, now: number, _rng: () => number): GardenLedger | null {
@@ -3695,72 +3696,40 @@ function staffMine(ledger: GardenLedger, now: number, _rng: () => number): Garde
   const mine = ensureMineState(next, now);
   next.mine = mine;
 
-  // 1. If ladder is already visible, descend!
-  const hasLadder = mine.grid.some((c) => c.kind === "ladder");
-  if (hasLadder) {
-    const nextFloor = mine.currentFloor + 1;
-    mine.currentFloor = nextFloor;
-    mine.maxFloor = Math.max(mine.maxFloor, nextFloor);
-    const floorSeed = hash32(`${next.playerId}:${nextFloor}:${now}`);
-    mine.grid = [...generateMineFloor(nextFloor, floorSeed)];
-    return next;
-  }
+  let worked = false;
 
-  // 2. Find target rock to hit
-  const intactIndices: number[] = [];
-  for (let i = 0; i < mine.grid.length; i++) {
-    const c = mine.grid[i];
-    if (c && c.kind !== "empty" && c.kind !== "ladder") {
-      intactIndices.push(i);
-    }
-  }
-  if (intactIndices.length === 0) return null;
+  // 1. Mine every intact rock/ore/chest on the current floor in one turn.
+  for (let i = 0; i < mine.grid.length; i += 1) {
+    const cell = mine.grid[i];
+    if (!cell || cell.kind === "empty" || cell.kind === "ladder") continue;
 
-  // Sort by priority: gems / chests / high ores first
-  const kindPriority: Record<string, number> = {
-    iridium: 10,
-    gem: 9,
-    chest: 8,
-    gold: 7,
-    iron: 6,
-    copper: 5,
-    gravel: 4,
-    stone: 3,
-  };
-  intactIndices.sort((a, b) => {
-    const pA = kindPriority[mine.grid[a]?.kind ?? ""] ?? 0;
-    const pB = kindPriority[mine.grid[b]?.kind ?? ""] ?? 0;
-    return pB - pA;
-  });
-
-  const targetSlot = intactIndices[0];
-  if (targetSlot === undefined) return null;
-  const targetCell = mine.grid[targetSlot];
-  if (!targetCell) return null;
-
-  const tier = PICKAXE_TIERS[mine.pickaxeLevel] ?? (PICKAXE_TIERS[0] as PickaxeTier);
-  const dmg = tier.damage;
-  const nextHp = Math.max(0, targetCell.hp - dmg);
-
-  if (nextHp > 0) {
-    mine.grid[targetSlot] = { ...targetCell, hp: nextHp };
-  } else {
-    if (targetCell.kind === "chest") {
+    worked = true;
+    if (cell.kind === "chest") {
       const bonusCoins = 1_000 * Math.max(1, Math.floor(mine.currentFloor / 5));
       next.coins += bonusCoins;
       next.stats.earned += bonusCoins;
       addProduct(next.bag.products, "coal", 1, 3);
       collect(next, "product:coal");
-    } else if (targetCell.oreDrop) {
-      addProduct(next.bag.products, targetCell.oreDrop, 1, targetCell.dropQty ?? 1);
-      collect(next, `product:${targetCell.oreDrop}`);
+    } else if (cell.oreDrop) {
+      addProduct(next.bag.products, cell.oreDrop, 1, cell.dropQty ?? 1);
+      collect(next, `product:${cell.oreDrop}`);
     }
-    mine.grid[targetSlot] = targetCell.hasLadder
-      ? { kind: "ladder", hp: 0, maxHp: 0 }
-      : { kind: "empty", hp: 0, maxHp: 0 };
+
+    mine.grid[i] = cell.hasLadder ? { kind: "ladder", hp: 0, maxHp: 0 } : { kind: "empty", hp: 0, maxHp: 0 };
   }
 
-  return next;
+  // 2. Descend to the next floor if a ladder is already visible or just uncovered.
+  const hasLadder = mine.grid.some((c) => c.kind === "ladder");
+  if (hasLadder) {
+    worked = true;
+    const nextFloor = mine.currentFloor + 1;
+    mine.currentFloor = nextFloor;
+    mine.maxFloor = Math.max(mine.maxFloor, nextFloor);
+    const floorSeed = hash32(`${next.playerId}:${nextFloor}:${now}`);
+    mine.grid = [...generateMineFloor(nextFloor, floorSeed)];
+  }
+
+  return worked ? next : null;
 }
 /**
  * @brief Settles staff wages and slow automated work.
