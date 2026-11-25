@@ -2904,6 +2904,7 @@ describe("reborn sub-tabs", () => {
       "rebornTab:event",
       "rebornTab:dynopedia",
       "rebornTab:log",
+      "rebornTab:levels",
     ]);
     expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("vườn");
     expect(host.querySelector(".garden-reborn-row")).not.toBeNull();
@@ -4665,5 +4666,81 @@ describe("locust raid 5% coin cost", () => {
       '.garden-reborn-weather [data-act="raidHit"]',
     );
     expect(weatherRaidCard?.title).toContain("500.000c");
+  });
+});
+
+describe("reborn legacy parity features", () => {
+  it("renders levels tab, townhall gift/achievements/tournament/merchant, bulk qty selector, and nursery compost/splice", async () => {
+    const base = makeState({
+      coins: 1_000_000,
+      bag: {
+        seeds: { carrot: 5 },
+        crops: [{ item: "carrot", effects: [], star: 1, qty: 3 }],
+        supplies: {},
+      },
+      extras: {
+        ...makeState().extras,
+        streak: 4,
+        spliceBonus: 7,
+        taxLast: 2500,
+      },
+    });
+
+    const api = new FakeGardenApi(base) as FakeGardenApi & {
+      tournament: () => Promise<Array<{ nick: string; code: string; earned: number; harvested: number }>>;
+    };
+    api.tournament = async () => [{ nick: "Champion", code: "champ1", earned: 900_000, harvested: 42 }];
+
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+
+    // 1. Levels tab
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:levels"]')?.click();
+    await settle();
+    expect(host.querySelector(".garden-levels")).not.toBeNull();
+    expect(host.textContent).toContain("Trồng trọt");
+
+    // 2. Nursery compost & splice
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:garden"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="gardenTab:nursery"]')?.click();
+    await settle();
+    expect(host.querySelector('[data-act="extrasCompost"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="extrasSplice"]')).not.toBeNull();
+
+    // 3. Townhall bulk buy quantity selector + billboard merchant + gift + achievements + tournament
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:townhall"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="townNpc"][data-npc="seeds"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="setBuyQty"][data-qty="10"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="townBuy"][data-kind="seed"]:not(:disabled)')?.click();
+    await settle();
+    expect(api.calls.find((c) => c.action?.kind === "buySeed")?.action).toMatchObject({
+      kind: "buySeed",
+      qty: 10,
+    });
+
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="billboard"]')?.click();
+    await settle();
+    expect(host.querySelector('[data-act="extrasMerchant"]')).not.toBeNull();
+
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="gift"]')?.click();
+    await settle();
+    expect(host.querySelector('[data-act="giftCoins"]')).not.toBeNull();
+    expect(host.querySelector('[data-act="giftSeed"]')).not.toBeNull();
+
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="achievements"]')?.click();
+    await settle();
+    expect(host.textContent).toContain("4");
+    expect(host.textContent).toContain("7");
+
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="tournament"]')?.click();
+    await settle();
+    await settle();
+    expect(host.textContent).toContain("Champion");
   });
 });

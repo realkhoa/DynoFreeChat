@@ -259,7 +259,7 @@ type Tab =
 type GardenView = "legacy" | "reborn";
 
 /** One tab inside the rebuilt view. */
-type RebornTab = "garden" | "townhall" | "weather" | "event" | "dynopedia" | "log";
+type RebornTab = "garden" | "townhall" | "weather" | "event" | "dynopedia" | "log" | "levels";
 
 /** @brief Tabs of the rebuilt view, in strip order. */
 const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string }[] = [
@@ -269,6 +269,7 @@ const REBORN_TABS: readonly { readonly id: RebornTab; readonly labelKey: string 
   { id: "event", labelKey: "reborn.tabEvent" },
   { id: "dynopedia", labelKey: "reborn.tabDynopedia" },
   { id: "log", labelKey: "reborn.tabLog" },
+  { id: "levels", labelKey: "reborn.tabLevels" },
 ];
 
 /** One tab inside the garden tab of the rebuilt view. */
@@ -425,7 +426,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   /** Which townhall NPC has its shop open, if any. */
   let townNpc: string | null = null;
   /** Which public board is open in the town square, if any. */
-  let townBoard: "rank" | "chart" | "bots" | "billboard" | "quests" | "jobs" | null = null;
+  let townBoard:
+    | "rank"
+    | "chart"
+    | "bots"
+    | "billboard"
+    | "quests"
+    | "jobs"
+    | "gift"
+    | "achievements"
+    | "tournament"
+    | null = null;
   let visitCode: string | null = null;
   let state: GardenSnapshot | null = null;
   let visiting: VisitSnapshot | null = null;
@@ -1470,7 +1481,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           rebornTab === "weather" ||
           rebornTab === "event" ||
           rebornTab === "dynopedia" ||
-          rebornTab === "log")
+          rebornTab === "log" ||
+          rebornTab === "levels")
           ? rebornTab
           : null,
       gstab: view === "reborn" && rebornTab === "garden" && gardenTab !== "main" ? gardenTab : null,
@@ -1492,7 +1504,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         savedRebornTab === "weather" ||
         savedRebornTab === "event" ||
         savedRebornTab === "dynopedia" ||
-        savedRebornTab === "log")
+        savedRebornTab === "log" ||
+        savedRebornTab === "levels")
     ) {
       rebornTab = savedRebornTab;
     }
@@ -6493,7 +6506,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     } finally {
       extrasBusy = false;
     }
-    if (!disposed && tab === "extras") render();
+    if (
+      !disposed &&
+      (tab === "extras" || (view === "reborn" && rebornTab === "townhall" && townBoard === "tournament"))
+    ) {
+      render();
+    }
   }
 
   /** @brief Loads guild membership and the public guild board. */
@@ -7185,6 +7203,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     if (rebornTab === "log") {
       wrap.append(buildRebornLog());
+      return wrap;
+    }
+    if (rebornTab === "levels") {
+      wrap.append(buildLevels());
       return wrap;
     }
     wrap.append(buildGardenTabStrip());
@@ -8278,6 +8300,23 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       catalog.append(list);
     }
     wrap.append(catalog);
+
+    if (mode === "owner" && state !== null) {
+      const genetics = div("garden-nursery-card");
+      genetics.append(lineBlock(`// ${t("nursery.compostSpliceTitle")}`));
+      genetics.append(lineBlock(`// ${t("extras.spliceLine", { bonus: state.extras.spliceBonus })}`));
+      const compostRow = div("garden-tools");
+      compostRow.append(actionButton(t("extras.compost"), "extrasCompost"));
+      const cropItems = [...new Set((state.bag.crops ?? []).map((stack) => stack.item))];
+      for (const item of cropItems) {
+        const button = actionButton(t("extras.spliceItem", { item: itemName(item) }), "extrasSplice");
+        button.dataset.item = item;
+        compostRow.append(button);
+      }
+      genetics.append(compostRow);
+      wrap.append(genetics);
+    }
+
     return wrap;
   }
 
@@ -8809,32 +8848,36 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const rare = definition?.rare === true;
     const price = rare ? offer.price : buyPriceOf(offer.seed, offer.price);
     const stock = shopStockOf(offer.seed, offer.stock);
+    const total = price * buyQty;
+    const qtyTag = buyQty > 1 ? `×${buyQty} ` : "";
     return {
       id: `seed:${offer.seed}`,
       name: t(`seeds.${offer.seed}.short`),
       glyph: definition?.art[3] ?? "?",
-      note: stock > 0 ? `${formatCompact(price)}c·${stock}` : t("town.soldOut"),
+      note: stock > 0 ? `${qtyTag}${formatCompact(total)}c·${stock}` : t("town.soldOut"),
       tone: rare ? "money" : "harvest",
-      title: `${seedName(offer.seed)} · ${formatNumber(price)}c · ${t("market.stock")} ${stock}`,
+      title: `${seedName(offer.seed)} · ${formatNumber(price)}c × ${buyQty} = ${formatNumber(total)}c · ${t("market.stock")} ${stock}`,
       act: "townBuy",
       data: { kind: "seed", item: offer.seed },
-      disabled: stock <= 0 || (state?.coins ?? 0) < price,
+      disabled: stock < buyQty || stock <= 0 || (state?.coins ?? 0) < total,
     };
   }
 
   /** @brief One fertilizer or spray as a townhall shop cell. */
   function townSupplyItem(supply: { readonly id: SupplyId; readonly price: number }): TownShopItem {
     const price = buyPriceOf(supply.id, supply.price);
+    const total = price * buyQty;
+    const qtyTag = buyQty > 1 ? `×${buyQty} ` : "";
     return {
       id: `supply:${supply.id}`,
       name: t(`supplies.${supply.id}`),
       glyph: "+",
-      note: `${formatCompact(price)}c`,
+      note: `${qtyTag}${formatCompact(total)}c`,
       tone: "fertilizer",
-      title: `${t(`supplies.${supply.id}`)} · ${formatNumber(price)}c`,
+      title: `${t(`supplies.${supply.id}`)} · ${formatNumber(price)}c × ${buyQty} = ${formatNumber(total)}c`,
       act: "townBuy",
       data: { kind: "supply", item: supply.id },
-      disabled: (state?.coins ?? 0) < price,
+      disabled: (state?.coins ?? 0) < total,
     };
   }
 
@@ -8875,16 +8918,18 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const offer = offers.get(tool.id);
       const stock = offer === undefined ? 0 : shopStockOf(tool.id, offer.stock);
       const price = offer?.price ?? tool.price;
+      const total = price * buyQty;
+      const qtyTag = buyQty > 1 ? `×${buyQty} ` : "";
       return {
         id: `tool:${tool.id}`,
         name: t(`tools.${tool.id}`),
         glyph: "w",
-        note: offer === undefined ? t("town.soldOut") : `${formatCompact(price)}c·${stock}`,
+        note: offer === undefined ? t("town.soldOut") : `${qtyTag}${formatCompact(total)}c·${stock}`,
         tone: "soil",
-        title: `${t(`tools.${tool.id}`)} · ${formatNumber(price)}c`,
+        title: `${t(`tools.${tool.id}`)} · ${formatNumber(price)}c × ${buyQty} = ${formatNumber(total)}c`,
         act: "townBuy",
         data: { kind: "tool", item: tool.id },
-        disabled: offer === undefined || stock <= 0 || (state?.coins ?? 0) < price,
+        disabled: offer === undefined || stock < buyQty || stock <= 0 || (state?.coins ?? 0) < total,
       };
     });
     return [{ id: "tools", title: t("town.sectionTools"), items, emptyHint: t("town.soldOut") }];
@@ -9509,6 +9554,22 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
     panel.append(futureBlock);
 
+    const merchantBlock = div("garden-town-section");
+    merchantBlock.append(span("garden-board-title", t("extras.merchant")));
+    for (const offer of merchantOffers(state.playerId, at)) {
+      const claimed = state.extras.merchantClaims.includes(offer.id);
+      const name = offer.kind === "seed" ? seedName(offer.item as SeedId) : t(`tools.${offer.item}`);
+      const label = `${name} x${offer.stock} — ${formatCompact(offer.price)}c`;
+      if (claimed) {
+        merchantBlock.append(lineBlock(`// ${label} [${t("extras.claimed")}]`));
+      } else {
+        const button = actionButton(label, "extrasMerchant", mode === "owner" && state.coins >= offer.price);
+        button.dataset.id = offer.id;
+        merchantBlock.append(button);
+      }
+    }
+    panel.append(merchantBlock);
+
     return panel;
   }
 
@@ -9639,6 +9700,172 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /**
+   * @brief Builds the townhall gifting board for sending coins, seeds, supplies and tools.
+   * @return Gift board element.
+   */
+  function buildTownGift(): HTMLElement {
+    const panel = div("garden-town-shop");
+    const head = div("garden-town-shop-head");
+    const title = span("garden-line", `// ${t("town.boardGiftTitle")}`);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "stage-btn";
+    close.textContent = `[ ${t("town.close")} ]`;
+    close.dataset.act = "townBoard";
+    close.dataset.board = "gift";
+    head.append(title, close);
+    panel.append(head);
+
+    if (state === null) {
+      panel.append(lineBlock(t("common.loading")));
+      return panel;
+    }
+
+    const coinBlock = div("garden-town-section");
+    coinBlock.append(span("garden-board-title", t("gift.title")));
+    const giftRow = div("garden-restore-row");
+    const giftCodeInput = document.createElement("input");
+    giftCodeInput.type = "text";
+    giftCodeInput.className = "stage-input garden-gift-code";
+    giftCodeInput.placeholder = t("gift.code");
+    giftCodeInput.value = giftCode;
+    giftCodeInput.dataset.role = "giftCode";
+    giftCodeInput.setAttribute("aria-label", t("gift.code"));
+    const giftAmountInput = document.createElement("input");
+    giftAmountInput.type = "number";
+    giftAmountInput.min = "1";
+    giftAmountInput.className = "stage-input garden-gift-amount";
+    giftAmountInput.placeholder = t("gift.amount");
+    giftAmountInput.value = giftAmount;
+    giftAmountInput.dataset.role = "giftAmount";
+    giftAmountInput.setAttribute("aria-label", t("gift.amount"));
+    giftRow.append(
+      giftCodeInput,
+      giftAmountInput,
+      actionButton(t("gift.sendCoins"), "giftCoins", mode === "owner"),
+    );
+    coinBlock.append(giftRow);
+    panel.append(coinBlock);
+
+    const goodsBlock = div("garden-town-section");
+    goodsBlock.append(span("garden-board-title", t("gift.goods")));
+    const giftGoods = div("garden-tools");
+    for (const [seed, qty] of Object.entries(state.bag.seeds)) {
+      if ((qty ?? 0) < 1) continue;
+      const button = actionButton(`${seedName(seed as SeedId)} ×1`, "giftSeed", mode === "owner");
+      button.dataset.seed = seed;
+      giftGoods.append(button);
+    }
+    for (const [supply, qty] of Object.entries(state.bag.supplies)) {
+      if ((qty ?? 0) < 1) continue;
+      const button = actionButton(`${t(`supplies.${supply}`)} ×1`, "giftSupply", mode === "owner");
+      button.dataset.supply = supply;
+      giftGoods.append(button);
+    }
+    for (const [tool, qty] of Object.entries(state.bag.tools ?? {})) {
+      if ((qty ?? 0) < 1) continue;
+      const button = actionButton(`${t(`tools.${tool}`)} ×1`, "giftTool", mode === "owner");
+      button.dataset.tool = tool;
+      giftGoods.append(button);
+    }
+    if (giftGoods.childElementCount === 0) {
+      goodsBlock.append(lineBlock(t("market.empty")));
+    } else {
+      goodsBlock.append(giftGoods);
+    }
+    panel.append(goodsBlock);
+
+    return panel;
+  }
+
+  /**
+   * @brief Builds the townhall achievements and seasonal farm summary board.
+   * @return Achievements board element.
+   */
+  function buildTownAchievements(): HTMLElement {
+    const panel = div("garden-town-shop");
+    const head = div("garden-town-shop-head");
+    const title = span("garden-line", `// ${t("town.boardAchievementsTitle")}`);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "stage-btn";
+    close.textContent = `[ ${t("town.close")} ]`;
+    close.dataset.act = "townBoard";
+    close.dataset.board = "achievements";
+    head.append(title, close);
+    panel.append(head);
+
+    if (state === null) {
+      panel.append(lineBlock(t("common.loading")));
+      return panel;
+    }
+
+    const extras = state.extras;
+    const summaryBlock = div("garden-town-section");
+    summaryBlock.append(span("garden-board-title", t("extras.title")));
+    summaryBlock.append(
+      lineBlock(`// ${t("extras.streak", { count: extras.streak })}`),
+      lineBlock(`// ${t("extras.collectionLine", { count: extras.collection.length })}`),
+      lineBlock(`// ${t("extras.spliceLine", { bonus: extras.spliceBonus })}`),
+      lineBlock(
+        `// ${t("extras.weekLine", {
+          earned: formatCompact(extras.weekEarned),
+          harvested: extras.weekHarvested,
+        })}`,
+      ),
+    );
+    if ((extras.taxLast ?? 0) > 0) {
+      summaryBlock.append(lineBlock(`// ${t("tax.last", { coins: formatCompact(extras.taxLast ?? 0) })}`));
+    }
+    panel.append(summaryBlock);
+
+    const achBlock = div("garden-town-section");
+    achBlock.append(span("garden-board-title", t("extras.achievements")));
+    for (const achievement of ACHIEVEMENTS) {
+      const done = extras.achievements.includes(achievement.id);
+      achBlock.append(lineBlock(`${done ? "[x]" : "[ ]"} ${t(`achievements.${achievement.id}`)}`));
+    }
+    panel.append(achBlock);
+
+    return panel;
+  }
+
+  /**
+   * @brief Builds the weekly tournament standings board in townhall.
+   * @return Weekly tournament board element.
+   */
+  function buildTownTournament(): HTMLElement {
+    const panel = div("garden-town-shop");
+    const head = div("garden-town-shop-head");
+    const title = span("garden-line", `// ${t("town.boardTournamentTitle")}`);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "stage-btn";
+    close.textContent = `[ ${t("town.close")} ]`;
+    close.dataset.act = "townBoard";
+    close.dataset.board = "tournament";
+    head.append(title, close);
+    panel.append(head);
+
+    const boardBlock = div("garden-town-section");
+    boardBlock.append(span("garden-board-title", t("extras.tournament")));
+    if (tournament.length === 0) {
+      boardBlock.append(lineBlock(t("extras.tournamentEmpty")));
+    } else {
+      tournament.forEach((entry, index) => {
+        boardBlock.append(
+          lineBlock(
+            `#${index + 1} ${entry.nick} — ${formatCompact(entry.earned)}c · ${entry.harvested} ${t("rank.harvested")}`,
+          ),
+        );
+      });
+    }
+    panel.append(boardBlock);
+
+    return panel;
+  }
+
+  /**
    * @brief Builds the townhall as a section of the rebuilt view.
    * @details It lives inside the reborn document, under the garden boards, so the
    * town reads as one more block of the same screen instead of a sibling tab.
@@ -9718,6 +9945,39 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         title: t("town.boardJobsTitle"),
         active: townBoard === "jobs",
       }),
+      buildRebornAction({
+        id: "town:gift",
+        label: t("town.boardGift"),
+        glyph: "g",
+        note: t("town.boardGiftNote"),
+        tone: "money",
+        act: "townBoard",
+        data: { board: "gift" },
+        title: t("town.boardGiftTitle"),
+        active: townBoard === "gift",
+      }),
+      buildRebornAction({
+        id: "town:achievements",
+        label: t("town.boardAchievements"),
+        glyph: "A",
+        note: t("town.boardAchievementsNote"),
+        tone: "harvest",
+        act: "townBoard",
+        data: { board: "achievements" },
+        title: t("town.boardAchievementsTitle"),
+        active: townBoard === "achievements",
+      }),
+      buildRebornAction({
+        id: "town:tournament",
+        label: t("town.boardTournament"),
+        glyph: "T",
+        note: t("town.boardTournamentNote"),
+        tone: "water",
+        act: "townBoard",
+        data: { board: "tournament" },
+        title: t("town.boardTournamentTitle"),
+        active: townBoard === "tournament",
+      }),
     );
     wrap.append(boards);
     const open = townNpc === null ? undefined : npcs.find((npc) => npc.id === townNpc);
@@ -9731,7 +9991,12 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       } else if (open.id === "guild") {
         wrap.append(buildTownGuild(open));
       } else {
-        wrap.append(buildTownShop(open, townShopSections(open.id), t("town.close")));
+        wrap.append(
+          buildTownShop(open, townShopSections(open.id), t("town.close"), {
+            active: buyQty,
+            label: t("market.buyQty"),
+          }),
+        );
       }
     } else if (townBoard === "rank") {
       void loadLeaderboard();
@@ -9748,6 +10013,13 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       wrap.append(buildTownQuests());
     } else if (townBoard === "jobs") {
       wrap.append(buildTownJobs());
+    } else if (townBoard === "gift") {
+      wrap.append(buildTownGift());
+    } else if (townBoard === "achievements") {
+      wrap.append(buildTownAchievements());
+    } else if (townBoard === "tournament") {
+      void loadExtras();
+      wrap.append(buildTownTournament());
     } else {
       wrap.append(lineBlock(mode === "owner" ? t("town.hint") : t("town.visitHint")));
     }
@@ -11124,7 +11396,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           board !== "bots" &&
           board !== "billboard" &&
           board !== "quests" &&
-          board !== "jobs"
+          board !== "jobs" &&
+          board !== "gift" &&
+          board !== "achievements" &&
+          board !== "tournament"
         )
           return;
         townBoard = townBoard === board ? null : (board as typeof townBoard);
@@ -11132,6 +11407,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (townBoard === "rank") void loadLeaderboard();
         if (townBoard === "chart") void loadChart();
         if (townBoard === "bots") void loadBots();
+        if (townBoard === "tournament") void loadExtras();
         render();
         return;
       }
@@ -11152,18 +11428,19 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         const kind = target.dataset.kind;
         const item = target.dataset.item;
         if (item === undefined) return;
+        const qty = buyQty;
         if (kind === "seed") {
           void runAction(
-            { kind: "buySeed", seed: item as SeedId, qty: 1 },
-            t("market.bought", { qty: 1, seed: seedName(item as SeedId) }),
+            { kind: "buySeed", seed: item as SeedId, qty },
+            t("market.bought", { qty, seed: seedName(item as SeedId) }),
           );
         } else if (kind === "supply") {
           void runAction(
-            { kind: "buySupply", supply: item as SupplyId, qty: 1 },
+            { kind: "buySupply", supply: item as SupplyId, qty },
             t("garden.boughtSupply", { supply: t(`supplies.${item}`) }),
           );
         } else if (kind === "tool") {
-          void runAction({ kind: "buyTool", tool: item as ToolId, qty: 1 }, t("market.boughtTool"));
+          void runAction({ kind: "buyTool", tool: item as ToolId, qty }, t("market.boughtTool"));
         }
         return;
       }

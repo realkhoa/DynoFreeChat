@@ -89,12 +89,14 @@ export function buildTownNpcs(npcs: readonly TownNpc[], interactive: boolean): H
  * @param npc Merchant whose shop is open.
  * @param sections Shop stock, already resolved by the caller.
  * @param closeLabel Localized close button label.
+ * @param qtySelector Optional bulk-purchase quantity selector (`x1`, `x10`, `x25`, `x50`).
  * @return The shop panel element.
  */
 export function buildTownShop(
   npc: TownNpc,
   sections: readonly TownShopSection[],
   closeLabel: string,
+  qtySelector?: { readonly active: number; readonly label: string },
 ): HTMLElement {
   const panel = document.createElement("div");
   panel.className = "garden-town-shop";
@@ -111,6 +113,25 @@ export function buildTownShop(
   close.dataset.act = "townClose";
   head.append(title, close);
   panel.append(head);
+
+  if (qtySelector !== undefined) {
+    const qtyRow = document.createElement("div");
+    qtyRow.className = "garden-market-qty";
+    const hint = document.createElement("span");
+    hint.className = "garden-hint";
+    hint.textContent = qtySelector.label;
+    qtyRow.append(hint);
+    for (const qty of [1, 10, 25, 50]) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = qtySelector.active === qty ? "stage-btn is-active" : "stage-btn";
+      btn.dataset.act = "setBuyQty";
+      btn.dataset.qty = String(qty);
+      btn.textContent = `x${qty}`;
+      qtyRow.append(btn);
+    }
+    panel.append(qtyRow);
+  }
 
   for (const section of sections) {
     const block = document.createElement("div");
