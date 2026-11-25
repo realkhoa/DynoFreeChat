@@ -1385,16 +1385,14 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     message = { text: t(okKey), kind: "ok" };
   }
 
-  /** @brief Registers a Cloudflare account without email verification and links the current or recovered garden. */
+  /** @brief Registers a Cloudflare account without email verification or recovery key. */
   async function submitAccountRegister(): Promise<void> {
     const username = accountUserDraft.trim();
     const password = accountPassDraft;
     if (username.length === 0 || password.length === 0 || busy) return;
     busy = true;
     try {
-      const typedRec = accountRecoveryDraft.trim().toUpperCase();
-      const autoRec = typedRec.length > 0 ? typedRec : api.session?.recovery;
-      const bundle = await api.accountRegister(username, password, autoRec);
+      const bundle = await api.accountRegister(username, password);
       applyAccountBundle(bundle, "account.registerOk");
     } catch (error) {
       applyApiError(error);
@@ -1410,8 +1408,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     if (username.length === 0 || password.length === 0 || busy) return;
     busy = true;
     try {
-      const rec = accountRecoveryDraft.trim().toUpperCase();
-      const bundle = await api.accountLogin(username, password, rec.length > 0 ? rec : undefined);
+      const bundle = await api.accountLogin(username, password);
       applyAccountBundle(bundle, "account.loginOk");
     } catch (error) {
       applyApiError(error);
@@ -7424,14 +7421,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     panel.append(userRow);
 
     const actionRow = div("garden-restore-row");
-    const recInput = document.createElement("input");
-    recInput.type = "text";
-    recInput.className = "stage-input garden-restore-input";
-    recInput.placeholder = t("account.recoveryOptionalPlaceholder");
-    recInput.value = accountRecoveryDraft;
-    recInput.dataset.role = "accountRecovery";
     actionRow.append(
-      recInput,
       actionButton(t("account.registerLink"), "accountRegister"),
       actionButton(t("account.loginSync"), "accountLogin"),
     );
