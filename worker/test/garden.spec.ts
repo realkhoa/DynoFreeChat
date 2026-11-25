@@ -807,4 +807,45 @@ describe("garden season", () => {
     expect(payload.coins).toBe(initialCoins - raidHitCost(initialCoins));
     expect(payload.coins).toBe(9_500_000);
   });
+
+  it("serves VN & international stock quotes and executes buy/sell trades through the DO HTTP API", async () => {
+    const trader = await register("stocktrader");
+    const bindings = env as unknown as Env;
+    const garden = bindings.GARDEN.get(bindings.GARDEN.idFromName(trader.playerId));
+    await runInDurableObject(garden, (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'ledger'")
+        .toArray()[0];
+      if (row === undefined) throw new Error("ledger missing");
+      const meta = JSON.parse(row.value) as { coins: number };
+      meta.coins = 10_000_000;
+      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'ledger'", JSON.stringify(meta));
+    });
+
+    const quotesRes = await SELF.fetch(`${BASE}/api/garden/stocks`);
+    expect(quotesRes.status).toBe(200);
+    const quotesPayload = await body<{
+      quotes: Array<{ symbol: string; market: string; coinPrice: number }>;
+    }>(quotesRes);
+    expect(quotesPayload.quotes.some((q) => q.symbol === "FPT.VN" && q.market === "VN")).toBe(true);
+    expect(quotesPayload.quotes.some((q) => q.symbol === "AAPL" && q.market === "US")).toBe(true);
+
+    const buyRes = await SELF.fetch(`${BASE}/api/garden/stocks/trade`, {
+      method: "POST",
+      headers: { ...auth(trader), "content-type": "application/json" },
+      body: JSON.stringify({ side: "buy", symbol: "FPT.VN", shares: 2 }),
+    });
+    expect(buyRes.status).toBe(200);
+    const bought = await body<{ state: GardenActResponse["state"] }>(buyRes);
+    expect(bought.state.extras.stocks?.["FPT.VN"]?.shares).toBe(2);
+
+    const sellRes = await SELF.fetch(`${BASE}/api/garden/stocks/trade`, {
+      method: "POST",
+      headers: { ...auth(trader), "content-type": "application/json" },
+      body: JSON.stringify({ side: "sell", symbol: "FPT.VN", shares: 1 }),
+    });
+    expect(sellRes.status).toBe(200);
+    const sold = await body<{ state: GardenActResponse["state"] }>(sellRes);
+    expect(sold.state.extras.stocks?.["FPT.VN"]?.shares).toBe(1);
+  });
 });

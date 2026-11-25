@@ -2670,6 +2670,75 @@ export interface GuildMember {
   readonly joinedAt: number;
 }
 
+/** Market region for a listed stock ticker. */
+export type StockMarketRegion = "VN" | "US";
+
+/** Static definition of one stock listed on the Townhall Stock Exchange. */
+export interface StockDefinition {
+  readonly symbol: string;
+  readonly name: string;
+  readonly market: StockMarketRegion;
+  readonly currency: "VND" | "USD";
+  readonly fallbackPrice: number;
+}
+
+/** Realtime or cached quote for one stock ticker. */
+export interface StockQuote {
+  readonly symbol: string;
+  readonly name: string;
+  readonly market: StockMarketRegion;
+  readonly currency: "VND" | "USD";
+  readonly rawPrice: number;
+  readonly changePct: number;
+  readonly coinPrice: number;
+  readonly updatedAt: number;
+  readonly source: "live" | "cached" | "fallback";
+}
+
+/** Player share holding for one stock symbol. */
+export interface StockHolding {
+  readonly shares: number;
+  readonly avgCostCoins: number;
+}
+
+/** Listed Vietnamese (HOSE) and International (NASDAQ/NYSE) stocks. */
+export const STOCK_CATALOG: readonly StockDefinition[] = [
+  { symbol: "VCB.VN", name: "Vietcombank", market: "VN", currency: "VND", fallbackPrice: 92_500 },
+  { symbol: "FPT.VN", name: "FPT Corp", market: "VN", currency: "VND", fallbackPrice: 135_000 },
+  { symbol: "VNM.VN", name: "Vinamilk", market: "VN", currency: "VND", fallbackPrice: 66_000 },
+  { symbol: "HPG.VN", name: "Hoa Phat", market: "VN", currency: "VND", fallbackPrice: 27_200 },
+  { symbol: "VIC.VN", name: "Vingroup", market: "VN", currency: "VND", fallbackPrice: 41_500 },
+  { symbol: "MWG.VN", name: "Mobile World", market: "VN", currency: "VND", fallbackPrice: 63_000 },
+  { symbol: "AAPL", name: "Apple", market: "US", currency: "USD", fallbackPrice: 230 },
+  { symbol: "NVDA", name: "NVIDIA", market: "US", currency: "USD", fallbackPrice: 140 },
+  { symbol: "MSFT", name: "Microsoft", market: "US", currency: "USD", fallbackPrice: 420 },
+  { symbol: "GOOGL", name: "Alphabet", market: "US", currency: "USD", fallbackPrice: 175 },
+  { symbol: "TSLA", name: "Tesla", market: "US", currency: "USD", fallbackPrice: 340 },
+  { symbol: "AMZN", name: "Amazon", market: "US", currency: "USD", fallbackPrice: 210 },
+];
+
+/**
+ * @brief Converts a live VND or USD stock price into in-game garden coins.
+ * @param rawPrice Market price in native currency.
+ * @param currency Native currency (`VND` or `USD`).
+ * @return Integer share price in garden coins.
+ */
+export function stockCoinPrice(rawPrice: number, currency: "VND" | "USD"): number {
+  if (!Number.isFinite(rawPrice) || rawPrice <= 0) return 1_000;
+  return currency === "VND"
+    ? Math.max(100, Math.round(rawPrice / 10))
+    : Math.max(100, Math.round(rawPrice * 2_500));
+}
+
+/**
+ * @brief Looks up a stock definition by ticker symbol.
+ * @param symbol Ticker symbol (e.g. `FPT.VN`, `AAPL`).
+ * @return Matching StockDefinition, or undefined.
+ */
+export function stockBySymbol(symbol: string): StockDefinition | undefined {
+  return STOCK_CATALOG.find((entry) => entry.symbol === symbol);
+}
+
 /** Guild co-op weekly project progress. */
 export interface GuildProjectSnapshot {
   /** Target item id (product or seed/crop). */
@@ -3631,6 +3700,8 @@ export interface ExtrasSnapshot {
   readonly petExpeditions?: readonly PetExpeditionState[];
   /** Server timestamp of the last equipped pet active skill trigger. */
   readonly petSkillAt?: number;
+  /** Stock exchange portfolio keyed by ticker symbol. */
+  readonly stocks?: Readonly<Record<string, StockHolding>>;
 }
 
 /** Kinds of daily quest progress the server tracks. */

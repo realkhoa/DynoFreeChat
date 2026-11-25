@@ -63,6 +63,7 @@ import {
   PET_SKILL_COOLDOWN_MS,
   type RelicId,
   type PetId,
+  type StockQuote,
   type MineRockKind,
   type MineRockCell,
   type MineState,
@@ -441,7 +442,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     | "gift"
     | "achievements"
     | "tournament"
+    | "stocks"
     | null = null;
+  let stockQuotes: StockQuote[] = [];
+  let stockUpdatedAt = 0;
+  let stockBusy = false;
   let visitCode: string | null = null;
   let state: GardenSnapshot | null = null;
   let visiting: VisitSnapshot | null = null;
@@ -6297,6 +6302,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         { id: "pet", icon: "🐾", tag: "Expedition" },
         { id: "vip", icon: "🌟", tag: "VIP & Nursery" },
         { id: "mine", icon: "⛏️", tag: "Staff Miner" },
+        { id: "stocks", icon: "📈", tag: "VN & US" },
       ] as const;
       for (const guide of guides) {
         cards.push({
@@ -6596,6 +6602,27 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     } catch {
       // Guild panel stays empty while offline.
     }
+  }
+
+  /**
+   * @brief Loads realtime Vietnamese and international stock quotes from the hub.
+   * @param force When true, bypasses the 60s server and client TTL cache.
+   */
+  async function loadStocks(force = false): Promise<void> {
+    if (disposed || stockBusy) return;
+    if (!force && stockUpdatedAt !== 0 && Date.now() - stockUpdatedAt < 30_000) return;
+    stockBusy = true;
+    try {
+      const result = await api.stocks(force);
+      if (disposed) return;
+      stockQuotes = result.quotes;
+      stockUpdatedAt = result.updatedAt || Date.now();
+    } catch {
+      // Keep existing quotes if offline.
+    } finally {
+      stockBusy = false;
+    }
+    if (!disposed && view === "reborn" && rebornTab === "townhall" && townBoard === "stocks") render();
   }
 
   /** @brief Builds the extras tab: streak, contracts, merchant, upgrades. */
@@ -10034,6 +10061,90 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /**
+   * @brief Builds the realtime VN & International Stock Exchange board inside Townhall.
+   * @return Stock exchange panel element.
+   */
+  function buildTownStocks(): HTMLElement {
+    const panel = div("garden-town-shop");
+    const head = div("garden-town-shop-head");
+    const title = span("garden-line", `// ${t("town.boardStocksTitle")}`);
+    const controls = div("garden-tools");
+    controls.append(actionButton(t("stocks.refresh"), "stockRefresh", !stockBusy));
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "stage-btn";
+    close.textContent = `[ ${t("town.close")} ]`;
+    close.dataset.act = "townBoard";
+    close.dataset.board = "stocks";
+    controls.append(close);
+    head.append(title, controls);
+    panel.append(head);
+
+    if (stockQuotes.length === 0) {
+      panel.append(lineBlock(t("common.loading")));
+      return panel;
+    }
+
+    const holdings = state?.extras.stocks ?? {};
+    const renderMarketGroup = (titleText: string, group: StockQuote[]): void => {
+      const section = div("garden-town-section");
+      section.append(span("garden-board-title", titleText));
+      for (const q of group) {
+        const sign = q.changePct > 0 ? "+" : "";
+        const sourceTag = q.source === "live" ? t("stocks.live") : t("stocks.fallback");
+        const priceLabel =
+          q.currency === "VND"
+            ? `${formatNumber(Math.round(q.rawPrice))} VND`
+            : `$${q.rawPrice.toFixed(2)} USD`;
+        const owned = holdings[q.symbol];
+        const ownedText =
+          owned !== undefined && owned.shares > 0
+            ? ` · ${t("stocks.owned", { shares: owned.shares, avg: formatCompact(owned.avgCostCoins) })}`
+            : "";
+        section.append(
+          lineBlock(
+            `[${sourceTag}] ${q.symbol} (${q.name}) · ${priceLabel} (${sign}${q.changePct}%) · ${formatCompact(q.coinPrice)}c/cp${ownedText}`,
+          ),
+        );
+        if (mode === "owner" && state !== null) {
+          const row = div("garden-tools");
+          const b1 = actionButton(t("stocks.buy1"), "stockTrade", state.coins >= q.coinPrice);
+          b1.dataset.side = "buy";
+          b1.dataset.symbol = q.symbol;
+          b1.dataset.shares = "1";
+          const b10 = actionButton(t("stocks.buy10"), "stockTrade", state.coins >= q.coinPrice * 10);
+          b10.dataset.side = "buy";
+          b10.dataset.symbol = q.symbol;
+          b10.dataset.shares = "10";
+          const ownedShares = owned?.shares ?? 0;
+          const s1 = actionButton(t("stocks.sell1"), "stockTrade", ownedShares >= 1);
+          s1.dataset.side = "sell";
+          s1.dataset.symbol = q.symbol;
+          s1.dataset.shares = "1";
+          const sAll = actionButton(t("stocks.sellAll"), "stockTrade", ownedShares >= 1);
+          sAll.dataset.side = "sell";
+          sAll.dataset.symbol = q.symbol;
+          sAll.dataset.shares = String(Math.max(1, ownedShares));
+          row.append(b1, b10, s1, sAll);
+          section.append(row);
+        }
+      }
+      panel.append(section);
+    };
+
+    renderMarketGroup(
+      t("stocks.vnTitle"),
+      stockQuotes.filter((q) => q.market === "VN"),
+    );
+    renderMarketGroup(
+      t("stocks.usTitle"),
+      stockQuotes.filter((q) => q.market === "US"),
+    );
+
+    return panel;
+  }
+
+  /**
    * @brief Builds the townhall as a section of the rebuilt view.
    * @details It lives inside the reborn document, under the garden boards, so the
    * town reads as one more block of the same screen instead of a sibling tab.
@@ -10146,6 +10257,17 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         title: t("town.boardTournamentTitle"),
         active: townBoard === "tournament",
       }),
+      buildRebornAction({
+        id: "town:stocks",
+        label: t("town.boardStocks"),
+        glyph: "$",
+        note: t("town.boardStocksNote"),
+        tone: "money",
+        act: "townBoard",
+        data: { board: "stocks" },
+        title: t("town.boardStocksTitle"),
+        active: townBoard === "stocks",
+      }),
     );
     wrap.append(boards);
     const open = townNpc === null ? undefined : npcs.find((npc) => npc.id === townNpc);
@@ -10188,6 +10310,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     } else if (townBoard === "tournament") {
       void loadExtras();
       wrap.append(buildTownTournament());
+    } else if (townBoard === "stocks") {
+      void loadStocks();
+      wrap.append(buildTownStocks());
     } else {
       wrap.append(lineBlock(mode === "owner" ? t("town.hint") : t("town.visitHint")));
     }
@@ -11567,7 +11692,8 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           board !== "jobs" &&
           board !== "gift" &&
           board !== "achievements" &&
-          board !== "tournament"
+          board !== "tournament" &&
+          board !== "stocks"
         )
           return;
         townBoard = townBoard === board ? null : (board as typeof townBoard);
@@ -11576,6 +11702,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         if (townBoard === "chart") void loadChart();
         if (townBoard === "bots") void loadBots();
         if (townBoard === "tournament") void loadExtras();
+        if (townBoard === "stocks") void loadStocks();
         render();
         return;
       }
@@ -12112,6 +12239,34 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       case "claimPetExpedition": {
         const id = target.dataset.id;
         if (id !== undefined) void runAction({ kind: "claimPetExpedition", id }, t("pet.expClaim"));
+        return;
+      }
+      case "stockRefresh":
+        void loadStocks(true);
+        return;
+      case "stockTrade": {
+        const side = target.dataset.side === "sell" ? "sell" : "buy";
+        const symbol = target.dataset.symbol;
+        const shares = Number(target.dataset.shares);
+        if (symbol === undefined || !Number.isInteger(shares) || shares < 1 || busy) return;
+        busy = true;
+        void api
+          .tradeStock(side, symbol, shares)
+          .then((result) => {
+            state = result.state;
+            stockQuotes = result.quotes;
+            message = {
+              text: t(side === "buy" ? "stocks.bought" : "stocks.sold", { shares, symbol }),
+              kind: "ok",
+            };
+          })
+          .catch((error) => {
+            applyApiError(error);
+          })
+          .finally(() => {
+            busy = false;
+            if (!disposed) render();
+          });
         return;
       }
       case "extrasWheel":

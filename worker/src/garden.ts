@@ -67,6 +67,11 @@ import {
   type TreeState,
   type VisitSnapshot,
   type VisitorSummary,
+  STOCK_CATALOG,
+  stockBySymbol,
+  stockCoinPrice,
+  type StockDefinition,
+  type StockQuote,
 } from "@dyno/shared/garden";
 import { DEFAULT_COLOR, sanitizeColor, sanitizeNick } from "@dyno/shared/protocol";
 import type { Env } from "./env";
@@ -504,6 +509,9 @@ export class Garden extends DurableObject<Env> {
     if (request.method === "POST" && url.pathname === "/guild/contribute") {
       return this.contributeGuild(request);
     }
+    if (request.method === "POST" && url.pathname === "/stocks/trade") {
+      return this.tradeStock(request);
+    }
     if (request.method === "POST" && url.pathname === "/recovery") return this.rotateRecovery(request);
     if (request.method === "POST" && url.pathname === "/issue-token") return this.issueToken(request);
     if (request.method === "POST" && url.pathname === "/identity") return this.identity(request);
@@ -617,6 +625,7 @@ export class Garden extends DurableObject<Env> {
         ? raw.petExpeditions.map((entry) => ({ ...entry }))
         : [],
       petSkillAt: typeof raw.petSkillAt === "number" ? raw.petSkillAt : 0,
+      stocks: raw.stocks ?? {},
       prestigeSkills: {
         merchant: raw.prestigeSkills?.merchant ?? 0,
         farmer: raw.prestigeSkills?.farmer ?? 0,
@@ -1059,6 +1068,64 @@ export class Garden extends DurableObject<Env> {
     next.stats.earned += reward;
     this.write(next);
     return json({ ok: true, guild: payload.guild, coins: next.coins });
+  }
+
+  /**
+   * @brief Executes a buy or sell stock order against live hub quotes.
+   * @param request HTTP request with `{ side: "buy" | "sell", symbol, shares }`.
+   * @return Updated garden snapshot and current stock quotes.
+   */
+  private async tradeStock(request: Request): Promise<Response> {
+    const ledger = await this.authorize(request);
+    if (ledger === null) return this.unauthorized();
+    const body = await readJson(request);
+    const side = body.side === "sell" ? "sell" : body.side === "buy" ? "buy" : null;
+    const symbol = typeof body.symbol === "string" ? body.symbol : "";
+    const shares = typeof body.shares === "number" && Number.isInteger(body.shares) ? body.shares : 0;
+    if (side === null || stockBySymbol(symbol) === undefined || shares < 1 || shares > 10_000) {
+      return json({ code: "BAD_REQUEST" }, 400);
+    }
+
+    const hub = this.env.GARDEN_HUB.get(this.env.GARDEN_HUB.idFromName(HUB_NAME));
+    const stockRes = await hub.fetch("https://hub/stocks");
+    if (!stockRes.ok) return json({ code: "BAD_REQUEST" }, 502);
+    const stockData = (await stockRes.json()) as { quotes: StockQuote[] };
+    const quote = stockData.quotes.find((q) => q.symbol === symbol);
+    if (quote === undefined) return json({ code: "BAD_REQUEST" }, 400);
+
+    const now = Date.now();
+    const next = structuredClone(ledger);
+    const portfolio = { ...(next.stocks ?? {}) };
+    const current = portfolio[symbol] ?? { shares: 0, avgCostCoins: 0 };
+    const totalCoins = quote.coinPrice * shares;
+
+    if (side === "buy") {
+      if (next.coins < totalCoins) return json({ code: "NOT_ENOUGH_COINS" }, 400);
+      next.coins -= totalCoins;
+      next.stats.spent += totalCoins;
+      const newShares = current.shares + shares;
+      const newAvg = Math.round((current.shares * current.avgCostCoins + totalCoins) / newShares);
+      portfolio[symbol] = { shares: newShares, avgCostCoins: newAvg };
+    } else {
+      if (current.shares < shares) return json({ code: "NO_PRODUCT" }, 400);
+      next.coins += totalCoins;
+      next.stats.earned += totalCoins;
+      const left = current.shares - shares;
+      if (left <= 0) delete portfolio[symbol];
+      else portfolio[symbol] = { shares: left, avgCostCoins: current.avgCostCoins };
+    }
+
+    next.stocks = portfolio;
+    next.rev += 1;
+    next.updatedAt = now;
+    next.lastSeen = now;
+    this.write(next);
+    const season = this.seasonFor(request, now);
+    return json({
+      ok: true,
+      state: this.snapshotWithStock(next, season),
+      quotes: stockData.quotes,
+    });
   }
 
   /** @brief Charges 5% of total coins for one raid strike and forwards damage to the hub boss. */
@@ -2082,6 +2149,7 @@ export class GardenHub extends DurableObject<Env> {
     if (request.method === "GET" && url.pathname === "/sales") return this.sales(url);
     if (request.method === "GET" && url.pathname === "/bots") return this.botList();
     if (request.method === "GET" && url.pathname === "/tournament") return this.tournament(url);
+    if (request.method === "GET" && url.pathname === "/stocks") return this.stocks(url);
     if (request.method === "POST" && url.pathname === "/remove") return this.remove(request);
     if (request.method === "GET" && url.pathname === "/info") return this.info();
 
@@ -2516,6 +2584,87 @@ export class GardenHub extends DurableObject<Env> {
     return this.sql
       .exec<SqlRow<{ guild_id: string }>>("SELECT guild_id FROM guild_members WHERE player_id = ?", playerId)
       .toArray()[0]?.guild_id;
+  }
+
+  private stockCache: { at: number; quotes: StockQuote[] } | null = null;
+
+  /**
+   * @brief Fetches a single live stock quote from Yahoo Finance with a deterministic fallback.
+   * @param def Static stock definition.
+   * @param now Current server timestamp.
+   * @return Resolved StockQuote.
+   */
+  private async fetchLiveStockQuote(def: StockDefinition, now: number): Promise<StockQuote> {
+    try {
+      const response = await fetch(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(def.symbol)}?interval=1d&range=1d`,
+        {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; DynoFreeChat/1.0)" },
+          signal: AbortSignal.timeout(3500),
+        },
+      );
+      if (response.ok) {
+        const data = (await response.json()) as {
+          chart?: {
+            result?: Array<{
+              meta?: { regularMarketPrice?: number; chartPreviousClose?: number };
+            }>;
+          };
+        };
+        const meta = data.chart?.result?.[0]?.meta;
+        const rawPrice = meta?.regularMarketPrice;
+        if (typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0) {
+          const prev = meta?.chartPreviousClose;
+          const changePct =
+            typeof prev === "number" && prev > 0 ? Math.round(((rawPrice - prev) / prev) * 10_000) / 100 : 0;
+          return {
+            symbol: def.symbol,
+            name: def.name,
+            market: def.market,
+            currency: def.currency,
+            rawPrice,
+            changePct,
+            coinPrice: stockCoinPrice(rawPrice, def.currency),
+            updatedAt: now,
+            source: "live",
+          };
+        }
+      }
+    } catch {
+      // Upstream unavailable or offline: fall back gracefully below.
+    }
+
+    const prevCached = this.stockCache?.quotes.find((q) => q.symbol === def.symbol);
+    if (prevCached !== undefined) {
+      return { ...prevCached, source: "cached" };
+    }
+    return {
+      symbol: def.symbol,
+      name: def.name,
+      market: def.market,
+      currency: def.currency,
+      rawPrice: def.fallbackPrice,
+      changePct: 0,
+      coinPrice: stockCoinPrice(def.fallbackPrice, def.currency),
+      updatedAt: now,
+      source: "fallback",
+    };
+  }
+
+  /**
+   * @brief Returns realtime VN and international stock quotes, cached for 60 seconds.
+   * @param url Request URL (supports `?refresh=1`).
+   * @return JSON response containing `quotes` and `updatedAt`.
+   */
+  private async stocks(url: URL): Promise<Response> {
+    const now = Date.now();
+    const force = url.searchParams.get("refresh") === "1";
+    if (!force && this.stockCache !== null && now - this.stockCache.at < 60_000) {
+      return json({ quotes: this.stockCache.quotes, updatedAt: this.stockCache.at });
+    }
+    const quotes = await Promise.all(STOCK_CATALOG.map((def) => this.fetchLiveStockQuote(def, now)));
+    this.stockCache = { at: now, quotes };
+    return json({ quotes, updatedAt: now });
   }
 
   /** @brief Full guild snapshot with members and co-op project. */

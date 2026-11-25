@@ -81,6 +81,10 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
       `https://hub/tournament?limit=${encodeURIComponent(url.searchParams.get("limit") ?? "20")}`,
     );
   }
+  if (name === "stocks" && request.method === "GET" && parts[3] === undefined) {
+    const refresh = url.searchParams.get("refresh") === "1" ? "?refresh=1" : "";
+    return hubStub(env).fetch(`https://hub/stocks${refresh}`);
+  }
   if (name === "bots") {
     const action = parts[3];
     if (request.method === "GET" && action === undefined) return botsList(env);
@@ -112,6 +116,9 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
   }
 
   if (name === "raid" && request.method === "POST") return forwardOwner(env, auth, "/raid", "POST", request);
+  if (name === "stocks" && parts[3] === "trade" && request.method === "POST") {
+    return forwardOwner(env, auth, "/stocks/trade", "POST", request);
+  }
   if (name === "guild") {
     const action = parts[3];
     if (request.method === "GET" && action === "mine") {
@@ -119,6 +126,9 @@ export async function handleGardenRoute(request: Request, env: Env, url: URL): P
     }
     if (request.method === "POST" && action === "donate") {
       return forwardOwner(env, auth, "/guild/donate", "POST", request);
+    }
+    if (request.method === "POST" && action === "contribute") {
+      return forwardOwner(env, auth, "/guild/contribute", "POST", request);
     }
     if (request.method === "POST" && (action === "create" || action === "join" || action === "leave")) {
       const body = (await readJson(request)) as Record<string, unknown>;

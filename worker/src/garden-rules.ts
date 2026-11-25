@@ -95,6 +95,7 @@ import {
   type PetExpeditionState,
   PET_SKILL_COOLDOWN_MS,
   plotSynergyAt,
+  type StockHolding,
   CONTRACT_CHAIN,
   equippedPetEffect,
   merchantOffers,
@@ -458,6 +459,8 @@ export interface GardenLedger {
   petExpeditions?: PetExpeditionState[];
   /** Timestamp of the last equipped pet active skill trigger. */
   petSkillAt?: number;
+  /** Stock exchange portfolio keyed by ticker symbol. */
+  stocks?: Record<string, StockHolding>;
   /** Warehouse level: 0 not built. */
   warehouse: number;
   /** Built machines. */
@@ -674,6 +677,9 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
     equippedRelics: [...(ledger.equippedRelics ?? [])],
     petExpeditions: (ledger.petExpeditions ?? []).map((entry) => ({ ...entry })),
     petSkillAt: ledger.petSkillAt ?? 0,
+    stocks: Object.fromEntries(
+      Object.entries(ledger.stocks ?? {}).map(([sym, holding]) => [sym, { ...holding }]),
+    ),
   };
 }
 
@@ -5348,6 +5354,9 @@ function clone(ledger: GardenLedger): GardenLedger {
     equippedRelics: [...(ledger.equippedRelics ?? [])],
     petExpeditions: (ledger.petExpeditions ?? []).map((entry) => ({ ...entry })),
     petSkillAt: ledger.petSkillAt ?? 0,
+    stocks: Object.fromEntries(
+      Object.entries(ledger.stocks ?? {}).map(([sym, holding]) => [sym, { ...holding }]),
+    ),
   };
 }
 

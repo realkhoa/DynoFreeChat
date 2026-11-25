@@ -4815,4 +4815,77 @@ describe("reborn legacy parity features", () => {
       pet: "cat",
     });
   });
+
+  it("renders the Townhall Stock Exchange with VN and US quotes and executes trades", async () => {
+    const base = makeState({ coins: 10_000_000 });
+    let traded: { side: string; symbol: string; shares: number } | null = null;
+    const api = new FakeGardenApi(base) as FakeGardenApi & {
+      stocks: () => Promise<{ quotes: unknown[]; updatedAt: number }>;
+      tradeStock: (
+        side: "buy" | "sell",
+        symbol: string,
+        shares: number,
+      ) => Promise<{ state: ReturnType<typeof makeState>; quotes: unknown[] }>;
+    };
+    const quotes = [
+      {
+        symbol: "FPT.VN",
+        name: "FPT Corp",
+        market: "VN",
+        currency: "VND",
+        rawPrice: 135_000,
+        changePct: 1.5,
+        coinPrice: 13_500,
+        updatedAt: CLOCK,
+        source: "live",
+      },
+      {
+        symbol: "AAPL",
+        name: "Apple",
+        market: "US",
+        currency: "USD",
+        rawPrice: 230,
+        changePct: -0.4,
+        coinPrice: 575_000,
+        updatedAt: CLOCK,
+        source: "live",
+      },
+    ];
+    api.stocks = async () => ({ quotes, updatedAt: CLOCK });
+    api.tradeStock = async (side, symbol, shares) => {
+      traded = { side, symbol, shares };
+      const next = makeState({
+        coins: 9_986_500,
+        extras: {
+          ...base.extras,
+          stocks: { [symbol]: { shares, avgCostCoins: 13_500 } },
+        },
+      });
+      return { state: next, quotes };
+    };
+
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:townhall"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="townBoard"][data-board="stocks"]')?.click();
+    await settle();
+    await settle();
+
+    expect(host.textContent).toContain("FPT.VN");
+    expect(host.textContent).toContain("AAPL");
+
+    const buyBtn = host.querySelector<HTMLButtonElement>(
+      '[data-act="stockTrade"][data-symbol="FPT.VN"][data-side="buy"]',
+    );
+    expect(buyBtn).not.toBeNull();
+    buyBtn?.click();
+    await settle();
+    await settle();
+
+    expect(traded).toEqual({ side: "buy", symbol: "FPT.VN", shares: 1 });
+    expect(host.textContent).toContain("1 cp");
+  });
 });

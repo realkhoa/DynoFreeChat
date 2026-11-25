@@ -18,6 +18,7 @@ import type {
   LeaderboardEntry,
   MarketSnapshot,
   SeasonSnapshot,
+  StockQuote,
   VisitSnapshot,
 } from "@dyno/shared/garden";
 import { GARDEN_AUTH_HEADER, formatGardenAuth } from "@dyno/shared/garden";
@@ -271,6 +272,37 @@ export class GardenApi {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "{}",
+    });
+  }
+
+  /**
+   * @brief Fetches realtime Vietnamese and international stock quotes.
+   * @param refresh When true, bypasses the 60s server cache.
+   * @return List of StockQuote entries and server fetch timestamp.
+   */
+  async stocks(refresh = false): Promise<{ quotes: StockQuote[]; updatedAt: number }> {
+    const query = refresh ? "?refresh=1" : "";
+    return this.request<{ quotes: StockQuote[]; updatedAt: number }>(`/api/garden/stocks${query}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * @brief Executes a buy or sell stock order against live server quotes.
+   * @param side Order side (`buy` or `sell`).
+   * @param symbol Ticker symbol.
+   * @param shares Share count.
+   * @return Updated garden snapshot and live quotes.
+   */
+  async tradeStock(
+    side: "buy" | "sell",
+    symbol: string,
+    shares: number,
+  ): Promise<{ state: GardenSnapshot; quotes: StockQuote[] }> {
+    return this.request<{ state: GardenSnapshot; quotes: StockQuote[] }>("/api/garden/stocks/trade", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ side, symbol, shares }),
     });
   }
 
