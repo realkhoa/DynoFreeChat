@@ -3449,7 +3449,7 @@ function buyPrestigeSeed(ledger: GardenLedger, seed: SeedId, now: number): RuleR
   if (ledger.prestige < offer.tier) return { ok: false, code: "BAD_REQUEST" };
   const today = wheelDayAt(now);
   if (ledger.prestigeShopDay === today) return { ok: false, code: "SHOP_SOLD_OUT" };
-  const cost = prestigeSeedPrice(offer, ledger.coins);
+  const cost = prestigeSeedPrice(offer, ledger.coins, ledger.prestige);
   if (ledger.coins <= 0 || cost <= 0 || ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
   const next = clone(ledger);
   next.coins -= cost;

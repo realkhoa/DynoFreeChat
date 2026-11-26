@@ -89,6 +89,7 @@ import {
   FINAL_SHOP,
   FINAL_SHOP_PRESTIGE,
   PRESTIGE_SHOP,
+  prestigeSeedFloor,
   prestigeSeedPrice,
   wheelDayAt,
   KITCHEN_PRICE,
@@ -5538,8 +5539,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       const grid = div("garden-buy-grid");
       for (const offer of offers) {
         const locked = prestigeLevel < offer.tier;
-        const coinCost = prestigeSeedPrice(offer, view.coins ?? 0);
+        const floorCost = prestigeSeedFloor(offer, prestigeLevel);
+        const coinCost = prestigeSeedPrice(offer, view.coins ?? 0, prestigeLevel);
         const pct = Math.round(offer.rate * 100);
+        const minPct = Number((offer.minRate * 100).toFixed(1));
         const card = document.createElement("button");
         card.type = "button";
         card.className = "garden-buy-card";
@@ -5548,7 +5551,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         card.dataset.seed = offer.seed;
         card.disabled =
           locked || boughtToday || (view.coins ?? 0) <= 0 || (view.coins ?? 0) < coinCost || mode !== "owner";
-        card.title = `${seedName(offer.seed)} · ${formatCompact(coinCost)}c (${pct}%, min ${formatCompact(offer.minPrice)}c) · P${offer.tier}`;
+        card.title = `${seedName(offer.seed)} · ${formatCompact(coinCost)}c (${pct}% xu, sàn ${minPct}% P${prestigeLevel + 1}: ${formatCompact(floorCost)}c) · P${offer.tier}`;
         card.append(
           span("garden-buy-line is-name", seedName(offer.seed)),
           span("garden-buy-line", `P${offer.tier}`),

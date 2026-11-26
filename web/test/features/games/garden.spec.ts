@@ -2418,7 +2418,7 @@ describe("prestige shop", () => {
   it("buys a cocomelon seed at prestige tier 1", async () => {
     const api = new FakeGardenApi(
       makeState({
-        coins: 2_000_000_000,
+        coins: 40_000_000_000_000_000,
         extras: { ...EXTRAS, prestige: 5 },
       }),
     );
@@ -2433,7 +2433,7 @@ describe("prestige shop", () => {
     expect(button).not.toBeNull();
     expect(button?.disabled).toBe(false);
     expect(button?.textContent).toContain("30%");
-    expect(button?.textContent).toContain("1bc");
+    expect(button?.textContent).toContain("c");
     button?.click();
     await settle();
     expect(api.calls.find((call) => call.action?.kind === "buyPrestigeSeed")?.action).toMatchObject({

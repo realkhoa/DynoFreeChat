@@ -1467,8 +1467,8 @@ export interface PrestigeShopOffer {
   readonly tier: number;
   /** Fraction of the player's current coin balance charged for this seed (e.g. `0.1` = 10%). */
   readonly rate: number;
-  /** Minimum coin price floor so low-balance accounts cannot buy prestige seeds cheaply. */
-  readonly minPrice: number;
+  /** Fraction of the next prestige requirement used as the minimum coin floor (e.g. `0.01` = 1%). */
+  readonly minRate: number;
 }
 
 /** Prestige level that unlocks the final shop. */
@@ -1485,28 +1485,39 @@ export const FINAL_SHOP: readonly FinalShopOffer[] = [{ seed: "cocomelon", coins
 
 /** Seeds unlocked by prestige tiers. */
 export const PRESTIGE_SHOP: readonly PrestigeShopOffer[] = [
-  { seed: "beanstalk", tier: 1, rate: 0.1, minPrice: 3_000_000 },
-  { seed: "emberLily", tier: 1, rate: 0.1, minPrice: 5_000_000 },
-  { seed: "sugarApple", tier: 1, rate: 0.1, minPrice: 5_000_000 },
-  { seed: "durian", tier: 1, rate: 0.1, minPrice: 5_000_000 },
-  { seed: "starfruit", tier: 2, rate: 0.15, minPrice: 10_000_000 },
-  { seed: "lotus", tier: 2, rate: 0.15, minPrice: 10_000_000 },
-  { seed: "hazelnut", tier: 2, rate: 0.15, minPrice: 10_000_000 },
-  { seed: "ghostPepper", tier: 2, rate: 0.15, minPrice: 7_000_000 },
-  { seed: "venusFlyTrap", tier: 3, rate: 0.2, minPrice: 10_000_000 },
-  { seed: "olive", tier: 3, rate: 0.2, minPrice: 20_000_000 },
-  { seed: "cocomelon", tier: 5, rate: 0.3, minPrice: 1_000_000_000 },
+  { seed: "beanstalk", tier: 1, rate: 0.1, minRate: 0.01 },
+  { seed: "emberLily", tier: 1, rate: 0.1, minRate: 0.01 },
+  { seed: "sugarApple", tier: 1, rate: 0.1, minRate: 0.01 },
+  { seed: "durian", tier: 1, rate: 0.1, minRate: 0.01 },
+  { seed: "starfruit", tier: 2, rate: 0.15, minRate: 0.015 },
+  { seed: "lotus", tier: 2, rate: 0.15, minRate: 0.015 },
+  { seed: "hazelnut", tier: 2, rate: 0.15, minRate: 0.015 },
+  { seed: "ghostPepper", tier: 2, rate: 0.15, minRate: 0.015 },
+  { seed: "venusFlyTrap", tier: 3, rate: 0.2, minRate: 0.02 },
+  { seed: "olive", tier: 3, rate: 0.2, minRate: 0.02 },
+  { seed: "cocomelon", tier: 5, rate: 0.3, minRate: 0.03 },
 ];
 
 /**
- * @brief Calculates the coin cost of a prestige shop seed as `max(minPrice, coins * rate)`.
- * @param offer Prestige shop offer descriptor containing `rate` and minimum floor `minPrice`.
- * @param coins Player's current coin balance.
- * @return Coin cost, always at least `offer.minPrice`.
+ * @brief Calculates the minimum floor price of a prestige shop seed as a percentage of the next prestige requirement.
+ * @param offer Prestige shop offer descriptor containing `minRate`.
+ * @param prestige Player's current prestige level.
+ * @return Minimum coin floor (`>= 1`).
  */
-export function prestigeSeedPrice(offer: PrestigeShopOffer, coins: number): number {
+export function prestigeSeedFloor(offer: PrestigeShopOffer, prestige: number): number {
+  return Math.max(1, Math.round(prestigeRequirement(prestige) * offer.minRate));
+}
+
+/**
+ * @brief Calculates the coin cost of a prestige shop seed as `max(prestigeSeedFloor, coins * rate)`.
+ * @param offer Prestige shop offer descriptor containing `rate` and `minRate`.
+ * @param coins Player's current coin balance.
+ * @param prestige Player's current prestige level.
+ * @return Coin cost, always at least `prestigeSeedFloor(offer, prestige)`.
+ */
+export function prestigeSeedPrice(offer: PrestigeShopOffer, coins: number, prestige: number): number {
   const pctPrice = Number.isFinite(coins) && coins > 0 ? Math.round(coins * offer.rate) : 0;
-  return Math.max(offer.minPrice, pctPrice);
+  return Math.max(prestigeSeedFloor(offer, prestige), pctPrice);
 }
 
 /** @brief Minimum prestige tier needed to plant a seed; `0` for normal seeds. */
