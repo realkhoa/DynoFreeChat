@@ -89,6 +89,8 @@ import {
   FINAL_SHOP,
   FINAL_SHOP_PRESTIGE,
   PRESTIGE_SHOP,
+  prestigeSeedPrice,
+  wheelDayAt,
   KITCHEN_PRICE,
   DAY_MS,
   prestigeGrowScale,
@@ -5527,30 +5529,37 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     wrap.append(skillPanel);
 
     const shop = div("garden-market-panel");
+    const boughtToday = (extras.prestigeShopDay ?? -1) === wheelDayAt(now());
     shop.append(lineBlock(`// ${t("prestige.shop")}`));
+    shop.append(lineBlock(boughtToday ? t("prestige.shopLimitUsed") : t("prestige.shopLimitReady")));
     const addOffers = (label: string, offers: typeof PRESTIGE_SHOP): void => {
       if (offers.length === 0) return;
       shop.append(lineBlock(`// ${label}`));
       const grid = div("garden-buy-grid");
       for (const offer of offers) {
         const locked = prestigeLevel < offer.tier;
+        const coinCost = prestigeSeedPrice(offer, view.coins ?? 0);
+        const pct = Math.round(offer.rate * 100);
         const card = document.createElement("button");
         card.type = "button";
         card.className = "garden-buy-card";
         if (locked) card.classList.add("is-prestige-locked");
         card.dataset.act = "buyPrestigeSeed";
         card.dataset.seed = offer.seed;
-        card.disabled = locked || (view.coins ?? 0) < offer.price || mode !== "owner";
-        card.title = `${seedName(offer.seed)} · ${formatCompact(offer.price)}c · P${offer.tier}`;
+        card.disabled =
+          locked || boughtToday || (view.coins ?? 0) <= 0 || (view.coins ?? 0) < coinCost || mode !== "owner";
+        card.title = `${seedName(offer.seed)} · ${pct}% (${formatCompact(coinCost)}c) · P${offer.tier}`;
         card.append(
           span("garden-buy-line is-name", seedName(offer.seed)),
           span("garden-buy-line", `P${offer.tier}`),
-          span("garden-buy-line is-price", `${formatCompact(offer.price)}c`),
+          span("garden-buy-line is-price", `${pct}% · ${formatCompact(coinCost)}c`),
           span(
             "garden-buy-line is-stock",
             locked
               ? t("prestige.tierLocked", { tier: offer.tier })
-              : `${t("garden.bag")} ${view.bag.seeds[offer.seed] ?? 0}`,
+              : boughtToday
+                ? t("prestige.boughtToday")
+                : `${t("garden.bag")} ${view.bag.seeds[offer.seed] ?? 0}`,
           ),
         );
         grid.append(card);

@@ -1465,7 +1465,8 @@ export const ATTACHMENTS: readonly AttachmentDefinition[] = [
 export interface PrestigeShopOffer {
   readonly seed: SeedId;
   readonly tier: number;
-  readonly price: number;
+  /** Fraction of the player's current coin balance charged for this seed (e.g. `0.1` = 10%). */
+  readonly rate: number;
 }
 
 /** Prestige level that unlocks the final shop. */
@@ -1482,18 +1483,29 @@ export const FINAL_SHOP: readonly FinalShopOffer[] = [{ seed: "cocomelon", coins
 
 /** Seeds unlocked by prestige tiers. */
 export const PRESTIGE_SHOP: readonly PrestigeShopOffer[] = [
-  { seed: "beanstalk", tier: 1, price: 3_000_000 },
-  { seed: "emberLily", tier: 1, price: 5_000_000 },
-  { seed: "sugarApple", tier: 1, price: 5_000_000 },
-  { seed: "durian", tier: 1, price: 5_000_000 },
-  { seed: "starfruit", tier: 2, price: 10_000_000 },
-  { seed: "lotus", tier: 2, price: 10_000_000 },
-  { seed: "hazelnut", tier: 2, price: 10_000_000 },
-  { seed: "ghostPepper", tier: 2, price: 7_000_000 },
-  { seed: "venusFlyTrap", tier: 3, price: 10_000_000 },
-  { seed: "olive", tier: 3, price: 20_000_000 },
-  { seed: "cocomelon", tier: 5, price: 1_000_000_000 },
+  { seed: "beanstalk", tier: 1, rate: 0.1 },
+  { seed: "emberLily", tier: 1, rate: 0.1 },
+  { seed: "sugarApple", tier: 1, rate: 0.1 },
+  { seed: "durian", tier: 1, rate: 0.1 },
+  { seed: "starfruit", tier: 2, rate: 0.15 },
+  { seed: "lotus", tier: 2, rate: 0.15 },
+  { seed: "hazelnut", tier: 2, rate: 0.15 },
+  { seed: "ghostPepper", tier: 2, rate: 0.15 },
+  { seed: "venusFlyTrap", tier: 3, rate: 0.2 },
+  { seed: "olive", tier: 3, rate: 0.2 },
+  { seed: "cocomelon", tier: 5, rate: 0.3 },
 ];
+
+/**
+ * @brief Calculates the coin cost of a prestige shop seed as a percentage of current coins.
+ * @param offer Prestige shop offer descriptor containing the percentage rate.
+ * @param coins Player's current coin balance.
+ * @return Coin cost (`>= 1` when coins > 0, or `0` when balance is zero/invalid).
+ */
+export function prestigeSeedPrice(offer: PrestigeShopOffer, coins: number): number {
+  if (!Number.isFinite(coins) || coins <= 0) return 0;
+  return Math.max(1, Math.round(coins * offer.rate));
+}
 
 /** @brief Minimum prestige tier needed to plant a seed; `0` for normal seeds. */
 export function prestigeTierForSeed(seed: SeedId): number {
@@ -3686,6 +3698,7 @@ export interface ExtrasSnapshot {
   readonly taxLast?: number;
   /** Prestige coins earned per 1000b lifetime earnings. */
   readonly prestigeCoins?: number;
+  readonly prestigeShopDay?: number;
   /** Progress toward the next prestige coin. */
   readonly prestigeProgress?: number;
   /** Spent prestige skill points per branch. */

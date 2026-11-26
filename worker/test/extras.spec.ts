@@ -295,7 +295,7 @@ describe("extras", () => {
     expect(run({ ...ledger, prestigeCoins: 0 }, { kind: "buyFinalSeed", seed: "cocomelon" }).ok).toBe(false);
   });
 
-  it("sells tiered prestige seeds including cocomelon", () => {
+  it("sells tiered prestige seeds at % of current coins with a 1-per-day limit", () => {
     const ledger = makeLedger();
     ledger.prestige = 5;
     ledger.coins = 2_000_000_000;
@@ -307,7 +307,22 @@ describe("extras", () => {
     expect(bought.ok).toBe(true);
     if (!bought.ok) return;
     expect(bought.ledger.bag.seeds.cocomelon).toBe(1);
-    expect(bought.ledger.coins).toBe(1_000_000_000);
+    expect(bought.ledger.coins).toBe(1_400_000_000);
+
+    const secondSameDay = run(bought.ledger, { kind: "buyPrestigeSeed", seed: "beanstalk" });
+    expect(secondSameDay.ok).toBe(false);
+    if (!secondSameDay.ok) expect(secondSameDay.code).toBe("SHOP_SOLD_OUT");
+
+    const nextDay = run(
+      bought.ledger,
+      { kind: "buyPrestigeSeed", seed: "beanstalk" },
+      NOW + 24 * 60 * 60_000,
+    );
+    expect(nextDay.ok).toBe(true);
+    if (nextDay.ok) {
+      expect(nextDay.ledger.bag.seeds.beanstalk).toBe(1);
+      expect(nextDay.ledger.coins).toBe(1_260_000_000);
+    }
 
     const tiered = run(
       { ...ledger, prestige: 4, coins: 2_000_000_000 },

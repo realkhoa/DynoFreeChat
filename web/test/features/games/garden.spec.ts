@@ -2432,12 +2432,37 @@ describe("prestige shop", () => {
     );
     expect(button).not.toBeNull();
     expect(button?.disabled).toBe(false);
+    expect(button?.textContent).toContain("30%");
+    expect(button?.textContent).toContain("600mc");
     button?.click();
     await settle();
     expect(api.calls.find((call) => call.action?.kind === "buyPrestigeSeed")?.action).toMatchObject({
       kind: "buyPrestigeSeed",
       seed: "cocomelon",
     });
+  });
+
+  it("disables prestige shop after buying 1 tree today", async () => {
+    const api = new FakeGardenApi(
+      makeState({
+        coins: 2_000_000_000,
+        extras: {
+          ...EXTRAS,
+          prestige: 5,
+          prestigeShopDay: Math.floor((CLOCK - Date.UTC(2026, 0, 1)) / 86_400_000),
+        },
+      }),
+    );
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="tab:prestige"]')?.click();
+    await settle();
+
+    const button = host.querySelector<HTMLButtonElement>(
+      '[data-act="buyPrestigeSeed"][data-seed="beanstalk"]',
+    );
+    expect(button?.disabled).toBe(true);
+    expect(button?.textContent).toContain("Đã mua hôm nay");
   });
 });
 

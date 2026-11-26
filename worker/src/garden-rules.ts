@@ -190,6 +190,7 @@ import {
   wealthBadLuck,
   prestigeTierForSeed,
   PRESTIGE_SHOP,
+  prestigeSeedPrice,
   PRESTIGE_COIN_VALUE,
   FINAL_SHOP,
   FINAL_SHOP_PRESTIGE,
@@ -430,6 +431,8 @@ export interface GardenLedger {
   prestige: number;
   /** Prestige coins earned per 1000b lifetime earnings. */
   prestigeCoins: number;
+  /** Local day index when the daily 1-tree prestige shop purchase was used. */
+  prestigeShopDay: number;
   prestigeSkills: { merchant: number; farmer: number; artisan: number };
   /** Earnings progress toward the next prestige coin. */
   prestigeProgress: number;
@@ -583,6 +586,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     wheelDay: wheelDayAt(input.now),
     prestige: 0,
     prestigeCoins: 0,
+    prestigeShopDay: -1,
     prestigeSkills: { merchant: 0, farmer: 0, artisan: 0 },
     prestigeProgress: 0,
     questDay: wheelDayAt(input.now),
@@ -662,6 +666,7 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
     staff: ledger.staff.map((worker) => ({ ...worker, traits: [...worker.traits] })),
     prestige: ledger.prestige,
     prestigeCoins: ledger.prestigeCoins ?? 0,
+    prestigeShopDay: ledger.prestigeShopDay ?? -1,
     prestigeProgress: ledger.prestigeProgress ?? 0,
     prestigeSkills: { ...(ledger.prestigeSkills ?? {}) },
     prestigePoints:
@@ -3431,15 +3436,25 @@ function buyFinalSeed(ledger: GardenLedger, seed: SeedId, now: number): RuleResu
   return changed(next, now);
 }
 
-/** @brief Buys one seed from the prestige shop. */
+/**
+ * @brief Buys one seed per day from the prestige shop at a percentage of current coins.
+ * @param ledger Current garden ledger.
+ * @param seed Target prestige seed identifier.
+ * @param now Current server timestamp in milliseconds.
+ * @return RuleResult with updated ledger or error code (`BAD_REQUEST`, `LIMIT_REACHED`, `NOT_ENOUGH_COINS`).
+ */
 function buyPrestigeSeed(ledger: GardenLedger, seed: SeedId, now: number): RuleResult {
   const offer = PRESTIGE_SHOP.find((entry) => entry.seed === seed);
   if (offer === undefined) return { ok: false, code: "BAD_REQUEST" };
   if (ledger.prestige < offer.tier) return { ok: false, code: "BAD_REQUEST" };
-  if (ledger.coins < offer.price) return { ok: false, code: "NOT_ENOUGH_COINS" };
+  const today = wheelDayAt(now);
+  if (ledger.prestigeShopDay === today) return { ok: false, code: "SHOP_SOLD_OUT" };
+  const cost = prestigeSeedPrice(offer, ledger.coins);
+  if (ledger.coins <= 0 || cost <= 0 || ledger.coins < cost) return { ok: false, code: "NOT_ENOUGH_COINS" };
   const next = clone(ledger);
-  next.coins -= offer.price;
-  next.stats.spent += offer.price;
+  next.coins -= cost;
+  next.stats.spent += cost;
+  next.prestigeShopDay = today;
   next.bag.seeds[seed] = (next.bag.seeds[seed] ?? 0) + 1;
   collect(next, `seed:${seed}`);
   return changed(next, now);
