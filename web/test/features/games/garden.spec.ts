@@ -4984,6 +4984,9 @@ describe("reborn legacy parity features", () => {
     expect(getPhaseProfile("day").shakerGain).toBeGreaterThan(0);
     expect(getPhaseProfile("dusk").chordWave).toBe("sawtooth");
     expect(getPhaseProfile("night").chordDetuneHz).toBeGreaterThan(1);
+    for (const p of profiles) {
+      expect(p.chordSpreadSec).toBeLessThanOrEqual(0.01);
+    }
     expect(tracksForPhase("day")[0]!.stepMs).toBeLessThan(tracksForPhase("dawn")[0]!.stepMs);
     expect(tracksForPhase("dawn")[0]!.stepMs).toBeLessThan(tracksForPhase("dusk")[0]!.stepMs);
     expect(tracksForPhase("dusk")[0]!.stepMs).toBeLessThan(tracksForPhase("night")[0]!.stepMs);

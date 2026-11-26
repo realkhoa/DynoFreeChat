@@ -45,17 +45,17 @@ const PHASE_PROFILES: Record<DayPhaseId, PhaseMusicProfile> = {
     bassPattern: "pedal",
     chordWave: "sine",
     chordCutoff: 2100,
-    chordSpreadSec: 0.14,
-    chordAttackSec: 0.035,
-    chordDetuneHz: 0,
+    chordSpreadSec: 0.006,
+    chordAttackSec: 0.03,
+    chordDetuneHz: 0.4,
     chordPulse: false,
     melodyWave: "sine",
     melodyCutoff: 2900,
-    melodyEchoGain: 0.28,
+    melodyEchoGain: 0.25,
     melodyEchoDelaySec: 0.28,
-    introOffsets: [0.35, 1.55],
-    verseOffsets: [0.22, 1.02, 1.82],
-    climaxOffsets: [0.15, 0.62, 1.1, 1.58, 2.08],
+    introOffsets: [0.25, 1.4],
+    verseOffsets: [0.0, 0.72, 1.35, 1.95],
+    climaxOffsets: [0.0, 0.45, 0.9, 1.35, 1.85],
     shakerGain: 0,
   },
   day: {
@@ -65,17 +65,17 @@ const PHASE_PROFILES: Record<DayPhaseId, PhaseMusicProfile> = {
     bassPattern: "bouncy",
     chordWave: "triangle",
     chordCutoff: 2200,
-    chordSpreadSec: 0.025,
-    chordAttackSec: 0.025,
-    chordDetuneHz: 0,
+    chordSpreadSec: 0.004,
+    chordAttackSec: 0.02,
+    chordDetuneHz: 0.3,
     chordPulse: true,
     melodyWave: "triangle",
     melodyCutoff: 2400,
     melodyEchoGain: 0,
     melodyEchoDelaySec: 0,
-    introOffsets: [0.3, 1.25],
-    verseOffsets: [0.22, 0.72, 1.25, 1.75],
-    climaxOffsets: [0.18, 0.55, 0.92, 1.32, 1.72, 2.08],
+    introOffsets: [0.25, 1.1],
+    verseOffsets: [0.0, 0.55, 1.1, 1.65],
+    climaxOffsets: [0.0, 0.38, 0.75, 1.12, 1.5, 1.88],
     shakerGain: 0.0085,
   },
   dusk: {
@@ -85,17 +85,17 @@ const PHASE_PROFILES: Record<DayPhaseId, PhaseMusicProfile> = {
     bassPattern: "sustained",
     chordWave: "sawtooth",
     chordCutoff: 780,
-    chordSpreadSec: 0.085,
-    chordAttackSec: 0.18,
+    chordSpreadSec: 0,
+    chordAttackSec: 0.22,
     chordDetuneHz: 0.9,
     chordPulse: false,
     melodyWave: "triangle",
     melodyCutoff: 1180,
-    melodyEchoGain: 0.16,
+    melodyEchoGain: 0.18,
     melodyEchoDelaySec: 0.36,
-    introOffsets: [0.55, 1.85],
-    verseOffsets: [0.45, 1.45, 2.3],
-    climaxOffsets: [0.3, 0.95, 1.6, 2.2, 2.75],
+    introOffsets: [0.45, 1.7],
+    verseOffsets: [0.0, 0.95, 1.85],
+    climaxOffsets: [0.0, 0.65, 1.3, 1.95, 2.55],
     shakerGain: 0,
   },
   night: {
@@ -105,17 +105,17 @@ const PHASE_PROFILES: Record<DayPhaseId, PhaseMusicProfile> = {
     bassPattern: "sub",
     chordWave: "sine",
     chordCutoff: 950,
-    chordSpreadSec: 0.22,
+    chordSpreadSec: 0,
     chordAttackSec: 0.48,
     chordDetuneHz: 1.6,
     chordPulse: false,
     melodyWave: "sine",
     melodyCutoff: 1550,
-    melodyEchoGain: 0.34,
+    melodyEchoGain: 0.32,
     melodyEchoDelaySec: 0.45,
-    introOffsets: [0.95],
-    verseOffsets: [0.85, 2.35],
-    climaxOffsets: [0.5, 1.4, 2.3, 3.15],
+    introOffsets: [0.8],
+    verseOffsets: [0.0, 1.75],
+    climaxOffsets: [0.0, 0.95, 1.9, 2.85],
     shakerGain: 0,
   },
 };
@@ -670,7 +670,145 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
   }
 
   /**
-   * @brief Schedules the phase-specific chord voicing and pad/arpeggio texture for one bar.
+   * @brief Plays a warm electric-piano (Rhodes-like) voice with subtle 2nd-harmonic tine attack.
+   * @param freq Fundamental frequency in Hz.
+   * @param startTime AudioContext timestamp to start.
+   * @param duration Note duration in seconds.
+   * @param peakGain Maximum envelope gain.
+   * @param cutoff Lowpass filter cutoff frequency in Hz.
+   * @param attackSec Envelope attack duration in seconds.
+   */
+  function playRhodes(
+    freq: number,
+    startTime: number,
+    duration: number,
+    peakGain: number,
+    cutoff = 1800,
+    attackSec = 0.018,
+  ): void {
+    playTone(freq, startTime, duration, peakGain, "sine", cutoff, attackSec);
+    // Subtle 2nd-harmonic bell/tine transient for warm electric piano character.
+    playTone(
+      freq * 2,
+      startTime,
+      Math.min(0.22, duration * 0.45),
+      peakGain * 0.22,
+      "triangle",
+      cutoff * 1.2,
+      0.008,
+    );
+  }
+
+  /**
+   * @brief Plays a soft synthesized lo-fi kick drum.
+   * @param startTime AudioContext timestamp to start.
+   * @param peakGain Maximum kick gain.
+   */
+  function playKick(startTime: number, peakGain: number): void {
+    if (ctx === null || master === null) return;
+    const osc = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const env = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(112, startTime);
+    osc.frequency.exponentialRampToValueAtTime(42, startTime + 0.11);
+
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(220, startTime);
+
+    env.gain.setValueAtTime(0.0001, startTime);
+    env.gain.linearRampToValueAtTime(peakGain, startTime + 0.008);
+    env.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.22);
+
+    osc.connect(filter);
+    filter.connect(env);
+    env.connect(master);
+
+    osc.start(startTime);
+    osc.stop(startTime + 0.25);
+  }
+
+  /**
+   * @brief Plays a gentle lo-fi rimshot or brush snare.
+   * @param startTime AudioContext timestamp to start.
+   * @param peakGain Maximum snare gain.
+   */
+  function playSnare(startTime: number, peakGain: number): void {
+    playNoiseSwell(startTime, 0.11, "bandpass", 1550, 1.1, peakGain);
+    playTone(185, startTime, 0.075, peakGain * 0.55, "triangle", 650, 0.004);
+  }
+
+  /**
+   * @brief Schedules a phase-appropriate lo-fi drum groove for one bar.
+   * @param profile Active day phase music profile.
+   * @param now Bar start timestamp in AudioContext seconds.
+   * @param stepSec Bar duration in seconds.
+   * @param section Current 16-bar arrangement section.
+   */
+  function schedulePhaseDrums(
+    profile: PhaseMusicProfile,
+    now: number,
+    stepSec: number,
+    section: SongSection,
+  ): void {
+    const isClimax = section === "climax";
+    const isIntroOrOutro = section === "intro" || section === "outro";
+    if (isIntroOrOutro) {
+      if (profile.shakerGain > 0) {
+        [0.25, 0.75].forEach((frac) => {
+          playNoiseSwell(now + stepSec * frac, 0.09, "highpass", 4800, 0.9, profile.shakerGain * 0.6);
+        });
+      }
+      return;
+    }
+
+    if (profile.phase === "day") {
+      const kickGain = isClimax ? 0.11 : 0.085;
+      playKick(now, kickGain);
+      playKick(now + stepSec * 0.375, kickGain * 0.7);
+      playKick(now + stepSec * 0.5, kickGain * 0.85);
+      playSnare(now + stepSec * 0.25, isClimax ? 0.042 : 0.032);
+      playSnare(now + stepSec * 0.75, isClimax ? 0.045 : 0.034);
+      [0.125, 0.375, 0.625, 0.875].forEach((frac) => {
+        playNoiseSwell(now + stepSec * frac, 0.07, "highpass", 5500, 1.0, profile.shakerGain);
+      });
+      return;
+    }
+
+    if (profile.phase === "dawn") {
+      playKick(now, isClimax ? 0.075 : 0.055);
+      playSnare(now + stepSec * 0.5, isClimax ? 0.026 : 0.018);
+      if (isClimax) {
+        [0.25, 0.75].forEach((frac) => {
+          playNoiseSwell(now + stepSec * frac, 0.08, "highpass", 5200, 0.9, 0.005);
+        });
+      }
+      return;
+    }
+
+    if (profile.phase === "dusk") {
+      const kickGain = isClimax ? 0.085 : 0.065;
+      playKick(now, kickGain);
+      playKick(now + stepSec * 0.625, kickGain * 0.65);
+      playSnare(now + stepSec * 0.5, isClimax ? 0.03 : 0.022);
+      return;
+    }
+
+    // Night stays ultra-minimal with a soft sub-kick heartbeat only in climax.
+    if (isClimax) {
+      playKick(now, 0.05);
+    }
+  }
+
+  /**
+   * @brief Schedules the phase-specific chord voicing as a warm pad / electric piano block (no arp spread).
+   * @param profile Active day phase music profile.
+   * @param notes Chord frequencies in Hz.
+   * @param now Bar start timestamp in AudioContext seconds.
+   * @param stepSec Bar duration in seconds.
+   * @param isClimax Whether the bar is in the climax section.
+   * @param isIntroOrOutro Whether the bar is in intro or outro.
    */
   function schedulePhaseChords(
     profile: PhaseMusicProfile,
@@ -680,42 +818,42 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
     isClimax: boolean,
     isIntroOrOutro: boolean,
   ): void {
-    const chordGain = isClimax ? 0.065 : isIntroOrOutro ? 0.036 : 0.05;
-    const cutoff = isClimax ? profile.chordCutoff * 1.3 : profile.chordCutoff;
+    const chordGain = isClimax ? 0.052 : isIntroOrOutro ? 0.03 : 0.042;
+    const cutoff = isClimax ? profile.chordCutoff * 1.25 : profile.chordCutoff;
+    const useRhodes = profile.phase === "dawn" || profile.phase === "day";
+
     notes.forEach((freq, idx) => {
       const start = now + idx * profile.chordSpreadSec;
-      const dur = profile.chordPulse ? stepSec * 0.42 : stepSec * 0.96;
-      playTone(freq, start, dur, chordGain, profile.chordWave, cutoff, profile.chordAttackSec);
+      const dur = profile.chordPulse ? stepSec * 0.46 : stepSec * 0.98;
+      if (useRhodes) {
+        playRhodes(freq, start, dur, chordGain, cutoff, profile.chordAttackSec);
+      } else {
+        playTone(freq, start, dur, chordGain, profile.chordWave, cutoff, profile.chordAttackSec);
+      }
       if (profile.chordDetuneHz > 0) {
         playTone(
           freq + profile.chordDetuneHz,
           start,
-          stepSec * 1.05,
-          chordGain * 0.5,
+          stepSec * 1.02,
+          chordGain * 0.42,
           "sine",
           cutoff,
-          profile.chordAttackSec,
+          Math.max(0.08, profile.chordAttackSec),
         );
       }
       if (profile.chordPulse) {
-        playTone(
-          freq,
-          now + stepSec * 0.52 + idx * 0.018,
-          stepSec * 0.38,
-          chordGain * 0.72,
-          profile.chordWave,
-          cutoff,
-          0.025,
-        );
-      }
-      if (isClimax && idx >= 2 && profile.phase !== "night") {
-        playTone(freq * 2, start + 0.05, stepSec * 0.65, 0.02, "sine", 2400, 0.06);
+        playRhodes(freq, now + stepSec * 0.5, stepSec * 0.42, chordGain * 0.68, cutoff * 0.92, 0.018);
       }
     });
   }
 
   /**
-   * @brief Schedules the phase-specific melody contour, rhythm, and optional echo tail.
+   * @brief Schedules a phrased, breathing melody line (with a 4th-bar rest) over the chord bed.
+   * @param profile Active day phase music profile.
+   * @param melody Scale/motif frequencies for the current track.
+   * @param now Bar start timestamp in AudioContext seconds.
+   * @param stepSec Bar duration in seconds.
+   * @param section Current 16-bar arrangement section.
    */
   function schedulePhaseMelody(
     profile: PhaseMusicProfile,
@@ -724,6 +862,9 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
     stepSec: number,
     section: SongSection,
   ): void {
+    // Give bar 4 of every 4-bar phrase breathing room so the chords & groove shine.
+    if (barInCycle % 4 === 3 && section !== "climax") return;
+
     const isClimax = section === "climax";
     const isIntroOrOutro = section === "intro" || section === "outro";
     const offsets = isClimax
@@ -731,30 +872,38 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
       : isIntroOrOutro
         ? profile.introOffsets
         : profile.verseOffsets;
-    const melGain = isClimax ? 0.042 : 0.027;
-    const melDur = profile.phase === "night" ? 1.7 : profile.phase === "day" ? 0.55 : 0.95;
+    const melGain = isClimax ? 0.044 : 0.03;
+    const melDur = profile.phase === "night" ? 1.5 : profile.phase === "day" ? 0.62 : 0.98;
+    const phraseStep = (barInCycle % 4) * 2;
 
     offsets.forEach((offset, idx) => {
       if (offset >= stepSec - 0.15) return;
-      const noteIdx = (barInCycle * 3 + idx * 2) % melody.length;
+      // Stepwise musical contour instead of wide random-sounding jumps.
+      const contour = idx % 2 === 0 ? idx : idx + 1;
+      const noteIdx = (phraseStep + contour) % melody.length;
       const freq = melody[noteIdx] ?? 523.25;
-      playTone(
-        freq,
-        now + offset,
-        isClimax ? melDur * 1.15 : melDur,
-        melGain,
-        profile.melodyWave,
-        isClimax ? profile.melodyCutoff * 1.2 : profile.melodyCutoff,
-        profile.phase === "night" ? 0.12 : 0.035,
-      );
+      const cutoff = isClimax ? profile.melodyCutoff * 1.15 : profile.melodyCutoff;
+      if (profile.phase === "dawn" || profile.phase === "day") {
+        playRhodes(freq, now + offset, isClimax ? melDur * 1.15 : melDur, melGain, cutoff, 0.02);
+      } else {
+        playTone(
+          freq,
+          now + offset,
+          isClimax ? melDur * 1.15 : melDur,
+          melGain,
+          profile.melodyWave,
+          cutoff,
+          profile.phase === "night" ? 0.11 : 0.035,
+        );
+      }
       if (profile.melodyEchoGain > 0 && offset + profile.melodyEchoDelaySec < stepSec - 0.1) {
         playTone(
           freq,
           now + offset + profile.melodyEchoDelaySec,
-          melDur * 0.9,
+          melDur * 0.85,
           melGain * profile.melodyEchoGain,
           "sine",
-          profile.melodyCutoff * 0.85,
+          profile.melodyCutoff * 0.8,
           0.05,
         );
       }
@@ -783,12 +932,7 @@ export function createChillMusicPlayer(): ChillMusicPlayer {
         schedulePhaseBass(profile, chord.bass, now, stepSec, isClimax, isIntroOrOutro);
         schedulePhaseChords(profile, chord.notes, now, stepSec, isClimax, isIntroOrOutro);
         schedulePhaseMelody(profile, track.melody, now, stepSec, section);
-
-        if (profile.shakerGain > 0 && !isIntroOrOutro) {
-          [0.25, 0.5, 0.75].forEach((frac) => {
-            playNoiseSwell(now + stepSec * frac, 0.14, "highpass", 4200, 0.9, profile.shakerGain);
-          });
-        }
+        schedulePhaseDrums(profile, now, stepSec, section);
       }
     }
 
