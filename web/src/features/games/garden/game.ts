@@ -7273,80 +7273,275 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     }
   }
 
-  /** @brief Builds the event tab: season, leaderboard and the backup panel. */
-  function buildEvent(): HTMLElement {
-    const wrap = div("garden-event");
+  const PHASE_GLYPHS: Record<string, string> = {
+    day: "☼",
+    dusk: "☀",
+    night: "☾",
+    dawn: "☽",
+  };
 
-    const seasonPanel = div("garden-event-panel");
-    const modifier = weeklyModifier(now());
-    seasonPanel.append(
-      lineBlock(
-        t("event.weekly", {
-          name: t(`weekly.${modifier.id}`),
-          time: formatDuration(Math.max(0, weekEndsAt(now()) - now())),
-        }),
-      ),
-    );
-    if (raidSnapshot !== null) {
-      const raidCost = raidHitCost(state?.coins ?? 0);
-      seasonPanel.append(
-        lineBlock(
-          t("raid.hp", {
-            hp: formatCompact(raidSnapshot.hp),
-            max: formatCompact(raidSnapshot.maxHp),
-            time: formatDuration(Math.max(0, raidSnapshot.endsAt - now())),
-          }),
-        ),
-      );
-      const hit = actionButton(
-        t("raid.hit", { cost: formatCompact(raidCost) }),
-        "raidHit",
-        mode === "owner" && raidCost > 0,
-      );
-      seasonPanel.append(hit);
-    }
-    seasonPanel.append(lineBlock(`// ${t("event.now")}`));
+  const EVENT_GLYPHS: Record<string, string> = {
+    calm: "☼",
+    rain: "~",
+    goldenHour: "*",
+    frost: "#",
+    marketBoom: "$",
+    snowfall: "*",
+    coldSnap: "!",
+    heatwave: "^",
+    smoke: "%",
+    drought: "x",
+    wildfire: "^",
+    meteorShower: "*",
+    auroraNight: "@",
+    moonlight: "o",
+    toxicRain: "~",
+    plasmaStorm: "&",
+    goldenFog: "~",
+    crystalFrost: "#",
+    rainbowSky: "@",
+    blightWind: "~",
+    thunderstorm: "!",
+    bloodMoon: "☾",
+    acidRain: "~",
+    discoNight: "*",
+    cosmicRift: "@",
+    metallicDew: "o",
+    glimmerFog: "~",
+    twister: "%",
+    diamondSky: "*",
+    emberRain: "^",
+  };
+
+  const EVENT_TONES: Record<
+    string,
+    "default" | "harvest" | "money" | "water" | "tool" | "chemical" | "danger"
+  > = {
+    calm: "default",
+    rain: "water",
+    goldenHour: "harvest",
+    frost: "tool",
+    marketBoom: "money",
+    snowfall: "tool",
+    coldSnap: "tool",
+    heatwave: "money",
+    smoke: "default",
+    drought: "tool",
+    wildfire: "money",
+    meteorShower: "harvest",
+    auroraNight: "harvest",
+    moonlight: "water",
+    toxicRain: "tool",
+    plasmaStorm: "money",
+    goldenFog: "harvest",
+    crystalFrost: "tool",
+    rainbowSky: "harvest",
+    blightWind: "default",
+    thunderstorm: "water",
+    bloodMoon: "danger",
+    acidRain: "chemical",
+    discoNight: "harvest",
+    cosmicRift: "money",
+    metallicDew: "tool",
+    glimmerFog: "harvest",
+    twister: "tool",
+    diamondSky: "money",
+    emberRain: "danger",
+  };
+
+  /**
+   * @brief Builds the event view rendered as plot cells without recovery controls.
+   * @param at Current server-clock timestamp in milliseconds.
+   * @return Event container with weekly modifier, boss raid, active events, next wave, and forecast plots.
+   */
+  function buildEvent(at = now()): HTMLElement {
+    const wrap = div("garden-reborn-event");
+    wrap.append(lineBlock(`// ${t("reborn.eventTitle")}`));
+
+    // 1. Active conditions, weekly modifier and boss raid
+    wrap.append(lineBlock(`// ${t("event.now")}`));
     if (season !== null) {
-      seasonPanel.append(
-        lineBlock(
-          `${t("event.phase")}: ${t(`phase.${season.phase.id}`)} · ${formatDuration(Math.max(0, season.phase.endsAt - now()))}`,
-        ),
-      );
-      const active = season.events;
-      if (active.length === 0) {
-        seasonPanel.append(lineBlock(`${t("events.calm")} — ${t("events.calm.desc")}`));
-      } else {
-        for (const event of active) {
-          seasonPanel.append(lineBlock(`${t(`events.${event.id}`)} — ${t(`events.${event.id}.desc`)}`));
-        }
-      }
       const countdown = div("garden-line");
       countdown.dataset.eventTimer = "now";
-      seasonPanel.append(countdown);
-      seasonPanel.append(lineBlock(""));
-      seasonPanel.append(lineBlock(`// ${t("event.next")}`));
-      if (season.nextEvents.length === 0) {
-        seasonPanel.append(lineBlock(`${t("events.calm")} — ${t("events.calm.desc")}`));
-      } else {
-        for (const event of season.nextEvents) {
-          seasonPanel.append(lineBlock(`${t(`events.${event.id}`)} — ${t(`events.${event.id}.desc`)}`));
-        }
-      }
-      const next = div("garden-line");
-      next.dataset.eventTimer = "next";
-      seasonPanel.append(next);
-      seasonPanel.append(lineBlock(""));
-      seasonPanel.append(lineBlock(`// ${t("event.forecast")}`));
-      for (const wave of season.forecast) {
-        const names =
-          wave.length === 0 ? t("events.calm") : wave.map((event) => t(`events.${event.id}`)).join(" + ");
-        seasonPanel.append(lineBlock(`// ${names}`));
-      }
-    } else {
-      seasonPanel.append(lineBlock(t("common.loading")));
+      countdown.textContent = t("event.left", {
+        time: formatDuration(Math.max(0, season.event.endsAt - at)),
+      });
+      wrap.append(countdown);
     }
 
-    wrap.append(seasonPanel, buildRecoveryPanel());
+    const activeGrid = div("garden-town-npcs");
+    const modifier = weeklyModifier(at);
+    const weekTimeLeft = Math.max(0, weekEndsAt(at) - at);
+    activeGrid.append(
+      buildRebornAction({
+        id: "event:weekly",
+        label: t(`weekly.${modifier.id}`),
+        glyph: "W",
+        note: formatDuration(weekTimeLeft),
+        tone: "money",
+        act: "noop",
+        title: t("event.weekly", {
+          name: t(`weekly.${modifier.id}`),
+          time: formatDuration(weekTimeLeft),
+        }),
+      }),
+    );
+
+    if (raidSnapshot !== null) {
+      const raidCost = raidHitCost(state?.coins ?? 0);
+      const raidTimeLeft = Math.max(0, raidSnapshot.endsAt - at);
+      activeGrid.append(
+        buildRebornAction({
+          id: "event:raid-status",
+          label: t("reborn.weatherRaid"),
+          glyph: "!",
+          note: `${formatCompact(raidSnapshot.hp)}/${formatCompact(raidSnapshot.maxHp)}`,
+          tone: "harvest",
+          act: "noop",
+          title: t("raid.hp", {
+            hp: formatCompact(raidSnapshot.hp),
+            max: formatCompact(raidSnapshot.maxHp),
+            time: formatDuration(raidTimeLeft),
+          }),
+        }),
+      );
+      activeGrid.append(
+        buildRebornAction({
+          id: "event:raid-hit",
+          label: t("raid.hitPlot"),
+          glyph: "X",
+          note: `${formatCompact(raidCost)}c`,
+          tone: "danger",
+          act: "raidHit",
+          disabled: mode !== "owner" || raidCost <= 0,
+          title: t("raid.hitTitle", { cost: formatCompact(raidCost) }),
+        }),
+      );
+    }
+
+    if (season === null) {
+      wrap.append(activeGrid, lineBlock(t("common.loading")));
+      return wrap;
+    }
+
+    const phaseEndsIn = Math.max(0, season.phase.endsAt - at);
+    activeGrid.append(
+      buildRebornAction({
+        id: "event:phase",
+        label: t(`phase.${season.phase.id}`),
+        glyph: PHASE_GLYPHS[season.phase.id] ?? "☼",
+        note: formatDuration(phaseEndsIn),
+        tone: season.phase.id === "night" ? "water" : "harvest",
+        act: "noop",
+        title: `${t("event.phase")}: ${t(`phase.${season.phase.id}`)} · ${formatDuration(phaseEndsIn)}`,
+      }),
+    );
+
+    if (season.events.length === 0) {
+      activeGrid.append(
+        buildRebornAction({
+          id: "event:now-calm",
+          label: t("events.calm"),
+          glyph: "☼",
+          note: formatDuration(Math.max(0, season.event.endsAt - at)),
+          tone: "default",
+          act: "noop",
+          title: `${t("events.calm")} — ${t("events.calm.desc")}`,
+        }),
+      );
+    } else {
+      for (const ev of season.events) {
+        const timeLeft = Math.max(0, ev.endsAt - at);
+        activeGrid.append(
+          buildRebornAction({
+            id: `event:now-${ev.id}`,
+            label: t(`events.${ev.id}`),
+            glyph: EVENT_GLYPHS[ev.id] ?? "*",
+            note: formatDuration(timeLeft),
+            tone: EVENT_TONES[ev.id] ?? "default",
+            act: "noop",
+            title: `${t(`events.${ev.id}`)} — ${t(`events.${ev.id}.desc`)}`,
+          }),
+        );
+      }
+    }
+    wrap.append(activeGrid);
+
+    // 2. Next event wave
+    wrap.append(div("garden-town-sep"), lineBlock(`// ${t("event.next")}`));
+    const nextTimer = div("garden-line");
+    nextTimer.dataset.eventTimer = "next";
+    nextTimer.textContent = t("event.left", {
+      time: formatDuration(Math.max(0, season.next.startedAt - at)),
+    });
+    wrap.append(nextTimer);
+
+    const nextGrid = div("garden-town-npcs");
+    const nextIn = formatDuration(Math.max(0, season.next.startedAt - at));
+    if (season.nextEvents.length === 0) {
+      nextGrid.append(
+        buildRebornAction({
+          id: "event:next-calm",
+          label: t("events.calm"),
+          glyph: "☼",
+          note: nextIn,
+          tone: "default",
+          act: "noop",
+          title: `${t("events.calm")} — ${t("events.calm.desc")}`,
+        }),
+      );
+    } else {
+      for (const ev of season.nextEvents) {
+        nextGrid.append(
+          buildRebornAction({
+            id: `event:next-${ev.id}`,
+            label: t(`events.${ev.id}`),
+            glyph: EVENT_GLYPHS[ev.id] ?? "*",
+            note: nextIn,
+            tone: EVENT_TONES[ev.id] ?? "default",
+            act: "noop",
+            title: `${t(`events.${ev.id}`)} — ${t(`events.${ev.id}.desc`)}`,
+          }),
+        );
+      }
+    }
+    wrap.append(nextGrid);
+
+    // 3. Upcoming waves forecast
+    wrap.append(div("garden-town-sep"), lineBlock(`// ${t("event.forecast")}`));
+    const forecastGrid = div("garden-town-npcs");
+    season.forecast.forEach((wave, idx) => {
+      const waveLabel = `+${(idx + 1) * 10}m`;
+      if (wave.length === 0) {
+        forecastGrid.append(
+          buildRebornAction({
+            id: `event:fc-${idx}`,
+            label: t("events.calm"),
+            glyph: "☼",
+            note: waveLabel,
+            tone: "default",
+            act: "noop",
+            title: `Đợt ${idx + 1} (${waveLabel}): ${t("events.calm")}`,
+          }),
+        );
+      } else {
+        const names = wave.map((ev) => t(`events.${ev.id}`)).join(" + ");
+        const firstEv = wave[0]!;
+        forecastGrid.append(
+          buildRebornAction({
+            id: `event:fc-${idx}`,
+            label: names,
+            glyph: EVENT_GLYPHS[firstEv.id] ?? "*",
+            note: waveLabel,
+            tone: EVENT_TONES[firstEv.id] ?? "default",
+            act: "noop",
+            title: `Đợt ${idx + 1} (${waveLabel}): ${names}`,
+          }),
+        );
+      }
+    });
+    wrap.append(forecastGrid);
+
     return wrap;
   }
 
@@ -9293,14 +9488,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     const activeGrid = div("garden-town-npcs");
 
     // Phase Card
-    const phaseGlyph =
-      season.phase.id === "day"
-        ? "☼"
-        : season.phase.id === "dusk"
-          ? "☀"
-          : season.phase.id === "night"
-            ? "☾"
-            : "☽";
+    const phaseGlyph = PHASE_GLYPHS[season.phase.id] ?? "☽";
     activeGrid.append(
       buildRebornAction({
         id: "weather:phase",
@@ -9312,53 +9500,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         title: `${t("reborn.weatherPhase")}: ${t(`phase.${season.phase.id}`)}`,
       }),
     );
-
-    // Active Weather Event Cards
-    const EVENT_GLYPHS: Record<string, string> = {
-      calm: "☼",
-      rain: "~",
-      goldenHour: "*",
-      frost: "#",
-      marketBoom: "$",
-      snowfall: "*",
-      coldSnap: "!",
-      heatwave: "^",
-      smoke: "%",
-      drought: "x",
-      wildfire: "^",
-      meteorShower: "*",
-      auroraNight: "@",
-      moonlight: "o",
-      toxicRain: "~",
-      plasmaStorm: "&",
-      goldenFog: "~",
-      crystalFrost: "#",
-      rainbowSky: "@",
-      blightWind: "~",
-    };
-
-    const EVENT_TONES: Record<string, "default" | "harvest" | "money" | "water" | "tool"> = {
-      calm: "default",
-      rain: "water",
-      goldenHour: "harvest",
-      frost: "tool",
-      marketBoom: "money",
-      snowfall: "tool",
-      coldSnap: "tool",
-      heatwave: "money",
-      smoke: "default",
-      drought: "tool",
-      wildfire: "money",
-      meteorShower: "harvest",
-      auroraNight: "harvest",
-      moonlight: "water",
-      toxicRain: "tool",
-      plasmaStorm: "money",
-      goldenFog: "harvest",
-      crystalFrost: "tool",
-      rainbowSky: "harvest",
-      blightWind: "default",
-    };
 
     if (season.events.length === 0) {
       activeGrid.append(
@@ -9504,13 +9645,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
   }
 
   /**
-   * @brief Builds the Reborn Event tab with seasonal events, boss raid, wave forecast, and recovery controls.
-   * @return Reborn Event container wrapping the full event and recovery panels.
+   * @brief Builds the Reborn Event tab with seasonal events, boss raid, and wave forecast plots.
+   * @return Reborn Event container wrapping the plot-based event view.
    */
   function buildRebornEventSection(): HTMLElement {
-    const wrap = div("garden-reborn-event");
-    wrap.append(lineBlock(`// ${t("reborn.eventTitle")}`), buildEvent());
-    return wrap;
+    return buildEvent();
   }
 
   /**

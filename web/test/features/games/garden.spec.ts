@@ -2982,8 +2982,8 @@ describe("reborn sub-tabs", () => {
     expect(host.querySelector(".garden-reborn-tab.is-active")?.textContent).toContain("event");
     const rebornEvent = host.querySelector(".garden-reborn .garden-reborn-event");
     expect(rebornEvent).not.toBeNull();
-    expect(rebornEvent?.textContent).toContain("Tuần này:");
-    expect(rebornEvent?.querySelector('[data-act="restore"]')).not.toBeNull();
+    expect(rebornEvent?.querySelector('[data-action-id="event:weekly"]')).not.toBeNull();
+    expect(rebornEvent?.querySelector('[data-act="restore"]')).toBeNull();
     expect(host.querySelector(".garden-reborn-row")).toBeNull();
     expect(window.location.search).toContain("grtab=event");
 
@@ -5046,5 +5046,29 @@ describe("reborn legacy parity features", () => {
 
     expect(host.textContent).toContain("farmer@example.com");
     expect(host.querySelector('[data-act="accountLogout"]')).not.toBeNull();
+  });
+
+  it("renders the reborn event tab as plot cells without recovery controls", async () => {
+    const api = new FakeGardenApi(makeState({ coins: 2_000_000 }));
+    api.session = { playerId: "p1", token: "T1", recovery: "ABCD-1234" };
+    const { host, game } = await mountGame(api);
+    mounted.push(game);
+    host.querySelector<HTMLButtonElement>('[data-act="view:reborn"]')?.click();
+    await settle();
+    host.querySelector<HTMLButtonElement>('[data-act="rebornTab:event"]')?.click();
+    await settle();
+
+    const eventRoot = host.querySelector(".garden-reborn-event");
+    expect(eventRoot).not.toBeNull();
+    expect(
+      eventRoot?.querySelectorAll(".garden-town-npcs .garden-reborn-action").length,
+    ).toBeGreaterThanOrEqual(4);
+    expect(eventRoot?.querySelector('[data-action-id="event:weekly"]')).not.toBeNull();
+    expect(eventRoot?.querySelector('[data-action-id="event:phase"]')).not.toBeNull();
+    expect(eventRoot?.querySelector('[data-action-id="event:fc-0"]')).not.toBeNull();
+    expect(eventRoot?.querySelector('[data-role="restore"]')).toBeNull();
+    expect(eventRoot?.querySelector('[data-act="restore"]')).toBeNull();
+    expect(eventRoot?.querySelector('[data-act="rotate"]')).toBeNull();
+    expect(eventRoot?.textContent).not.toContain("ABCD-1234");
   });
 });
