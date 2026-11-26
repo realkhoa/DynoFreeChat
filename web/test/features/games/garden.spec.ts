@@ -2433,7 +2433,7 @@ describe("prestige shop", () => {
     expect(button).not.toBeNull();
     expect(button?.disabled).toBe(false);
     expect(button?.textContent).toContain("30%");
-    expect(button?.textContent).toContain("600mc");
+    expect(button?.textContent).toContain("1bc");
     button?.click();
     await settle();
     expect(api.calls.find((call) => call.action?.kind === "buyPrestigeSeed")?.action).toMatchObject({

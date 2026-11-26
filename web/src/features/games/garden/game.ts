@@ -5548,7 +5548,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         card.dataset.seed = offer.seed;
         card.disabled =
           locked || boughtToday || (view.coins ?? 0) <= 0 || (view.coins ?? 0) < coinCost || mode !== "owner";
-        card.title = `${seedName(offer.seed)} · ${pct}% (${formatCompact(coinCost)}c) · P${offer.tier}`;
+        card.title = `${seedName(offer.seed)} · ${formatCompact(coinCost)}c (${pct}%, min ${formatCompact(offer.minPrice)}c) · P${offer.tier}`;
         card.append(
           span("garden-buy-line is-name", seedName(offer.seed)),
           span("garden-buy-line", `P${offer.tier}`),
