@@ -99,8 +99,9 @@ import {
   weeklyModifier,
   weekEndsAt,
   prestigeRequirement,
+  prestigeUpgradeCost,
+  PRESTIGE_COIN_VALUE,
   raidHitCost,
-  prestigeStarterSeeds,
   prestigeSellBonus,
   SPRAYS,
   SPRAY_MUTATION_BOOST,
@@ -5468,16 +5469,21 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         }),
       ),
     );
-    const starters = Object.entries(prestigeStarterSeeds(prestigeLevel + 1))
-      .map(([seed, qty]) => `${seedName(seed as SeedId)} ×${qty}`)
-      .join(", ");
-    control.append(lineBlock(t("prestige.starterSeeds", { list: starters })));
+    const prestigeCost = prestigeUpgradeCost(prestigeLevel);
+    const rewardCoins = Math.max(1, Math.floor(prestigeCost / PRESTIGE_COIN_VALUE));
     const prestigeCoinLine = lineBlock(
       t("prestige.coins", { coins: formatCompact(extras.prestigeCoins ?? 0) }),
     );
     prestigeCoinLine.title = `${formatNumber(extras.prestigeCoins ?? 0)} prestige coins`;
     control.append(prestigeCoinLine);
-    control.append(lineBlock(t("prestige.conversionHint")));
+    control.append(
+      lineBlock(
+        t("prestige.conversionHint", {
+          cost: formatCompact(prestigeCost),
+          coins: formatCompact(rewardCoins),
+        }),
+      ),
+    );
     const cooldownLeft = Math.max(0, (extras.nextPrestigeAt ?? 0) - now());
     if (view.stats.earned >= prestigeNeed) {
       if (cooldownLeft > 0) {
@@ -5486,9 +5492,10 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
         control.append(
           actionButton(
             confirmPrestige
-              ? t("prestige.confirm", { level: prestigeLevel + 1 })
-              : t("prestige.ready", { level: prestigeLevel + 1 }),
+              ? t("prestige.confirm", { level: prestigeLevel + 1, cost: formatCompact(prestigeCost) })
+              : t("prestige.ready", { level: prestigeLevel + 1, cost: formatCompact(prestigeCost) }),
             "prestige",
+            (view.coins ?? 0) >= prestigeCost,
           ),
         );
       }

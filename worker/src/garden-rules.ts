@@ -197,7 +197,7 @@ import {
   FINAL_SHOP_PRESTIGE,
   prestigeGrowScale,
   prestigeRequirement,
-  prestigeStarterSeeds,
+  prestigeUpgradeCost,
   eventsAt,
   growTimeForEvents,
   rollEffectsFor,
@@ -3115,146 +3115,34 @@ function claimQuest(ledger: GardenLedger, id: string, now: number): RuleResult {
   return changed(next, now);
 }
 
-/** @brief Value of coins plus living crops and animals, for prestige coins. */
-function liquidationValue(ledger: GardenLedger, season: SeasonSnapshot, now: number): number {
-  let total = ledger.coins;
-  for (const plot of ledger.plots) {
-    if (plot === null) continue;
-    total += cropSellPrice(
-      { item: plot.seed, effects: resolvedCropEffects(plot, now), pest: plot.pest, star: 1, qty: 1 },
-      season,
-      ledger.hybrids,
-    );
-  }
-  for (const plot of ledger.greenhousePlots ?? []) {
-    if (plot === null) continue;
-    total += cropSellPrice(
-      {
-        item: plot.seed,
-        effects: resolvedCropEffects(plot, now, true, true),
-        pest: false,
-        star: 1,
-        qty: 1,
-      },
-      season,
-      ledger.hybrids,
-    );
-  }
-  for (const tree of ledger.trees) {
-    if (tree === null) continue;
-    total += cropSellPrice(
-      { item: tree.tree, effects: resolvedTreeEffects(tree, now), pest: tree.pest, star: 1, qty: 1 },
-      season,
-      ledger.hybrids,
-    );
-  }
-  for (const plot of ledger.specialPlots ?? []) {
-    if (plot === null) continue;
-    total += cropSellPrice(
-      {
-        item: plot.seed,
-        effects: resolvedCropEffects(plot, now, true),
-        pest: plot.pest,
-        star: 5,
-        qty: 1,
-      },
-      season,
-      ledger.hybrids,
-    );
-  }
-  for (const building of BUILDING_IDS) {
-    for (const animal of ledger.animals[building] ?? []) {
-      if (animal === null) continue;
-      total += animalMeatPrice(
-        animal.kind,
-        animalQuality(animal, now),
-        ledger.pondGrowth ?? 0,
-        animal.hybridPrice,
-      );
-    }
-  }
-  return total;
-}
-
-/** @brief Sells every held/queued machine input and clears the machines. */
-function liquidateMachineInputs(ledger: GardenLedger, season: SeasonSnapshot): number {
-  let total = 0;
-  for (const [id, machine] of Object.entries(ledger.machines) as Array<[MachineId, MachineState]>) {
-    const jobs: MachineJob[] = [];
-    if (machine.job !== undefined) jobs.push(machine.job);
-    for (const job of machine.queue ?? []) jobs.push(job);
-    if (jobs.length === 0) continue;
-    for (const job of jobs) {
-      const effects = job.effects ?? [];
-      if (productById(job.item) !== undefined) {
-        total += productPrice(
-          {
-            product: job.item as ProductId,
-            star: job.star ?? 1,
-            qty: 1,
-            effects,
-          },
-          season,
-        );
-      } else {
-        total += cropSellPrice(
-          {
-            item: job.item as AnyItemId,
-            star: job.star ?? 1,
-            qty: 1,
-            effects,
-          },
-          season,
-          ledger.hybrids,
-        );
-      }
-    }
-    ledger.machines[id] = {
-      ...machine,
-      job: undefined,
-      queue: [],
-      lastCraftAt: 0,
-    };
-  }
-  return total;
-}
-
-/** @brief Resets crops and animals for permanent prestige bonuses. */
-function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): RuleResult {
+/**
+ * @brief Upgrades prestige level for coins without resetting crops, animals, bags, or machines.
+ * @param ledger Current garden ledger.
+ * @param _season Active season snapshot.
+ * @param now Current server timestamp in milliseconds.
+ * @return RuleResult with updated prestige level, coin deduction, and prestige coin reward.
+ */
+function prestige(ledger: GardenLedger, _season: SeasonSnapshot, now: number): RuleResult {
   if (ledger.stats.earned < prestigeRequirement(ledger.prestige)) {
     return { ok: false, code: "BAD_REQUEST" };
   }
   if (now < (ledger.lastPrestigeAt ?? ledger.createdAt) + PRESTIGE_COOLDOWN_MS) {
     return { ok: false, code: "TRY_LATER" };
   }
+  const cost = prestigeUpgradeCost(ledger.prestige);
+  if (ledger.coins < cost) {
+    return { ok: false, code: "NOT_ENOUGH_COINS" };
+  }
   const next = clone(ledger);
-  // Prestige sells machine inputs automatically, then converts the wallet plus
-  // living garden and machine value into prestige coins.
-  const machineValue = liquidateMachineInputs(next, season);
-  const earned = Math.floor((liquidationValue(ledger, season, now) + machineValue) / PRESTIGE_COIN_VALUE);
-  next.coins = 0;
+  next.coins -= cost;
+  const earned = Math.max(1, Math.floor(cost / PRESTIGE_COIN_VALUE));
   next.prestigeCoins = (next.prestigeCoins ?? 0) + earned;
   next.prestigeProgress = 0;
-  // Only living things reset; machines, buildings, land, coins and staff stay.
-  next.plots = next.plots.map(() => null);
-  next.trees = next.trees.map(() => null);
-  next.specialPlots = next.specialPlots.map(() => null);
-  next.greenhousePlots = (next.greenhousePlots ?? []).map(() => null);
-  next.animals = {
-    coop: next.animals.coop.map(() => null),
-    barn: next.animals.barn.map(() => null),
-    pond: (next.animals.pond ?? []).map(() => null),
-  };
-  next.bag = {
-    ...next.bag,
-    seeds: { ...prestigeStarterSeeds(next.prestige) },
-    crops: [],
-  };
-  next.stats = { ...next.stats, planted: 0, harvested: 0, earned: 0 };
+  next.stats = { ...next.stats, spent: next.stats.spent + cost, earned: 0 };
   next.prestige = ledger.prestige + 1;
   next.lastPrestigeAt = now;
   next.questDay = wheelDayAt(now);
-  logTimeline(next, "prestige", now, { qty: next.prestige });
+  logTimeline(next, "prestige", now, { qty: next.prestige, coins: cost });
   return changed(next, now);
 }
 

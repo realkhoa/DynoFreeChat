@@ -3788,6 +3788,11 @@ export function prestigeRequirement(level: number): number {
   return PRESTIGE_BASE_EARNED * 2 ** exponent;
 }
 
+/** @brief Coin cost to upgrade to the next prestige level (50% of the earnings requirement). */
+export function prestigeUpgradeCost(level: number): number {
+  return Math.round(prestigeRequirement(level) * 0.5);
+}
+
 /** @brief Starter seeds handed out when a prestige reset wipes the bag. */
 export function prestigeStarterSeeds(level: number): Partial<Record<SeedId, number>> {
   const seeds: Partial<Record<SeedId, number>> = {

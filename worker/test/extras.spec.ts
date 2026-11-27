@@ -259,32 +259,34 @@ describe("extras", () => {
       protectedUntil: 0,
     };
     ledger.animals.coop[0] = { kind: "chicken", bornAt: NOW, pats: 0, lastProduceAt: NOW };
+    ledger.bag.crops = [{ item: "tomato", effects: [], star: 1, qty: 2 }];
+    ledger.bag.products = [{ product: "milk", effects: [], star: 1, qty: 1 }];
+    ledger.coins = 30_000_000_000_000;
     ledger.stats = { ...ledger.stats, earned: prestigeRequirement(0) };
     const tooSoon = run(ledger, { kind: "prestige" });
     expect(tooSoon.ok).toBe(false);
     if (!tooSoon.ok) expect(tooSoon.code).toBe("TRY_LATER");
+
+    const poor = run({ ...ledger, coins: 1_000_000 }, { kind: "prestige" }, NOW + 2 * 24 * 60 * 60_000);
+    expect(poor.ok).toBe(false);
+    if (!poor.ok) expect(poor.code).toBe("NOT_ENOUGH_COINS");
 
     const prestiged = run(ledger, { kind: "prestige" }, NOW + 2 * 24 * 60 * 60_000);
     expect(prestiged.ok).toBe(true);
     if (!prestiged.ok) return;
     expect(prestiged.ledger.prestige).toBe(1);
     expect(prestiged.ledger.code).toBe(ledger.code);
-    // Only living things reset; money, machines and infrastructure stay.
-    expect(prestiged.ledger.coins).toBe(0);
-    expect(prestiged.ledger.prestigeCoins).toBe(2);
+    // Costs 25t coins (50% of 50t), awards 250 prestige coins, and preserves crops, animals, bags & machines.
+    expect(prestiged.ledger.coins).toBe(5_000_000_000_000);
+    expect(prestiged.ledger.prestigeCoins).toBe(250);
     expect(prestiged.ledger.warehouse).toBe(1);
     expect(prestiged.ledger.machines.seedMaker?.level).toBe(2);
-    // Held machine inputs are sold with the garden, never returned.
-    expect(prestiged.ledger.machines.seedMaker?.job).toBeUndefined();
-    expect(prestiged.ledger.machines.seedMaker?.queue).toEqual([]);
-    expect(prestiged.ledger.bag.crops.filter((stack) => stack.item === "tomato")).toHaveLength(0);
-    expect(prestiged.ledger.bag.products?.some((stack) => stack.product === "milk")).toBe(false);
-    expect(prestiged.ledger.plots.every((plot) => plot === null)).toBe(true);
-    expect(prestiged.ledger.animals.coop.every((animal) => animal === null)).toBe(true);
-    // The reset still hands back a starter seed pack.
-    expect(prestiged.ledger.bag.seeds.carrot).toBe(20);
-    expect(prestiged.ledger.bag.seeds.parsnip).toBe(10);
-    expect(prestiged.ledger.bag.seeds.potato).toBe(5);
+    expect(prestiged.ledger.machines.seedMaker?.job?.item).toBe("tomato");
+    expect(prestiged.ledger.machines.seedMaker?.queue).toHaveLength(1);
+    expect(prestiged.ledger.bag.crops.filter((stack) => stack.item === "tomato")).toHaveLength(1);
+    expect(prestiged.ledger.bag.products?.some((stack) => stack.product === "milk")).toBe(true);
+    expect(prestiged.ledger.plots[0]?.seed).toBe("carrot");
+    expect(prestiged.ledger.animals.coop[0]?.kind).toBe("chicken");
   });
 
   it("buys final-shop plants with prestige coins", () => {

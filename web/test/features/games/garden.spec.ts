@@ -2231,6 +2231,7 @@ describe("daily quests and prestige", () => {
   it("claims a completed quest and confirms prestige", async () => {
     const api = new FakeGardenApi(
       makeState({
+        coins: 25_000_000_000_000,
         stats: { planted: 0, harvested: 0, earned: 50_000_000_000_000, spent: 0, tax: 0 },
         extras: {
           ...EXTRAS,
