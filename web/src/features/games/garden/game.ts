@@ -95,6 +95,7 @@ import {
   KITCHEN_PRICE,
   DAY_MS,
   prestigeGrowScale,
+  prestigeMutationBonus,
   weeklyModifier,
   weekEndsAt,
   prestigeRequirement,
@@ -5463,7 +5464,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     control.append(
       lineBlock(
         t("prestige.mutationBonus", {
-          percent: Math.round(prestigeLevel * 5),
+          percent: Math.round(prestigeMutationBonus(prestigeLevel) * 100),
         }),
       ),
     );
@@ -5477,8 +5478,11 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
     prestigeCoinLine.title = `${formatNumber(extras.prestigeCoins ?? 0)} prestige coins`;
     control.append(prestigeCoinLine);
     control.append(lineBlock(t("prestige.conversionHint")));
+    const cooldownLeft = Math.max(0, (extras.nextPrestigeAt ?? 0) - now());
     if (view.stats.earned >= prestigeNeed) {
-      if (mode === "owner") {
+      if (cooldownLeft > 0) {
+        control.append(lineBlock(t("prestige.cooldown", { time: formatDuration(cooldownLeft) })));
+      } else if (mode === "owner") {
         control.append(
           actionButton(
             confirmPrestige
@@ -5497,6 +5501,9 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
           }),
         ),
       );
+      if (cooldownLeft > 0) {
+        control.append(lineBlock(t("prestige.cooldown", { time: formatDuration(cooldownLeft) })));
+      }
     }
     if ((extras.taxLast ?? 0) > 0) {
       control.append(lineBlock(`// ${t("tax.last", { coins: formatCompact(extras.taxLast ?? 0) })}`));

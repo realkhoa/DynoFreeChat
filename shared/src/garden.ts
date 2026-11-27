@@ -1549,16 +1549,16 @@ export function prestigeSkillGrowScale(skills: Partial<Record<PrestigeSkillId, n
   return Math.max(0.1, 1 - (skills?.farmer ?? 0) * 0.05);
 }
 
-/** Absolute mutation chance from artisan points (+5% each). */
+/** Absolute mutation chance from artisan points (+1% each). */
 export function prestigeSkillMutationBonus(
   skills: Partial<Record<PrestigeSkillId, number>> | undefined,
 ): number {
-  return (skills?.artisan ?? 0) * 0.05;
+  return (skills?.artisan ?? 0) * 0.01;
 }
 
-/** @brief Mutation-rate bonus per prestige level (absolute chance). */
+/** @brief Mutation-rate bonus per prestige level (+1% absolute chance). */
 export function prestigeMutationBonus(level: number): number {
-  return Math.max(0, level) * 0.05;
+  return Math.max(0, level) * 0.01;
 }
 
 /** @brief Attachment definition by id. */
@@ -3712,6 +3712,7 @@ export interface ExtrasSnapshot {
   /** Prestige coins earned per 1000b lifetime earnings. */
   readonly prestigeCoins?: number;
   readonly prestigeShopDay?: number;
+  readonly nextPrestigeAt?: number;
   /** Progress toward the next prestige coin. */
   readonly prestigeProgress?: number;
   /** Spent prestige skill points per branch. */
@@ -3774,9 +3775,11 @@ export function dailyQuestsFor(playerId: string, day: number): QuestDefinition[]
   return picked;
 }
 
-/** Lifetime earnings needed before the next prestige. */
-/** Lifetime earnings required for the first prestige: 10,000b. */
-export const PRESTIGE_BASE_EARNED = 10_000 * 1_000_000_000;
+/** Minimum time between prestige resets: 2 days baseline. */
+export const PRESTIGE_COOLDOWN_MS = 2 * DAY_MS;
+
+/** Lifetime earnings required for the first prestige: 50,000b. */
+export const PRESTIGE_BASE_EARNED = 50_000 * 1_000_000_000;
 
 /** @brief Lifetime earnings required to prestige again. */
 export function prestigeRequirement(level: number): number {

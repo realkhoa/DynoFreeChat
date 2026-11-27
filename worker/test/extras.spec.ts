@@ -260,7 +260,11 @@ describe("extras", () => {
     };
     ledger.animals.coop[0] = { kind: "chicken", bornAt: NOW, pats: 0, lastProduceAt: NOW };
     ledger.stats = { ...ledger.stats, earned: prestigeRequirement(0) };
-    const prestiged = run(ledger, { kind: "prestige" });
+    const tooSoon = run(ledger, { kind: "prestige" });
+    expect(tooSoon.ok).toBe(false);
+    if (!tooSoon.ok) expect(tooSoon.code).toBe("TRY_LATER");
+
+    const prestiged = run(ledger, { kind: "prestige" }, NOW + 2 * 24 * 60 * 60_000);
     expect(prestiged.ok).toBe(true);
     if (!prestiged.ok) return;
     expect(prestiged.ledger.prestige).toBe(1);
@@ -298,7 +302,7 @@ describe("extras", () => {
   it("sells tiered prestige seeds at % of current coins with prestige-scaled floor and 1-per-day limit", () => {
     const ledger = makeLedger();
     ledger.prestige = 1;
-    ledger.coins = 5_000_000_000_000;
+    ledger.coins = 20_000_000_000_000;
 
     const lowCoins = run({ ...ledger, coins: 1_000_000 }, { kind: "buyPrestigeSeed", seed: "beanstalk" });
     expect(lowCoins.ok).toBe(false);
@@ -307,27 +311,27 @@ describe("extras", () => {
     const locked = run({ ...ledger, prestige: 0 }, { kind: "buyPrestigeSeed", seed: "cocomelon" });
     expect(locked.ok).toBe(false);
 
-    // At P1, prestigeRequirement(1) = 20t; beanstalk rate = 10% (500b) > floor 1% (200b)
+    // At P1, prestigeRequirement(1) = 100t; beanstalk rate = 10% (2t) > floor 1% (1t)
     const bought = run(ledger, { kind: "buyPrestigeSeed", seed: "beanstalk" });
     expect(bought.ok).toBe(true);
     if (!bought.ok) return;
     expect(bought.ledger.bag.seeds.beanstalk).toBe(1);
-    expect(bought.ledger.coins).toBe(4_500_000_000_000);
+    expect(bought.ledger.coins).toBe(18_000_000_000_000);
 
     const secondSameDay = run(bought.ledger, { kind: "buyPrestigeSeed", seed: "durian" });
     expect(secondSameDay.ok).toBe(false);
     if (!secondSameDay.ok) expect(secondSameDay.code).toBe("SHOP_SOLD_OUT");
 
-    // Next day with 500b coins: 10% (50b) < floor 1% of 20t (200b), so floor 200b applies
+    // Next day with 2t coins: 10% (200b) < floor 1% of 100t (1t), so floor 1t applies
     const nextDay = run(
-      { ...bought.ledger, coins: 500_000_000_000 },
+      { ...bought.ledger, coins: 2_000_000_000_000 },
       { kind: "buyPrestigeSeed", seed: "durian" },
       NOW + 24 * 60 * 60_000,
     );
     expect(nextDay.ok).toBe(true);
     if (nextDay.ok) {
       expect(nextDay.ledger.bag.seeds.durian).toBe(1);
-      expect(nextDay.ledger.coins).toBe(300_000_000_000);
+      expect(nextDay.ledger.coins).toBe(1_000_000_000_000);
     }
 
     const tiered = run(

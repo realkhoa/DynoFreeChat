@@ -638,6 +638,12 @@ export class Garden extends DurableObject<Env> {
       wheelDay: typeof raw.wheelDay === "number" ? raw.wheelDay : 0,
       prestige: typeof raw.prestige === "number" ? raw.prestige : 0,
       prestigeShopDay: typeof raw.prestigeShopDay === "number" ? raw.prestigeShopDay : -1,
+      lastPrestigeAt:
+        typeof raw.lastPrestigeAt === "number"
+          ? raw.lastPrestigeAt
+          : typeof raw.createdAt === "number"
+            ? raw.createdAt
+            : 0,
       relics: Array.isArray(raw.relics) ? [...raw.relics] : [],
       equippedRelics: Array.isArray(raw.equippedRelics) ? [...raw.equippedRelics] : [],
       petExpeditions: Array.isArray(raw.petExpeditions)

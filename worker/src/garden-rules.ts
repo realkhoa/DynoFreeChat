@@ -192,6 +192,7 @@ import {
   PRESTIGE_SHOP,
   prestigeSeedPrice,
   PRESTIGE_COIN_VALUE,
+  PRESTIGE_COOLDOWN_MS,
   FINAL_SHOP,
   FINAL_SHOP_PRESTIGE,
   prestigeGrowScale,
@@ -433,6 +434,8 @@ export interface GardenLedger {
   prestigeCoins: number;
   /** Local day index when the daily 1-tree prestige shop purchase was used. */
   prestigeShopDay: number;
+  /** Timestamp of the latest prestige reset (or garden creation). */
+  lastPrestigeAt: number;
   prestigeSkills: { merchant: number; farmer: number; artisan: number };
   /** Earnings progress toward the next prestige coin. */
   prestigeProgress: number;
@@ -587,6 +590,7 @@ export function createLedger(input: CreateLedgerInput): GardenLedger {
     prestige: 0,
     prestigeCoins: 0,
     prestigeShopDay: -1,
+    lastPrestigeAt: input.now,
     prestigeSkills: { merchant: 0, farmer: 0, artisan: 0 },
     prestigeProgress: 0,
     questDay: wheelDayAt(input.now),
@@ -667,6 +671,7 @@ export function extrasSnapshot(ledger: GardenLedger): GardenSnapshot["extras"] {
     prestige: ledger.prestige,
     prestigeCoins: ledger.prestigeCoins ?? 0,
     prestigeShopDay: ledger.prestigeShopDay ?? -1,
+    nextPrestigeAt: (ledger.lastPrestigeAt ?? ledger.createdAt) + PRESTIGE_COOLDOWN_MS,
     prestigeProgress: ledger.prestigeProgress ?? 0,
     prestigeSkills: { ...(ledger.prestigeSkills ?? {}) },
     prestigePoints:
@@ -3219,6 +3224,9 @@ function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): Ru
   if (ledger.stats.earned < prestigeRequirement(ledger.prestige)) {
     return { ok: false, code: "BAD_REQUEST" };
   }
+  if (now < (ledger.lastPrestigeAt ?? ledger.createdAt) + PRESTIGE_COOLDOWN_MS) {
+    return { ok: false, code: "TRY_LATER" };
+  }
   const next = clone(ledger);
   // Prestige sells machine inputs automatically, then converts the wallet plus
   // living garden and machine value into prestige coins.
@@ -3244,6 +3252,7 @@ function prestige(ledger: GardenLedger, season: SeasonSnapshot, now: number): Ru
   };
   next.stats = { ...next.stats, planted: 0, harvested: 0, earned: 0 };
   next.prestige = ledger.prestige + 1;
+  next.lastPrestigeAt = now;
   next.questDay = wheelDayAt(now);
   logTimeline(next, "prestige", now, { qty: next.prestige });
   return changed(next, now);

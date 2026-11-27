@@ -2231,7 +2231,7 @@ describe("daily quests and prestige", () => {
   it("claims a completed quest and confirms prestige", async () => {
     const api = new FakeGardenApi(
       makeState({
-        stats: { planted: 0, harvested: 0, earned: 20_000_000_000_000, spent: 0, tax: 0 },
+        stats: { planted: 0, harvested: 0, earned: 50_000_000_000_000, spent: 0, tax: 0 },
         extras: {
           ...EXTRAS,
           prestige: 0,
@@ -2418,7 +2418,7 @@ describe("prestige shop", () => {
   it("buys a cocomelon seed at prestige tier 1", async () => {
     const api = new FakeGardenApi(
       makeState({
-        coins: 40_000_000_000_000_000,
+        coins: 200_000_000_000_000_000,
         extras: { ...EXTRAS, prestige: 5 },
       }),
     );

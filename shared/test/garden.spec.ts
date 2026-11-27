@@ -500,11 +500,11 @@ describe("farm buildings", () => {
     expect(weekEndsAt(NOW)).toBeGreaterThan(NOW);
   });
 
-  it("prices prestige resets at 10,000b doubling per level", () => {
-    expect(prestigeRequirement(0)).toBe(10_000_000_000_000);
-    expect(prestigeRequirement(1)).toBe(20_000_000_000_000);
-    expect(prestigeRequirement(2)).toBe(80_000_000_000_000);
-    expect(prestigeRequirement(3)).toBe(640_000_000_000_000);
+  it("prices prestige resets at 50,000b doubling per level", () => {
+    expect(prestigeRequirement(0)).toBe(50_000_000_000_000);
+    expect(prestigeRequirement(1)).toBe(100_000_000_000_000);
+    expect(prestigeRequirement(2)).toBe(400_000_000_000_000);
+    expect(prestigeRequirement(3)).toBe(3_200_000_000_000_000);
   });
 
   it("ships the prestige-only cocomelon seed", () => {
@@ -514,7 +514,7 @@ describe("farm buildings", () => {
     expect(seed?.buy).toBe(1_000_000_000);
     expect(seed?.sell).toBe(50_000_000);
     expect(PRESTIGE_SHOP.some((offer) => offer.seed === "cocomelon" && offer.tier === 5)).toBe(true);
-    expect(prestigeMutationBonus(1)).toBe(0.05);
+    expect(prestigeMutationBonus(1)).toBe(0.01);
     expect(prestigeSellBonus(1)).toBe(1.5);
     expect(prestigeGrowScale(1)).toBe(0.9);
   });
