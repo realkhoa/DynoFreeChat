@@ -551,6 +551,9 @@ describe("legacy view", () => {
     // Quick actions and the four staff cells live in one cluster on the same row.
     expect(host.querySelectorAll(".garden-reborn-side .garden-reborn-quick")).toHaveLength(1);
     expect(host.querySelectorAll(".garden-reborn-side .garden-reborn-staff")).toHaveLength(1);
+    const rowChildren = Array.from(host.querySelector(".garden-reborn-row")?.children ?? []);
+    expect(rowChildren[0]?.classList.contains("garden-reborn-side")).toBe(true);
+    expect(rowChildren[rowChildren.length - 1]?.classList.contains("garden-reborn-vip")).toBe(true);
     // Requested order: field actions, bulk supplies, quick tools, then uproot + quick plant.
     expect(actions.map((action) => action.dataset.actionId)).toEqual([
       "water",

@@ -110,7 +110,7 @@
   cursor: pointer;
 }
 
-/* Layout: the VIP board first, then the quick action columns beside it. */
+/* Layout: the quick action columns first, then the VIP board beside/below it. */
 .garden-reborn-row {
   display: flex;
   align-items: flex-start;

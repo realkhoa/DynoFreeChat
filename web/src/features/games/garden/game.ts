@@ -7744,6 +7744,7 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       return wrap;
     }
     const row = div("garden-reborn-row");
+    if (mode === "owner") row.append(buildRebornSide(at), div("garden-reborn-sep"));
     const vip = div("garden-reborn-vip");
     const owned = specialView()?.owned ?? 0;
     vip.append(
@@ -7751,7 +7752,6 @@ export function createAsciiGardenGame(options: GardenGameOptions = {}): GameMoun
       buildRebornBoard(rebornPlots(), at, activeHybrids()),
     );
     row.append(vip);
-    if (mode === "owner") row.append(div("garden-reborn-sep"), buildRebornSide(at));
     wrap.append(row);
     if (mode === "owner" && staffPanel !== null) {
       const panel = buildStaffPanel(at);
